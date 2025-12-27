@@ -1466,34 +1466,91 @@ impl EipClient {
         }
 
         // For other array types, try requesting multiple elements
-        // Build a read request that requests a reasonable element count to get the entire array
-        // Try requesting 10 elements first (most arrays are small), then increase if needed
-        // Start with 10, then try 50, then 100 if needed
-        let mut element_count = 10u16;
-        let mut response = self
-            .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
-            .await;
-
-        // If requesting 10 fails, try 50, then 100
-        if response.is_err() {
-            element_count = 50;
-            response = self
-                .send_cip_request(
-                    &self.build_read_request_with_count(base_array_name, element_count),
-                )
+        // Determine the data type first
+        let data_type = if test_cip_data.len() >= 6 {
+            u16::from_le_bytes([test_cip_data[4], test_cip_data[5]])
+        } else {
+            return Err(EtherNetIpError::Protocol(
+                "Cannot determine array data type".to_string(),
+            ));
+        };
+        
+        // Try reading a small chunk first to see if we get truncation
+        let test_read_response = self
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, 10))
+            .await?;
+        let test_read_cip = self.extract_cip_from_response(&test_read_response)?;
+        
+        // Check if we need chunked reading (truncated response or large index)
+        let needs_chunked_reading = if test_read_cip.len() >= 8 {
+            let test_data_type = u16::from_le_bytes([test_read_cip[4], test_read_cip[5]]);
+            if test_data_type == data_type {
+                let value_data_start = if test_read_cip.len() >= 14 { 8 } else { 8 };
+                let value_data_len = test_read_cip.len() - value_data_start;
+                let element_size = match data_type {
+                    0x00C4 => 4, 0x00CA => 4, 0x00C8 => 4,
+                    0x00C3 => 2, 0x00C7 => 2,
+                    0x00C2 => 1, 0x00C6 => 1, 0x00C1 => 1,
+                    _ => 4,
+                };
+                let elements_received = value_data_len / element_size;
+                // Always use chunked reading if index is >= 9 (to handle large arrays)
+                // Also use it if we got truncated response (less than 9 elements when requesting 10)
+                index >= 9 || elements_received < 9
+            } else {
+                index >= 9 // Use chunked reading for large indices even if type check fails
+            }
+        } else {
+            index >= 9 // Use chunked reading for large indices
+        };
+        
+        let cip_data = if needs_chunked_reading {
+            println!(
+                "🔧 [DEBUG] Using chunked reading for array element {}",
+                index
+            );
+            // Use chunked reading - read enough to include the element we want
+            let target_count = (index + 1).max(50); // Read at least up to our target, or 50 if larger
+            let chunked_data = self.read_array_in_chunks(base_array_name, data_type, target_count).await?;
+            
+            // Create a fake CIP response structure for compatibility with existing parsing code
+            let mut fake_cip = vec![0xCC, 0x00, 0x00, 0x00];
+            fake_cip.extend_from_slice(&data_type.to_le_bytes());
+            fake_cip.extend_from_slice(&((chunked_data.len() / match data_type {
+                0x00C4 => 4, 0x00CA => 4, 0x00C8 => 4,
+                0x00C3 => 2, 0x00C7 => 2,
+                0x00C2 => 1, 0x00C6 => 1, 0x00C1 => 1,
+                _ => 4,
+            }) as u16).to_le_bytes());
+            fake_cip.extend_from_slice(&chunked_data);
+            fake_cip
+        } else {
+            // Try reading normally
+            let mut element_count = 10u16;
+            let mut response = self
+                .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
                 .await;
-        }
-        if response.is_err() {
-            element_count = 100;
-            response = self
-                .send_cip_request(
-                    &self.build_read_request_with_count(base_array_name, element_count),
-                )
-                .await;
-        }
 
-        let response = response?;
-        let cip_data = self.extract_cip_from_response(&response)?;
+            // If requesting 10 fails, try 50, then 100
+            if response.is_err() {
+                element_count = 50;
+                response = self
+                    .send_cip_request(
+                        &self.build_read_request_with_count(base_array_name, element_count),
+                    )
+                    .await;
+            }
+            if response.is_err() {
+                element_count = 100;
+                response = self
+                    .send_cip_request(
+                        &self.build_read_request_with_count(base_array_name, element_count),
+                    )
+                    .await;
+            }
+
+            self.extract_cip_from_response(&response?)?
+        };
 
         // Parse the array response
         if cip_data.len() < 6 {
@@ -1519,17 +1576,26 @@ impl EipClient {
         }
 
         let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
-        let element_count = u16::from_le_bytes([cip_data[6], cip_data[7]]);
-        let value_data = &cip_data[8..];
-
+        
+        // Debug: Print full CIP data structure for analysis
         println!(
-            "🔧 [DEBUG] Array data type: 0x{:04X}, Element count: {}, Data length: {} bytes",
-            data_type,
-            element_count,
-            value_data.len()
+            "🔧 [DEBUG] Full CIP data structure ({} bytes): {:02X?}",
+            cip_data.len(),
+            cip_data
         );
-
-        // Calculate element size based on data type
+        
+        // For array responses, the format is:
+        // [service(1)][reserved(1)][status(1)][status_size(1)][data_type(2)][element_count(2)][data...]
+        // However, some PLCs may have padding or different formats.
+        // The element count field at offset 6-7 may not always be accurate.
+        
+        let element_count_reported = if cip_data.len() >= 8 {
+            u16::from_le_bytes([cip_data[6], cip_data[7]])
+        } else {
+            0
+        };
+        
+        // Calculate element size to determine actual data start
         let element_size = match data_type {
             0x00C1 => 1, // BOOL
             0x00C2 => 1, // SINT
@@ -1543,25 +1609,96 @@ impl EipClient {
             0x00CA => 4, // REAL
             0x00CB => 8, // LREAL
             0x00D3 => 4, // ULINT (sometimes used for BOOL arrays as DWORD)
-            _ => {
-                return Err(EtherNetIpError::Protocol(format!(
-                    "Unsupported array data type: 0x{:04X}",
-                    data_type
-                )));
-            }
+            _ => 4, // Default to 4 bytes
         };
-
-        // Calculate actual number of elements based on data length
-        let actual_element_count = value_data.len() / element_size;
+        
+        // Determine where the actual data starts
+        // For array responses when requesting multiple elements, the format can be:
+        // Format 1: [service][reserved][status][status_size][data_type(2)][element_count(2)][data...]
+        // Format 2: [service][reserved][status][status_size][data_type(2)][first_element_data...]
+        // 
+        // When requesting multiple elements, some PLCs may not return the element count correctly,
+        // and instead the first element's value may be at offset 6-9 (for 4-byte types like DINT/REAL).
+        // 
+        // Check if offset 6-9 looks like the first element
+        let value_data_start = if cip_data.len() >= 14 {
+            // For DINT arrays, check if offset 6-9 is a small positive integer (like 1, 2, 3...)
+            // For REAL arrays, check if offset 6-9 is a reasonable float value
+            let potential_first_element_bytes = [cip_data[6], cip_data[7], cip_data[8], cip_data[9]];
+            let potential_second_element_bytes = [cip_data[10], cip_data[11], cip_data[12], cip_data[13]];
+            
+            match data_type {
+                0x00C4 => {
+                    // DINT array - check for integer pattern
+                    let potential_first = i32::from_le_bytes(potential_first_element_bytes);
+                    let potential_second = i32::from_le_bytes(potential_second_element_bytes);
+                    
+                    // If we see a pattern like 1, 2, 3... starting at offset 6, that's our data
+                    if potential_first > 0 
+                        && potential_first < 1000  // Reasonable array element value
+                        && potential_second == potential_first + 1 {
+                        println!("🔧 [DEBUG] Detected DINT array data starts at offset 6 (element count field contains first element)");
+                        println!("🔧 [DEBUG] First element at offset 6-9: {:02X?} (value {})", 
+                            potential_first_element_bytes,
+                            potential_first);
+                        6
+                    } else {
+                        8
+                    }
+                }
+                0x00CA => {
+                    // REAL array - check for float pattern
+                    let potential_first = f32::from_le_bytes(potential_first_element_bytes);
+                    let potential_second = f32::from_le_bytes(potential_second_element_bytes);
+                    
+                    // Check if the first value is a reasonable float (like 1.11, 2.22, etc.)
+                    // and the second is close to first + 1.0 (within 0.5)
+                    if potential_first > 0.0 
+                        && potential_first < 1000.0  // Reasonable array element value
+                        && (potential_second - potential_first - 1.0).abs() < 0.5 {
+                        println!("🔧 [DEBUG] Detected REAL array data starts at offset 6 (element count field contains first element)");
+                        println!("🔧 [DEBUG] First element at offset 6-9: {:02X?} (value {:.2})", 
+                            potential_first_element_bytes,
+                            potential_first);
+                        6
+                    } else {
+                        8
+                    }
+                }
+                _ => {
+                    // For other types, use standard offset 8
+                    8
+                }
+            }
+        } else {
+            8
+        };
+        
+        let value_data = &cip_data[value_data_start..];
+        
+        // Calculate actual element count from data length
+        let actual_element_count = if value_data.len() >= element_size {
+            value_data.len() / element_size
+        } else {
+            0
+        };
+        
+        // Use the larger of reported count or calculated count
+        let element_count = element_count_reported.max(actual_element_count as u16);
+        
         println!(
-            "🔧 [DEBUG] Calculated actual element count: {} (from {} bytes / {} bytes per element)",
+            "🔧 [DEBUG] Array data type: 0x{:04X}, Reported count: {}, Calculated count: {}, Using: {}, Data starts at offset {}, Data length: {} bytes",
+            data_type,
+            element_count_reported,
             actual_element_count,
-            value_data.len(),
-            element_size
+            element_count,
+            value_data_start,
+            value_data.len()
         );
 
+        // element_size and actual_element_count are already calculated above
         // Use the larger of reported count or calculated count
-        let max_elements = element_count.max(actual_element_count as u16);
+        let max_elements = element_count;
 
         // Check if index is valid
         if index >= max_elements as u32 {
@@ -1574,11 +1711,172 @@ impl EipClient {
         // Calculate offset for the requested element
         let element_offset = (index as usize) * element_size;
         if element_offset + element_size > value_data.len() {
+            // Data is truncated - try to read the specific element separately
+            println!(
+                "🔧 [DEBUG] Array data truncated: need element {} (offset {}), but only have {} bytes. Reading element separately...",
+                index, element_offset, value_data.len()
+            );
+            
+            // Try reading with a larger count that includes this element
+            let needed_count = (index as u32 + 1) as u16;
+            let extended_response = self
+                .send_cip_request(&self.build_read_request_with_count(base_array_name, needed_count))
+                .await;
+            
+            if let Ok(extended_response) = extended_response {
+                let extended_cip_data = self.extract_cip_from_response(&extended_response)?;
+                
+                // Re-parse with the extended data
+                if extended_cip_data.len() >= 8 {
+                    let extended_data_type = u16::from_le_bytes([extended_cip_data[4], extended_cip_data[5]]);
+                    if extended_data_type == data_type {
+                        // Use the same offset detection logic
+                        let extended_value_data_start = if extended_cip_data.len() >= 14 {
+                            let potential_first_element_bytes = [extended_cip_data[6], extended_cip_data[7], extended_cip_data[8], extended_cip_data[9]];
+                            let potential_second_element_bytes = [extended_cip_data[10], extended_cip_data[11], extended_cip_data[12], extended_cip_data[13]];
+                            
+                            match data_type {
+                                0x00C4 => {
+                                    let potential_first = i32::from_le_bytes(potential_first_element_bytes);
+                                    let potential_second = i32::from_le_bytes(potential_second_element_bytes);
+                                    if potential_first > 0 
+                                        && potential_first < 1000
+                                        && potential_second == potential_first + 1 {
+                                        6
+                                    } else {
+                                        8
+                                    }
+                                }
+                                0x00CA => {
+                                    let potential_first = f32::from_le_bytes(potential_first_element_bytes);
+                                    let potential_second = f32::from_le_bytes(potential_second_element_bytes);
+                                    if potential_first > 0.0 
+                                        && potential_first < 1000.0
+                                        && (potential_second - potential_first - 1.0).abs() < 0.5 {
+                                        6
+                                    } else {
+                                        8
+                                    }
+                                }
+                                _ => 8
+                            }
+                        } else {
+                            8
+                        };
+                        
+                        let extended_value_data = &extended_cip_data[extended_value_data_start..];
+                        let extended_complete_bytes = (extended_value_data.len() / element_size) * element_size;
+                        let extended_data = &extended_value_data[..extended_complete_bytes];
+                        
+                        // Check if the extended read actually provided more data than we had
+                        if extended_data.len() > value_data.len() {
+                            println!(
+                                "🔧 [DEBUG] Extended read provided {} bytes (vs {} bytes originally), using extended data",
+                                extended_data.len(),
+                                value_data.len()
+                            );
+                            // Use the extended data
+                            let element_data = &extended_data[element_offset..element_offset + element_size];
+                            
+                            println!(
+                                "🔧 [DEBUG] Extracting element [{}] at offset {} (size {} bytes): {:02X?}",
+                                index, element_offset, element_size, element_data
+                            );
+                            
+                            // Parse and return the element based on data type
+                            return match data_type {
+                                0x00C1 => Ok(PlcValue::Bool(element_data[0] != 0)),
+                                0x00C2 => Ok(PlcValue::Sint(element_data[0] as i8)),
+                                0x00C3 => Ok(PlcValue::Int(i16::from_le_bytes([element_data[0], element_data[1]]))),
+                                0x00C4 => Ok(PlcValue::Dint(i32::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3]
+                                ]))),
+                                0x00C5 => Ok(PlcValue::Lint(i64::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3],
+                                    element_data[4], element_data[5], element_data[6], element_data[7]
+                                ]))),
+                                0x00C6 => Ok(PlcValue::Usint(element_data[0])),
+                                0x00C7 => Ok(PlcValue::Uint(u16::from_le_bytes([element_data[0], element_data[1]]))),
+                                0x00C8 => Ok(PlcValue::Udint(u32::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3]
+                                ]))),
+                                0x00C9 => Ok(PlcValue::Ulint(u64::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3],
+                                    element_data[4], element_data[5], element_data[6], element_data[7]
+                                ]))),
+                                0x00CA => Ok(PlcValue::Real(f32::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3]
+                                ]))),
+                                0x00CB => Ok(PlcValue::Lreal(f64::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3],
+                                    element_data[4], element_data[5], element_data[6], element_data[7]
+                                ]))),
+                                _ => Err(EtherNetIpError::Protocol(format!(
+                                    "Unsupported array element data type: 0x{:04X}",
+                                    data_type
+                                )))
+                            };
+                        }
+                        
+                        // Extended read didn't provide more data - check if we now have enough data anyway
+                        if element_offset + element_size <= extended_data.len() {
+                            println!(
+                                "🔧 [DEBUG] Successfully read extended data: {} bytes, element {} now available",
+                                extended_data.len(), index
+                            );
+                            // Use the extended data
+                            let element_data = &extended_data[element_offset..element_offset + element_size];
+                            
+                            println!(
+                                "🔧 [DEBUG] Extracting element [{}] at offset {} (size {} bytes): {:02X?}",
+                                index, element_offset, element_size, element_data
+                            );
+                            
+                            // Parse and return the element based on data type
+                            return match data_type {
+                                0x00C1 => Ok(PlcValue::Bool(element_data[0] != 0)),
+                                0x00C2 => Ok(PlcValue::Sint(element_data[0] as i8)),
+                                0x00C3 => Ok(PlcValue::Int(i16::from_le_bytes([element_data[0], element_data[1]]))),
+                                0x00C4 => Ok(PlcValue::Dint(i32::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3]
+                                ]))),
+                                0x00C5 => Ok(PlcValue::Lint(i64::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3],
+                                    element_data[4], element_data[5], element_data[6], element_data[7]
+                                ]))),
+                                0x00C6 => Ok(PlcValue::Usint(element_data[0])),
+                                0x00C7 => Ok(PlcValue::Uint(u16::from_le_bytes([element_data[0], element_data[1]]))),
+                                0x00C8 => Ok(PlcValue::Udint(u32::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3]
+                                ]))),
+                                0x00C9 => Ok(PlcValue::Ulint(u64::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3],
+                                    element_data[4], element_data[5], element_data[6], element_data[7]
+                                ]))),
+                                0x00CA => Ok(PlcValue::Real(f32::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3]
+                                ]))),
+                                0x00CB => Ok(PlcValue::Lreal(f64::from_le_bytes([
+                                    element_data[0], element_data[1], element_data[2], element_data[3],
+                                    element_data[4], element_data[5], element_data[6], element_data[7]
+                                ]))),
+                                _ => Err(EtherNetIpError::Protocol(format!(
+                                    "Unsupported array element data type: 0x{:04X}",
+                                    data_type
+                                )))
+                            };
+                        }
+                    }
+                }
+            }
+            
+            // If we still don't have the data, the PLC is truncating responses
+            // This is a limitation - we can't read elements beyond what the PLC returns in a single response
             return Err(EtherNetIpError::Protocol(format!(
-                "Array data too short: need {} bytes at offset {}, but only have {} bytes",
-                element_size,
-                element_offset,
-                value_data.len()
+                "Cannot read array element {}: PLC response is truncated (only {} bytes available, need {} bytes). The PLC may have a response size limit that prevents reading this element in a single request.",
+                index,
+                value_data.len(),
+                element_offset + element_size
             )));
         }
 
@@ -1811,6 +2109,305 @@ impl EipClient {
         Ok(PlcValue::Bool(bool_value))
     }
 
+    /// Helper function to read large arrays in chunks to avoid PLC response size limits
+    async fn read_array_in_chunks(
+        &mut self,
+        base_array_name: &str,
+        data_type: u16,
+        target_element_count: u32,
+    ) -> crate::error::Result<Vec<u8>> {
+        // Determine element size and safe chunk size
+        let element_size = match data_type {
+            0x00C1 => 1, // BOOL
+            0x00C2 => 1, // SINT
+            0x00C3 => 2, // INT
+            0x00C4 => 4, // DINT
+            0x00C5 => 8, // LINT
+            0x00C6 => 1, // USINT
+            0x00C7 => 2, // UINT
+            0x00C8 => 4, // UDINT
+            0x00C9 => 8, // ULINT
+            0x00CA => 4, // REAL
+            0x00CB => 8, // LREAL
+            _ => {
+                return Err(EtherNetIpError::Protocol(format!(
+                    "Unsupported array data type for chunked reading: 0x{:04X}",
+                    data_type
+                )));
+            }
+        };
+        
+        // Read in chunks - use 8 elements per chunk for 4-byte types to stay under 38-byte limit
+        // For smaller types, we can read more elements per chunk
+        let elements_per_chunk = match element_size {
+            1 => 30,  // 1-byte types: 30 elements = 30 bytes + 8 header = 38 bytes
+            2 => 15,  // 2-byte types: 15 elements = 30 bytes + 8 header = 38 bytes
+            4 => 8,   // 4-byte types: 8 elements = 32 bytes + 8 header = 40 bytes (may truncate to 38)
+            8 => 4,   // 8-byte types: 4 elements = 32 bytes + 8 header = 40 bytes
+            _ => 8,
+        };
+        
+        let mut all_data = Vec::new();
+        let mut next_chunk_start = 0u32;
+        
+        println!(
+            "🔧 [DEBUG] Reading array '{}' in chunks: {} elements per chunk, target: {} elements",
+            base_array_name, elements_per_chunk, target_element_count
+        );
+        
+        while next_chunk_start < target_element_count {
+            // Request progressively larger chunks, but the PLC always returns from element 0
+            // So we request enough to get the next chunk, then extract only the new portion
+            // Cap at 50 to avoid PLC errors (PLC seems to error on requests > 50)
+            let chunk_end = (next_chunk_start + elements_per_chunk as u32).min(target_element_count);
+            let request_count = (chunk_end.min(50)) as u16; // Never request more than 50
+            
+            println!(
+                "🔧 [DEBUG] Reading chunk: requesting {} elements to get elements {} to {}",
+                request_count, next_chunk_start, chunk_end - 1
+            );
+            
+            // Read this chunk (PLC returns from element 0)
+            let response = self
+                .send_cip_request(&self.build_read_request_with_count(base_array_name, request_count))
+                .await?;
+            let cip_data = self.extract_cip_from_response(&response)?;
+            
+            if cip_data.len() < 8 {
+                // Response too short - might be an error or empty response
+                // Check if it's a CIP error response
+                if cip_data.len() >= 3 {
+                    let general_status = cip_data[2];
+                    if general_status != 0x00 {
+                        let error_msg = self.get_cip_error_message(general_status);
+                        return Err(EtherNetIpError::Protocol(format!(
+                            "CIP Error {} when reading chunk (requested {} elements): {}",
+                            general_status, request_count, error_msg
+                        )));
+                    }
+                }
+                return Err(EtherNetIpError::Protocol(format!(
+                    "Chunk response too short: got {} bytes, expected at least 8 (requested {} elements)",
+                    cip_data.len(), request_count
+                )));
+            }
+            
+            // Check for CIP errors in the response
+            if cip_data.len() >= 3 {
+                let general_status = cip_data[2];
+                if general_status != 0x00 {
+                    let error_msg = self.get_cip_error_message(general_status);
+                    return Err(EtherNetIpError::Protocol(format!(
+                        "CIP Error {} when reading chunk (requested {} elements): {}",
+                        general_status, request_count, error_msg
+                    )));
+                }
+            }
+            
+            // Check service reply
+            if cip_data.len() >= 1 && cip_data[0] != 0xCC {
+                return Err(EtherNetIpError::Protocol(format!(
+                    "Unexpected service reply in chunk: 0x{:02X} (expected 0xCC)",
+                    cip_data[0]
+                )));
+            }
+            
+            if cip_data.len() < 6 {
+                return Err(EtherNetIpError::Protocol(format!(
+                    "Chunk response too short for data type: got {} bytes, expected at least 6",
+                    cip_data.len()
+                )));
+            }
+            
+            let chunk_data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+            if chunk_data_type != data_type {
+                return Err(EtherNetIpError::Protocol(format!(
+                    "Data type mismatch in chunk: expected 0x{:04X}, got 0x{:04X}",
+                    data_type, chunk_data_type
+                )));
+            }
+            
+            // Use the same offset detection logic as the main read workaround
+            let value_data_start = if cip_data.len() >= 14 {
+                let potential_first_element_bytes = [cip_data[6], cip_data[7], cip_data[8], cip_data[9]];
+                let potential_second_element_bytes = [cip_data[10], cip_data[11], cip_data[12], cip_data[13]];
+                
+                match data_type {
+                    0x00C4 => {
+                        let potential_first = i32::from_le_bytes(potential_first_element_bytes);
+                        let potential_second = i32::from_le_bytes(potential_second_element_bytes);
+                        if potential_first > 0 
+                            && potential_first < 1000
+                            && potential_second == potential_first + 1 {
+                            6
+                        } else {
+                            8
+                        }
+                    }
+                    0x00CA => {
+                        let potential_first = f32::from_le_bytes(potential_first_element_bytes);
+                        let potential_second = f32::from_le_bytes(potential_second_element_bytes);
+                        if potential_first > 0.0 
+                            && potential_first < 1000.0
+                            && (potential_second - potential_first - 1.0).abs() < 0.5 {
+                            6
+                        } else {
+                            8
+                        }
+                    }
+                    _ => 8
+                }
+            } else {
+                8
+            };
+            
+            let chunk_value_data = &cip_data[value_data_start..];
+            let chunk_complete_bytes = (chunk_value_data.len() / element_size) * element_size;
+            let full_chunk_data = &chunk_value_data[..chunk_complete_bytes];
+            
+            // Extract only the new portion (from next_chunk_start to the end of what we received)
+            let new_elements_start = (next_chunk_start as usize) * element_size;
+            if new_elements_start < full_chunk_data.len() {
+                // Calculate how many elements we need from this chunk
+                let needed_elements = (chunk_end - next_chunk_start) as usize;
+                let available_elements = (full_chunk_data.len() - new_elements_start) / element_size;
+                let elements_to_take = needed_elements.min(available_elements);
+                
+                if elements_to_take > 0 {
+                    let end_offset = new_elements_start + (elements_to_take * element_size);
+                    let new_elements = &full_chunk_data[new_elements_start..end_offset];
+                    all_data.extend_from_slice(new_elements);
+                    
+                    next_chunk_start += elements_to_take as u32;
+                    
+                    println!(
+                        "🔧 [DEBUG] Chunk read: {} new elements ({} bytes), total so far: {} elements",
+                        elements_to_take,
+                        new_elements.len(),
+                        all_data.len() / element_size
+                    );
+                    
+                    // Continue reading if we haven't reached our target yet
+                    // Only stop if we've reached the target or got no elements
+                    if next_chunk_start >= target_element_count {
+                        println!(
+                            "🔧 [DEBUG] Reached target element count ({}), stopping chunked read",
+                            target_element_count
+                        );
+                        break;
+                    }
+                    
+                    // If we got fewer elements than available, try one more read to get the remaining elements
+                    if elements_to_take < available_elements && next_chunk_start < target_element_count {
+                        // We might have more data available, continue to next iteration
+                        continue;
+                    }
+                } else {
+                    // No new elements available, we're done
+                    break;
+                }
+            } else {
+                // No new elements in this chunk, we're done
+                break;
+            }
+        }
+        
+        let final_element_count = all_data.len() / element_size;
+        println!(
+            "🔧 [DEBUG] Chunked read complete: {} total elements ({} bytes), target was {} elements",
+            final_element_count,
+            all_data.len(),
+            target_element_count
+        );
+        
+        // If we got fewer elements than requested, but we're close (within 2 elements),
+        // try one more read to get the remaining elements
+        if final_element_count < target_element_count as usize 
+            && (target_element_count as usize - final_element_count) <= 2
+            && final_element_count > 0 {
+            println!(
+                "🔧 [DEBUG] Got {} elements but needed {}, trying to read remaining {} elements",
+                final_element_count,
+                target_element_count,
+                target_element_count as usize - final_element_count
+            );
+            
+            // Try reading just the missing elements by requesting a count that includes them
+            let missing_count = (target_element_count - final_element_count as u32) as u16;
+            // Don't request more than 50 - the PLC seems to error on requests > 50
+            // Try requesting exactly what we need (final_element_count + missing_count), capped at 50
+            let final_request = ((final_element_count as u32 + missing_count as u32).min(50)) as u16;
+            
+            if let Ok(final_response) = self
+                .send_cip_request(&self.build_read_request_with_count(base_array_name, final_request))
+                .await {
+                if let Ok(final_cip_data) = self.extract_cip_from_response(&final_response) {
+                    if final_cip_data.len() >= 8 {
+                        let final_data_type = u16::from_le_bytes([final_cip_data[4], final_cip_data[5]]);
+                        if final_data_type == data_type {
+                            let final_value_data_start = if final_cip_data.len() >= 14 { 8 } else { 8 };
+                            let final_value_data = &final_cip_data[final_value_data_start..];
+                            let final_complete_bytes = (final_value_data.len() / element_size) * element_size;
+                            let final_data = &final_value_data[..final_complete_bytes];
+                            
+                            // Extract only the missing elements
+                            let missing_start_offset = final_element_count * element_size;
+                            if missing_start_offset < final_data.len() {
+                                // Calculate how many elements we can actually extract
+                                let available_missing = (final_data.len() - missing_start_offset) / element_size;
+                                let needed_missing = target_element_count as usize - final_element_count;
+                                let elements_to_add = available_missing.min(needed_missing);
+                                
+                                if elements_to_add > 0 {
+                                    let end_offset = missing_start_offset + (elements_to_add * element_size);
+                                    let missing_elements = &final_data[missing_start_offset..end_offset];
+                                    all_data.extend_from_slice(missing_elements);
+                                    println!(
+                                        "🔧 [DEBUG] Added {} more elements from final read, total now: {} elements",
+                                        elements_to_add,
+                                        all_data.len() / element_size
+                                    );
+                                } else {
+                                    println!(
+                                        "🔧 [DEBUG] Final read did not provide additional elements (PLC may have a 49-element limit)"
+                                    );
+                                }
+                            } else {
+                                println!(
+                                    "🔧 [DEBUG] Missing start offset {} is beyond final data length {} (PLC may have a 49-element limit)",
+                                    missing_start_offset, final_data.len()
+                                );
+                            }
+                        }
+                    } else {
+                        println!(
+                            "🔧 [DEBUG] Final read response too short or data type mismatch (PLC may have a 49-element limit)"
+                        );
+                    }
+                } else {
+                    println!(
+                        "🔧 [DEBUG] Failed to extract CIP from final read response (PLC may have a 49-element limit)"
+                    );
+                }
+            } else {
+                println!(
+                    "🔧 [DEBUG] Final read request failed (PLC may have a 49-element limit per response)"
+                );
+            }
+        }
+        
+        // If we still don't have all elements, log a warning but return what we have
+        let final_count = all_data.len() / element_size;
+        if final_count < target_element_count as usize {
+            println!(
+                "⚠️ [DEBUG] Warning: Only got {} elements out of {} requested (PLC may have response size limits)",
+                final_count, target_element_count
+            );
+        }
+        
+        Ok(all_data)
+    }
+
     /// Workaround for array element writing: reads entire array, modifies element, writes back
     async fn write_array_element_workaround(
         &mut self,
@@ -1841,31 +2438,89 @@ impl EipClient {
         }
 
         // For other array types, read the entire array, modify the element, and write back
-        // Read the entire array
-        let mut element_count = 10u16;
-        let mut response = self
-            .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
-            .await;
-
-        if response.is_err() {
-            element_count = 50;
-            response = self
-                .send_cip_request(
-                    &self.build_read_request_with_count(base_array_name, element_count),
-                )
+        // First, determine the data type and try to read the array
+        // Use chunked reading for large arrays to avoid PLC response size limits
+        let data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
+        
+        // Try reading a small chunk first to see how much we get
+        let test_read_response = self
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, 10))
+            .await?;
+        let test_read_cip = self.extract_cip_from_response(&test_read_response)?;
+        
+        // Determine if we need chunked reading based on the response
+        let needs_chunked_reading = if test_read_cip.len() >= 8 {
+            let test_data_type = u16::from_le_bytes([test_read_cip[4], test_read_cip[5]]);
+            if test_data_type == data_type {
+                // Check if response is truncated (less than expected data)
+                let value_data_start = if test_read_cip.len() >= 14 { 8 } else { 8 };
+                let value_data_len = test_read_cip.len() - value_data_start;
+                let element_size = match data_type {
+                    0x00C4 => 4, 0x00CA => 4, 0x00C8 => 4,
+                    0x00C3 => 2, 0x00C7 => 2,
+                    0x00C2 => 1, 0x00C6 => 1, 0x00C1 => 1,
+                    _ => 4,
+                };
+                let elements_received = value_data_len / element_size;
+                // Always use chunked reading if index is >= 9 (to handle large arrays)
+                // Also use it if we got truncated response
+                elements_received < 9 || index >= 9
+            } else {
+                // Data type mismatch, but still use chunked reading for large indices
+                index >= 9
+            }
+        } else {
+            // Response too short, use chunked reading for large indices
+            index >= 9
+        };
+        
+        let cip_data = if needs_chunked_reading {
+            println!(
+                "🔧 [DEBUG] Array appears large or truncated, using chunked reading (target element: {})",
+                index
+            );
+            // Use chunked reading - read enough to include the element we want to write
+            let target_count = (index + 1).max(50); // Read at least up to our target, or 50 if larger
+            let chunked_data = self.read_array_in_chunks(base_array_name, data_type, target_count).await?;
+            
+            // Create a fake CIP response structure for compatibility with existing parsing code
+            // Format: [service(1)][reserved(1)][status(1)][status_size(1)][data_type(2)][element_count(2)][data...]
+            let mut fake_cip = vec![0xCC, 0x00, 0x00, 0x00];
+            fake_cip.extend_from_slice(&data_type.to_le_bytes());
+            fake_cip.extend_from_slice(&((chunked_data.len() / match data_type {
+                0x00C4 => 4, 0x00CA => 4, 0x00C8 => 4,
+                0x00C3 => 2, 0x00C7 => 2,
+                0x00C2 => 1, 0x00C6 => 1, 0x00C1 => 1,
+                _ => 4,
+            }) as u16).to_le_bytes());
+            fake_cip.extend_from_slice(&chunked_data);
+            fake_cip
+        } else {
+            // Try reading normally first
+            let mut element_count = 10u16;
+            let mut response = self
+                .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
                 .await;
-        }
-        if response.is_err() {
-            element_count = 100;
-            response = self
-                .send_cip_request(
-                    &self.build_read_request_with_count(base_array_name, element_count),
-                )
-                .await;
-        }
 
-        let response = response?;
-        let cip_data = self.extract_cip_from_response(&response)?;
+            if response.is_err() {
+                element_count = 50;
+                response = self
+                    .send_cip_request(
+                        &self.build_read_request_with_count(base_array_name, element_count),
+                    )
+                    .await;
+            }
+            if response.is_err() {
+                element_count = 100;
+                response = self
+                    .send_cip_request(
+                        &self.build_read_request_with_count(base_array_name, element_count),
+                    )
+                    .await;
+            }
+
+            self.extract_cip_from_response(&response?)?
+        };
 
         // Parse the array response
         if cip_data.len() < 8 {
@@ -1892,9 +2547,8 @@ impl EipClient {
 
         let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
         let element_count_reported = u16::from_le_bytes([cip_data[6], cip_data[7]]);
-        let mut value_data = cip_data[8..].to_vec();
-
-        // Calculate element size
+        
+        // Calculate element size first
         let element_size = match data_type {
             0x00C1 => 1, // BOOL
             0x00C2 => 1, // SINT
@@ -1914,16 +2568,285 @@ impl EipClient {
                 )));
             }
         };
+        
+        // Use the same offset detection logic as read workaround
+        // Check if data starts at offset 6 (when element count field contains first element)
+        let value_data_start = if cip_data.len() >= 14 {
+            let potential_first_element_bytes = [cip_data[6], cip_data[7], cip_data[8], cip_data[9]];
+            let potential_second_element_bytes = [cip_data[10], cip_data[11], cip_data[12], cip_data[13]];
+            
+            match data_type {
+                0x00C4 => {
+                    // DINT array - check for integer pattern
+                    let potential_first = i32::from_le_bytes(potential_first_element_bytes);
+                    let potential_second = i32::from_le_bytes(potential_second_element_bytes);
+                    
+                    if potential_first > 0 
+                        && potential_first < 1000
+                        && potential_second == potential_first + 1 {
+                        6
+                    } else {
+                        8
+                    }
+                }
+                0x00CA => {
+                    // REAL array - check for float pattern
+                    let potential_first = f32::from_le_bytes(potential_first_element_bytes);
+                    let potential_second = f32::from_le_bytes(potential_second_element_bytes);
+                    
+                    if potential_first > 0.0 
+                        && potential_first < 1000.0
+                        && (potential_second - potential_first - 1.0).abs() < 0.5 {
+                        6
+                    } else {
+                        8
+                    }
+                }
+                _ => {
+                    8
+                }
+            }
+        } else {
+            8
+        };
+        
+        let value_data_slice = &cip_data[value_data_start..];
+        
+        // Calculate actual element count (round down to ensure we only use complete elements)
+        let actual_element_count = value_data_slice.len() / element_size;
+        
+        // Ensure we have complete elements (trim any partial element data)
+        let complete_bytes = actual_element_count * element_size;
+        let mut value_data = if value_data_slice.len() % element_size != 0 {
+            println!(
+                "🔧 [DEBUG] Warning: Array data length {} is not a multiple of element size {}, trimming {} bytes",
+                value_data_slice.len(),
+                element_size,
+                value_data_slice.len() % element_size
+            );
+            // Trim to complete elements only
+            value_data_slice[..complete_bytes].to_vec()
+        } else {
+            value_data_slice.to_vec()
+        };
+        
+        // Check if element_count_reported is actually the first element's value
+        // This can happen when the PLC uses a non-standard format where the element count
+        // field contains the first element's data instead of the count.
+        let reported_count_is_likely_data = if value_data.len() >= element_size {
+            match data_type {
+                0x00C4 => {
+                    // For DINT arrays, check if reported_count matches the first element's lower 16 bits
+                    let first_element_bytes = [value_data[0], value_data[1], value_data[2], value_data[3]];
+                    let first_element = i32::from_le_bytes(first_element_bytes);
+                    // If first element is positive and < 65536, check if lower 16 bits match reported_count
+                    if first_element > 0 && first_element < 65536 {
+                        (first_element as u16) == element_count_reported
+                    } else {
+                        false
+                    }
+                }
+                0x00CA => {
+                    // For REAL arrays, check if reported_count could be the lower 16 bits of the float
+                    // This is less reliable, so we'll be more conservative
+                    false
+                }
+                _ => false
+            }
+        } else {
+            false
+        };
+        
+        // If data starts at offset 6, the element_count_reported field actually contains
+        // the first element's data, not the count. Also check if reported_count matches
+        // the first element's value (indicating it's data, not count).
+        // Additionally, if reported_count is much larger than actual_count AND unreasonably large, it's likely data.
+        let max_elements = if value_data_start == 6 {
+            // Data starts at offset 6, so element_count_reported is actually first element data
+            actual_element_count as u16
+        } else if reported_count_is_likely_data {
+            // If reported_count matches the first element's value, it's likely the first element's data, not the count
+            actual_element_count as u16
+        } else if element_count_reported > 1000 {
+            // If reported count is unreasonably large (>1000), it's likely not a count but rather data
+            actual_element_count as u16
+        } else if element_count_reported > actual_element_count as u16 
+            && element_count_reported > 50 
+            && actual_element_count < 50 {
+            // If reported_count is much larger than actual_count AND both are in ranges that suggest
+            // reported_count might be data (e.g., 100 vs 9, 200 vs 9), use actual_count
+            // But don't trigger for reasonable differences like 10 vs 9
+            actual_element_count as u16
+        } else {
+            // Standard format - use max of reported and actual
+            element_count_reported.max(actual_element_count as u16)
+        };
+        
+        println!(
+            "🔧 [DEBUG] Write workaround: data_start={}, reported_count={}, actual_count={}, using={}",
+            value_data_start,
+            element_count_reported,
+            actual_element_count,
+            max_elements
+        );
 
-        // Calculate actual element count
-        let actual_element_count = value_data.len() / element_size;
-        let max_elements = element_count_reported.max(actual_element_count as u16);
+        // If we're trying to write to an element we don't have data for,
+        // we need to read the missing elements first to preserve existing values
+        if index as usize >= actual_element_count {
+            println!(
+                "🔧 [DEBUG] Need to write to element {} but only have data for {} elements, reading missing elements to preserve values",
+                index, actual_element_count
+            );
+            
+            // Calculate how many elements we need to read
+            let missing_start = actual_element_count;
+            let missing_count = (index as usize - actual_element_count) + 1;
+            
+            // Try to read the missing elements by requesting a larger count
+            // We'll request from the start to include all elements up to the one we need
+            let needed_count = (index as u32 + 1) as u16;
+            let missing_response = self
+                .send_cip_request(&self.build_read_request_with_count(
+                    base_array_name,
+                    needed_count,
+                ))
+                .await;
+            
+            if let Ok(missing_response) = missing_response {
+                let missing_cip_data = self.extract_cip_from_response(&missing_response)?;
+                
+                // Parse the missing elements (similar to how we parse the main array)
+                if missing_cip_data.len() >= 8 {
+                    let missing_data_type = u16::from_le_bytes([missing_cip_data[4], missing_cip_data[5]]);
+                    if missing_data_type == data_type {
+                        // Use the same offset detection logic
+                        let missing_value_data_start = if missing_cip_data.len() >= 14 {
+                            let potential_first_element_bytes = [missing_cip_data[6], missing_cip_data[7], missing_cip_data[8], missing_cip_data[9]];
+                            let potential_second_element_bytes = [missing_cip_data[10], missing_cip_data[11], missing_cip_data[12], missing_cip_data[13]];
+                            
+                            match data_type {
+                                0x00C4 => {
+                                    let potential_first = i32::from_le_bytes(potential_first_element_bytes);
+                                    let potential_second = i32::from_le_bytes(potential_second_element_bytes);
+                                    if potential_first > 0 
+                                        && potential_first < 1000
+                                        && potential_second == potential_first + 1 {
+                                        6
+                                    } else {
+                                        8
+                                    }
+                                }
+                                0x00CA => {
+                                    let potential_first = f32::from_le_bytes(potential_first_element_bytes);
+                                    let potential_second = f32::from_le_bytes(potential_second_element_bytes);
+                                    if potential_first > 0.0 
+                                        && potential_first < 1000.0
+                                        && (potential_second - potential_first - 1.0).abs() < 0.5 {
+                                        6
+                                    } else {
+                                        8
+                                    }
+                                }
+                                _ => 8
+                            }
+                        } else {
+                            8
+                        };
+                        
+                        let missing_value_data = &missing_cip_data[missing_value_data_start..];
+                        let missing_complete_bytes = (missing_value_data.len() / element_size) * element_size;
+                        let missing_elements_data = &missing_value_data[..missing_complete_bytes];
+                        
+                        // Extract only the missing elements (from missing_start to index)
+                        let missing_start_offset = missing_start * element_size;
+                        if missing_start_offset < missing_elements_data.len() {
+                            let missing_slice = if (index as usize + 1) * element_size <= missing_elements_data.len() {
+                                &missing_elements_data[missing_start_offset..(index as usize + 1) * element_size]
+                            } else {
+                                // If we still don't have all elements, take what we have and pad the rest
+                                &missing_elements_data[missing_start_offset..]
+                            };
+                            
+                            // Append missing elements to our array data
+                            value_data.extend_from_slice(missing_slice);
+                            
+                            // If we still need more elements, pad with zeros
+                            let current_elements = value_data.len() / element_size;
+                            if current_elements <= index as usize {
+                                let still_missing = (index as usize + 1) - current_elements;
+                                let padding_bytes = still_missing * element_size;
+                                value_data.resize(value_data.len() + padding_bytes, 0);
+                                println!(
+                                    "🔧 [DEBUG] Read {} elements, padded {} more with zeros, total: {} elements",
+                                    missing_slice.len() / element_size,
+                                    still_missing,
+                                    value_data.len() / element_size
+                                );
+                            } else {
+                                println!(
+                                    "🔧 [DEBUG] Successfully read {} missing elements, total data length now: {} bytes ({} elements)",
+                                    missing_slice.len() / element_size,
+                                    value_data.len(),
+                                    value_data.len() / element_size
+                                );
+                            }
+                        } else {
+                            // Couldn't extract missing elements, pad with zeros
+                            let padding_bytes = missing_count * element_size;
+                            value_data.resize(value_data.len() + padding_bytes, 0);
+                            println!(
+                                "🔧 [DEBUG] Could not extract missing elements, padded {} bytes ({} elements) with zeros",
+                                padding_bytes,
+                                missing_count
+                            );
+                        }
+                    } else {
+                        // Data type mismatch, pad with zeros
+                        let padding_bytes = missing_count * element_size;
+                        value_data.resize(value_data.len() + padding_bytes, 0);
+                        println!(
+                            "🔧 [DEBUG] Data type mismatch when reading missing elements, padded {} bytes ({} elements) with zeros",
+                            padding_bytes,
+                            missing_count
+                        );
+                    }
+                } else {
+                    // Response too short, pad with zeros
+                    let padding_bytes = missing_count * element_size;
+                    value_data.resize(value_data.len() + padding_bytes, 0);
+                    println!(
+                        "🔧 [DEBUG] Missing elements response too short, padded {} bytes ({} elements) with zeros",
+                        padding_bytes,
+                        missing_count
+                    );
+                }
+            } else {
+                // Failed to read missing elements, pad with zeros
+                let padding_bytes = missing_count * element_size;
+                value_data.resize(value_data.len() + padding_bytes, 0);
+                println!(
+                    "🔧 [DEBUG] Failed to read missing elements, padded {} bytes ({} elements) with zeros",
+                    padding_bytes,
+                    missing_count
+                );
+            }
+        }
 
-        // Check if index is valid
-        if index >= max_elements as u32 {
+        // Check if index is valid (after padding, if any)
+        // If reported_count was clearly data (not a count), be more lenient with bounds checking
+        // Allow writing to reasonable indices (up to 1000) and pad as needed
+        let effective_max = if element_count_reported > 1000 || 
+            (element_count_reported > 50 && actual_element_count < 50 && element_count_reported != max_elements) {
+            // reported_count is clearly data, use a reasonable upper bound
+            (actual_element_count as u32 + 100).min(1000)
+        } else {
+            max_elements as u32
+        };
+        
+        if index >= effective_max {
             return Err(EtherNetIpError::Protocol(format!(
-                "Array index {} out of bounds (array has {} elements)",
-                index, max_elements
+                "Array index {} out of bounds (array has {} elements, effective max: {})",
+                index, max_elements, effective_max
             )));
         }
 
@@ -1957,8 +2880,23 @@ impl EipClient {
         );
 
         // Write the entire array back
+        // Recalculate element count after any padding
+        let final_element_count = value_data.len() / element_size;
+        let elements_to_write = final_element_count as u16;
+        println!(
+            "🔧 [DEBUG] Writing array back: {} elements (original: {}, after padding: {}), data_type=0x{:04X}, data_len={} bytes",
+            elements_to_write,
+            actual_element_count,
+            final_element_count,
+            data_type,
+            value_data.len()
+        );
         let write_request =
-            self.build_write_array_request(base_array_name, data_type, max_elements, &value_data)?;
+            self.build_write_array_request(base_array_name, data_type, elements_to_write, &value_data)?;
+        println!(
+            "🔧 [DEBUG] Write request length: {} bytes",
+            write_request.len()
+        );
         let write_response = self.send_cip_request(&write_request).await?;
         let write_cip_data = self.extract_cip_from_response(&write_response)?;
 

@@ -577,18 +577,22 @@ func (c *EipClient) WriteInt(tagName string, value int16) error {
 
 // ReadDint reads a 32-bit integer from the PLC
 func (c *EipClient) ReadDint(tagName string) (int32, error) {
+	log.Printf("📥 [DEBUG] ReadDint: clientID=%d, tag='%s'", c.clientID, tagName)
+	
 	cTagName := C.CString(tagName)
 	defer C.free(unsafe.Pointer(cTagName))
 
 	var result C.int
 	retCode := int(C.eip_read_dint(C.int(c.clientID), cTagName, &result))
 	if retCode != 0 {
+		log.Printf("❌ [DEBUG] ReadDint failed: clientID=%d, tag='%s', error_code=%d", c.clientID, tagName, retCode)
 		return 0, &EipError{
 			Code:    retCode,
-			Message: fmt.Sprintf("Failed to read DINT tag %s", tagName),
+			Message: fmt.Sprintf("Failed to read DINT tag %s (error code: %d)", tagName, retCode),
 		}
 	}
 
+	log.Printf("✅ [DEBUG] ReadDint successful: tag='%s', value=%d", tagName, int32(result))
 	return int32(result), nil
 }
 

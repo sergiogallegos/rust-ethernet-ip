@@ -11,7 +11,8 @@ import {
   getPlcStatus,
   createTestTags,
   discoverTag,
-  debugReadTag
+  debugReadTag,
+  testArrays
 } from "../lib/plcApi";
 import "./globals.css";
 
@@ -128,6 +129,9 @@ export default function Page() {
   const [udtData, setUdtData] = useState<any>(null);
   const [complexTagResults, setComplexTagResults] = useState<any>(null);
   const [tagDiscoveryResults, setTagDiscoveryResults] = useState<any>(null);
+  const [arrayTestType, setArrayTestType] = useState<"controller" | "program" | "bool" | "all">("all");
+  const [arrayTestResults, setArrayTestResults] = useState<any>(null);
+  const [isTestingArrays, setIsTestingArrays] = useState(false);
 
   // Logging
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -431,6 +435,31 @@ export default function Page() {
       addLog('success', `Tag discovery completed: ${tagType}`);
     } catch (error) {
       addLog('error', `Tag discovery failed: ${error}`);
+    }
+  };
+
+  const handleArrayTest = async () => {
+    if (!isConnected) {
+      addLog('error', 'Please connect to PLC first');
+      return;
+    }
+
+    setIsTestingArrays(true);
+    addLog('info', `Running array element tests: ${arrayTestType}`);
+    
+    try {
+      const results = await testArrays(arrayTestType);
+      setArrayTestResults(results);
+      
+      const summary = results.summary;
+      addLog('success', 
+        `Array tests completed: ${summary.successful}/${summary.total} successful (${summary.successRate.toFixed(1)}%)`
+      );
+    } catch (error: any) {
+      addLog('error', `Array test failed: ${error.message || error}`);
+      setArrayTestResults(null);
+    } finally {
+      setIsTestingArrays(false);
     }
   };
 
@@ -983,6 +1012,91 @@ export default function Page() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Array Element Test Section - v0.5.5 */}
+                <div className="hmi-card mt-6">
+                  <h3 className="font-bold mb-4 text-green-800">📊 Array Element Access Test (v0.5.5)</h3>
+                  <div className="text-gray-600 mb-4">
+                    Test array element read/write support with automatic workaround. Tests controller-scoped, program-scoped, and BOOL arrays.
+                  </div>
+                  
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Test Type:
+                    </label>
+                    <select
+                      value={arrayTestType}
+                      onChange={(e) => setArrayTestType(e.target.value as any)}
+                      className="hmi-input"
+                      disabled={isTestingArrays}
+                    >
+                      <option value="all">All Tests (Controller + Program + BOOL)</option>
+                      <option value="controller">Controller-Scoped DINT Array</option>
+                      <option value="program">Program-Scoped DINT Array</option>
+                      <option value="bool">Controller-Scoped BOOL Array</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={handleArrayTest}
+                    disabled={!isConnected || isTestingArrays}
+                    className="btn-primary w-full mb-4"
+                  >
+                    {isTestingArrays ? "🔄 Testing..." : "🚀 Run Array Element Tests"}
+                  </button>
+
+                  {arrayTestResults && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <h4 className="font-bold text-green-800 mb-2">📊 Test Results</h4>
+                      <div className="mb-2">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm text-gray-700">Total Tests:</span>
+                          <span className="font-bold">{arrayTestResults.summary?.total || 0}</span>
+                        </div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm text-gray-700">Successful:</span>
+                          <span className="font-bold text-green-600">{arrayTestResults.summary?.successful || 0}</span>
+                        </div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm text-gray-700">Failed:</span>
+                          <span className="font-bold text-red-600">{arrayTestResults.summary?.failed || 0}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-700">Success Rate:</span>
+                          <span className="font-bold">
+                            {arrayTestResults.summary?.successRate?.toFixed(1) || 0}%
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4 max-h-96 overflow-y-auto">
+                        <h5 className="font-bold text-sm mb-2">Detailed Results:</h5>
+                        <div className="space-y-2">
+                          {arrayTestResults.tests?.map((test: any, idx: number) => (
+                            <div key={idx} className="bg-white border rounded p-2 text-xs">
+                              <div className="font-bold">{test.tag} ({test.scope})</div>
+                              <div className="mt-1">
+                                <span className={test.read?.success ? "text-green-600" : "text-red-600"}>
+                                  Read: {test.read?.success ? "✅" : "❌"} {test.read?.value !== undefined ? test.read.value : test.read?.error}
+                                </span>
+                                {test.write && (
+                                  <span className={`ml-2 ${test.write?.success ? "text-green-600" : "text-red-600"}`}>
+                                    Write: {test.write?.success ? "✅" : "❌"} {test.write?.value !== undefined ? test.write.value : test.write?.error}
+                                  </span>
+                                )}
+                                {test.verify && (
+                                  <span className={`ml-2 ${test.verify?.match ? "text-green-600" : "text-yellow-600"}`}>
+                                    Verify: {test.verify?.match ? "✅ Match" : "⚠️ Mismatch"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

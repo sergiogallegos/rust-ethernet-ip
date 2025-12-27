@@ -305,9 +305,19 @@ pub unsafe extern "C" fn eip_read_dint(
                 }
                 0
             }
-            _ => -1,
+            Ok(other_value) => {
+                eprintln!("❌ [FFI] Expected DINT but got: {:?}", other_value);
+                -1
+            }
+            Err(e) => {
+                eprintln!("❌ [FFI] Read tag '{}' failed: {}", tag_name_str, e);
+                -1
+            }
         },
-        None => -1,
+        None => {
+            eprintln!("❌ [FFI] Client ID {} not found", client_id);
+            -1
+        }
     }
 }
 

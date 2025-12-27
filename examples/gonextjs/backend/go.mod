@@ -13,3 +13,5 @@ require (
 require golang.org/x/net v0.17.0 // indirect
 
 replace github.com/sergiogallegos/rust-ethernet-ip/gowrapper => ../../../gowrapper
+
+replace github.com/sergiogallegos/rust-ethernet-ip/gowrapper/ethernetip => ../../../gowrapper/ethernetip/ethernetip

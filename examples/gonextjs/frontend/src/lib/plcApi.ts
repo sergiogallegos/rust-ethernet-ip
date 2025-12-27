@@ -97,4 +97,14 @@ export async function discoverTag(tag: string): Promise<string> {
 export async function debugReadTag(tag: string, typeStr: string): Promise<any> {
   const res = await fetch(`/api/test-read?tag=${encodeURIComponent(tag)}&type=${encodeURIComponent(typeStr)}`);
   return await res.json();
+}
+
+export async function testArrays(testType: 'controller' | 'program' | 'bool' | 'all'): Promise<any> {
+  const res = await fetch('http://localhost:8080/api/test-arrays', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ testType }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
 } 

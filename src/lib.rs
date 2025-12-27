@@ -1810,194 +1810,224 @@ impl EipClient {
 
         Ok(PlcValue::Bool(bool_value))
     }
-    
+
     /// Workaround for array element writing: reads entire array, modifies element, writes back
-    async fn write_array_element_workaround(&mut self, base_array_name: &str, index: u32, value: PlcValue) -> crate::error::Result<()> {
-        println!("🔧 [DEBUG] Writing to array element '{}[{}]', using workaround", base_array_name, index);
-        
+    async fn write_array_element_workaround(
+        &mut self,
+        base_array_name: &str,
+        index: u32,
+        value: PlcValue,
+    ) -> crate::error::Result<()> {
+        println!(
+            "🔧 [DEBUG] Writing to array element '{}[{}]', using workaround",
+            base_array_name, index
+        );
+
         // First, detect if it's a BOOL array by reading with count=1
         let test_response = self
             .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
             .await?;
         let test_cip_data = self.extract_cip_from_response(&test_response)?;
-        
+
         if test_cip_data.len() >= 6 {
             let test_data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
-            
+
             // If it's a BOOL array (0x00D3 = DWORD), handle it specially
             if test_data_type == 0x00D3 {
-                return self.write_bool_array_element_workaround(base_array_name, index, value).await;
+                return self
+                    .write_bool_array_element_workaround(base_array_name, index, value)
+                    .await;
             }
         }
-        
+
         // For other array types, read the entire array, modify the element, and write back
         // Read the entire array
         let mut element_count = 10u16;
         let mut response = self
             .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
             .await;
-        
+
         if response.is_err() {
             element_count = 50;
             response = self
-                .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
+                .send_cip_request(
+                    &self.build_read_request_with_count(base_array_name, element_count),
+                )
                 .await;
         }
         if response.is_err() {
             element_count = 100;
             response = self
-                .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
+                .send_cip_request(
+                    &self.build_read_request_with_count(base_array_name, element_count),
+                )
                 .await;
         }
-        
+
         let response = response?;
         let cip_data = self.extract_cip_from_response(&response)?;
-        
+
         // Parse the array response
         if cip_data.len() < 8 {
             return Err(EtherNetIpError::Protocol(
                 "Array response too short".to_string(),
             ));
         }
-        
+
         let service_reply = cip_data[0];
         let general_status = cip_data[2];
-        
+
         if general_status != 0x00 {
             let error_msg = self.get_cip_error_message(general_status);
             return Err(EtherNetIpError::Protocol(format!(
                 "CIP Error {general_status}: {error_msg}"
             )));
         }
-        
+
         if service_reply != 0xCC {
-            return Err(EtherNetIpError::Protocol(
-                format!("Unexpected service reply: 0x{service_reply:02X}")
-            ));
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unexpected service reply: 0x{service_reply:02X}"
+            )));
         }
-        
+
         let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
         let element_count_reported = u16::from_le_bytes([cip_data[6], cip_data[7]]);
         let mut value_data = cip_data[8..].to_vec();
-        
+
         // Calculate element size
         let element_size = match data_type {
-            0x00C1 => 1,  // BOOL
-            0x00C2 => 1,  // SINT
-            0x00C3 => 2,  // INT
-            0x00C4 => 4,  // DINT
-            0x00C5 => 8,  // LINT
-            0x00C6 => 1,  // USINT
-            0x00C7 => 2,  // UINT
-            0x00C8 => 4,  // UDINT
-            0x00C9 => 8,  // ULINT
-            0x00CA => 4,  // REAL
-            0x00CB => 8,  // LREAL
+            0x00C1 => 1, // BOOL
+            0x00C2 => 1, // SINT
+            0x00C3 => 2, // INT
+            0x00C4 => 4, // DINT
+            0x00C5 => 8, // LINT
+            0x00C6 => 1, // USINT
+            0x00C7 => 2, // UINT
+            0x00C8 => 4, // UDINT
+            0x00C9 => 8, // ULINT
+            0x00CA => 4, // REAL
+            0x00CB => 8, // LREAL
             _ => {
                 return Err(EtherNetIpError::Protocol(format!(
-                    "Unsupported array data type for writing: 0x{:04X}", data_type
+                    "Unsupported array data type for writing: 0x{:04X}",
+                    data_type
                 )));
             }
         };
-        
+
         // Calculate actual element count
         let actual_element_count = value_data.len() / element_size;
         let max_elements = element_count_reported.max(actual_element_count as u16);
-        
+
         // Check if index is valid
         if index >= max_elements as u32 {
             return Err(EtherNetIpError::Protocol(format!(
-                "Array index {} out of bounds (array has {} elements)", index, max_elements
+                "Array index {} out of bounds (array has {} elements)",
+                index, max_elements
             )));
         }
-        
+
         // Calculate offset and replace the element
         let element_offset = (index as usize) * element_size;
         if element_offset + element_size > value_data.len() {
             return Err(EtherNetIpError::Protocol(format!(
                 "Array data too short: need {} bytes at offset {}, but only have {} bytes",
-                element_size, element_offset, value_data.len()
+                element_size,
+                element_offset,
+                value_data.len()
             )));
         }
-        
+
         // Get the new value bytes
         let new_value_bytes = value.to_bytes();
         if new_value_bytes.len() != element_size {
             return Err(EtherNetIpError::Protocol(format!(
                 "Value size mismatch: expected {} bytes, got {} bytes",
-                element_size, new_value_bytes.len()
+                element_size,
+                new_value_bytes.len()
             )));
         }
-        
+
         // Replace the element in the array
         value_data[element_offset..element_offset + element_size].copy_from_slice(&new_value_bytes);
-        
-        println!("🔧 [DEBUG] Modified array element [{}] at offset {}, writing entire array back", 
-                 index, element_offset);
-        
+
+        println!(
+            "🔧 [DEBUG] Modified array element [{}] at offset {}, writing entire array back",
+            index, element_offset
+        );
+
         // Write the entire array back
-        let write_request = self.build_write_array_request(base_array_name, data_type, max_elements, &value_data)?;
+        let write_request =
+            self.build_write_array_request(base_array_name, data_type, max_elements, &value_data)?;
         let write_response = self.send_cip_request(&write_request).await?;
         let write_cip_data = self.extract_cip_from_response(&write_response)?;
-        
+
         if write_cip_data.len() < 3 {
             return Err(EtherNetIpError::Protocol(
                 "Write response too short".to_string(),
             ));
         }
-        
+
         let write_service_reply = write_cip_data[0];
         let write_general_status = write_cip_data[2];
-        
+
         if write_general_status != 0x00 {
             let error_msg = self.get_cip_error_message(write_general_status);
             return Err(EtherNetIpError::Protocol(format!(
                 "CIP Error {write_general_status}: {error_msg}"
             )));
         }
-        
+
         if write_service_reply != 0xCD {
-            return Err(EtherNetIpError::Protocol(
-                format!("Unexpected write service reply: 0x{write_service_reply:02X}")
-            ));
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unexpected write service reply: 0x{write_service_reply:02X}"
+            )));
         }
-        
+
         println!("✅ Array element write completed successfully");
         Ok(())
     }
-    
+
     /// Special workaround for BOOL array element writing
-    async fn write_bool_array_element_workaround(&mut self, base_array_name: &str, index: u32, value: PlcValue) -> crate::error::Result<()> {
-        println!("🔧 [DEBUG] BOOL array element write - reading DWORD, modifying bit [{}], writing back", index);
-        
+    async fn write_bool_array_element_workaround(
+        &mut self,
+        base_array_name: &str,
+        index: u32,
+        value: PlcValue,
+    ) -> crate::error::Result<()> {
+        println!(
+            "🔧 [DEBUG] BOOL array element write - reading DWORD, modifying bit [{}], writing back",
+            index
+        );
+
         // Read the DWORD
         let response = self
             .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
             .await?;
         let cip_data = self.extract_cip_from_response(&response)?;
-        
+
         if cip_data.len() < 12 {
             return Err(EtherNetIpError::Protocol(
                 "BOOL array response too short".to_string(),
             ));
         }
-        
+
         let service_reply = cip_data[0];
         let general_status = cip_data[2];
-        
+
         if general_status != 0x00 {
             let error_msg = self.get_cip_error_message(general_status);
             return Err(EtherNetIpError::Protocol(format!(
                 "CIP Error {general_status}: {error_msg}"
             )));
         }
-        
+
         if service_reply != 0xCC {
-            return Err(EtherNetIpError::Protocol(
-                format!("Unexpected service reply: 0x{service_reply:02X}")
-            ));
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unexpected service reply: 0x{service_reply:02X}"
+            )));
         }
-        
+
         let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
         let value_data = if cip_data.len() >= 12 {
             &cip_data[8..12]
@@ -2008,99 +2038,119 @@ impl EipClient {
                 "BOOL array data too short".to_string(),
             ));
         };
-        
+
         // Get the boolean value
         let bool_value = match value {
             PlcValue::Bool(b) => b,
-            _ => return Err(EtherNetIpError::Protocol(
-                "Expected BOOL value for BOOL array element".to_string(),
-            )),
+            _ => {
+                return Err(EtherNetIpError::Protocol(
+                    "Expected BOOL value for BOOL array element".to_string(),
+                ))
+            }
         };
-        
+
         // Modify the DWORD
-        let mut dword_value = u32::from_le_bytes([
-            value_data[0],
-            value_data[1],
-            value_data[2],
-            value_data[3],
-        ]);
-        
+        let mut dword_value =
+            u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]);
+
         let bit_index = (index % 32) as u8;
         if bool_value {
             dword_value |= 1u32 << bit_index;
         } else {
             dword_value &= !(1u32 << bit_index);
         }
-        
-        println!("🔧 [DEBUG] Modified BOOL[{}] in DWORD: 0x{:08X} -> 0x{:08X} (bit {} = {})", 
-                 index, u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]), 
-                 dword_value, bit_index, bool_value);
-        
+
+        println!(
+            "🔧 [DEBUG] Modified BOOL[{}] in DWORD: 0x{:08X} -> 0x{:08X} (bit {} = {})",
+            index,
+            u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]),
+            dword_value,
+            bit_index,
+            bool_value
+        );
+
         // Write the DWORD back
-        let write_request = self.build_write_request_with_data(base_array_name, data_type, 1, &dword_value.to_le_bytes())?;
+        let write_request = self.build_write_request_with_data(
+            base_array_name,
+            data_type,
+            1,
+            &dword_value.to_le_bytes(),
+        )?;
         let write_response = self.send_cip_request(&write_request).await?;
         let write_cip_data = self.extract_cip_from_response(&write_response)?;
-        
+
         if write_cip_data.len() < 3 {
             return Err(EtherNetIpError::Protocol(
                 "Write response too short".to_string(),
             ));
         }
-        
+
         let write_general_status = write_cip_data[2];
-        
+
         if write_general_status != 0x00 {
             let error_msg = self.get_cip_error_message(write_general_status);
             return Err(EtherNetIpError::Protocol(format!(
                 "CIP Error {write_general_status}: {error_msg}"
             )));
         }
-        
+
         println!("✅ BOOL array element write completed successfully");
         Ok(())
     }
-    
+
     /// Builds a write request for an entire array
-    fn build_write_array_request(&self, tag_name: &str, data_type: u16, element_count: u16, data: &[u8]) -> crate::error::Result<Vec<u8>> {
+    fn build_write_array_request(
+        &self,
+        tag_name: &str,
+        data_type: u16,
+        element_count: u16,
+        data: &[u8],
+    ) -> crate::error::Result<Vec<u8>> {
         let mut cip_request = Vec::new();
-        
+
         // Service: Write Tag Service (0x4D)
         cip_request.push(0x4D);
-        
+
         // Build the path
         let path = self.build_tag_path(tag_name);
         cip_request.push((path.len() / 2) as u8);
         cip_request.extend_from_slice(&path);
-        
+
         // Data type and element count
         cip_request.extend_from_slice(&data_type.to_le_bytes());
         cip_request.extend_from_slice(&element_count.to_le_bytes());
-        
+
         // Array data
         cip_request.extend_from_slice(data);
-        
+
         Ok(cip_request)
     }
-    
+
     /// Builds a write request with raw data
-    fn build_write_request_with_data(&self, tag_name: &str, data_type: u16, element_count: u16, data: &[u8]) -> crate::error::Result<Vec<u8>> {
+    fn build_write_request_with_data(
+        &self,
+        tag_name: &str,
+        data_type: u16,
+        element_count: u16,
+        data: &[u8],
+    ) -> crate::error::Result<Vec<u8>> {
         let mut cip_request = Vec::new();
-        
+
         // Service: Write Tag Service (0x4D)
         cip_request.push(0x4D);
-        
+
         // Build the path
         let path = self.build_tag_path(tag_name);
         cip_request.push((path.len() / 2) as u8);
         cip_request.extend_from_slice(&path);
-        
+
         // Data type and element count
         cip_request.extend_from_slice(&data_type.to_le_bytes());
         cip_request.extend_from_slice(&element_count.to_le_bytes());
-        
+
         // Data
         cip_request.extend_from_slice(data);
-        
+
         Ok(cip_request)
     }
 
@@ -3119,8 +3169,13 @@ impl EipClient {
 
         // Check if this is array element access (e.g., "ArrayName[0]")
         if let Some((base_name, index)) = self.parse_array_element_access(tag_name) {
-            println!("🔧 [DEBUG] Detected array element write: {}[{}], using workaround", base_name, index);
-            return self.write_array_element_workaround(&base_name, index, value).await;
+            println!(
+                "🔧 [DEBUG] Detected array element write: {}[{}], using workaround",
+                base_name, index
+            );
+            return self
+                .write_array_element_workaround(&base_name, index, value)
+                .await;
         }
 
         // Use specialized AB STRING format for STRING writes (required for proper Allen-Bradley STRING handling)

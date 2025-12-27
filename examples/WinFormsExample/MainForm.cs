@@ -1658,8 +1658,9 @@ namespace WinFormsExample
                 try
                 {
                     var udtValue = _plcClient.ReadUdt(tagName);
-                    UpdateTagFields(tagName, "UDT", $"UDT with {udtValue.Count} members");
-                    Log($"✅ Discovered UDT tag: {tagName} with {udtValue.Count} members");
+                    var memberCount = udtValue.UdtMembers?.Count ?? 0;
+                    UpdateTagFields(tagName, "UDT", $"UDT with {memberCount} members");
+                    Log($"✅ Discovered UDT tag: {tagName} with {memberCount} members");
                     return;
                 }
                 catch { }

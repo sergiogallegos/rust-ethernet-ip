@@ -10,7 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
-	gowrapper "github.com/sergiogallegos/rust-ethernet-ip/gowrapper"
+	gowrapper "github.com/sergiogallegos/rust-ethernet-ip/gowrapper/ethernetip"
 )
 
 var (
@@ -30,6 +30,8 @@ func main() {
 	// Debug read endpoint
 	r.HandleFunc("/api/test-read", handleTestRead).Methods("GET")
 	r.HandleFunc("/api/benchmark", handleBenchmark).Methods("POST")
+	// Array element test endpoint
+	r.HandleFunc("/api/test-arrays", handleTestArrays).Methods("POST")
 
 	// Production endpoints
 	r.HandleFunc("/api/health", handleHealth).Methods("GET")
@@ -701,3 +703,224 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 var startTime = time.Now()
+
+// Array element test handler - comprehensive test for v0.5.5 array support
+func handleTestArrays(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if client == nil {
+		http.Error(w, "Not connected", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		TestType string `json:"testType"` // "controller", "program", "bool", "all"
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	results := make(map[string]interface{})
+	results["testType"] = req.TestType
+	results["timestamp"] = time.Now().Unix()
+	results["tests"] = make([]map[string]interface{}, 0)
+
+	tests := []map[string]interface{}{}
+
+	// Test controller-scoped DINT array
+	if req.TestType == "controller" || req.TestType == "all" {
+		log.Println("[ARRAY TEST] Testing controller-scoped DINT array...")
+		for i := 0; i < 5; i++ {
+			tag := fmt.Sprintf("gArrayTest[%d]", i)
+			testResult := map[string]interface{}{
+				"tag":   tag,
+				"type":  "Dint",
+				"scope": "controller",
+			}
+
+			// Read test
+			val, err := client.ReadValue(tag, gowrapper.Dint)
+			if err != nil {
+				testResult["read"] = map[string]interface{}{
+					"success": false,
+					"error":   err.Error(),
+				}
+			} else {
+				testResult["read"] = map[string]interface{}{
+					"success": true,
+					"value":   val.Value,
+				}
+			}
+
+			// Write test
+			writeVal := int32(100 + i)
+			plcVal := &gowrapper.PlcValue{Type: gowrapper.Dint, Value: writeVal}
+			err = client.WriteValue(tag, plcVal)
+			if err != nil {
+				testResult["write"] = map[string]interface{}{
+					"success": false,
+					"error":   err.Error(),
+				}
+			} else {
+				testResult["write"] = map[string]interface{}{
+					"success": true,
+					"value":   writeVal,
+				}
+
+				// Verify write
+				readBack, err := client.ReadValue(tag, gowrapper.Dint)
+				if err == nil {
+					testResult["verify"] = map[string]interface{}{
+						"success": true,
+						"value":   readBack.Value,
+						"match":   readBack.Value == writeVal,
+					}
+				}
+			}
+
+			tests = append(tests, testResult)
+		}
+	}
+
+	// Test program-scoped DINT array
+	if req.TestType == "program" || req.TestType == "all" {
+		log.Println("[ARRAY TEST] Testing program-scoped DINT array...")
+		for i := 0; i < 5; i++ {
+			tag := fmt.Sprintf("Program:MainProgram.ArrayTest[%d]", i)
+			testResult := map[string]interface{}{
+				"tag":   tag,
+				"type":  "Dint",
+				"scope": "program",
+			}
+
+			// Read test
+			val, err := client.ReadValue(tag, gowrapper.Dint)
+			if err != nil {
+				testResult["read"] = map[string]interface{}{
+					"success": false,
+					"error":   err.Error(),
+				}
+			} else {
+				testResult["read"] = map[string]interface{}{
+					"success": true,
+					"value":   val.Value,
+				}
+			}
+
+			// Write test
+			writeVal := int32(200 + i)
+			plcVal := &gowrapper.PlcValue{Type: gowrapper.Dint, Value: writeVal}
+			err = client.WriteValue(tag, plcVal)
+			if err != nil {
+				testResult["write"] = map[string]interface{}{
+					"success": false,
+					"error":   err.Error(),
+				}
+			} else {
+				testResult["write"] = map[string]interface{}{
+					"success": true,
+					"value":   writeVal,
+				}
+
+				// Verify write
+				readBack, err := client.ReadValue(tag, gowrapper.Dint)
+				if err == nil {
+					testResult["verify"] = map[string]interface{}{
+						"success": true,
+						"value":   readBack.Value,
+						"match":   readBack.Value == writeVal,
+					}
+				}
+			}
+
+			tests = append(tests, testResult)
+		}
+	}
+
+	// Test BOOL array
+	if req.TestType == "bool" || req.TestType == "all" {
+		log.Println("[ARRAY TEST] Testing controller-scoped BOOL array...")
+		for i := 0; i < 10; i++ {
+			tag := fmt.Sprintf("gArrayBoolTest[%d]", i)
+			testResult := map[string]interface{}{
+				"tag":   tag,
+				"type":  "Bool",
+				"scope": "controller",
+			}
+
+			// Read test
+			val, err := client.ReadValue(tag, gowrapper.Bool)
+			if err != nil {
+				testResult["read"] = map[string]interface{}{
+					"success": false,
+					"error":   err.Error(),
+				}
+			} else {
+				testResult["read"] = map[string]interface{}{
+					"success": true,
+					"value":   val.Value,
+				}
+			}
+
+			// Write test (toggle the value)
+			var writeVal bool
+			if val.Value != nil {
+				writeVal = !(val.Value.(bool))
+			} else {
+				writeVal = true
+			}
+			plcVal := &gowrapper.PlcValue{Type: gowrapper.Bool, Value: writeVal}
+			err = client.WriteValue(tag, plcVal)
+			if err != nil {
+				testResult["write"] = map[string]interface{}{
+					"success": false,
+					"error":   err.Error(),
+				}
+			} else {
+				testResult["write"] = map[string]interface{}{
+					"success": true,
+					"value":   writeVal,
+				}
+
+				// Verify write
+				readBack, err := client.ReadValue(tag, gowrapper.Bool)
+				if err == nil {
+					testResult["verify"] = map[string]interface{}{
+						"success": true,
+						"value":   readBack.Value,
+						"match":   readBack.Value == writeVal,
+					}
+				}
+			}
+
+			tests = append(tests, testResult)
+		}
+	}
+
+	// Calculate summary
+	successCount := 0
+	errorCount := 0
+	for _, test := range tests {
+		if read, ok := test["read"].(map[string]interface{}); ok {
+			if success, ok := read["success"].(bool); ok && success {
+				successCount++
+			} else {
+				errorCount++
+			}
+		}
+	}
+
+	results["tests"] = tests
+	results["summary"] = map[string]interface{}{
+		"total":       len(tests),
+		"successful":  successCount,
+		"failed":      errorCount,
+		"successRate": float64(successCount) / float64(len(tests)) * 100,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}

@@ -12,7 +12,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Connect to PLC
-    let mut client = match timeout(Duration::from_secs(10), EipClient::connect("192.168.0.1:44818")).await {
+    let mut client = match timeout(
+        Duration::from_secs(10),
+        EipClient::connect("192.168.0.1:44818"),
+    )
+    .await
+    {
         Ok(Ok(client)) => client,
         Ok(Err(e)) => {
             eprintln!("❌ Failed to connect to PLC: {}", e);
@@ -29,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // List of REAL tags to test (from the API_Web program)
     let real_tags = vec![
         "Program:API_Web.out_FuseWeight2",
-        "Program:API_Web.out_FuseWeight1", 
+        "Program:API_Web.out_FuseWeight1",
         "Program:API_Web.out_FuseSandFillTime",
         "Program:API_Web.out_FuseResistance1",
     ];
@@ -45,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📖 Step 1: Reading initial values");
     println!("----------------------------------");
     let mut initial_values = std::collections::HashMap::new();
-    
+
     for tag_name in &real_tags {
         let start = std::time::Instant::now();
         match client.read_tag(tag_name).await {
@@ -57,7 +62,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         initial_values.insert(tag_name, real_val);
                     }
                     other => {
-                        println!("⚠️ {}: {:?} (unexpected type, took {:?})", tag_name, other, duration);
+                        println!(
+                            "⚠️ {}: {:?} (unexpected type, took {:?})",
+                            tag_name, other, duration
+                        );
                     }
                 }
             }
@@ -71,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 2: Write test values
     println!("✏️ Step 2: Writing {} to all REAL tags", test_value);
     println!("--------------------------------------------");
-    
+
     for tag_name in &real_tags {
         let start = std::time::Instant::now();
         match client.write_tag(tag_name, PlcValue::Real(test_value)).await {
@@ -92,10 +100,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 3: Read back values to verify changes
     println!("📖 Step 3: Reading back values to verify changes");
     println!("------------------------------------------------");
-    
+
     let mut success_count = 0;
     let mut total_count = 0;
-    
+
     for tag_name in &real_tags {
         let start = std::time::Instant::now();
         match client.read_tag(tag_name).await {
@@ -104,16 +112,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match value {
                     PlcValue::Real(real_val) => {
                         total_count += 1;
-                        
+
                         // Check if the value is close to our test value (allowing for small floating point differences)
                         let difference = (real_val - test_value).abs();
                         if difference < 0.01 {
                             println!("✅ {}: {} ✓ (took {:?})", tag_name, real_val, duration);
                             success_count += 1;
                         } else {
-                            println!("❌ {}: {} ✗ Expected: {} (took {:?})", tag_name, real_val, test_value, duration);
+                            println!(
+                                "❌ {}: {} ✗ Expected: {} (took {:?})",
+                                tag_name, real_val, test_value, duration
+                            );
                         }
-                        
+
                         // Show initial vs current comparison
                         if let Some(initial_val) = initial_values.get(tag_name) {
                             if (initial_val - real_val).abs() > 0.01 {
@@ -124,7 +135,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     other => {
-                        println!("❌ {}: {:?} (unexpected type, took {:?})", tag_name, other, duration);
+                        println!(
+                            "❌ {}: {:?} (unexpected type, took {:?})",
+                            tag_name, other, duration
+                        );
                     }
                 }
             }
@@ -139,13 +153,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📊 Test Results Summary");
     println!("======================");
     println!("Total REAL tags tested: {}", real_tags.len());
-    println!("Successful write/read cycles: {}/{}", success_count, total_count);
-    
+    println!(
+        "Successful write/read cycles: {}/{}",
+        success_count, total_count
+    );
+
     if success_count == total_count && total_count > 0 {
         println!("🎉 ALL TESTS PASSED! REAL tag write/read operations working perfectly!");
-        println!("✅ Successfully wrote {} to all REAL tags and verified the changes", test_value);
+        println!(
+            "✅ Successfully wrote {} to all REAL tags and verified the changes",
+            test_value
+        );
     } else if success_count > 0 {
-        println!("⚠️ PARTIAL SUCCESS: {}/{} REAL tags working correctly", success_count, total_count);
+        println!(
+            "⚠️ PARTIAL SUCCESS: {}/{} REAL tags working correctly",
+            success_count, total_count
+        );
     } else {
         println!("❌ ALL TESTS FAILED: No REAL tags could be written/read successfully");
     }

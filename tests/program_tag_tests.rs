@@ -9,17 +9,18 @@ mod program_tag_tests {
 
     #[tokio::test]
     async fn test_program_tag_reading() {
-        let mut client = match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-            Ok(Ok(client)) => client,
-            Ok(Err(e)) => {
-                eprintln!("⚠️ Skipping test - PLC not available: {}", e);
-                return;
-            }
-            Err(_) => {
-                eprintln!("⚠️ Skipping test - Connection timeout");
-                return;
-            }
-        };
+        let mut client =
+            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
+                Ok(Ok(client)) => client,
+                Ok(Err(e)) => {
+                    eprintln!("⚠️ Skipping test - PLC not available: {}", e);
+                    return;
+                }
+                Err(_) => {
+                    eprintln!("⚠️ Skipping test - Connection timeout");
+                    return;
+                }
+            };
 
         // Test program-scoped tag reading with correct format
         let result = client.read_tag("Program:API_Web.TestTagProgram").await;
@@ -29,7 +30,10 @@ mod program_tag_tests {
                 assert!(value >= 0, "Program tag value should be non-negative");
             }
             Ok(other) => {
-                println!("✅ Program tag read successfully (different type): {:?}", other);
+                println!(
+                    "✅ Program tag read successfully (different type): {:?}",
+                    other
+                );
             }
             Err(e) => {
                 eprintln!("❌ Program tag read failed: {}", e);
@@ -45,27 +49,34 @@ mod program_tag_tests {
 
     #[tokio::test]
     async fn test_program_tag_out_fuse() {
-        let mut client = match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-            Ok(Ok(client)) => client,
-            Ok(Err(e)) => {
-                eprintln!("⚠️ Skipping test - PLC not available: {}", e);
-                return;
-            }
-            Err(_) => {
-                eprintln!("⚠️ Skipping test - Connection timeout");
-                return;
-            }
-        };
+        let mut client =
+            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
+                Ok(Ok(client)) => client,
+                Ok(Err(e)) => {
+                    eprintln!("⚠️ Skipping test - PLC not available: {}", e);
+                    return;
+                }
+                Err(_) => {
+                    eprintln!("⚠️ Skipping test - Connection timeout");
+                    return;
+                }
+            };
 
         // Test another program-scoped tag
         let result = client.read_tag("Program:API_Web.out_FusePartStatus").await;
         match result {
             Ok(PlcValue::Dint(value)) => {
                 println!("✅ out_FusePartStatus read successfully: {}", value);
-                assert!(value >= 0, "out_FusePartStatus value should be non-negative");
+                assert!(
+                    value >= 0,
+                    "out_FusePartStatus value should be non-negative"
+                );
             }
             Ok(other) => {
-                println!("✅ out_FusePartStatus read successfully (different type): {:?}", other);
+                println!(
+                    "✅ out_FusePartStatus read successfully (different type): {:?}",
+                    other
+                );
             }
             Err(e) => {
                 eprintln!("❌ out_FusePartStatus read failed: {}", e);
@@ -81,23 +92,26 @@ mod program_tag_tests {
     #[tokio::test]
     async fn test_program_tag_path_validation() {
         // Test that old format fails (this is expected behavior)
-        let mut client = match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-            Ok(Ok(client)) => client,
-            Ok(Err(_)) => {
-                println!("⚠️ Skipping test - PLC not available");
-                return;
-            }
-            Err(_) => {
-                println!("⚠️ Skipping test - Connection timeout");
-                return;
-            }
-        };
+        let mut client =
+            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
+                Ok(Ok(client)) => client,
+                Ok(Err(_)) => {
+                    println!("⚠️ Skipping test - PLC not available");
+                    return;
+                }
+                Err(_) => {
+                    println!("⚠️ Skipping test - Connection timeout");
+                    return;
+                }
+            };
 
         // Test old format (should fail)
         let result = client.read_tag("TestTagProgram").await;
         match result {
             Ok(_) => {
-                println!("⚠️ Old format unexpectedly succeeded - this might indicate PLC configuration");
+                println!(
+                    "⚠️ Old format unexpectedly succeeded - this might indicate PLC configuration"
+                );
             }
             Err(e) => {
                 println!("✅ Old format correctly failed as expected: {}", e);
@@ -108,17 +122,18 @@ mod program_tag_tests {
 
     #[tokio::test]
     async fn test_program_tag_performance() {
-        let mut client = match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-            Ok(Ok(client)) => client,
-            Ok(Err(_)) => {
-                println!("⚠️ Skipping test - PLC not available");
-                return;
-            }
-            Err(_) => {
-                println!("⚠️ Skipping test - Connection timeout");
-                return;
-            }
-        };
+        let mut client =
+            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
+                Ok(Ok(client)) => client,
+                Ok(Err(_)) => {
+                    println!("⚠️ Skipping test - PLC not available");
+                    return;
+                }
+                Err(_) => {
+                    println!("⚠️ Skipping test - Connection timeout");
+                    return;
+                }
+            };
 
         let start = std::time::Instant::now();
         let result = client.read_tag("Program:API_Web.TestTagProgram").await;
@@ -127,7 +142,10 @@ mod program_tag_tests {
         match result {
             Ok(_) => {
                 println!("✅ Program tag read in {:?}", duration);
-                assert!(duration < Duration::from_millis(100), "Program tag read should be fast");
+                assert!(
+                    duration < Duration::from_millis(100),
+                    "Program tag read should be fast"
+                );
             }
             Err(e) => {
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {

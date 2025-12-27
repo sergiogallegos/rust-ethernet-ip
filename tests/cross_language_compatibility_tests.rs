@@ -8,17 +8,18 @@ mod cross_language_compatibility_tests {
 
     #[tokio::test]
     async fn test_rust_library_core_functionality() {
-        let mut client = match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-            Ok(Ok(client)) => client,
-            Ok(Err(e)) => {
-                eprintln!("⚠️ Skipping test - PLC not available: {}", e);
-                return;
-            }
-            Err(_) => {
-                eprintln!("⚠️ Skipping test - Connection timeout");
-                return;
-            }
-        };
+        let mut client =
+            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
+                Ok(Ok(client)) => client,
+                Ok(Err(e)) => {
+                    eprintln!("⚠️ Skipping test - PLC not available: {}", e);
+                    return;
+                }
+                Err(_) => {
+                    eprintln!("⚠️ Skipping test - Connection timeout");
+                    return;
+                }
+            };
 
         // Test core functionality that should work across all language bindings
         let tests = vec![
@@ -33,7 +34,10 @@ mod cross_language_compatibility_tests {
             let result = client.read_tag(tag_name).await;
             match result {
                 Ok(value) => {
-                    println!("✅ {} ({}) read successfully: {:?}", tag_name, description, value);
+                    println!(
+                        "✅ {} ({}) read successfully: {:?}",
+                        tag_name, description, value
+                    );
                 }
                 Err(e) => {
                     eprintln!("❌ {} ({}) read failed: {}", tag_name, description, e);
@@ -52,17 +56,18 @@ mod cross_language_compatibility_tests {
     async fn test_ffi_compatibility() {
         // Test that the library works correctly through FFI
         // This is more of a smoke test to ensure the FFI functions are properly exposed
-        let mut client = match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-            Ok(Ok(client)) => client,
-            Ok(Err(_)) => {
-                println!("⚠️ Skipping test - PLC not available");
-                return;
-            }
-            Err(_) => {
-                println!("⚠️ Skipping test - Connection timeout");
-                return;
-            }
-        };
+        let mut client =
+            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
+                Ok(Ok(client)) => client,
+                Ok(Err(_)) => {
+                    println!("⚠️ Skipping test - PLC not available");
+                    return;
+                }
+                Err(_) => {
+                    println!("⚠️ Skipping test - Connection timeout");
+                    return;
+                }
+            };
 
         // Test basic read operation
         let result = client.read_tag("TestTagController").await;
@@ -72,7 +77,10 @@ mod cross_language_compatibility_tests {
                 assert!(value >= 0, "Controller tag should be non-negative");
             }
             Ok(other) => {
-                println!("✅ FFI compatibility test passed (different type): {:?}", other);
+                println!(
+                    "✅ FFI compatibility test passed (different type): {:?}",
+                    other
+                );
             }
             Err(e) => {
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
@@ -86,17 +94,18 @@ mod cross_language_compatibility_tests {
 
     #[tokio::test]
     async fn test_performance_consistency() {
-        let mut client = match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-            Ok(Ok(client)) => client,
-            Ok(Err(_)) => {
-                println!("⚠️ Skipping test - PLC not available");
-                return;
-            }
-            Err(_) => {
-                println!("⚠️ Skipping test - Connection timeout");
-                return;
-            }
-        };
+        let mut client =
+            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
+                Ok(Ok(client)) => client,
+                Ok(Err(_)) => {
+                    println!("⚠️ Skipping test - PLC not available");
+                    return;
+                }
+                Err(_) => {
+                    println!("⚠️ Skipping test - Connection timeout");
+                    return;
+                }
+            };
 
         // Test that performance is consistent across different operations
         let operations = vec![
@@ -112,9 +121,15 @@ mod cross_language_compatibility_tests {
 
             match result {
                 Ok(_) => {
-                    println!("✅ {} ({}) completed in {:?}", tag_name, description, duration);
-                    assert!(duration < Duration::from_millis(500), 
-                        "{} should complete within 500ms", description);
+                    println!(
+                        "✅ {} ({}) completed in {:?}",
+                        tag_name, description, duration
+                    );
+                    assert!(
+                        duration < Duration::from_millis(500),
+                        "{} should complete within 500ms",
+                        description
+                    );
                 }
                 Err(e) => {
                     if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
@@ -129,17 +144,18 @@ mod cross_language_compatibility_tests {
 
     #[tokio::test]
     async fn test_error_handling_consistency() {
-        let mut client = match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-            Ok(Ok(client)) => client,
-            Ok(Err(_)) => {
-                println!("⚠️ Skipping test - PLC not available");
-                return;
-            }
-            Err(_) => {
-                println!("⚠️ Skipping test - Connection timeout");
-                return;
-            }
-        };
+        let mut client =
+            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
+                Ok(Ok(client)) => client,
+                Ok(Err(_)) => {
+                    println!("⚠️ Skipping test - PLC not available");
+                    return;
+                }
+                Err(_) => {
+                    println!("⚠️ Skipping test - Connection timeout");
+                    return;
+                }
+            };
 
         // Test error handling for non-existent tags
         let non_existent_tags = vec![
@@ -152,12 +168,18 @@ mod cross_language_compatibility_tests {
             let result = client.read_tag(tag_name).await;
             match result {
                 Ok(_) => {
-                    println!("⚠️ {} unexpectedly succeeded (might exist on PLC)", tag_name);
+                    println!(
+                        "⚠️ {} unexpectedly succeeded (might exist on PLC)",
+                        tag_name
+                    );
                 }
                 Err(e) => {
                     println!("✅ {} correctly failed: {}", tag_name, e);
                     // Verify error message is informative
-                    assert!(!e.to_string().is_empty(), "Error message should not be empty");
+                    assert!(
+                        !e.to_string().is_empty(),
+                        "Error message should not be empty"
+                    );
                 }
             }
         }
@@ -166,17 +188,18 @@ mod cross_language_compatibility_tests {
     #[tokio::test]
     async fn test_memory_safety() {
         // Test that the library doesn't leak memory or cause crashes
-        let mut client = match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-            Ok(Ok(client)) => client,
-            Ok(Err(_)) => {
-                println!("⚠️ Skipping test - PLC not available");
-                return;
-            }
-            Err(_) => {
-                println!("⚠️ Skipping test - Connection timeout");
-                return;
-            }
-        };
+        let mut client =
+            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
+                Ok(Ok(client)) => client,
+                Ok(Err(_)) => {
+                    println!("⚠️ Skipping test - PLC not available");
+                    return;
+                }
+                Err(_) => {
+                    println!("⚠️ Skipping test - Connection timeout");
+                    return;
+                }
+            };
 
         // Perform multiple operations to test memory safety
         for i in 0..10 {

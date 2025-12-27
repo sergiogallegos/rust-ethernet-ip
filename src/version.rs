@@ -10,7 +10,7 @@ pub const MAJOR_VERSION: u32 = 0;
 pub const MINOR_VERSION: u32 = 5;
 
 /// Patch version number
-pub const PATCH_VERSION: u32 = 0;
+pub const PATCH_VERSION: u32 = 5;
 
 /// Version string in format "v0.1.0"
 pub const VERSION_STRING: &str = concat!("v", env!("CARGO_PKG_VERSION"));

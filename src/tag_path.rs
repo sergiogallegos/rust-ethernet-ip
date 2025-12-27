@@ -166,6 +166,11 @@ impl TagPath {
                 path.push(program_path.len() as u8);
                 path.extend_from_slice(program_path.as_bytes());
 
+                // Pad to even length if necessary after program segment
+                if path.len() % 2 != 0 {
+                    path.push(0x00);
+                }
+
                 // Then add tag name segment
                 path.push(0x91);
                 path.push(tag_name.len() as u8);
@@ -176,10 +181,24 @@ impl TagPath {
                 // Build base path first
                 base_path.build_cip_path(path)?;
 
+                // Pad to even length if necessary before adding array segments
+                if path.len() % 2 != 0 {
+                    path.push(0x00);
+                }
+
                 // Add array indices
+                // According to CIP spec, element segments in paths use format:
+                // 0x28 (element segment type) + format/size byte + index value
+                //
+                // Based on pylogix and gologix implementations, try using 4-byte (DINT) indices
+                // for DINT arrays, as the index type should match the array element type
+                // Format byte: 0x04 = 4 bytes (DINT size)
                 for &index in indices {
-                    path.push(0x28); // Element segment
-                    path.extend_from_slice(&index.to_le_bytes());
+                    path.push(0x28); // Element segment type
+                    path.push(0x04); // Format: 4 bytes for 32-bit index (DINT)
+                    let index_u32 = index;
+                    path.extend_from_slice(&index_u32.to_le_bytes());
+                    // Element segment is 6 bytes total (0x28 + 0x04 + 4 bytes index) = even, no padding needed
                 }
             }
 
@@ -189,6 +208,11 @@ impl TagPath {
             } => {
                 // Build base path first
                 base_path.build_cip_path(path)?;
+
+                // Pad to even length if necessary before adding bit segment
+                if path.len() % 2 != 0 {
+                    path.push(0x00);
+                }
 
                 // Add bit segment
                 path.push(0x29); // Bit segment
@@ -202,6 +226,11 @@ impl TagPath {
                 // Build base path first
                 base_path.build_cip_path(path)?;
 
+                // Pad to even length if necessary before adding member segment
+                if path.len() % 2 != 0 {
+                    path.push(0x00);
+                }
+
                 // Add member segment
                 path.push(0x91);
                 path.push(member_name.len() as u8);
@@ -211,6 +240,11 @@ impl TagPath {
             TagPath::StringLength { base_path } => {
                 // Build base path first
                 base_path.build_cip_path(path)?;
+
+                // Pad to even length if necessary before adding member segment
+                if path.len() % 2 != 0 {
+                    path.push(0x00);
+                }
 
                 // Add LEN member
                 path.push(0x91);
@@ -222,14 +256,26 @@ impl TagPath {
                 // Build base path first
                 base_path.build_cip_path(path)?;
 
+                // Pad to even length if necessary before adding member segment
+                if path.len() % 2 != 0 {
+                    path.push(0x00);
+                }
+
                 // Add DATA member
                 path.push(0x91);
                 path.push(4); // "DATA".len()
                 path.extend_from_slice(b"DATA");
 
+                // Pad to even length if necessary before adding array segment
+                if path.len() % 2 != 0 {
+                    path.push(0x00);
+                }
+
                 // Add array index
                 path.push(0x28); // Element segment
-                path.extend_from_slice(&index.to_le_bytes());
+                path.push(0x04); // Size: 4 bytes for 32-bit index (DINT)
+                let index_u32 = *index as u32;
+                path.extend_from_slice(&index_u32.to_le_bytes());
             }
         }
 
@@ -676,6 +722,58 @@ mod tests {
         assert_eq!(cip_path[1], 5); // Length of "MyTag"
         assert_eq!(&cip_path[2..7], b"MyTag");
         assert_eq!(cip_path[7], 0x00); // Padding
+    }
+
+    #[test]
+    fn test_array_cip_path_generation() {
+        let path = TagPath::parse("MyArray[5]").unwrap();
+        let cip_path = path.to_cip_path().unwrap();
+
+        // Should be: [0x91, 0x07, 'M', 'y', 'A', 'r', 'r', 'a', 'y', 0x00, 0x28, 0x04, 0x05, 0x00, 0x00, 0x00]
+        // Tag segment: 0x91, length 7, "MyArray", padding
+        assert_eq!(cip_path[0], 0x91); // ANSI Extended Symbol Segment
+        assert_eq!(cip_path[1], 7); // Length of "MyArray"
+        assert_eq!(&cip_path[2..9], b"MyArray");
+        assert_eq!(cip_path[9], 0x00); // Padding
+
+        // Array element segment: 0x28, format 0x04 (4 bytes), index 5 (little-endian u32)
+        assert_eq!(cip_path[10], 0x28); // Element segment
+        assert_eq!(cip_path[11], 0x04); // Format: 4 bytes (DINT)
+        assert_eq!(&cip_path[12..16], &5u32.to_le_bytes()); // Index 5 as u32
+        assert_eq!(cip_path.len(), 16); // Total: 9 (tag) + 1 (padding) + 6 (element segment) = 16
+    }
+
+    #[test]
+    fn test_program_array_cip_path_generation() {
+        let path = TagPath::parse("Program:MainProgram.ArrayTest[0]").unwrap();
+        let cip_path = path.to_cip_path().unwrap();
+
+        println!(
+            "Program array CIP path ({} bytes): {:02X?}",
+            cip_path.len(),
+            cip_path
+        );
+
+        // Verify structure:
+        // 1. Program segment: 0x91, length 19, "Program:MainProgram", padding
+        assert_eq!(cip_path[0], 0x91);
+        assert_eq!(cip_path[1], 19); // "Program:MainProgram".len()
+        assert_eq!(&cip_path[2..21], b"Program:MainProgram");
+        assert_eq!(cip_path[21], 0x00); // Padding after program segment
+
+        // 2. Tag segment: 0x91, length 9, "ArrayTest", padding
+        assert_eq!(cip_path[22], 0x91);
+        assert_eq!(cip_path[23], 9); // "ArrayTest".len()
+        assert_eq!(&cip_path[24..33], b"ArrayTest");
+        assert_eq!(cip_path[33], 0x00); // Padding after tag segment
+
+        // 3. Array element segment: 0x28, format 0x04 (4 bytes), index 0
+        assert_eq!(cip_path[34], 0x28); // Element segment
+        assert_eq!(cip_path[35], 0x04); // Format: 4 bytes (DINT)
+        assert_eq!(&cip_path[36..40], &0u32.to_le_bytes()); // Index 0 as u32
+
+        // Total should be 40 bytes (20 words)
+        assert_eq!(cip_path.len(), 40);
     }
 
     #[test]

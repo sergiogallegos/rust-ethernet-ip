@@ -16,7 +16,7 @@
 > [Try the HMI Demo →](#-hmi-scada-production-demo)
 
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.5.4-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
+[![Version](https://img.shields.io/badge/version-0.5.5-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Performance](https://img.shields.io/badge/performance-3000%2B%20ops%2Fsec-green.svg)]()
 [![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)]()
@@ -40,7 +40,18 @@ This library is specifically designed for:
 - **Industrial Automation** software and SCADA systems
 - **High-performance** data acquisition and control
 
-### ✅ **v0.5.4 New Features**
+### ✅ **v0.5.5 New Features**
+- **📊 Array Element Access**: Full read/write support for array elements using intelligent workaround
+  - Controller-scoped arrays: `gArrayTest[0]`, `gArrayTest[1]`, etc.
+  - Program-scoped arrays: `Program:MainProgram.ArrayTest[0]`
+  - BOOL array support: Automatic DWORD bit extraction for BOOL arrays
+  - Automatic detection and workaround for array element access
+- **✍️ Array Element Writing**: Write individual array elements with automatic array modification
+  - Reads entire array, modifies element, writes back seamlessly
+  - Supports all data types (DINT, REAL, BOOL, etc.)
+  - Works with both controller-scoped and program-scoped arrays
+
+### ✅ **v0.5.4 Features**
 - **🔍 UDT Definition Discovery**: Automatic UDT structure detection from PLC
 - **🏷️ Enhanced Tag Discovery**: Full attribute support with permissions and scope
 - **📦 Packet Size Negotiation**: Dynamic optimization for firmware 20+
@@ -93,7 +104,11 @@ This library is specifically designed for:
 
 ### 📍 **Advanced Tag Addressing** ✅ **COMPLETED**
 - **Program-scoped tags**: `Program:MainProgram.Tag1` ✅ **FIXED in v0.5.4**
-- **Array element access**: `MyArray[5]`, `MyArray[1,2,3]`
+- **Array element access**: `MyArray[5]`, `MyArray[1,2,3]` ✅ **WORKING in v0.5.5**
+  - Automatic workaround: Reads entire array and extracts element
+  - Supports read and write operations
+  - Works with controller-scoped and program-scoped arrays
+  - Special handling for BOOL arrays (DWORD bit extraction)
 - **Bit-level operations**: `MyDINT.15` (access individual bits)
 - **UDT member access**: `MyUDT.Member1.SubMember`
 - **String operations**: `MyString.LEN`, `MyString.DATA[5]`
@@ -438,8 +453,13 @@ if __name__ == "__main__":
 // Program-scoped tags
 let value = client.read_tag("Program:MainProgram.Tag1").await?;
 
-// Array elements
+// Array elements (v0.5.5 - automatic workaround)
 let array_element = client.read_tag("Program:Main.MyArray[5]").await?;
+// Writing array elements
+client.write_tag("gArrayTest[0]", PlcValue::Dint(100)).await?;
+// BOOL arrays work too
+let bool_value = client.read_tag("gArrayBoolTest[5]").await?;
+client.write_tag("gArrayBoolTest[5]", PlcValue::Bool(true)).await?;
 let multi_dim = client.read_tag("Program:Main.Matrix[1,2,3]").await?;
 
 // Bit access

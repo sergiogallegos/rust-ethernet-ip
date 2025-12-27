@@ -1,7 +1,7 @@
 // lib.rs - Rust EtherNet/IP Driver Library with Comprehensive Documentation
 // =========================================================================
 //
-// # Rust EtherNet/IP Driver Library v0.5.4
+// # Rust EtherNet/IP Driver Library v0.5.5
 //
 // A high-performance, production-ready EtherNet/IP communication library for
 // Allen-Bradley CompactLogix and ControlLogix PLCs, written in pure Rust with
@@ -1385,6 +1385,16 @@ impl EipClient {
     /// - `Timeout`: Operation timed out
     pub async fn read_tag(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         self.validate_session().await?;
+
+        // Check if this is array element access (e.g., "ArrayName[0]")
+        if let Some((base_name, index)) = self.parse_array_element_access(tag_name) {
+            println!(
+                "🔧 [DEBUG] Detected array element access: {}[{}], using workaround",
+                base_name, index
+            );
+            return self.read_array_element_workaround(&base_name, index).await;
+        }
+
         // Check if we have metadata for this tag
         if let Some(metadata) = self.get_tag_metadata(tag_name).await {
             // Handle UDT tags
@@ -1404,6 +1414,694 @@ impl EipClient {
             .await?;
         let cip_data = self.extract_cip_from_response(&response)?;
         self.parse_cip_response(&cip_data)
+    }
+
+    /// Parses array element access syntax (e.g., "ArrayName[0]") and returns (base_name, index)
+    fn parse_array_element_access(&self, tag_name: &str) -> Option<(String, u32)> {
+        // Look for array bracket notation
+        if let Some(bracket_pos) = tag_name.rfind('[') {
+            if let Some(close_bracket_pos) = tag_name.rfind(']') {
+                if close_bracket_pos > bracket_pos {
+                    let base_name = tag_name[..bracket_pos].to_string();
+                    let index_str = &tag_name[bracket_pos + 1..close_bracket_pos];
+                    if let Ok(index) = index_str.parse::<u32>() {
+                        // Make sure there are no more brackets after this (multi-dimensional arrays not supported yet)
+                        if !tag_name[..bracket_pos].contains('[') {
+                            return Some((base_name, index));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Workaround for array element access: reads entire array and extracts the requested element
+    async fn read_array_element_workaround(
+        &mut self,
+        base_array_name: &str,
+        index: u32,
+    ) -> crate::error::Result<PlcValue> {
+        println!(
+            "🔧 [DEBUG] Reading entire array '{}' to extract element [{}]",
+            base_array_name, index
+        );
+
+        // For BOOL arrays, we need special handling - read just 1 element (DWORD) and extract bits
+        // First, try reading with count=1 to see if it's a BOOL array (returns 0x00D3)
+        let test_response = self
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
+            .await?;
+        let test_cip_data = self.extract_cip_from_response(&test_response)?;
+
+        if test_cip_data.len() >= 6 {
+            let test_data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
+
+            // If it's a BOOL array (0x00D3 = DWORD), handle it specially
+            if test_data_type == 0x00D3 {
+                return self
+                    .read_bool_array_element_workaround(base_array_name, index)
+                    .await;
+            }
+        }
+
+        // For other array types, try requesting multiple elements
+        // Build a read request that requests a reasonable element count to get the entire array
+        // Try requesting 10 elements first (most arrays are small), then increase if needed
+        // Start with 10, then try 50, then 100 if needed
+        let mut element_count = 10u16;
+        let mut response = self
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
+            .await;
+
+        // If requesting 10 fails, try 50, then 100
+        if response.is_err() {
+            element_count = 50;
+            response = self
+                .send_cip_request(
+                    &self.build_read_request_with_count(base_array_name, element_count),
+                )
+                .await;
+        }
+        if response.is_err() {
+            element_count = 100;
+            response = self
+                .send_cip_request(
+                    &self.build_read_request_with_count(base_array_name, element_count),
+                )
+                .await;
+        }
+
+        let response = response?;
+        let cip_data = self.extract_cip_from_response(&response)?;
+
+        // Parse the array response
+        if cip_data.len() < 6 {
+            return Err(EtherNetIpError::Protocol(
+                "Array response too short".to_string(),
+            ));
+        }
+
+        let service_reply = cip_data[0];
+        let general_status = cip_data[2];
+
+        if general_status != 0x00 {
+            let error_msg = self.get_cip_error_message(general_status);
+            return Err(EtherNetIpError::Protocol(format!(
+                "CIP Error {general_status}: {error_msg}"
+            )));
+        }
+
+        if service_reply != 0xCC {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unexpected service reply: 0x{service_reply:02X}"
+            )));
+        }
+
+        let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+        let element_count = u16::from_le_bytes([cip_data[6], cip_data[7]]);
+        let value_data = &cip_data[8..];
+
+        println!(
+            "🔧 [DEBUG] Array data type: 0x{:04X}, Element count: {}, Data length: {} bytes",
+            data_type,
+            element_count,
+            value_data.len()
+        );
+
+        // Calculate element size based on data type
+        let element_size = match data_type {
+            0x00C1 => 1, // BOOL
+            0x00C2 => 1, // SINT
+            0x00C3 => 2, // INT
+            0x00C4 => 4, // DINT
+            0x00C5 => 8, // LINT
+            0x00C6 => 1, // USINT
+            0x00C7 => 2, // UINT
+            0x00C8 => 4, // UDINT
+            0x00C9 => 8, // ULINT
+            0x00CA => 4, // REAL
+            0x00CB => 8, // LREAL
+            0x00D3 => 4, // ULINT (sometimes used for BOOL arrays as DWORD)
+            _ => {
+                return Err(EtherNetIpError::Protocol(format!(
+                    "Unsupported array data type: 0x{:04X}",
+                    data_type
+                )));
+            }
+        };
+
+        // Calculate actual number of elements based on data length
+        let actual_element_count = value_data.len() / element_size;
+        println!(
+            "🔧 [DEBUG] Calculated actual element count: {} (from {} bytes / {} bytes per element)",
+            actual_element_count,
+            value_data.len(),
+            element_size
+        );
+
+        // Use the larger of reported count or calculated count
+        let max_elements = element_count.max(actual_element_count as u16);
+
+        // Check if index is valid
+        if index >= max_elements as u32 {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Array index {} out of bounds (array has {} elements)",
+                index, max_elements
+            )));
+        }
+
+        // Calculate offset for the requested element
+        let element_offset = (index as usize) * element_size;
+        if element_offset + element_size > value_data.len() {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Array data too short: need {} bytes at offset {}, but only have {} bytes",
+                element_size,
+                element_offset,
+                value_data.len()
+            )));
+        }
+
+        // Extract the element data
+        let element_data = &value_data[element_offset..element_offset + element_size];
+
+        println!(
+            "🔧 [DEBUG] Extracting element [{}] at offset {} (size {} bytes): {:02X?}",
+            index, element_offset, element_size, element_data
+        );
+
+        // Parse the element based on data type
+        match data_type {
+            0x00C1 => {
+                // BOOL
+                Ok(PlcValue::Bool(element_data[0] != 0))
+            }
+            0x00C2 => {
+                // SINT
+                Ok(PlcValue::Sint(element_data[0] as i8))
+            }
+            0x00C3 => {
+                // INT
+                Ok(PlcValue::Int(i16::from_le_bytes([
+                    element_data[0],
+                    element_data[1],
+                ])))
+            }
+            0x00C4 => {
+                // DINT
+                Ok(PlcValue::Dint(i32::from_le_bytes([
+                    element_data[0],
+                    element_data[1],
+                    element_data[2],
+                    element_data[3],
+                ])))
+            }
+            0x00C5 => {
+                // LINT
+                Ok(PlcValue::Lint(i64::from_le_bytes([
+                    element_data[0],
+                    element_data[1],
+                    element_data[2],
+                    element_data[3],
+                    element_data[4],
+                    element_data[5],
+                    element_data[6],
+                    element_data[7],
+                ])))
+            }
+            0x00C6 => {
+                // USINT
+                Ok(PlcValue::Usint(element_data[0]))
+            }
+            0x00C7 => {
+                // UINT
+                Ok(PlcValue::Uint(u16::from_le_bytes([
+                    element_data[0],
+                    element_data[1],
+                ])))
+            }
+            0x00C8 => {
+                // UDINT
+                Ok(PlcValue::Udint(u32::from_le_bytes([
+                    element_data[0],
+                    element_data[1],
+                    element_data[2],
+                    element_data[3],
+                ])))
+            }
+            0x00C9 => {
+                // ULINT
+                Ok(PlcValue::Ulint(u64::from_le_bytes([
+                    element_data[0],
+                    element_data[1],
+                    element_data[2],
+                    element_data[3],
+                    element_data[4],
+                    element_data[5],
+                    element_data[6],
+                    element_data[7],
+                ])))
+            }
+            0x00CA => {
+                // REAL
+                Ok(PlcValue::Real(f32::from_le_bytes([
+                    element_data[0],
+                    element_data[1],
+                    element_data[2],
+                    element_data[3],
+                ])))
+            }
+            0x00CB => {
+                // LREAL
+                Ok(PlcValue::Lreal(f64::from_le_bytes([
+                    element_data[0],
+                    element_data[1],
+                    element_data[2],
+                    element_data[3],
+                    element_data[4],
+                    element_data[5],
+                    element_data[6],
+                    element_data[7],
+                ])))
+            }
+            0x00D3 => {
+                // ULINT/DWORD (sometimes used for BOOL arrays)
+                // For BOOL arrays, each DWORD contains 32 BOOLs
+                // Extract the specific bit
+                let dword_value = u32::from_le_bytes([
+                    element_data[0],
+                    element_data[1],
+                    element_data[2],
+                    element_data[3],
+                ]);
+                let bit_index = (index % 32) as u8;
+                let bool_value = (dword_value >> bit_index) & 1 != 0;
+                Ok(PlcValue::Bool(bool_value))
+            }
+            _ => Err(EtherNetIpError::Protocol(format!(
+                "Unsupported array data type for element extraction: 0x{:04X}",
+                data_type
+            ))),
+        }
+    }
+
+    /// Special workaround for BOOL arrays: reads DWORD and extracts the specific bit
+    async fn read_bool_array_element_workaround(
+        &mut self,
+        base_array_name: &str,
+        index: u32,
+    ) -> crate::error::Result<PlcValue> {
+        println!(
+            "🔧 [DEBUG] BOOL array detected - reading DWORD and extracting bit [{}]",
+            index
+        );
+
+        // Read just 1 element (the DWORD containing 32 BOOLs)
+        let response = self
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
+            .await?;
+        let cip_data = self.extract_cip_from_response(&response)?;
+
+        // Parse the response
+        if cip_data.len() < 6 {
+            return Err(EtherNetIpError::Protocol(
+                "BOOL array response too short".to_string(),
+            ));
+        }
+
+        let service_reply = cip_data[0];
+        let general_status = cip_data[2];
+
+        if general_status != 0x00 {
+            let error_msg = self.get_cip_error_message(general_status);
+            return Err(EtherNetIpError::Protocol(format!(
+                "CIP Error {general_status}: {error_msg}"
+            )));
+        }
+
+        if service_reply != 0xCC {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unexpected service reply: 0x{service_reply:02X}"
+            )));
+        }
+
+        let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+
+        println!(
+            "🔧 [DEBUG] BOOL array response - data type: 0x{:04X}, response length: {} bytes",
+            data_type,
+            cip_data.len()
+        );
+
+        // Check response format - might have element count or just data
+        // Format 1: [service][status][status_ext][data_type(2)][element_count(2)][data...]
+        // Format 2: [service][status][status_ext][data_type(2)][data...]
+        let value_data = if cip_data.len() >= 8 && data_type == 0x00D3 {
+            // Check if there's an element count field (bytes 6-7)
+            // For BOOL arrays with count=1, we should get just the DWORD data
+            if cip_data.len() >= 12 {
+                // Has element count field
+                let element_count = u16::from_le_bytes([cip_data[6], cip_data[7]]);
+                println!("🔧 [DEBUG] BOOL array has element count: {}", element_count);
+                &cip_data[8..]
+            } else if cip_data.len() >= 10 {
+                // No element count, data starts at byte 6
+                &cip_data[6..]
+            } else {
+                return Err(EtherNetIpError::Protocol(
+                    "BOOL array response too short for data".to_string(),
+                ));
+            }
+        } else {
+            // Standard format with element count
+            if cip_data.len() < 8 {
+                return Err(EtherNetIpError::Protocol(
+                    "BOOL array response too short".to_string(),
+                ));
+            }
+            &cip_data[8..]
+        };
+
+        println!(
+            "🔧 [DEBUG] BOOL array value data length: {} bytes",
+            value_data.len()
+        );
+
+        // For BOOL arrays, the data is a DWORD (4 bytes) containing 32 BOOLs
+        if value_data.len() < 4 {
+            return Err(EtherNetIpError::Protocol(format!(
+                "BOOL array data too short: need 4 bytes (DWORD), got {} bytes",
+                value_data.len()
+            )));
+        }
+
+        let dword_value =
+            u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]);
+
+        // Extract the specific bit
+        // Each DWORD contains 32 BOOLs (bits 0-31)
+        let bit_index = (index % 32) as u8;
+        let bool_value = (dword_value >> bit_index) & 1 != 0;
+
+        println!(
+            "🔧 [DEBUG] Extracted BOOL[{}] from DWORD 0x{:08X}: bit {} = {}",
+            index, dword_value, bit_index, bool_value
+        );
+
+        Ok(PlcValue::Bool(bool_value))
+    }
+    
+    /// Workaround for array element writing: reads entire array, modifies element, writes back
+    async fn write_array_element_workaround(&mut self, base_array_name: &str, index: u32, value: PlcValue) -> crate::error::Result<()> {
+        println!("🔧 [DEBUG] Writing to array element '{}[{}]', using workaround", base_array_name, index);
+        
+        // First, detect if it's a BOOL array by reading with count=1
+        let test_response = self
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
+            .await?;
+        let test_cip_data = self.extract_cip_from_response(&test_response)?;
+        
+        if test_cip_data.len() >= 6 {
+            let test_data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
+            
+            // If it's a BOOL array (0x00D3 = DWORD), handle it specially
+            if test_data_type == 0x00D3 {
+                return self.write_bool_array_element_workaround(base_array_name, index, value).await;
+            }
+        }
+        
+        // For other array types, read the entire array, modify the element, and write back
+        // Read the entire array
+        let mut element_count = 10u16;
+        let mut response = self
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
+            .await;
+        
+        if response.is_err() {
+            element_count = 50;
+            response = self
+                .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
+                .await;
+        }
+        if response.is_err() {
+            element_count = 100;
+            response = self
+                .send_cip_request(&self.build_read_request_with_count(base_array_name, element_count))
+                .await;
+        }
+        
+        let response = response?;
+        let cip_data = self.extract_cip_from_response(&response)?;
+        
+        // Parse the array response
+        if cip_data.len() < 8 {
+            return Err(EtherNetIpError::Protocol(
+                "Array response too short".to_string(),
+            ));
+        }
+        
+        let service_reply = cip_data[0];
+        let general_status = cip_data[2];
+        
+        if general_status != 0x00 {
+            let error_msg = self.get_cip_error_message(general_status);
+            return Err(EtherNetIpError::Protocol(format!(
+                "CIP Error {general_status}: {error_msg}"
+            )));
+        }
+        
+        if service_reply != 0xCC {
+            return Err(EtherNetIpError::Protocol(
+                format!("Unexpected service reply: 0x{service_reply:02X}")
+            ));
+        }
+        
+        let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+        let element_count_reported = u16::from_le_bytes([cip_data[6], cip_data[7]]);
+        let mut value_data = cip_data[8..].to_vec();
+        
+        // Calculate element size
+        let element_size = match data_type {
+            0x00C1 => 1,  // BOOL
+            0x00C2 => 1,  // SINT
+            0x00C3 => 2,  // INT
+            0x00C4 => 4,  // DINT
+            0x00C5 => 8,  // LINT
+            0x00C6 => 1,  // USINT
+            0x00C7 => 2,  // UINT
+            0x00C8 => 4,  // UDINT
+            0x00C9 => 8,  // ULINT
+            0x00CA => 4,  // REAL
+            0x00CB => 8,  // LREAL
+            _ => {
+                return Err(EtherNetIpError::Protocol(format!(
+                    "Unsupported array data type for writing: 0x{:04X}", data_type
+                )));
+            }
+        };
+        
+        // Calculate actual element count
+        let actual_element_count = value_data.len() / element_size;
+        let max_elements = element_count_reported.max(actual_element_count as u16);
+        
+        // Check if index is valid
+        if index >= max_elements as u32 {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Array index {} out of bounds (array has {} elements)", index, max_elements
+            )));
+        }
+        
+        // Calculate offset and replace the element
+        let element_offset = (index as usize) * element_size;
+        if element_offset + element_size > value_data.len() {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Array data too short: need {} bytes at offset {}, but only have {} bytes",
+                element_size, element_offset, value_data.len()
+            )));
+        }
+        
+        // Get the new value bytes
+        let new_value_bytes = value.to_bytes();
+        if new_value_bytes.len() != element_size {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Value size mismatch: expected {} bytes, got {} bytes",
+                element_size, new_value_bytes.len()
+            )));
+        }
+        
+        // Replace the element in the array
+        value_data[element_offset..element_offset + element_size].copy_from_slice(&new_value_bytes);
+        
+        println!("🔧 [DEBUG] Modified array element [{}] at offset {}, writing entire array back", 
+                 index, element_offset);
+        
+        // Write the entire array back
+        let write_request = self.build_write_array_request(base_array_name, data_type, max_elements, &value_data)?;
+        let write_response = self.send_cip_request(&write_request).await?;
+        let write_cip_data = self.extract_cip_from_response(&write_response)?;
+        
+        if write_cip_data.len() < 3 {
+            return Err(EtherNetIpError::Protocol(
+                "Write response too short".to_string(),
+            ));
+        }
+        
+        let write_service_reply = write_cip_data[0];
+        let write_general_status = write_cip_data[2];
+        
+        if write_general_status != 0x00 {
+            let error_msg = self.get_cip_error_message(write_general_status);
+            return Err(EtherNetIpError::Protocol(format!(
+                "CIP Error {write_general_status}: {error_msg}"
+            )));
+        }
+        
+        if write_service_reply != 0xCD {
+            return Err(EtherNetIpError::Protocol(
+                format!("Unexpected write service reply: 0x{write_service_reply:02X}")
+            ));
+        }
+        
+        println!("✅ Array element write completed successfully");
+        Ok(())
+    }
+    
+    /// Special workaround for BOOL array element writing
+    async fn write_bool_array_element_workaround(&mut self, base_array_name: &str, index: u32, value: PlcValue) -> crate::error::Result<()> {
+        println!("🔧 [DEBUG] BOOL array element write - reading DWORD, modifying bit [{}], writing back", index);
+        
+        // Read the DWORD
+        let response = self
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
+            .await?;
+        let cip_data = self.extract_cip_from_response(&response)?;
+        
+        if cip_data.len() < 12 {
+            return Err(EtherNetIpError::Protocol(
+                "BOOL array response too short".to_string(),
+            ));
+        }
+        
+        let service_reply = cip_data[0];
+        let general_status = cip_data[2];
+        
+        if general_status != 0x00 {
+            let error_msg = self.get_cip_error_message(general_status);
+            return Err(EtherNetIpError::Protocol(format!(
+                "CIP Error {general_status}: {error_msg}"
+            )));
+        }
+        
+        if service_reply != 0xCC {
+            return Err(EtherNetIpError::Protocol(
+                format!("Unexpected service reply: 0x{service_reply:02X}")
+            ));
+        }
+        
+        let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+        let value_data = if cip_data.len() >= 12 {
+            &cip_data[8..12]
+        } else if cip_data.len() >= 10 {
+            &cip_data[6..10]
+        } else {
+            return Err(EtherNetIpError::Protocol(
+                "BOOL array data too short".to_string(),
+            ));
+        };
+        
+        // Get the boolean value
+        let bool_value = match value {
+            PlcValue::Bool(b) => b,
+            _ => return Err(EtherNetIpError::Protocol(
+                "Expected BOOL value for BOOL array element".to_string(),
+            )),
+        };
+        
+        // Modify the DWORD
+        let mut dword_value = u32::from_le_bytes([
+            value_data[0],
+            value_data[1],
+            value_data[2],
+            value_data[3],
+        ]);
+        
+        let bit_index = (index % 32) as u8;
+        if bool_value {
+            dword_value |= 1u32 << bit_index;
+        } else {
+            dword_value &= !(1u32 << bit_index);
+        }
+        
+        println!("🔧 [DEBUG] Modified BOOL[{}] in DWORD: 0x{:08X} -> 0x{:08X} (bit {} = {})", 
+                 index, u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]), 
+                 dword_value, bit_index, bool_value);
+        
+        // Write the DWORD back
+        let write_request = self.build_write_request_with_data(base_array_name, data_type, 1, &dword_value.to_le_bytes())?;
+        let write_response = self.send_cip_request(&write_request).await?;
+        let write_cip_data = self.extract_cip_from_response(&write_response)?;
+        
+        if write_cip_data.len() < 3 {
+            return Err(EtherNetIpError::Protocol(
+                "Write response too short".to_string(),
+            ));
+        }
+        
+        let write_general_status = write_cip_data[2];
+        
+        if write_general_status != 0x00 {
+            let error_msg = self.get_cip_error_message(write_general_status);
+            return Err(EtherNetIpError::Protocol(format!(
+                "CIP Error {write_general_status}: {error_msg}"
+            )));
+        }
+        
+        println!("✅ BOOL array element write completed successfully");
+        Ok(())
+    }
+    
+    /// Builds a write request for an entire array
+    fn build_write_array_request(&self, tag_name: &str, data_type: u16, element_count: u16, data: &[u8]) -> crate::error::Result<Vec<u8>> {
+        let mut cip_request = Vec::new();
+        
+        // Service: Write Tag Service (0x4D)
+        cip_request.push(0x4D);
+        
+        // Build the path
+        let path = self.build_tag_path(tag_name);
+        cip_request.push((path.len() / 2) as u8);
+        cip_request.extend_from_slice(&path);
+        
+        // Data type and element count
+        cip_request.extend_from_slice(&data_type.to_le_bytes());
+        cip_request.extend_from_slice(&element_count.to_le_bytes());
+        
+        // Array data
+        cip_request.extend_from_slice(data);
+        
+        Ok(cip_request)
+    }
+    
+    /// Builds a write request with raw data
+    fn build_write_request_with_data(&self, tag_name: &str, data_type: u16, element_count: u16, data: &[u8]) -> crate::error::Result<Vec<u8>> {
+        let mut cip_request = Vec::new();
+        
+        // Service: Write Tag Service (0x4D)
+        cip_request.push(0x4D);
+        
+        // Build the path
+        let path = self.build_tag_path(tag_name);
+        cip_request.push((path.len() / 2) as u8);
+        cip_request.extend_from_slice(&path);
+        
+        // Data type and element count
+        cip_request.extend_from_slice(&data_type.to_le_bytes());
+        cip_request.extend_from_slice(&element_count.to_le_bytes());
+        
+        // Data
+        cip_request.extend_from_slice(data);
+        
+        Ok(cip_request)
     }
 
     /// Reads a UDT with advanced chunked reading to handle large structures
@@ -1428,7 +2126,10 @@ impl EipClient {
     pub async fn read_udt_chunked(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         self.validate_session().await?;
 
-        println!("🔧 [CHUNKED] Starting advanced UDT reading for: {}", tag_name);
+        println!(
+            "🔧 [CHUNKED] Starting advanced UDT reading for: {}",
+            tag_name
+        );
 
         // Strategy 1: Try normal read first
         match self.read_tag(tag_name).await {
@@ -1452,15 +2153,18 @@ impl EipClient {
     }
 
     /// Advanced chunked UDT reading with multiple strategies
-    async fn read_udt_advanced_chunked(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
+    async fn read_udt_advanced_chunked(
+        &mut self,
+        tag_name: &str,
+    ) -> crate::error::Result<PlcValue> {
         println!("🔧 [ADVANCED] Using multiple strategies for large UDT");
 
         // Strategy A: Try different chunk sizes
         let chunk_sizes = vec![512, 256, 128, 64, 32, 16, 8, 4];
-        
+
         for chunk_size in chunk_sizes {
             println!("🔧 [ADVANCED] Trying chunk size: {}", chunk_size);
-            
+
             match self.read_udt_with_chunk_size(tag_name, chunk_size).await {
                 Ok(udt_value) => {
                     println!("🔧 [ADVANCED] Success with chunk size {}", chunk_size);
@@ -1500,31 +2204,45 @@ impl EipClient {
         // Strategy D: Fallback to simple UDT structure
         println!("🔧 [ADVANCED] All strategies failed, using fallback");
         let mut udt_data = std::collections::HashMap::new();
-        udt_data.insert("Error".to_string(), PlcValue::String("UDT too large to read".to_string()));
+        udt_data.insert(
+            "Error".to_string(),
+            PlcValue::String("UDT too large to read".to_string()),
+        );
         Ok(PlcValue::Udt(udt_data))
     }
 
     /// Try reading UDT with specific chunk size
-    async fn read_udt_with_chunk_size(&mut self, tag_name: &str, mut chunk_size: usize) -> crate::error::Result<PlcValue> {
+    async fn read_udt_with_chunk_size(
+        &mut self,
+        tag_name: &str,
+        mut chunk_size: usize,
+    ) -> crate::error::Result<PlcValue> {
         let mut all_data = Vec::new();
         let mut offset = 0;
         let mut consecutive_failures = 0;
         const MAX_FAILURES: usize = 3;
 
         loop {
-            match self.read_udt_chunk_advanced(tag_name, offset, chunk_size).await {
+            match self
+                .read_udt_chunk_advanced(tag_name, offset, chunk_size)
+                .await
+            {
                 Ok(chunk_data) => {
                     if chunk_data.is_empty() {
                         break; // No more data
                     }
-                    
+
                     all_data.extend_from_slice(&chunk_data);
                     offset += chunk_data.len();
                     consecutive_failures = 0;
-                    
-                    println!("🔧 [CHUNK] Read {} bytes at offset {}, total: {}", 
-                        chunk_data.len(), offset - chunk_data.len(), all_data.len());
-                    
+
+                    println!(
+                        "🔧 [CHUNK] Read {} bytes at offset {}, total: {}",
+                        chunk_data.len(),
+                        offset - chunk_data.len(),
+                        all_data.len()
+                    );
+
                     // If we got less data than requested, we might be done
                     if chunk_data.len() < chunk_size {
                         break;
@@ -1532,12 +2250,15 @@ impl EipClient {
                 }
                 Err(e) => {
                     consecutive_failures += 1;
-                    println!("🔧 [CHUNK] Chunk read failed (attempt {}): {}", consecutive_failures, e);
-                    
+                    println!(
+                        "🔧 [CHUNK] Chunk read failed (attempt {}): {}",
+                        consecutive_failures, e
+                    );
+
                     if consecutive_failures >= MAX_FAILURES {
                         break;
                     }
-                    
+
                     // Try smaller chunk by reducing size and continuing
                     if chunk_size > 4 {
                         chunk_size = chunk_size / 2;
@@ -1548,11 +2269,13 @@ impl EipClient {
         }
 
         if all_data.is_empty() {
-            return Err(crate::error::EtherNetIpError::Protocol("No data read from UDT".to_string()));
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "No data read from UDT".to_string(),
+            ));
         }
 
         println!("🔧 [CHUNK] Total data collected: {} bytes", all_data.len());
-        
+
         // Parse the collected data using our enhanced UDT parser
         match self.parse_udt_structure(&all_data) {
             Ok(udt_value) => Ok(udt_value),
@@ -1564,7 +2287,12 @@ impl EipClient {
     }
 
     /// Advanced chunk reading with better error handling
-    async fn read_udt_chunk_advanced(&mut self, tag_name: &str, offset: usize, size: usize) -> crate::error::Result<Vec<u8>> {
+    async fn read_udt_chunk_advanced(
+        &mut self,
+        tag_name: &str,
+        offset: usize,
+        size: usize,
+    ) -> crate::error::Result<Vec<u8>> {
         // Build a more sophisticated read request
         let mut request = Vec::new();
 
@@ -1615,13 +2343,19 @@ impl EipClient {
     }
 
     /// Try to discover UDT members individually
-    async fn read_udt_member_discovery(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
-        println!("🔧 [DISCOVERY] Attempting member discovery for: {}", tag_name);
-        
+    async fn read_udt_member_discovery(
+        &mut self,
+        tag_name: &str,
+    ) -> crate::error::Result<PlcValue> {
+        println!(
+            "🔧 [DISCOVERY] Attempting member discovery for: {}",
+            tag_name
+        );
+
         // Common UDT member names to try
         let common_members = vec![
             "oFuse_Pass_Status",
-            "oMachine_Running", 
+            "oMachine_Running",
             "oFuse_Resistance",
             "oProduction_Rate",
             "oFuse_Serial_Number",
@@ -1634,7 +2368,7 @@ impl EipClient {
             "oFuse_Weight2",
             "oFuseSandFillTime",
             "oFusePartStatus",
-            "oFuseLastStationDone"
+            "oFuseLastStationDone",
         ];
 
         let mut udt_data = std::collections::HashMap::new();
@@ -1655,34 +2389,46 @@ impl EipClient {
         }
 
         if successful_reads > 0 {
-            println!("🔧 [DISCOVERY] Successfully discovered {} members", successful_reads);
+            println!(
+                "🔧 [DISCOVERY] Successfully discovered {} members",
+                successful_reads
+            );
             Ok(PlcValue::Udt(udt_data))
         } else {
-            Err(crate::error::EtherNetIpError::Protocol("No UDT members could be discovered".to_string()))
+            Err(crate::error::EtherNetIpError::Protocol(
+                "No UDT members could be discovered".to_string(),
+            ))
         }
     }
 
     /// Progressive reading - try to read UDT in progressively smaller chunks
     async fn read_udt_progressive(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         println!("🔧 [PROGRESSIVE] Starting progressive reading");
-        
+
         // Start with a small chunk and gradually increase
         let mut chunk_size = 4;
         let mut all_data = Vec::new();
         let mut offset = 0;
-        
+
         while chunk_size <= 512 {
-            match self.read_udt_chunk_advanced(tag_name, offset, chunk_size).await {
+            match self
+                .read_udt_chunk_advanced(tag_name, offset, chunk_size)
+                .await
+            {
                 Ok(chunk_data) => {
                     if chunk_data.is_empty() {
                         break;
                     }
-                    
+
                     all_data.extend_from_slice(&chunk_data);
                     offset += chunk_data.len();
-                    
-                    println!("🔧 [PROGRESSIVE] Read {} bytes with chunk size {}", chunk_data.len(), chunk_size);
-                    
+
+                    println!(
+                        "🔧 [PROGRESSIVE] Read {} bytes with chunk size {}",
+                        chunk_data.len(),
+                        chunk_size
+                    );
+
                     // If we got the full chunk, try a larger one next time
                     if chunk_data.len() == chunk_size {
                         chunk_size = (chunk_size * 2).min(512);
@@ -1699,15 +2445,17 @@ impl EipClient {
         }
 
         if all_data.is_empty() {
-            return Err(crate::error::EtherNetIpError::Protocol("Progressive reading failed".to_string()));
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "Progressive reading failed".to_string(),
+            ));
         }
 
         println!("🔧 [PROGRESSIVE] Collected {} bytes total", all_data.len());
-        
+
         // Parse the collected data
         match self.parse_udt_structure(&all_data) {
             Ok(udt_value) => Ok(udt_value),
-            Err(_) => self.parse_udt_simple(&all_data)
+            Err(_) => self.parse_udt_simple(&all_data),
         }
     }
 
@@ -2369,6 +3117,12 @@ impl EipClient {
             tag_name
         );
 
+        // Check if this is array element access (e.g., "ArrayName[0]")
+        if let Some((base_name, index)) = self.parse_array_element_access(tag_name) {
+            println!("🔧 [DEBUG] Detected array element write: {}[{}], using workaround", base_name, index);
+            return self.write_array_element_workaround(&base_name, index, value).await;
+        }
+
         // Use specialized AB STRING format for STRING writes (required for proper Allen-Bradley STRING handling)
         // All data types including strings now use the standard write path
         // The PlcValue::to_bytes() method handles the correct format for each type
@@ -2500,7 +3254,7 @@ impl EipClient {
 
         // Use the same path building logic as read operations
         let path = self.build_tag_path(tag_name);
-        
+
         // Request Path Size (in words)
         cip_request.push((path.len() / 2) as u8);
 
@@ -3108,21 +3862,68 @@ impl EipClient {
                 }
                 0x02A0 => {
                     // Allen-Bradley UDT type (0x02A0) - Enhanced UDT Parser
-                    println!("🔧 [DEBUG] Detected UDT structure (0x02A0) with {} bytes", value_data.len());
+                    println!(
+                        "🔧 [DEBUG] Detected UDT structure (0x02A0) with {} bytes",
+                        value_data.len()
+                    );
                     println!("🔧 [DEBUG] Raw UDT data: {:02X?}", value_data);
-                    
+
                     // Enhanced UDT parsing - try multiple parsing strategies
                     match self.parse_udt_structure(&value_data) {
                         Ok(udt_value) => {
-                            println!("🔧 [DEBUG] Successfully parsed UDT with {} members", 
-                                if let PlcValue::Udt(data) = &udt_value { data.len() } else { 0 });
+                            println!(
+                                "🔧 [DEBUG] Successfully parsed UDT with {} members",
+                                if let PlcValue::Udt(data) = &udt_value {
+                                    data.len()
+                                } else {
+                                    0
+                                }
+                            );
                             Ok(udt_value)
                         }
                         Err(e) => {
-                            println!("🔧 [DEBUG] UDT parsing failed: {}, falling back to simple parsing", e);
+                            println!(
+                                "🔧 [DEBUG] UDT parsing failed: {}, falling back to simple parsing",
+                                e
+                            );
                             // Fallback to simple parsing
                             self.parse_udt_simple(&value_data)
                         }
+                    }
+                }
+                0x00D3 => {
+                    // ULINT (64-bit unsigned integer) - sometimes returned for BOOL arrays
+                    // BOOL arrays in Allen-Bradley are stored as DWORD arrays (32 bits per DWORD)
+                    // The PLC may return 4 bytes (DWORD) for BOOL arrays
+                    if value_data.len() >= 4 {
+                        // Parse as DWORD (4 bytes) - BOOL arrays are often returned as DWORD
+                        let dword_value = u32::from_le_bytes([
+                            value_data[0],
+                            value_data[1],
+                            value_data[2],
+                            value_data[3],
+                        ]);
+                        println!("🔧 [DEBUG] Parsed 0x00D3 as DWORD (BOOL array): {dword_value} (0x{:08X})", dword_value);
+                        // Return as UDINT (DWORD) - this represents the first 32 BOOLs
+                        Ok(PlcValue::Udint(dword_value))
+                    } else if value_data.len() >= 8 {
+                        // If we have 8 bytes, parse as ULINT
+                        let value = u64::from_le_bytes([
+                            value_data[0],
+                            value_data[1],
+                            value_data[2],
+                            value_data[3],
+                            value_data[4],
+                            value_data[5],
+                            value_data[6],
+                            value_data[7],
+                        ]);
+                        println!("🔧 [DEBUG] Parsed ULINT: {value}");
+                        Ok(PlcValue::Ulint(value))
+                    } else {
+                        Err(EtherNetIpError::Protocol(
+                            "Insufficient data for ULINT/DWORD value".to_string(),
+                        ))
                     }
                 }
                 _ => {
@@ -3176,7 +3977,15 @@ impl EipClient {
 
     /// Builds a CIP Read Tag Service request
     fn build_read_request(&self, tag_name: &str) -> Vec<u8> {
-        println!("🔧 [DEBUG] Building read request for tag: '{tag_name}'");
+        self.build_read_request_with_count(tag_name, 1)
+    }
+
+    /// Builds a CIP Read Tag Service request with specified element count
+    fn build_read_request_with_count(&self, tag_name: &str, element_count: u16) -> Vec<u8> {
+        println!(
+            "🔧 [DEBUG] Building read request for tag: '{tag_name}' with count: {}",
+            element_count
+        );
 
         let mut cip_request = Vec::new();
 
@@ -3187,77 +3996,74 @@ impl EipClient {
         let path = self.build_tag_path(tag_name);
 
         // Request Path Size (in words)
-        cip_request.push((path.len() / 2) as u8);
+        let path_size_words = (path.len() / 2) as u8;
+        println!(
+            "🔧 [DEBUG] Path size calculation: {} bytes / 2 = {} words",
+            path.len(),
+            path_size_words
+        );
+        cip_request.push(path_size_words);
 
         // Request Path
         cip_request.extend_from_slice(&path);
 
         // Element count (little-endian)
-        cip_request.extend_from_slice(&[0x01, 0x00]); // Read 1 element
+        cip_request.extend_from_slice(&element_count.to_le_bytes());
 
         println!(
             "🔧 [DEBUG] Built CIP read request ({} bytes): {:02X?}",
             cip_request.len(),
             cip_request
         );
+        println!(
+            "🔧 [DEBUG] Path bytes ({} bytes): {:02X?}",
+            path.len(),
+            path
+        );
 
         cip_request
     }
 
     /// Builds the correct path for a tag name
+    /// Uses TagPath parser to properly handle arrays, bits, UDTs, etc.
     fn build_tag_path(&self, tag_name: &str) -> Vec<u8> {
-        let mut path = Vec::new();
-
-        if tag_name.starts_with("Program:") {
-            // Handle program tags: Program:ProgramName.TagName
-            let parts: Vec<&str> = tag_name.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                let program_and_tag = parts[1];
-                let program_parts: Vec<&str> = program_and_tag.splitn(2, '.').collect();
-
-                if program_parts.len() == 2 {
-                    let program_name = program_parts[0];
-                    let tag_name = program_parts[1];
-
-                    // Build path for CompactLogix program tags using correct format
-                    // First segment: Program name with "Program:" prefix
-                    path.push(0x91); // ANSI Extended Symbol Segment
-                    let program_path = format!("Program:{program_name}");
-                    path.push(program_path.len() as u8);
-                    path.extend_from_slice(program_path.as_bytes());
-
-                    // Pad to even length if necessary
-                    if program_path.len() % 2 != 0 {
-                        path.push(0x00);
+        // Use TagPath parser to handle all tag path types (arrays, program-scoped, etc.)
+        match TagPath::parse(tag_name) {
+            Ok(tag_path) => {
+                // Generate CIP path using the proper parser
+                match tag_path.to_cip_path() {
+                    Ok(path) => {
+                        println!(
+                            "🔧 [DEBUG] TagPath generated {} bytes ({} words) for '{}'",
+                            path.len(),
+                            path.len() / 2,
+                            tag_name
+                        );
+                        path
                     }
-
-                    // Second segment: Tag name
-                    path.push(0x91); // ANSI Extended Symbol Segment
-                    path.push(tag_name.len() as u8);
-                    path.extend_from_slice(tag_name.as_bytes());
-
-                    // Pad to even length if necessary
-                    if tag_name.len() % 2 != 0 {
-                        path.push(0x00);
+                    Err(e) => {
+                        println!(
+                            "🔧 [DEBUG] TagPath.to_cip_path() failed for '{}': {}",
+                            tag_name, e
+                        );
+                        // Fallback to old method if parsing fails
+                        self.build_simple_tag_path_legacy(tag_name)
                     }
-                } else {
-                    // Fallback to simple tag name
-                    path.extend_from_slice(&self.build_simple_tag_path(tag_name));
                 }
-            } else {
-                // Fallback to simple tag name
-                path.extend_from_slice(&self.build_simple_tag_path(tag_name));
             }
-        } else {
-            // Handle simple tag names
-            path.extend_from_slice(&self.build_simple_tag_path(tag_name));
+            Err(e) => {
+                println!(
+                    "🔧 [DEBUG] TagPath::parse() failed for '{}': {}",
+                    tag_name, e
+                );
+                // Fallback to old method if parsing fails
+                self.build_simple_tag_path_legacy(tag_name)
+            }
         }
-
-        path
     }
 
-    /// Builds a simple tag path (no program prefix)
-    fn build_simple_tag_path(&self, tag_name: &str) -> Vec<u8> {
+    /// Builds a simple tag path (no program prefix) - legacy method for fallback
+    fn build_simple_tag_path_legacy(&self, tag_name: &str) -> Vec<u8> {
         let mut path = Vec::new();
         path.push(0x91); // ANSI Extended Symbol Segment
         path.push(tag_name.len() as u8);
@@ -4109,14 +4915,23 @@ impl EipClient {
                     }
                     0x02A0 => {
                         // Allen-Bradley UDT type (0x02A0) for batch operations - Enhanced
-                        println!("🔧 [DEBUG] Detected UDT structure (0x02A0) with {} bytes", value_data.len());
+                        println!(
+                            "🔧 [DEBUG] Detected UDT structure (0x02A0) with {} bytes",
+                            value_data.len()
+                        );
                         println!("🔧 [DEBUG] Raw UDT data: {:02X?}", value_data);
-                        
+
                         // Enhanced UDT parsing - try multiple parsing strategies
                         match self.parse_udt_structure(&value_data) {
                             Ok(udt_value) => {
-                                println!("🔧 [DEBUG] Successfully parsed UDT with {} members", 
-                                    if let PlcValue::Udt(data) = &udt_value { data.len() } else { 0 });
+                                println!(
+                                    "🔧 [DEBUG] Successfully parsed UDT with {} members",
+                                    if let PlcValue::Udt(data) = &udt_value {
+                                        data.len()
+                                    } else {
+                                        0
+                                    }
+                                );
                                 Ok(Some(udt_value))
                             }
                             Err(e) => {
@@ -4124,7 +4939,10 @@ impl EipClient {
                                 // Fallback to simple parsing
                                 match self.parse_udt_simple(&value_data) {
                                     Ok(udt_value) => Ok(Some(udt_value)),
-                                    Err(e) => Err(BatchError::SerializationError(format!("UDT parsing failed: {}", e)))
+                                    Err(e) => Err(BatchError::SerializationError(format!(
+                                        "UDT parsing failed: {}",
+                                        e
+                                    ))),
                                 }
                             }
                         }
@@ -5205,42 +6023,75 @@ impl EipClient {
     /// Enhanced UDT structure parser - tries multiple parsing strategies
     fn parse_udt_structure(&self, data: &[u8]) -> crate::error::Result<PlcValue> {
         println!("🔧 [DEBUG] Parsing UDT structure with {} bytes", data.len());
-        
+
         // Strategy 1: Try to parse as TestTagUDT structure (DINT, DINT, REAL)
         if data.len() >= 12 {
             let mut udt_data = std::collections::HashMap::new();
             let mut offset = 0;
-            
+
             // Try different byte alignments and interpretations
             for alignment in 0..4 {
                 if alignment + 12 <= data.len() {
                     let aligned_data = &data[alignment..];
-                    
+
                     // Parse first DINT
                     if aligned_data.len() >= 4 {
-                        let dint1_bytes = [aligned_data[0], aligned_data[1], aligned_data[2], aligned_data[3]];
+                        let dint1_bytes = [
+                            aligned_data[0],
+                            aligned_data[1],
+                            aligned_data[2],
+                            aligned_data[3],
+                        ];
                         let dint1_value = i32::from_le_bytes(dint1_bytes);
-                        
+
                         // Parse second DINT
                         if aligned_data.len() >= 8 {
-                            let dint2_bytes = [aligned_data[4], aligned_data[5], aligned_data[6], aligned_data[7]];
+                            let dint2_bytes = [
+                                aligned_data[4],
+                                aligned_data[5],
+                                aligned_data[6],
+                                aligned_data[7],
+                            ];
                             let dint2_value = i32::from_le_bytes(dint2_bytes);
-                            
+
                             // Parse REAL
                             if aligned_data.len() >= 12 {
-                                let real_bytes = [aligned_data[8], aligned_data[9], aligned_data[10], aligned_data[11]];
+                                let real_bytes = [
+                                    aligned_data[8],
+                                    aligned_data[9],
+                                    aligned_data[10],
+                                    aligned_data[11],
+                                ];
                                 let real_value = f32::from_le_bytes(real_bytes);
-                                
-                                println!("🔧 [DEBUG] Alignment {}: DINT1={}, DINT2={}, REAL={}", 
-                                    alignment, dint1_value, dint2_value, real_value);
-                                
+
+                                println!(
+                                    "🔧 [DEBUG] Alignment {}: DINT1={}, DINT2={}, REAL={}",
+                                    alignment, dint1_value, dint2_value, real_value
+                                );
+
                                 // Check if this looks like reasonable values
-                                if self.is_reasonable_udt_values(dint1_value, dint2_value, real_value) {
-                                    udt_data.insert("TestTagUDT".to_string(), PlcValue::Dint(dint1_value));
-                                    udt_data.insert("TestTagUDT2".to_string(), PlcValue::Dint(dint2_value));
-                                    udt_data.insert("TestTagUDT3".to_string(), PlcValue::Real(real_value));
-                                    
-                                    println!("🔧 [DEBUG] Found reasonable UDT values at alignment {}", alignment);
+                                if self.is_reasonable_udt_values(
+                                    dint1_value,
+                                    dint2_value,
+                                    real_value,
+                                ) {
+                                    udt_data.insert(
+                                        "TestTagUDT".to_string(),
+                                        PlcValue::Dint(dint1_value),
+                                    );
+                                    udt_data.insert(
+                                        "TestTagUDT2".to_string(),
+                                        PlcValue::Dint(dint2_value),
+                                    );
+                                    udt_data.insert(
+                                        "TestTagUDT3".to_string(),
+                                        PlcValue::Real(real_value),
+                                    );
+
+                                    println!(
+                                        "🔧 [DEBUG] Found reasonable UDT values at alignment {}",
+                                        alignment
+                                    );
                                     return Ok(PlcValue::Udt(udt_data));
                                 }
                             }
@@ -5249,25 +6100,26 @@ impl EipClient {
                 }
             }
         }
-        
+
         // Strategy 2: Try to parse as simple packed structure
         if data.len() >= 4 {
             let mut udt_data = std::collections::HashMap::new();
-            
+
             // Try different interpretations of the data
             let interpretations = vec![
                 ("DINT_at_start", 0, 4),
                 ("DINT_at_end", data.len().saturating_sub(4), data.len()),
                 ("DINT_middle", data.len() / 2, data.len() / 2 + 4),
             ];
-            
+
             for (name, start, end) in interpretations {
                 if end <= data.len() && end > start {
                     let bytes = &data[start..end];
                     if bytes.len() == 4 {
-                        let dint_value = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                        let dint_value =
+                            i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
                         println!("🔧 [DEBUG] {}: DINT = {}", name, dint_value);
-                        
+
                         if self.is_reasonable_value(dint_value) {
                             udt_data.insert("Value".to_string(), PlcValue::Dint(dint_value));
                             return Ok(PlcValue::Udt(udt_data));
@@ -5276,41 +6128,50 @@ impl EipClient {
                 }
             }
         }
-        
-        Err(crate::error::EtherNetIpError::Protocol("Could not parse UDT structure".to_string()))
+
+        Err(crate::error::EtherNetIpError::Protocol(
+            "Could not parse UDT structure".to_string(),
+        ))
     }
-    
+
     /// Simple UDT parser fallback
     fn parse_udt_simple(&self, data: &[u8]) -> crate::error::Result<PlcValue> {
         let mut udt_data = std::collections::HashMap::new();
-        
+
         if data.len() >= 4 {
             // Try the last 4 bytes as DINT
             let start_idx = data.len() - 4;
-            let bytes = [data[start_idx], data[start_idx + 1], data[start_idx + 2], data[start_idx + 3]];
+            let bytes = [
+                data[start_idx],
+                data[start_idx + 1],
+                data[start_idx + 2],
+                data[start_idx + 3],
+            ];
             let dint_value = i32::from_le_bytes(bytes);
             println!("🔧 [DEBUG] Simple UDT parsing: DINT = {}", dint_value);
             udt_data.insert("Value".to_string(), PlcValue::Dint(dint_value));
         } else {
             udt_data.insert("Value".to_string(), PlcValue::Dint(0));
         }
-        
+
         Ok(PlcValue::Udt(udt_data))
     }
-    
+
     /// Check if UDT values look reasonable
     fn is_reasonable_udt_values(&self, dint1: i32, dint2: i32, real: f32) -> bool {
         // Check for reasonable ranges
         let dint1_reasonable = dint1 >= -1000 && dint1 <= 1000;
         let dint2_reasonable = dint2 >= -1000 && dint2 <= 1000;
         let real_reasonable = real >= -1000.0 && real <= 1000.0 && real.is_finite();
-        
-        println!("🔧 [DEBUG] Reasonableness check: DINT1={} ({}), DINT2={} ({}), REAL={} ({})", 
-            dint1, dint1_reasonable, dint2, dint2_reasonable, real, real_reasonable);
-        
+
+        println!(
+            "🔧 [DEBUG] Reasonableness check: DINT1={} ({}), DINT2={} ({}), REAL={} ({})",
+            dint1, dint1_reasonable, dint2, dint2_reasonable, real, real_reasonable
+        );
+
         dint1_reasonable && dint2_reasonable && real_reasonable
     }
-    
+
     /// Check if a single value looks reasonable
     fn is_reasonable_value(&self, value: i32) -> bool {
         value >= -1000 && value <= 1000

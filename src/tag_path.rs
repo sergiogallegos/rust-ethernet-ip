@@ -186,19 +186,28 @@ impl TagPath {
                     path.push(0x00);
                 }
 
-                // Add array indices
-                // According to CIP spec, element segments in paths use format:
-                // 0x28 (element segment type) + format/size byte + index value
-                //
-                // Based on pylogix and gologix implementations, try using 4-byte (DINT) indices
-                // for DINT arrays, as the index type should match the array element type
-                // Format byte: 0x04 = 4 bytes (DINT size)
+                // Add array indices using proper Element ID segment format
+                // Reference: 1756-PM020, Pages 603-611, 870-890
+                // Element ID segments use different sizes based on index value:
+                // - 0-255: 8-bit Element ID (0x28 + 1 byte value)
+                // - 256-65535: 16-bit Element ID (0x29 0x00 + 2 bytes low, high)
+                // - 65536+: 32-bit Element ID (0x2A 0x00 + 4 bytes lowest to highest)
                 for &index in indices {
-                    path.push(0x28); // Element segment type
-                    path.push(0x04); // Format: 4 bytes for 32-bit index (DINT)
-                    let index_u32 = index;
-                    path.extend_from_slice(&index_u32.to_le_bytes());
-                    // Element segment is 6 bytes total (0x28 + 0x04 + 4 bytes index) = even, no padding needed
+                    if index <= 255 {
+                        // 8-bit Element ID: 0x28 + index (2 bytes total)
+                        path.push(0x28);
+                        path.push(index as u8);
+                    } else if index <= 65535 {
+                        // 16-bit Element ID: 0x29, 0x00, low_byte, high_byte (4 bytes total)
+                        path.push(0x29);
+                        path.push(0x00); // Padding byte
+                        path.extend_from_slice(&(index as u16).to_le_bytes());
+                    } else {
+                        // 32-bit Element ID: 0x2A, 0x00, byte0, byte1, byte2, byte3 (6 bytes total)
+                        path.push(0x2A);
+                        path.push(0x00); // Padding byte
+                        path.extend_from_slice(&index.to_le_bytes());
+                    }
                 }
             }
 
@@ -729,18 +738,18 @@ mod tests {
         let path = TagPath::parse("MyArray[5]").unwrap();
         let cip_path = path.to_cip_path().unwrap();
 
-        // Should be: [0x91, 0x07, 'M', 'y', 'A', 'r', 'r', 'a', 'y', 0x00, 0x28, 0x04, 0x05, 0x00, 0x00, 0x00]
+        // Should be: [0x91, 0x07, 'M', 'y', 'A', 'r', 'r', 'a', 'y', 0x00, 0x28, 0x05]
         // Tag segment: 0x91, length 7, "MyArray", padding
         assert_eq!(cip_path[0], 0x91); // ANSI Extended Symbol Segment
         assert_eq!(cip_path[1], 7); // Length of "MyArray"
         assert_eq!(&cip_path[2..9], b"MyArray");
         assert_eq!(cip_path[9], 0x00); // Padding
 
-        // Array element segment: 0x28, format 0x04 (4 bytes), index 5 (little-endian u32)
-        assert_eq!(cip_path[10], 0x28); // Element segment
-        assert_eq!(cip_path[11], 0x04); // Format: 4 bytes (DINT)
-        assert_eq!(&cip_path[12..16], &5u32.to_le_bytes()); // Index 5 as u32
-        assert_eq!(cip_path.len(), 16); // Total: 9 (tag) + 1 (padding) + 6 (element segment) = 16
+        // Array element segment: 0x28 (8-bit Element ID), index 5
+        // Reference: 1756-PM020, Pages 603-611 (Element ID Segment Format)
+        assert_eq!(cip_path[10], 0x28); // 8-bit Element ID segment
+        assert_eq!(cip_path[11], 0x05); // Index 5
+        assert_eq!(cip_path.len(), 12); // Total: 9 (tag) + 1 (padding) + 2 (element segment) = 12
     }
 
     #[test]
@@ -767,13 +776,14 @@ mod tests {
         assert_eq!(&cip_path[24..33], b"ArrayTest");
         assert_eq!(cip_path[33], 0x00); // Padding after tag segment
 
-        // 3. Array element segment: 0x28, format 0x04 (4 bytes), index 0
-        assert_eq!(cip_path[34], 0x28); // Element segment
-        assert_eq!(cip_path[35], 0x04); // Format: 4 bytes (DINT)
-        assert_eq!(&cip_path[36..40], &0u32.to_le_bytes()); // Index 0 as u32
+        // 3. Array element segment: 0x28 (8-bit Element ID), index 0
+        // Reference: 1756-PM020, Pages 603-611 (Element ID Segment Format)
+        assert_eq!(cip_path[34], 0x28); // 8-bit Element ID segment
+        assert_eq!(cip_path[35], 0x00); // Index 0
 
-        // Total should be 40 bytes (20 words)
-        assert_eq!(cip_path.len(), 40);
+        // Total should be 36 bytes (18 words)
+        // Program segment: 20 bytes + Tag segment: 12 bytes + Element segment: 2 bytes + padding: 2 bytes = 36 bytes
+        assert_eq!(cip_path.len(), 36);
     }
 
     #[test]

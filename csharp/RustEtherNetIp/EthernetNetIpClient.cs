@@ -67,6 +67,26 @@ namespace RustEtherNetIp
         private static extern int eip_connect(IntPtr address);
 
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_connect_with_route(
+            IntPtr address,
+            byte[] slots,
+            int slot_count,
+            byte[] ports,
+            int port_count,
+            IntPtr[] addresses,
+            int address_count);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_set_route_path(
+            int client_id,
+            byte[] slots,
+            int slot_count,
+            byte[] ports,
+            int port_count,
+            IntPtr[] addresses,
+            int address_count);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
         private static extern int eip_disconnect(int client_id);
 
         // Boolean operations
@@ -975,7 +995,18 @@ namespace RustEtherNetIp
                         if (!string.IsNullOrEmpty(jsonResult))
                         {
                             Console.WriteLine($"🔧 [DEBUG] UDT read successful, JSON length: {jsonResult.Length}");
-                            return PlcValue.FromJson(jsonResult);
+                            
+                            // Try to parse as UdtData first (new format)
+                            try
+                            {
+                                var udtData = UdtData.FromJson(jsonResult);
+                                return PlcValue.UdtFromData(udtData);
+                            }
+                            catch
+                            {
+                                // Fallback to legacy Dictionary format
+                                return PlcValue.FromJson(jsonResult);
+                            }
                         }
                         else
                         {
@@ -1102,8 +1133,20 @@ namespace RustEtherNetIp
                     // For large UDTs, use chunked writing approach
                     Console.WriteLine($"🔧 [DEBUG] Writing UDT with chunked method: {tagName}");
                     
-                    // Serialize the UDT to JSON
-                    string jsonValue = value.ToJson();
+                    string jsonValue;
+                    
+                    // Check if it's UdtData format (new generic format)
+                    if (value.IsUdtDataFormat && value.UdtData != null)
+                    {
+                        // Use UdtData JSON format
+                        jsonValue = value.UdtData.ToJson();
+                    }
+                    else
+                    {
+                        // Legacy Dictionary format
+                        jsonValue = value.ToJson();
+                    }
+                    
                     IntPtr valuePtr = Marshal.StringToHGlobalAnsi(jsonValue);
                     try
                     {
@@ -1121,6 +1164,19 @@ namespace RustEtherNetIp
                     Marshal.FreeHGlobal(tagPtr);
                 }
             });
+        }
+
+        /// <summary>
+        /// Writes a UDT using UdtData format (generic UDT with symbol_id and raw bytes)
+        /// </summary>
+        /// <param name="tagName">Name of the PLC tag to write to</param>
+        /// <param name="udtData">The UDT data containing symbol_id and raw bytes</param>
+        public void WriteUdtData(string tagName, UdtData udtData)
+        {
+            if (udtData == null)
+                throw new ArgumentNullException(nameof(udtData));
+
+            WriteUdt(tagName, PlcValue.UdtFromData(udtData));
         }
 
         /// <summary>
@@ -1230,7 +1286,17 @@ namespace RustEtherNetIp
                     if (string.IsNullOrEmpty(jsonResult))
                         throw new Exception($"Empty response when reading UDT tag '{tagName}' with chunked reading.");
                     
-                    return PlcValue.FromJson(jsonResult);
+                    // Try to parse as UdtData first (new format)
+                    try
+                    {
+                        var udtData = UdtData.FromJson(jsonResult);
+                        return PlcValue.UdtFromData(udtData);
+                    }
+                    catch
+                    {
+                        // Fallback to legacy Dictionary format
+                        return PlcValue.FromJson(jsonResult);
+                    }
                 }
                 finally
                 {

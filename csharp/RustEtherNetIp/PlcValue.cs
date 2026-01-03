@@ -85,6 +85,13 @@ namespace RustEtherNetIp
         public static PlcValue Udt(Dictionary<string, PlcValue> value) => new PlcValue(value, PlcValueType.Udt);
 
         /// <summary>
+        /// Creates a UDT value from UdtData (generic UDT with symbol_id and raw bytes)
+        /// </summary>
+        /// <param name="udtData">The UDT data containing symbol_id and raw bytes</param>
+        /// <returns>A PlcValue representing the UDT</returns>
+        public static PlcValue UdtFromData(UdtData udtData) => new PlcValue(udtData, PlcValueType.Udt);
+
+        /// <summary>
         /// Gets the value as the specified type
         /// </summary>
         public T As<T>() => (T)_value;
@@ -120,9 +127,36 @@ namespace RustEtherNetIp
         public bool IsUdt => _type == PlcValueType.Udt;
 
         /// <summary>
-        /// Gets the UDT members if this is a UDT value
+        /// Gets the UDT members if this is a UDT value (legacy format)
         /// </summary>
-        public Dictionary<string, PlcValue> UdtMembers => IsUdt ? As<Dictionary<string, PlcValue>>() : null;
+        public Dictionary<string, PlcValue> UdtMembers
+        {
+            get
+            {
+                if (!IsUdt) return null;
+                
+                // Check if it's UdtData format
+                if (_value is UdtData)
+                {
+                    // UdtData format doesn't have parsed members
+                    // Users should use UdtData property instead
+                    return null;
+                }
+                
+                // Legacy format: Dictionary<string, PlcValue>
+                return As<Dictionary<string, PlcValue>>();
+            }
+        }
+
+        /// <summary>
+        /// Gets the UDT data if this is a UDT value (new generic format)
+        /// </summary>
+        public UdtData UdtData => IsUdt && _value is UdtData data ? data : null;
+
+        /// <summary>
+        /// Checks if this UDT value uses the new UdtData format
+        /// </summary>
+        public bool IsUdtDataFormat => IsUdt && _value is UdtData;
 
         /// <summary>
         /// Gets a nested UDT member by path (e.g., "Status.Running")

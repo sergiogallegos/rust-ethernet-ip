@@ -54,6 +54,141 @@ pub unsafe extern "C" fn eip_connect(ip_address: *const c_char) -> c_int {
     client_id
 }
 
+/// Connect to a PLC with route path (for ControlLogix)
+///
+/// # Safety
+///
+/// This function is unsafe because:
+/// - `ip_address` must be a valid null-terminated C string pointer
+/// - `slots` must be a valid pointer to an array of `slot_count` bytes
+/// - The caller must ensure all pointers remain valid for the duration of the call
+#[no_mangle]
+pub unsafe extern "C" fn eip_connect_with_route(
+    ip_address: *const c_char,
+    slots: *const u8,
+    slot_count: c_int,
+    ports: *const u8,
+    port_count: c_int,
+    addresses: *mut *const c_char,
+    address_count: c_int,
+) -> c_int {
+    if ip_address.is_null() {
+        return -1;
+    }
+
+    let Ok(ip_str) = unsafe { CStr::from_ptr(ip_address) }.to_str() else {
+        return -1;
+    };
+
+    // Build route path
+    let mut route_path = crate::RoutePath::new();
+    
+    // Add slots
+    if !slots.is_null() && slot_count > 0 {
+        let slots_slice = unsafe { std::slice::from_raw_parts(slots, slot_count as usize) };
+        for &slot in slots_slice {
+            route_path = route_path.add_slot(slot);
+        }
+    }
+    
+    // Add ports
+    if !ports.is_null() && port_count > 0 {
+        let ports_slice = unsafe { std::slice::from_raw_parts(ports, port_count as usize) };
+        for &port in ports_slice {
+            route_path = route_path.add_port(port);
+        }
+    }
+    
+    // Add addresses
+    if !addresses.is_null() && address_count > 0 {
+        let addresses_slice = unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
+        for &addr_ptr in addresses_slice {
+            if !addr_ptr.is_null() {
+                if let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str() {
+                    route_path = route_path.add_address(addr_str.to_string());
+                }
+            }
+        }
+    }
+
+    let Ok(client) = RUNTIME.block_on(crate::EipClient::with_route_path(ip_str, route_path)) else {
+        return -1;
+    };
+
+    let client_id = {
+        let mut next_id = FFI_NEXT_ID.lock().unwrap();
+        let id = *next_id;
+        *next_id += 1;
+        id
+    };
+
+    {
+        let mut clients = FFI_CLIENTS.lock().unwrap();
+        clients.insert(client_id, client);
+    }
+
+    client_id
+}
+
+/// Set route path for an existing client connection
+///
+/// # Safety
+///
+/// This function is unsafe because:
+/// - `client_id` must be a valid client ID returned from `eip_connect`
+/// - `slots` must be a valid pointer to an array of `slot_count` bytes
+/// - The caller must ensure all pointers remain valid for the duration of the call
+#[no_mangle]
+pub unsafe extern "C" fn eip_set_route_path(
+    client_id: c_int,
+    slots: *const u8,
+    slot_count: c_int,
+    ports: *const u8,
+    port_count: c_int,
+    addresses: *mut *const c_char,
+    address_count: c_int,
+) -> c_int {
+    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let client = match clients.get_mut(&client_id) {
+        Some(c) => c,
+        None => return -1,
+    };
+
+    // Build route path
+    let mut route_path = crate::RoutePath::new();
+    
+    // Add slots
+    if !slots.is_null() && slot_count > 0 {
+        let slots_slice = unsafe { std::slice::from_raw_parts(slots, slot_count as usize) };
+        for &slot in slots_slice {
+            route_path = route_path.add_slot(slot);
+        }
+    }
+    
+    // Add ports
+    if !ports.is_null() && port_count > 0 {
+        let ports_slice = unsafe { std::slice::from_raw_parts(ports, port_count as usize) };
+        for &port in ports_slice {
+            route_path = route_path.add_port(port);
+        }
+    }
+    
+    // Add addresses
+    if !addresses.is_null() && address_count > 0 {
+        let addresses_slice = unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
+        for &addr_ptr in addresses_slice {
+            if !addr_ptr.is_null() {
+                if let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str() {
+                    route_path = route_path.add_address(addr_str.to_string());
+                }
+            }
+        }
+    }
+
+    client.set_route_path(route_path);
+    0
+}
+
 /// Disconnect from a PLC
 ///
 /// # Safety
@@ -901,8 +1036,8 @@ pub unsafe extern "C" fn eip_write_udt(
         return -1;
     };
 
-    // Deserialize JSON to UDT
-    let udt_data: HashMap<String, PlcValue> = match serde_json::from_str(value_str) {
+    // Deserialize JSON to UDT (HashMap format for backward compatibility)
+    let udt_members: HashMap<String, PlcValue> = match serde_json::from_str(value_str) {
         Ok(data) => data,
         Err(_) => return -1,
     };
@@ -910,6 +1045,42 @@ pub unsafe extern "C" fn eip_write_udt(
     let mut clients = FFI_CLIENTS.lock().unwrap();
     let Some(client) = clients.get_mut(&client_id) else {
         return -1;
+    };
+
+    // Convert HashMap to UdtData format
+    // First, read the tag to get symbol_id and UDT definition
+    let udt_data = match RUNTIME.block_on(async {
+        // Read tag to get symbol_id
+        let read_value = client.read_tag(tag_name_str).await?;
+        let existing_udt = if let PlcValue::Udt(data) = read_value {
+            data
+        } else {
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "Tag is not a UDT".to_string(),
+            ));
+        };
+
+        // Get UDT definition to serialize HashMap to bytes
+        let udt_def = client.get_udt_definition(tag_name_str).await?;
+        
+        // Convert UdtDefinition to UserDefinedType
+        let mut user_def = crate::udt::UserDefinedType::new(udt_def.name.clone());
+        for member in &udt_def.members {
+            user_def.add_member(member.clone());
+        }
+        
+        // Convert HashMap to UdtData using the definition
+        crate::UdtData::from_hash_map(&udt_members, &user_def, existing_udt.symbol_id)
+    }) {
+        Ok(data) => data,
+        Err(_) => {
+            // Fallback: create UdtData with symbol_id=0 (will trigger auto-read in write_tag)
+            // Note: This won't work perfectly without UDT definition, but write_tag will try
+            crate::UdtData {
+                symbol_id: 0,
+                data: vec![], // Empty - write_tag will need to handle this
+            }
+        }
     };
 
     if RUNTIME

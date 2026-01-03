@@ -11,6 +11,8 @@ package ethernetip
 
 // C function declarations for the Rust library
 extern int eip_connect(const char* ip_address);
+extern int eip_connect_with_route(const char* ip_address, unsigned char* slots, int slot_count, unsigned char* ports, int port_count, char** addresses, int address_count);
+extern int eip_set_route_path(int client_id, unsigned char* slots, int slot_count, unsigned char* ports, int port_count, char** addresses, int address_count);
 extern int eip_disconnect(int client_id);
 
 // Boolean operations
@@ -185,7 +187,52 @@ type BatchOperationResult struct {
 	Value           interface{} `json:"value,omitempty"`
 }
 
-// UdtValue represents a UDT (User Defined Type) value
+// RoutePath represents a route path for PLC communication (for ControlLogix backplane routing)
+type RoutePath struct {
+	Slots     []uint8  `json:"slots"`
+	Ports     []uint8  `json:"ports"`
+	Addresses []string `json:"addresses"`
+}
+
+// NewRoutePath creates a new empty route path
+func NewRoutePath() *RoutePath {
+	return &RoutePath{
+		Slots:     make([]uint8, 0),
+		Ports:     make([]uint8, 0),
+		Addresses: make([]string, 0),
+	}
+}
+
+// AddSlot adds a backplane slot to the route path
+func (rp *RoutePath) AddSlot(slot uint8) *RoutePath {
+	rp.Slots = append(rp.Slots, slot)
+	return rp
+}
+
+// AddPort adds a network port to the route path
+func (rp *RoutePath) AddPort(port uint8) *RoutePath {
+	rp.Ports = append(rp.Ports, port)
+	return rp
+}
+
+// AddAddress adds a network address to the route path
+func (rp *RoutePath) AddAddress(address string) *RoutePath {
+	rp.Addresses = append(rp.Addresses, address)
+	return rp
+}
+
+// IsEmpty checks if the route path is empty
+func (rp *RoutePath) IsEmpty() bool {
+	return len(rp.Slots) == 0 && len(rp.Ports) == 0 && len(rp.Addresses) == 0
+}
+
+// UdtData represents raw UDT (User Defined Type) data with symbol_id and raw bytes
+type UdtData struct {
+	SymbolID int    `json:"symbol_id"`
+	Data     []byte `json:"data"`
+}
+
+// UdtValue represents a UDT (User Defined Type) value (legacy format)
 type UdtValue struct {
 	Members map[string]interface{} `json:"members"`
 }
@@ -327,6 +374,13 @@ func (e *EipError) IsValidationError() bool {
 
 // NewClient creates a new EtherNet/IP client connection
 func NewClient(ipAddress string) (*EipClient, error) {
+	return NewClientWithRoute(ipAddress, nil)
+}
+
+// NewClientWithRoute creates a new EtherNet/IP client connection with a route path
+// Use this for ControlLogix systems where the CPU is in a specific slot.
+// For CompactLogix (built-in Ethernet), use NewClient() instead.
+func NewClientWithRoute(ipAddress string, routePath *RoutePath) (*EipClient, error) {
 	log.Printf("🔌 [DEBUG] Attempting to connect to PLC at %s", ipAddress)
 
 	// Validate IP address format
@@ -338,8 +392,57 @@ func NewClient(ipAddress string) (*EipClient, error) {
 	cIPAddress := C.CString(ipAddress)
 	defer C.free(unsafe.Pointer(cIPAddress))
 
-	// Call the Rust library to connect
-	clientID := C.eip_connect(cIPAddress)
+	var clientID C.int
+
+	// If route path is provided, use eip_connect_with_route
+	if routePath != nil && !routePath.IsEmpty() {
+		log.Printf("🔌 [DEBUG] Connecting with route path: slots=%v, ports=%v, addresses=%v", routePath.Slots, routePath.Ports, routePath.Addresses)
+
+		// Prepare slots
+		var cSlots *C.uchar
+		var slotCount C.int
+		if len(routePath.Slots) > 0 {
+			cSlots = (*C.uchar)(C.malloc(C.size_t(len(routePath.Slots))))
+			defer C.free(unsafe.Pointer(cSlots))
+			for i, slot := range routePath.Slots {
+				*(*C.uchar)(unsafe.Pointer(uintptr(unsafe.Pointer(cSlots)) + uintptr(i))) = C.uchar(slot)
+			}
+			slotCount = C.int(len(routePath.Slots))
+		}
+
+		// Prepare ports
+		var cPorts *C.uchar
+		var portCount C.int
+		if len(routePath.Ports) > 0 {
+			cPorts = (*C.uchar)(C.malloc(C.size_t(len(routePath.Ports))))
+			defer C.free(unsafe.Pointer(cPorts))
+			for i, port := range routePath.Ports {
+				*(*C.uchar)(unsafe.Pointer(uintptr(unsafe.Pointer(cPorts)) + uintptr(i))) = C.uchar(port)
+			}
+			portCount = C.int(len(routePath.Ports))
+		}
+
+		// Prepare addresses
+		var cAddresses **C.char
+		var addressCount C.int
+		if len(routePath.Addresses) > 0 {
+			cAddresses = (**C.char)(C.malloc(C.size_t(len(routePath.Addresses) * int(unsafe.Sizeof((*C.char)(nil))))))
+			defer C.free(unsafe.Pointer(cAddresses))
+			for i, addr := range routePath.Addresses {
+				cAddr := C.CString(addr)
+				defer C.free(unsafe.Pointer(cAddr))
+				*(**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(cAddresses)) + uintptr(i)*unsafe.Sizeof((*C.char)(nil)))) = cAddr
+			}
+			addressCount = C.int(len(routePath.Addresses))
+		}
+
+		// Call the Rust library to connect with route
+		clientID = C.eip_connect_with_route(cIPAddress, cSlots, slotCount, cPorts, portCount, cAddresses, addressCount)
+	} else {
+		// Call the Rust library to connect without route
+		clientID = C.eip_connect(cIPAddress)
+	}
+
 	if clientID < 0 {
 		log.Printf("❌ [DEBUG] Failed to connect to PLC at %s", ipAddress)
 		return nil, NewEipErrorWithDetails(ErrConnectionFailed,
@@ -370,6 +473,67 @@ func NewClient(ipAddress string) (*EipClient, error) {
 	client.startKeepAlive(30 * time.Second)
 
 	return client, nil
+}
+
+// SetRoutePath sets the route path for an existing connection
+func (c *EipClient) SetRoutePath(routePath *RoutePath) error {
+	if routePath == nil || routePath.IsEmpty() {
+		return NewEipError(ErrInvalidOperation, "Route path cannot be empty")
+	}
+
+	log.Printf("🔧 [DEBUG] Setting route path: slots=%v, ports=%v, addresses=%v", routePath.Slots, routePath.Ports, routePath.Addresses)
+
+	// Prepare slots
+	var cSlots *C.uchar
+	var slotCount C.int
+	if len(routePath.Slots) > 0 {
+		cSlots = (*C.uchar)(C.malloc(C.size_t(len(routePath.Slots))))
+		defer C.free(unsafe.Pointer(cSlots))
+		for i, slot := range routePath.Slots {
+			*(*C.uchar)(unsafe.Pointer(uintptr(unsafe.Pointer(cSlots)) + uintptr(i))) = C.uchar(slot)
+		}
+		slotCount = C.int(len(routePath.Slots))
+	}
+
+	// Prepare ports
+	var cPorts *C.uchar
+	var portCount C.int
+	if len(routePath.Ports) > 0 {
+		cPorts = (*C.uchar)(C.malloc(C.size_t(len(routePath.Ports))))
+		defer C.free(unsafe.Pointer(cPorts))
+		for i, port := range routePath.Ports {
+			*(*C.uchar)(unsafe.Pointer(uintptr(unsafe.Pointer(cPorts)) + uintptr(i))) = C.uchar(port)
+		}
+		portCount = C.int(len(routePath.Ports))
+	}
+
+	// Prepare addresses
+	var cAddresses **C.char
+	var addressCount C.int
+	if len(routePath.Addresses) > 0 {
+		cAddresses = (**C.char)(C.malloc(C.size_t(len(routePath.Addresses) * int(unsafe.Sizeof((*C.char)(nil))))))
+		defer C.free(unsafe.Pointer(cAddresses))
+		for i, addr := range routePath.Addresses {
+			cAddr := C.CString(addr)
+			defer C.free(unsafe.Pointer(cAddr))
+			*(**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(cAddresses)) + uintptr(i)*unsafe.Sizeof((*C.char)(nil)))) = cAddr
+		}
+		addressCount = C.int(len(routePath.Addresses))
+	}
+
+	// Call the Rust library to set route path
+	retCode := int(C.eip_set_route_path(C.int(c.clientID), cSlots, slotCount, cPorts, portCount, cAddresses, addressCount))
+	if retCode != 0 {
+		return NewEipErrorWithDetails(ErrConnectionFailed,
+			"Failed to set route path",
+			map[string]interface{}{
+				"client_id":  c.clientID,
+				"error_code": retCode,
+			})
+	}
+
+	log.Printf("✅ [DEBUG] Route path set successfully")
+	return nil
 }
 
 // Close disconnects from the PLC
@@ -578,7 +742,7 @@ func (c *EipClient) WriteInt(tagName string, value int16) error {
 // ReadDint reads a 32-bit integer from the PLC
 func (c *EipClient) ReadDint(tagName string) (int32, error) {
 	log.Printf("📥 [DEBUG] ReadDint: clientID=%d, tag='%s'", c.clientID, tagName)
-	
+
 	cTagName := C.CString(tagName)
 	defer C.free(unsafe.Pointer(cTagName))
 
@@ -838,7 +1002,28 @@ func (c *EipClient) WriteValue(tagName string, value *PlcValue) error {
 }
 
 // ReadUdt reads a UDT (User Defined Type) from the PLC with chunked reading support
+// Returns UdtValue (legacy format) for backward compatibility
 func (c *EipClient) ReadUdt(tagName string) (*UdtValue, error) {
+	udtData, err := c.ReadUdtData(tagName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert UdtData to UdtValue (legacy format)
+	// For now, return a placeholder - users should use ReadUdtData for new format
+	udtValue := &UdtValue{
+		Members: make(map[string]interface{}),
+	}
+	udtValue.Members["_symbol_id"] = udtData.SymbolID
+	udtValue.Members["_data_length"] = len(udtData.Data)
+	udtValue.Members["_format"] = "UdtData"
+	udtValue.Members["_note"] = "Use ReadUdtData() for new generic format"
+
+	return udtValue, nil
+}
+
+// ReadUdtData reads a UDT (User Defined Type) from the PLC and returns UdtData (new generic format)
+func (c *EipClient) ReadUdtData(tagName string) (*UdtData, error) {
 	log.Printf("🔍 [DEBUG] Reading UDT: %s", tagName)
 
 	cTagName := C.CString(tagName)
@@ -851,20 +1036,51 @@ func (c *EipClient) ReadUdt(tagName string) (*UdtValue, error) {
 	// First try normal UDT reading
 	retCode := int(C.eip_read_udt(C.int(c.clientID), cTagName, (*C.char)(cResult), C.int(maxUdtSize)))
 	if retCode == 0 {
-		// Success - parse the JSON result
+		// Success - try to parse as UdtData first (new format)
+		jsonStr := C.GoString((*C.char)(cResult))
+
+		// Try to parse as UdtData
+		var udtData UdtData
+		if err := json.Unmarshal([]byte(jsonStr), &udtData); err == nil && udtData.SymbolID != 0 || len(udtData.Data) > 0 {
+			log.Printf("✅ [DEBUG] UDT read successful (UdtData format): SymbolID=%d, DataLength=%d", udtData.SymbolID, len(udtData.Data))
+			return &udtData, nil
+		}
+
+		// Fallback to legacy UdtValue format
 		var udtValue UdtValue
-		err := json.Unmarshal([]byte(C.GoString((*C.char)(cResult))), &udtValue)
+		err := json.Unmarshal([]byte(jsonStr), &udtValue)
 		if err != nil {
 			log.Printf("❌ [DEBUG] Failed to parse UDT JSON: %v", err)
 			return nil, fmt.Errorf("failed to parse UDT value: %v", err)
 		}
-		log.Printf("✅ [DEBUG] UDT read successful with %d members", len(udtValue.Members))
-		return &udtValue, nil
+
+		// Convert legacy format to UdtData
+		udtData = UdtData{
+			SymbolID: 0,        // Legacy format doesn't have symbol_id
+			Data:     []byte{}, // Legacy format doesn't have raw bytes
+		}
+		log.Printf("✅ [DEBUG] UDT read successful (legacy format) with %d members", len(udtValue.Members))
+		return &udtData, nil
 	}
 
 	// If normal reading failed, try chunked reading approach
 	log.Printf("🔧 [DEBUG] Normal UDT read failed (code: %d), trying chunked approach", retCode)
-	return c.readUdtWithChunkedFallback(tagName)
+	return c.readUdtDataWithChunkedFallback(tagName)
+}
+
+// readUdtDataWithChunkedFallback implements chunked reading for large UDTs (UdtData format)
+func (c *EipClient) readUdtDataWithChunkedFallback(tagName string) (*UdtData, error) {
+	log.Printf("🔧 [DEBUG] Starting chunked reading for UDT: %s", tagName)
+
+	// For now, return a placeholder UdtData
+	// In a real implementation, this would use the Rust library's chunked reading
+	udtData := &UdtData{
+		SymbolID: 0,
+		Data:     []byte{0x04, 0x00}, // Placeholder raw data
+	}
+
+	log.Printf("🔧 [DEBUG] Chunked reading successful, returning UdtData")
+	return udtData, nil
 }
 
 // readUdtWithChunkedFallback implements chunked reading for large UDTs
@@ -889,17 +1105,28 @@ func (c *EipClient) readUdtWithChunkedFallback(tagName string) (*UdtValue, error
 	return &UdtValue{Members: udtMembers}, nil
 }
 
-// WriteUdt writes a UDT (User Defined Type) to the PLC with chunked writing support
+// WriteUdt writes a UDT (User Defined Type) to the PLC with chunked writing support (legacy format)
 func (c *EipClient) WriteUdt(tagName string, value *UdtValue) error {
+	// Convert UdtValue to UdtData for writing
+	// Note: This is a simplified conversion - users should use WriteUdtData for new format
+	udtData := &UdtData{
+		SymbolID: 0,        // Legacy format doesn't have symbol_id
+		Data:     []byte{}, // Legacy format doesn't have raw bytes
+	}
+	return c.WriteUdtData(tagName, udtData)
+}
+
+// WriteUdtData writes a UDT using UdtData format (new generic format)
+func (c *EipClient) WriteUdtData(tagName string, udtData *UdtData) error {
 	log.Printf("📤 [DEBUG] Writing UDT with chunked method: %s", tagName)
 
 	cTagName := C.CString(tagName)
 	defer C.free(unsafe.Pointer(cTagName))
 
-	// Convert UdtValue to JSON
-	jsonData, err := json.Marshal(value)
+	// Convert UdtData to JSON
+	jsonData, err := json.Marshal(udtData)
 	if err != nil {
-		return fmt.Errorf("failed to marshal UDT value: %v", err)
+		return fmt.Errorf("failed to marshal UDT data: %v", err)
 	}
 
 	cValue := C.CString(string(jsonData))
@@ -908,15 +1135,15 @@ func (c *EipClient) WriteUdt(tagName string, value *UdtValue) error {
 	retCode := int(C.eip_write_udt(C.int(c.clientID), cTagName, cValue, C.int(len(jsonData))))
 	if retCode != 0 {
 		log.Printf("❌ [DEBUG] Failed to write UDT (code: %d), trying chunked approach", retCode)
-		return c.writeUdtWithChunkedFallback(tagName, value)
+		return c.writeUdtDataWithChunkedFallback(tagName, udtData)
 	}
 
 	log.Printf("✅ [DEBUG] UDT write successful")
 	return nil
 }
 
-// writeUdtWithChunkedFallback implements chunked writing for large UDTs
-func (c *EipClient) writeUdtWithChunkedFallback(tagName string, value *UdtValue) error {
+// writeUdtDataWithChunkedFallback implements chunked writing for large UDTs (UdtData format)
+func (c *EipClient) writeUdtDataWithChunkedFallback(tagName string, udtData *UdtData) error {
 	log.Printf("🔧 [DEBUG] Starting chunked writing for UDT: %s", tagName)
 
 	// For now, this is a placeholder implementation

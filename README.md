@@ -1,20 +1,5 @@
 # 🦀 Rust EtherNet/IP Driver
 
-> **✅ PRODUCTION READY - PHASE 1 COMPLETE**  
-> **This project has successfully completed Phase 1 development and is ready for production use.**  
-> The core functionality is fully implemented, tested, and stable, with comprehensive data type support and advanced tag addressing capabilities.  
-> **Production release v1.0 is planned for Q4 2025.**
-
-> **🆕 NEW: Go + Next.js Fullstack Example!**
->
-> Try the new high-performance Go backend + Next.js frontend demo for real-time, batch, and performance operations.
-> [See fullstack example & guide →](examples/gonextjs/README.md)
-
-> **🏭 NEW: Professional HMI/SCADA Demo!**
->
-> Experience a production-ready HMI dashboard with real-time monitoring, OEE analysis, and industrial data visualization.
-> [Try the HMI Demo →](#-hmi-scada-production-demo)
-
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.5.5-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -936,7 +921,7 @@ Each example includes comprehensive documentation, setup instructions, and demon
 
 ## 💖 **Sponsor This Project**
 
-This project is developed with ❤️ for the industrial automation community. If you find this library valuable for your projects, please consider sponsoring its development!
+This project is developed for the industrial automation community. If you find this library valuable for your projects, please consider sponsoring its development!
 
 ### 🎯 **Why Sponsor?**
 - **🚀 Accelerate Development** - Help fund new features, performance improvements, and platform support
@@ -1056,7 +1041,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ for the industrial automation community**
+**Built for the industrial automation community**
 
 ## 📦 Examples
 

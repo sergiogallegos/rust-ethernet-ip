@@ -352,17 +352,17 @@ impl UdtManager {
     }
 
     /// Parse a UDT instance from raw bytes
+    ///
+    /// Returns raw UDT data in generic format. Note: symbol_id will be 0
+    /// since it's not available in this context. For proper UDT handling with
+    /// symbol_id, use read_tag() which gets tag attributes first.
     pub fn parse_udt_instance(&self, _udt_name: &str, data: &[u8]) -> Result<PlcValue> {
-        // For now, return raw UDT data as a generic structure
-        // In a real implementation, this would use the UDT definition from the PLC
-        // For now, we'll return the raw data as a generic UDT with unknown structure
-        let mut result = HashMap::new();
-        result.insert(
-            "raw_data".to_string(),
-            PlcValue::String(format!("{:02X?}", data)),
-        );
-        result.insert("size".to_string(), PlcValue::Dint(data.len() as i32));
-        Ok(PlcValue::Udt(result))
+        // Return raw UDT data in generic format
+        // symbol_id is 0 since it's not available in this context
+        Ok(PlcValue::Udt(crate::UdtData {
+            symbol_id: 0, // Not available in this context
+            data: data.to_vec(),
+        }))
     }
 
     /// Serialize a UDT instance to bytes

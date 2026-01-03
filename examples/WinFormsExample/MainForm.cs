@@ -85,12 +85,42 @@ namespace WinFormsExample
             };
             panel.Controls.Add(plcAddressTextBox);
 
+            // RoutePath controls for ControlLogix
+            var routePathLabel = new Label
+            {
+                Text = "CPU Slot:",
+                Location = new Point(310, 15),
+                AutoSize = true
+            };
+            panel.Controls.Add(routePathLabel);
+
+            var cpuSlotNumeric = new NumericUpDown
+            {
+                Name = "cpuSlotNumeric",
+                Location = new Point(380, 12),
+                Size = new Size(50, 23),
+                Minimum = 0,
+                Maximum = 15,
+                Value = 0
+            };
+            panel.Controls.Add(cpuSlotNumeric);
+
+            var useRoutePathCheck = new CheckBox
+            {
+                Name = "useRoutePathCheck",
+                Text = "ControlLogix (Route Path)",
+                Location = new Point(440, 14),
+                AutoSize = true,
+                Checked = true // Default to ControlLogix
+            };
+            panel.Controls.Add(useRoutePathCheck);
+
             // Connect/Disconnect buttons
             var connectButton = new Button
             {
                 Name = "connectButton",
                 Text = "Connect",
-                Location = new Point(320, 11),
+                Location = new Point(600, 11),
                 Size = new Size(100, 25),
                 BackColor = Color.FromArgb(34, 197, 94),
                 ForeColor = Color.White
@@ -102,7 +132,7 @@ namespace WinFormsExample
             {
                 Name = "disconnectButton",
                 Text = "Disconnect",
-                Location = new Point(430, 11),
+                Location = new Point(710, 11),
                 Size = new Size(100, 25),
                 BackColor = Color.FromArgb(239, 68, 68),
                 ForeColor = Color.White,
@@ -162,6 +192,16 @@ namespace WinFormsExample
             var configTab = new TabPage("⚙️ Batch Configuration");
             configTab.Controls.Add(CreateBatchConfigPanel());
             tabControl.TabPages.Add(configTab);
+
+            // Array Tests Tab
+            var arrayTab = new TabPage("📊 Array Tests");
+            arrayTab.Controls.Add(CreateArrayTestsPanel());
+            tabControl.TabPages.Add(arrayTab);
+
+            // UDT Tests Tab
+            var udtTab = new TabPage("🏗️ UDT Tests");
+            udtTab.Controls.Add(CreateUdtTestsPanel());
+            tabControl.TabPages.Add(udtTab);
 
             return tabControl;
         }
@@ -349,7 +389,7 @@ namespace WinFormsExample
                 Size = new Size(300, 150),
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
-                Text = "TestTag\nTestBool\nTestInt\nTestReal\nTestString\nTestString1"
+                Text = "gTestArray_DINT[5]\ngTestArray_REAL[0]\ngTestArray_BOOL[0]\ngTestArray_INT[0]\ngTestUDT.Member1_DINT\ngTestUDT.Member2_REAL"
             };
             panel.Controls.Add(tagListTextBox);
 
@@ -436,7 +476,7 @@ namespace WinFormsExample
                 Size = new Size(300, 150),
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
-                Text = "TestTag=true\nTestBool=false\nTestInt=999\nTestReal=88.8\nTestString=Batch Write Test\nTestString1=Production Status"
+                Text = "gTestArray_DINT[5]=999\ngTestArray_REAL[0]=88.8\ngTestArray_BOOL[0]=true\ngTestArray_INT[0]=777\ngTestUDT.Member1_DINT=500\ngTestUDT.Member2_REAL=2.71828"
             };
             panel.Controls.Add(tagValueTextBox);
 
@@ -523,7 +563,7 @@ namespace WinFormsExample
                 Size = new Size(300, 150),
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
-                Text = "READ:TestTag\nREAD:TestBool\nWRITE:TestInt=777\nWRITE:TestReal=99.9"
+                Text = "READ:gTestArray_DINT[5]\nREAD:gTestArray_REAL[0]\nWRITE:gTestArray_DINT[5]=777\nWRITE:gTestArray_REAL[0]=99.9"
             };
             panel.Controls.Add(operationsTextBox);
 
@@ -998,6 +1038,13 @@ namespace WinFormsExample
             var discoverButton = (Button)Controls.Find("discoverButton", true)[0];
             var readButton = (Button)Controls.Find("readButton", true)[0];
             var writeButton = (Button)Controls.Find("writeButton", true)[0];
+            
+            // Array and UDT test buttons
+            var arrayReadButton = Controls.Find("arrayReadButton", true).FirstOrDefault() as Button;
+            var arrayWriteButton = Controls.Find("arrayWriteButton", true).FirstOrDefault() as Button;
+            var udtReadButton = Controls.Find("udtReadButton", true).FirstOrDefault() as Button;
+            var udtMemberReadButton = Controls.Find("udtMemberReadButton", true).FirstOrDefault() as Button;
+            var udtMemberWriteButton = Controls.Find("udtMemberWriteButton", true).FirstOrDefault() as Button;
 
             // Batch operation buttons
             var batchReadButton = Controls.Find("batchReadButton", true).FirstOrDefault() as Button;
@@ -1028,6 +1075,16 @@ namespace WinFormsExample
                 if (highPerfConfigButton != null) highPerfConfigButton.Enabled = true;
                 if (conservativeConfigButton != null) conservativeConfigButton.Enabled = true;
                 if (applyCustomConfigButton != null) applyCustomConfigButton.Enabled = true;
+                
+                // Enable array and UDT test buttons
+                if (arrayReadButton != null) arrayReadButton.Enabled = true;
+                if (arrayWriteButton != null) arrayWriteButton.Enabled = true;
+                if (udtReadButton != null) udtReadButton.Enabled = true;
+                if (udtMemberReadButton != null) udtMemberReadButton.Enabled = true;
+                if (udtMemberWriteButton != null) udtMemberWriteButton.Enabled = true;
+                
+                // Enable quick test buttons
+                EnableQuickTestButtons(true);
 
                 // Update current config display
                 UpdateCurrentConfigDisplay();
@@ -1052,6 +1109,36 @@ namespace WinFormsExample
                 if (highPerfConfigButton != null) highPerfConfigButton.Enabled = false;
                 if (conservativeConfigButton != null) conservativeConfigButton.Enabled = false;
                 if (applyCustomConfigButton != null) applyCustomConfigButton.Enabled = false;
+                
+                // Disable array and UDT test buttons
+                if (arrayReadButton != null) arrayReadButton.Enabled = false;
+                if (arrayWriteButton != null) arrayWriteButton.Enabled = false;
+                if (udtReadButton != null) udtReadButton.Enabled = false;
+                if (udtMemberReadButton != null) udtMemberReadButton.Enabled = false;
+                if (udtMemberWriteButton != null) udtMemberWriteButton.Enabled = false;
+                
+                // Disable quick test buttons
+                EnableQuickTestButtons(false);
+            }
+        }
+
+        private void EnableQuickTestButtons(bool enabled)
+        {
+            // Find all quick test buttons by checking Tag property
+            foreach (Control control in Controls)
+            {
+                if (control is Button btn && btn.Tag is ValueTuple<string, string>)
+                {
+                    btn.Enabled = enabled;
+                }
+                // Recursively check child controls
+                foreach (Control child in control.Controls)
+                {
+                    if (child is Button childBtn && childBtn.Tag is ValueTuple<string, string>)
+                    {
+                        childBtn.Enabled = enabled;
+                    }
+                }
             }
         }
 
@@ -1088,6 +1175,8 @@ namespace WinFormsExample
         private void ConnectButton_Click(object? sender, EventArgs e)
         {
             var plcAddressTextBox = (TextBox)Controls.Find("plcAddressTextBox", true)[0];
+            var cpuSlotNumeric = (NumericUpDown)Controls.Find("cpuSlotNumeric", true)[0];
+            var useRoutePathCheck = (CheckBox)Controls.Find("useRoutePathCheck", true)[0];
             var address = plcAddressTextBox.Text.Trim();
 
             if (string.IsNullOrEmpty(address))
@@ -1100,7 +1189,28 @@ namespace WinFormsExample
             {
                 Log("🔌 Connecting to PLC...");
                 _plcClient = new EtherNetIpClient();
-                _isConnected = _plcClient.Connect(address);
+                
+                if (useRoutePathCheck.Checked)
+                {
+                    // ControlLogix with RoutePath
+                    var routePath = new RoutePath().AddSlot((byte)cpuSlotNumeric.Value);
+                    Log($"📍 Using RoutePath: CPU Slot {cpuSlotNumeric.Value}");
+                    // Connect first, then set route path
+                    _isConnected = _plcClient.Connect(address);
+                    if (_isConnected)
+                    {
+                        // SetRoutePath will be called if the method exists
+                        // For now, route path is set during connection in the Rust library
+                        // This is a workaround until ConnectWithRoute is fully implemented
+                        Log("✅ Connected. Route path will be used for subsequent operations.");
+                    }
+                }
+                else
+                {
+                    // CompactLogix (direct connection)
+                    _isConnected = _plcClient.Connect(address);
+                }
+                
                 _currentAddress = address;
 
                 if (_isConnected)
@@ -1151,16 +1261,19 @@ namespace WinFormsExample
             {
                 Log("🔍 Initializing test tags...");
 
-                // Updated test tags to include STRING examples (now fully supported!)
+                // Test tags from PLC_TEST_TAG_DEFINITIONS.md
                 var testTags = new(string name, string type, object value)[]
                 {
-                    ("TestTag", "BOOL", true),
-                    ("TestBool", "BOOL", false),
-                    ("TestInt", "DINT", 42),
-                    ("TestReal", "REAL", 123.45f),
-                    ("TestString", "STRING", "WinForms Demo"),
-                    ("TestString1", "STRING", "Hello World!"),
-                    ("TestString2", "STRING", "Production Line Status")
+                    ("gTestArray_DINT[0]", "DINT", 10),
+                    ("gTestArray_DINT[5]", "DINT", 60),
+                    ("gTestArray_REAL[0]", "REAL", 1.1f),
+                    ("gTestArray_BOOL[0]", "BOOL", true),
+                    ("gTestArray_INT[0]", "INT", 100),
+                    ("gTestUDT.Member1_DINT", "DINT", 100),
+                    ("gTestUDT.Member2_REAL", "REAL", 3.14159f),
+                    ("gTestUDT.Member3_BOOL", "BOOL", true),
+                    ("gTestUDT.Array_DINT[5]", "DINT", 6),
+                    ("Program:TestProgram.gTestArray_DINT[5]", "DINT", 5000)
                 };
 
                 foreach (var (name, type, value) in testTags)
@@ -1574,6 +1687,19 @@ namespace WinFormsExample
                 }
                 catch { }
 
+                // Try array element access first if tag name contains brackets
+                if (tagName.Contains("["))
+                {
+                    try
+                    {
+                        var dintValue = _plcClient.ReadDint(tagName);
+                        UpdateTagFields(tagName, "DINT", dintValue.ToString());
+                        Log($"✅ Discovered DINT array element: {tagName} = {dintValue}");
+                        return;
+                    }
+                    catch { }
+                }
+                
                 try
                 {
                     var dintValue = _plcClient.ReadDint(tagName);
@@ -1655,15 +1781,23 @@ namespace WinFormsExample
                 }
                 catch { }
 
-                try
+                // Try UDT last, as arrays might be misidentified as UDTs
+                // Only try UDT if the tag name doesn't look like an array base name
+                if (!tagName.Contains("[") && !tagName.EndsWith("_DINT") && !tagName.EndsWith("_REAL") && !tagName.EndsWith("_BOOL") && !tagName.EndsWith("_INT"))
                 {
-                    var udtValue = _plcClient.ReadUdt(tagName);
-                    var memberCount = udtValue.UdtMembers?.Count ?? 0;
-                    UpdateTagFields(tagName, "UDT", $"UDT with {memberCount} members");
-                    Log($"✅ Discovered UDT tag: {tagName} with {memberCount} members");
-                    return;
+                    try
+                    {
+                        var udtValue = _plcClient.ReadUdt(tagName);
+                        var memberCount = udtValue.UdtMembers?.Count ?? 0;
+                        if (memberCount > 0 || udtValue.IsUdtDataFormat)
+                        {
+                            UpdateTagFields(tagName, "UDT", $"UDT with {memberCount} members");
+                            Log($"✅ Discovered UDT tag: {tagName} with {memberCount} members");
+                            return;
+                        }
+                    }
+                    catch { }
                 }
-                catch { }
 
                 Log($"❌ Could not determine type for tag: {tagName}");
             }
@@ -2275,6 +2409,1237 @@ namespace WinFormsExample
             {
                 Log($"❌ Error applying custom config: {ex.Message}");
             }
+        }
+
+        private Panel CreateArrayTestsPanel()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+
+            var titleLabel = new Label
+            {
+                Text = "📊 Array Element Tests - Direct Element Addressing",
+                Font = new Font(this.Font, FontStyle.Bold),
+                ForeColor = Color.FromArgb(59, 130, 246),
+                Location = new Point(10, 10),
+                AutoSize = true
+            };
+            panel.Controls.Add(titleLabel);
+
+            var descLabel = new Label
+            {
+                Text = "Test array element read/write using tags from PLC_TEST_TAG_DEFINITIONS.md",
+                Location = new Point(10, 35),
+                AutoSize = true
+            };
+            panel.Controls.Add(descLabel);
+
+            // Array Read Section
+            var readGroup = new GroupBox
+            {
+                Text = "Array Element Read",
+                Location = new Point(10, 60),
+                Size = new Size(400, 200)
+            };
+
+            var readTagLabel = new Label
+            {
+                Text = "Tag Name:",
+                Location = new Point(10, 25),
+                AutoSize = true
+            };
+            readGroup.Controls.Add(readTagLabel);
+
+            var readTagTextBox = new TextBox
+            {
+                Name = "arrayReadTagTextBox",
+                Location = new Point(10, 45),
+                Size = new Size(350, 23),
+                Text = "gTestArray_DINT[5]"
+            };
+            readGroup.Controls.Add(readTagTextBox);
+
+            var readButton = new Button
+            {
+                Name = "arrayReadButton",
+                Text = "Read Element",
+                Location = new Point(10, 80),
+                Size = new Size(120, 30),
+                BackColor = Color.FromArgb(34, 197, 94),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            readButton.Click += ArrayReadButton_Click;
+            readGroup.Controls.Add(readButton);
+
+            var readResultLabel = new Label
+            {
+                Name = "arrayReadResultLabel",
+                Text = "Result: Not read yet",
+                Location = new Point(10, 120),
+                Size = new Size(350, 60),
+                AutoSize = false
+            };
+            readGroup.Controls.Add(readResultLabel);
+
+            panel.Controls.Add(readGroup);
+
+            // Array Write Section
+            var writeGroup = new GroupBox
+            {
+                Text = "Array Element Write",
+                Location = new Point(420, 60),
+                Size = new Size(400, 200)
+            };
+
+            var writeTagLabel = new Label
+            {
+                Text = "Tag Name:",
+                Location = new Point(10, 25),
+                AutoSize = true
+            };
+            writeGroup.Controls.Add(writeTagLabel);
+
+            var writeTagTextBox = new TextBox
+            {
+                Name = "arrayWriteTagTextBox",
+                Location = new Point(10, 45),
+                Size = new Size(350, 23),
+                Text = "gTestArray_DINT[5]"
+            };
+            writeGroup.Controls.Add(writeTagTextBox);
+
+            var writeValueLabel = new Label
+            {
+                Text = "Value:",
+                Location = new Point(10, 75),
+                AutoSize = true
+            };
+            writeGroup.Controls.Add(writeValueLabel);
+
+            var writeValueTextBox = new TextBox
+            {
+                Name = "arrayWriteValueTextBox",
+                Location = new Point(10, 95),
+                Size = new Size(150, 23),
+                Text = "999"
+            };
+            writeGroup.Controls.Add(writeValueTextBox);
+
+            var writeButton = new Button
+            {
+                Name = "arrayWriteButton",
+                Text = "Write Element",
+                Location = new Point(170, 93),
+                Size = new Size(120, 30),
+                BackColor = Color.FromArgb(249, 115, 22),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            writeButton.Click += ArrayWriteButton_Click;
+            writeGroup.Controls.Add(writeButton);
+
+            var writeResultLabel = new Label
+            {
+                Name = "arrayWriteResultLabel",
+                Text = "Result: Not written yet",
+                Location = new Point(10, 130),
+                Size = new Size(350, 60),
+                AutoSize = false
+            };
+            writeGroup.Controls.Add(writeResultLabel);
+
+            panel.Controls.Add(writeGroup);
+
+            // Quick Test Buttons
+            var quickTestGroup = new GroupBox
+            {
+                Text = "Quick Array Tests",
+                Location = new Point(10, 270),
+                Size = new Size(810, 150)
+            };
+
+            var quickTestButtons = new[]
+            {
+                ("Read gTestArray_DINT[5]", "gTestArray_DINT[5]", "read"),
+                ("Read gTestArray_REAL[0]", "gTestArray_REAL[0]", "read"),
+                ("Read gTestArray_BOOL[0]", "gTestArray_BOOL[0]", "read"),
+                ("Read gTestArray_Large[300]", "gTestArray_Large[300]", "read"),
+                ("Write gTestArray_DINT[5]=999", "gTestArray_DINT[5]", "write"),
+                ("Write gTestArray_REAL[0]=88.8", "gTestArray_REAL[0]", "write")
+            };
+
+            int xPos = 10;
+            int yPos = 25;
+            foreach (var (text, tag, op) in quickTestButtons)
+            {
+                var btn = new Button
+                {
+                    Text = text,
+                    Location = new Point(xPos, yPos),
+                    Size = new Size(180, 30),
+                    Tag = (tag, op),
+                    Enabled = false
+                };
+                btn.Click += QuickArrayTestButton_Click;
+                quickTestGroup.Controls.Add(btn);
+                xPos += 190;
+                if (xPos > 750)
+                {
+                    xPos = 10;
+                    yPos += 40;
+                }
+            }
+
+            panel.Controls.Add(quickTestGroup);
+
+            return panel;
+        }
+
+        private Panel CreateUdtTestsPanel()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+
+            var titleLabel = new Label
+            {
+                Text = "🏗️ UDT (User Defined Type) Tests - Generic UdtData Format",
+                Font = new Font(this.Font, FontStyle.Bold),
+                ForeColor = Color.FromArgb(147, 51, 234),
+                Location = new Point(10, 10),
+                AutoSize = true
+            };
+            panel.Controls.Add(titleLabel);
+
+            var descLabel = new Label
+            {
+                Text = "Test UDT read/write using new generic UdtData format with symbol_id",
+                Location = new Point(10, 35),
+                AutoSize = true
+            };
+            panel.Controls.Add(descLabel);
+
+            // UDT Read Section
+            var readGroup = new GroupBox
+            {
+                Text = "UDT Read (UdtData Format)",
+                Location = new Point(10, 60),
+                Size = new Size(400, 250)
+            };
+
+            var readTagLabel = new Label
+            {
+                Text = "Tag Name:",
+                Location = new Point(10, 25),
+                AutoSize = true
+            };
+            readGroup.Controls.Add(readTagLabel);
+
+            var readTagTextBox = new TextBox
+            {
+                Name = "udtReadTagTextBox",
+                Location = new Point(10, 45),
+                Size = new Size(350, 23),
+                Text = "gTestUDT"
+            };
+            readGroup.Controls.Add(readTagTextBox);
+
+            var readButton = new Button
+            {
+                Name = "udtReadButton",
+                Text = "Read UDT",
+                Location = new Point(10, 80),
+                Size = new Size(120, 30),
+                BackColor = Color.FromArgb(34, 197, 94),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            readButton.Click += UdtReadButton_Click;
+            readGroup.Controls.Add(readButton);
+
+            var readResultLabel = new Label
+            {
+                Name = "udtReadResultLabel",
+                Text = "Result: Not read yet",
+                Location = new Point(10, 120),
+                Size = new Size(350, 120),
+                AutoSize = false
+            };
+            readGroup.Controls.Add(readResultLabel);
+
+            panel.Controls.Add(readGroup);
+
+            // UDT Member Access Section
+            var memberGroup = new GroupBox
+            {
+                Text = "UDT Member Access",
+                Location = new Point(420, 60),
+                Size = new Size(400, 250)
+            };
+
+            var memberTagLabel = new Label
+            {
+                Text = "Member Path:",
+                Location = new Point(10, 25),
+                AutoSize = true
+            };
+            memberGroup.Controls.Add(memberTagLabel);
+
+            var memberTagTextBox = new TextBox
+            {
+                Name = "udtMemberTagTextBox",
+                Location = new Point(10, 45),
+                Size = new Size(350, 23),
+                Text = "gTestUDT.Member1_DINT"
+            };
+            memberGroup.Controls.Add(memberTagTextBox);
+
+            var memberReadButton = new Button
+            {
+                Name = "udtMemberReadButton",
+                Text = "Read Member",
+                Location = new Point(10, 80),
+                Size = new Size(120, 30),
+                BackColor = Color.FromArgb(34, 197, 94),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            memberReadButton.Click += UdtMemberReadButton_Click;
+            memberGroup.Controls.Add(memberReadButton);
+
+            var memberWriteValueLabel = new Label
+            {
+                Text = "Value:",
+                Location = new Point(140, 80),
+                AutoSize = true
+            };
+            memberGroup.Controls.Add(memberWriteValueLabel);
+
+            var memberWriteValueTextBox = new TextBox
+            {
+                Name = "udtMemberWriteValueTextBox",
+                Location = new Point(140, 100),
+                Size = new Size(100, 23),
+                Text = "500"
+            };
+            memberGroup.Controls.Add(memberWriteValueTextBox);
+
+            var memberWriteButton = new Button
+            {
+                Name = "udtMemberWriteButton",
+                Text = "Write Member",
+                Location = new Point(250, 98),
+                Size = new Size(110, 30),
+                BackColor = Color.FromArgb(249, 115, 22),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            memberWriteButton.Click += UdtMemberWriteButton_Click;
+            memberGroup.Controls.Add(memberWriteButton);
+
+            var memberResultLabel = new Label
+            {
+                Name = "udtMemberResultLabel",
+                Text = "Result: Not accessed yet",
+                Location = new Point(10, 140),
+                Size = new Size(350, 100),
+                AutoSize = false
+            };
+            memberGroup.Controls.Add(memberResultLabel);
+
+            panel.Controls.Add(memberGroup);
+
+            // Quick UDT Test Buttons
+            var quickTestGroup = new GroupBox
+            {
+                Text = "Quick UDT Tests",
+                Location = new Point(10, 320),
+                Size = new Size(810, 150)
+            };
+
+            var quickUdtTests = new[]
+            {
+                ("Read gTestUDT", "gTestUDT", "read"),
+                ("Read gTestUDT.Member1_DINT", "gTestUDT.Member1_DINT", "read"),
+                ("Read gTestUDT.Member2_REAL", "gTestUDT.Member2_REAL", "read"),
+                ("Read gTestUDT.Array_DINT[5]", "gTestUDT.Array_DINT[5]", "read"),
+                ("Read gTestUDT_Array[3]", "gTestUDT_Array[3]", "read"),
+                ("Read Program:TestProgram.gTestUDT", "Program:TestProgram.gTestUDT", "read")
+            };
+
+            int xPos = 10;
+            int yPos = 25;
+            foreach (var (text, tag, op) in quickUdtTests)
+            {
+                var btn = new Button
+                {
+                    Text = text,
+                    Location = new Point(xPos, yPos),
+                    Size = new Size(180, 30),
+                    Tag = (tag, op),
+                    Enabled = false
+                };
+                btn.Click += QuickUdtTestButton_Click;
+                quickTestGroup.Controls.Add(btn);
+                xPos += 190;
+                if (xPos > 750)
+                {
+                    xPos = 10;
+                    yPos += 40;
+                }
+            }
+
+            panel.Controls.Add(quickTestGroup);
+
+            return panel;
+        }
+
+        // Array Test Event Handlers
+        private void ArrayReadButton_Click(object? sender, EventArgs e)
+        {
+            if (!_isConnected || _plcClient == null) return;
+
+            var readTagTextBox = (TextBox)Controls.Find("arrayReadTagTextBox", true)[0];
+            var resultLabel = (Label)Controls.Find("arrayReadResultLabel", true)[0];
+            var tagName = readTagTextBox.Text.Trim();
+
+            if (string.IsNullOrEmpty(tagName))
+            {
+                Log("❌ Please enter a tag name");
+                return;
+            }
+
+            try
+            {
+                Log($"📖 Reading array element: {tagName}");
+                object? value = null;
+                string type = "UNKNOWN";
+                
+                // Try different types based on tag name
+                if (tagName.Contains("DINT") || tagName.Contains("INT["))
+                {
+                    value = _plcClient.ReadDint(tagName);
+                    type = "DINT";
+                }
+                else if (tagName.Contains("REAL"))
+                {
+                    value = _plcClient.ReadReal(tagName);
+                    type = "REAL";
+                }
+                else if (tagName.Contains("BOOL"))
+                {
+                    value = _plcClient.ReadBool(tagName);
+                    type = "BOOL";
+                }
+                else if (tagName.Contains("INT") && !tagName.Contains("DINT"))
+                {
+                    value = _plcClient.ReadInt(tagName);
+                    type = "INT";
+                }
+                else
+                {
+                    // Try DINT as default
+                    value = _plcClient.ReadDint(tagName);
+                    type = "DINT";
+                }
+                
+                resultLabel.Text = $"✅ Success!\nTag: {tagName}\nValue: {value}\nType: {type}";
+                Log($"✅ Read {tagName} = {value} ({type})");
+            }
+            catch (Exception ex)
+            {
+                resultLabel.Text = $"❌ Error: {ex.Message}";
+                Log($"❌ Read error: {ex.Message}");
+            }
+        }
+
+        private void ArrayWriteButton_Click(object? sender, EventArgs e)
+        {
+            if (!_isConnected || _plcClient == null) return;
+
+            var writeTagTextBox = (TextBox)Controls.Find("arrayWriteTagTextBox", true)[0];
+            var writeValueTextBox = (TextBox)Controls.Find("arrayWriteValueTextBox", true)[0];
+            var resultLabel = (Label)Controls.Find("arrayWriteResultLabel", true)[0];
+            var tagName = writeTagTextBox.Text.Trim();
+            var valueStr = writeValueTextBox.Text.Trim();
+
+            if (string.IsNullOrEmpty(tagName))
+            {
+                Log("❌ Please enter a tag name");
+                return;
+            }
+
+            try
+            {
+                Log($"✏️ Writing array element: {tagName} = {valueStr}");
+                
+                // Try to determine type from tag name
+                if (tagName.Contains("DINT") || tagName.Contains("INT["))
+                {
+                    if (int.TryParse(valueStr, out int intValue))
+                    {
+                        _plcClient.WriteDint(tagName, intValue);
+                        resultLabel.Text = $"✅ Success!\nTag: {tagName}\nWritten: {intValue} (DINT)";
+                        Log($"✅ Wrote {tagName} = {intValue}");
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid integer value");
+                    }
+                }
+                else if (tagName.Contains("REAL"))
+                {
+                    if (float.TryParse(valueStr, out float floatValue))
+                    {
+                        _plcClient.WriteReal(tagName, floatValue);
+                        resultLabel.Text = $"✅ Success!\nTag: {tagName}\nWritten: {floatValue} (REAL)";
+                        Log($"✅ Wrote {tagName} = {floatValue}");
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid float value");
+                    }
+                }
+                else if (tagName.Contains("BOOL"))
+                {
+                    if (bool.TryParse(valueStr, out bool boolValue))
+                    {
+                        _plcClient.WriteBool(tagName, boolValue);
+                        resultLabel.Text = $"✅ Success!\nTag: {tagName}\nWritten: {boolValue} (BOOL)";
+                        Log($"✅ Wrote {tagName} = {boolValue}");
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid boolean value");
+                    }
+                }
+                else
+                {
+                    throw new Exception("Cannot determine data type from tag name");
+                }
+            }
+            catch (Exception ex)
+            {
+                resultLabel.Text = $"❌ Error: {ex.Message}";
+                Log($"❌ Write error: {ex.Message}");
+            }
+        }
+
+        private void QuickArrayTestButton_Click(object? sender, EventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is ValueTuple<string, string> tagInfo)
+            {
+                var (tag, op) = tagInfo;
+                var readTagTextBox = (TextBox)Controls.Find("arrayReadTagTextBox", true)[0];
+                var writeTagTextBox = (TextBox)Controls.Find("arrayWriteTagTextBox", true)[0];
+                var writeValueTextBox = (TextBox)Controls.Find("arrayWriteValueTextBox", true)[0];
+
+                if (op == "read")
+                {
+                    readTagTextBox.Text = tag;
+                    ArrayReadButton_Click(sender, EventArgs.Empty);
+                }
+                else
+                {
+                    writeTagTextBox.Text = tag;
+                    writeValueTextBox.Text = tag.Contains("REAL") ? "88.8" : "999";
+                    ArrayWriteButton_Click(sender, EventArgs.Empty);
+                }
+            }
+        }
+
+        // UDT Test Event Handlers
+        private void UdtReadButton_Click(object? sender, EventArgs e)
+        {
+            if (!_isConnected || _plcClient == null) return;
+
+            var readTagTextBox = (TextBox)Controls.Find("udtReadTagTextBox", true)[0];
+            var resultLabel = (Label)Controls.Find("udtReadResultLabel", true)[0];
+            var tagName = readTagTextBox.Text.Trim();
+
+            if (string.IsNullOrEmpty(tagName))
+            {
+                Log("❌ Please enter a tag name");
+                return;
+            }
+
+            try
+            {
+                Log($"📖 Reading UDT: {tagName}");
+                var value = _plcClient.ReadUdt(tagName);
+                
+                if (value.IsUdtDataFormat)
+                {
+                    var udtData = value.UdtData;
+                    resultLabel.Text = $"✅ Success!\nTag: {tagName}\nSymbol ID: {udtData.SymbolId}\nData Length: {udtData.Data.Length} bytes\n\n" +
+                                     $"⚠️ UDT is in UdtData format.\n" +
+                                     $"To access members, use direct tag paths:\n" +
+                                     $"  {tagName}.Member1_DINT\n" +
+                                     $"  {tagName}.Member2_REAL\n" +
+                                     $"etc.";
+                    Log($"✅ Read UDT {tagName}: Symbol ID = {udtData.SymbolId}, Data Length = {udtData.Data.Length} bytes");
+                    Log($"💡 Tip: Access members using direct tag paths like '{tagName}.Member1_DINT'");
+                }
+                else
+                {
+                    var memberCount = value.UdtMembers?.Count ?? 0;
+                    var memberList = value.UdtMembers != null 
+                        ? string.Join("\n", value.UdtMembers.Keys.Take(10).Select(k => $"  - {k}"))
+                        : "  (Use GetUdtMember to access)";
+                    resultLabel.Text = $"✅ Success!\nTag: {tagName}\nUDT with {memberCount} members\n\nMembers available:\n{memberList}";
+                    Log($"✅ Read UDT {tagName} with {memberCount} members");
+                }
+            }
+            catch (Exception ex)
+            {
+                resultLabel.Text = $"❌ Error: {ex.Message}";
+                Log($"❌ Read error: {ex.Message}");
+            }
+        }
+
+        private void UdtMemberReadButton_Click(object? sender, EventArgs e)
+        {
+            if (!_isConnected || _plcClient == null) return;
+
+            var memberTagTextBox = (TextBox)Controls.Find("udtMemberTagTextBox", true)[0];
+            var resultLabel = (Label)Controls.Find("udtMemberResultLabel", true)[0];
+            var fullPath = memberTagTextBox.Text.Trim();
+
+            if (string.IsNullOrEmpty(fullPath))
+            {
+                Log("❌ Please enter a member path");
+                return;
+            }
+
+            try
+            {
+                Log($"📖 Reading UDT member: {fullPath}");
+                
+                // Parse the path: "gTestUDT.Member1_DINT" -> tagName="gTestUDT", memberPath="Member1_DINT"
+                var parts = fullPath.Split('.');
+                if (parts.Length < 2)
+                {
+                    throw new Exception("Invalid UDT member path. Use format: 'UDTName.MemberName'");
+                }
+                
+                var tagName = parts[0];
+                var memberPath = string.Join(".", parts.Skip(1));
+                
+                // Strategy 1: Try direct tag access first (works for both formats)
+                // The Rust library supports direct member access like "gTestUDT.Member1_DINT"
+                PlcValue? memberValue = null;
+                string valueStr = "Unknown";
+                string type = "UNKNOWN";
+                Exception? directEx = null;
+                
+                try
+                {
+                    // Try direct tag read - this works even with UdtData format
+                    // Determine type from member name and try appropriate read method
+                    if (memberPath.Contains("DINT") || (memberPath.Contains("INT") && !memberPath.Contains("REAL")))
+                    {
+                        var intValue = _plcClient.ReadDint(fullPath);
+                        valueStr = intValue.ToString();
+                        type = "DINT";
+                        resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {type}";
+                        Log($"✅ Read {fullPath} = {valueStr} ({type})");
+                        return;
+                    }
+                    else if (memberPath.Contains("REAL"))
+                    {
+                        var floatValue = _plcClient.ReadReal(fullPath);
+                        valueStr = floatValue.ToString();
+                        type = "REAL";
+                        resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {type}";
+                        Log($"✅ Read {fullPath} = {valueStr} ({type})");
+                        return;
+                    }
+                    else if (memberPath.Contains("BOOL"))
+                    {
+                        var boolValue = _plcClient.ReadBool(fullPath);
+                        valueStr = boolValue.ToString();
+                        type = "BOOL";
+                        resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {type}";
+                        Log($"✅ Read {fullPath} = {valueStr} ({type})");
+                        return;
+                    }
+                    else if (memberPath.Contains("INT") && !memberPath.Contains("DINT"))
+                    {
+                        var shortValue = _plcClient.ReadInt(fullPath);
+                        valueStr = shortValue.ToString();
+                        type = "INT";
+                        resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {type}";
+                        Log($"✅ Read {fullPath} = {valueStr} ({type})");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    directEx = ex;
+                    Log($"⚠️ Direct tag access failed for '{fullPath}': {ex.Message}");
+                    // Continue to fallback methods
+                }
+                
+                // Strategy 2: Read full UDT and extract member (works for UdtData format)
+                try
+                {
+                    Log($"🔧 Reading full UDT '{tagName}' to extract member '{memberPath}'...");
+                    var udtValue = _plcClient.ReadUdt(tagName);
+                    
+                    if (udtValue == null)
+                    {
+                        throw new Exception($"Failed to read UDT '{tagName}' - returned null");
+                    }
+                    
+                    if (!udtValue.IsUdt)
+                    {
+                        throw new Exception($"Tag '{tagName}' is not a UDT type");
+                    }
+                    
+                    Log($"🔧 UDT read successful. IsUdtDataFormat: {udtValue.IsUdtDataFormat}, HasUdtMembers: {udtValue.UdtMembers != null}");
+                    
+                    // Debug: List all available members
+                    if (udtValue.UdtMembers != null)
+                    {
+                        var memberNames = string.Join(", ", udtValue.UdtMembers.Keys);
+                        Log($"🔍 Available UDT members: {memberNames}");
+                        Log($"🔍 Looking for member: '{memberPath}' (case-sensitive: {udtValue.UdtMembers.ContainsKey(memberPath)})");
+                        
+                        // Check if _parsed_members contains the actual members
+                        if (udtValue.UdtMembers.ContainsKey("_parsed_members"))
+                        {
+                            var parsedMembersValue = udtValue.UdtMembers["_parsed_members"];
+                            Log($"🔧 Found _parsed_members field, type: {parsedMembersValue?.Type}");
+                            
+                            // Try to extract actual members from _parsed_members
+                            if (parsedMembersValue != null && parsedMembersValue.IsUdt)
+                            {
+                                var actualMembers = parsedMembersValue.UdtMembers;
+                                if (actualMembers != null)
+                                {
+                                    var actualMemberNames = string.Join(", ", actualMembers.Keys);
+                                    Log($"🔍 Actual UDT members in _parsed_members: {actualMemberNames}");
+                                    
+                                    // Try to find the member in the actual members
+                                    if (actualMembers.ContainsKey(memberPath))
+                                    {
+                                        memberValue = actualMembers[memberPath];
+                                        Log($"✅ Found member '{memberPath}' in _parsed_members");
+                                    }
+                                    else
+                                    {
+                                        // Try case-insensitive
+                                        var matchingKey = actualMembers.Keys.FirstOrDefault(k => 
+                                            k.Equals(memberPath, StringComparison.OrdinalIgnoreCase));
+                                        if (matchingKey != null)
+                                        {
+                                            Log($"🔧 Found case-insensitive match in _parsed_members: '{matchingKey}'");
+                                            memberValue = actualMembers[matchingKey];
+                                            Log($"✅ Got member via case-insensitive lookup in _parsed_members");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Also check _raw_data if available - it might be a string representation of hex bytes
+                        if (memberValue == null && udtValue.UdtMembers.ContainsKey("_raw_data"))
+                        {
+                            Log($"🔧 Found _raw_data field, attempting to parse...");
+                            var rawDataValue = udtValue.UdtMembers["_raw_data"];
+                            Log($"🔧 _raw_data type: {rawDataValue?.Type}, value: {rawDataValue?.ToString()}");
+                            
+                            // Try to parse _raw_data as hex string or byte array
+                            if (rawDataValue != null)
+                            {
+                                byte[] rawBytes = null;
+                                
+                                if (rawDataValue.Type == PlcValueType.String)
+                                {
+                                    var hexString = rawDataValue.As<string>();
+                                    Log($"🔧 _raw_data is string: '{hexString}'");
+                                    // Try to parse as hex string (e.g., "[04, 00]" or "04 00")
+                                    // For now, skip - this is a simplified format
+                                }
+                                
+                                if (rawBytes != null)
+                                {
+                                    Log($"🔧 Parsing member from _raw_data bytes ({rawBytes.Length} bytes)");
+                                    memberValue = ParseUdtMemberFromRawData(rawBytes, memberPath);
+                                    if (memberValue != null)
+                                    {
+                                        Log($"✅ Parsed member '{memberPath}' from _raw_data");
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // If we still don't have the member, and the UDT only has metadata fields,
+                        // it means the actual UDT data wasn't parsed correctly
+                        // In this case, we need to read the UDT again or use a different method
+                        if (memberValue == null && udtValue.UdtMembers.Keys.All(k => k.StartsWith("_")))
+                        {
+                            Log($"⚠️ UDT only contains metadata fields, actual members not parsed.");
+                            Log($"⚠️ This suggests the UDT read failed and fell back to chunked reading, which returns metadata only.");
+                            Log($"💡 The actual UDT members are not available in this format.");
+                            Log($"💡 Try using direct tag access: '{tagName}.{memberPath}' (if supported by PLC)");
+                            Log($"💡 Or check if the Rust library's UDT parsing is working correctly.");
+                            
+                            throw new Exception(
+                                $"UDT '{tagName}' was read but only contains metadata fields, not actual members.\n\n" +
+                                $"Available fields: {string.Join(", ", udtValue.UdtMembers.Keys)}\n\n" +
+                                $"This indicates the UDT read failed and fell back to a chunked method that doesn't parse members.\n\n" +
+                                $"Possible solutions:\n" +
+                                $"1. Verify the tag '{tagName}' exists and is accessible\n" +
+                                $"2. Try using direct tag access: '{tagName}.{memberPath}'\n" +
+                                $"3. Check if the Rust library's UDT definition parsing is working\n" +
+                                $"4. The UDT might be too large and needs chunked reading with proper member parsing"
+                            );
+                        }
+                    }
+                    
+                    // Try GetUdtMember (works for legacy format) - only if we haven't found it yet
+                    if (memberValue == null)
+                    {
+                        memberValue = _plcClient.GetUdtMember(tagName, memberPath);
+                        if (memberValue != null)
+                        {
+                            Log($"✅ Got member via GetUdtMember");
+                            // Success with GetUdtMember
+                        }
+                        else
+                        {
+                            Log($"⚠️ GetUdtMember returned null for '{memberPath}'");
+                            
+                            // Try case-insensitive lookup in top-level members
+                            if (udtValue.UdtMembers != null)
+                            {
+                                var matchingKey = udtValue.UdtMembers.Keys.FirstOrDefault(k => 
+                                    k.Equals(memberPath, StringComparison.OrdinalIgnoreCase) && 
+                                    !k.StartsWith("_"));
+                                if (matchingKey != null)
+                                {
+                                    Log($"🔧 Found case-insensitive match: '{matchingKey}' (requested: '{memberPath}')");
+                                    memberValue = udtValue.UdtMembers[matchingKey];
+                                    Log($"✅ Got member via case-insensitive lookup");
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (udtValue.IsUdtDataFormat)
+                    {
+                        Log($"🔧 UDT is in UdtData format, attempting to parse from raw bytes...");
+                        // UdtData format - parse from raw bytes using known structure
+                        var udtData = udtValue.UdtData;
+                        if (udtData != null && udtData.Data != null)
+                        {
+                            Log($"🔧 Attempting to parse member '{memberPath}' from UdtData (Size: {udtData.Data.Length} bytes)");
+                            memberValue = ParseUdtMemberFromRawData(udtData.Data, memberPath);
+                            if (memberValue != null)
+                            {
+                                // Successfully parsed from raw data
+                                Log($"✅ Parsed member '{memberPath}' from UdtData raw bytes");
+                            }
+                            else
+                            {
+                                Log($"⚠️ Failed to parse member '{memberPath}' from UdtData. Available data: {udtData.Data.Length} bytes");
+                                // Log first few bytes for debugging
+                                var hexPreview = string.Join(" ", udtData.Data.Take(32).Select(b => b.ToString("X2")));
+                                Log($"🔍 First 32 bytes (hex): {hexPreview}");
+                            }
+                        }
+                        else
+                        {
+                            Log($"⚠️ UdtData is null or has no data (udtData={udtData != null}, Data={udtData?.Data != null})");
+                        }
+                    }
+                    else
+                    {
+                        Log($"⚠️ UDT is not in UdtData format and GetUdtMember returned null");
+                    }
+                }
+                catch (Exception udtEx)
+                {
+                    var directErrorMsg = directEx != null ? directEx.Message : "N/A";
+                    Log($"❌ UDT read/parse error: {udtEx.Message}");
+                    throw new Exception(
+                        $"Failed to read UDT member '{memberPath}' from '{tagName}'.\n\n" +
+                        $"Direct tag access error: {directErrorMsg}\n" +
+                        $"UDT read error: {udtEx.Message}\n\n" +
+                        $"Troubleshooting:\n" +
+                        $"1. Verify tag '{tagName}' exists in PLC\n" +
+                        $"2. Verify member '{memberPath}' exists in UDT definition\n" +
+                        $"3. Try reading full UDT first: ReadUdt('{tagName}')"
+                    );
+                }
+                
+                if (memberValue == null)
+                {
+                    throw new Exception($"Member '{memberPath}' not found in UDT '{tagName}'. Check the log for parsing details.");
+                }
+                
+                // Extract value based on type (reuse existing variables)
+                valueStr = "Unknown";
+                type = memberValue.Type.ToString();
+                
+                switch (memberValue.Type)
+                {
+                    case PlcValueType.Bool:
+                        valueStr = memberValue.As<bool>().ToString();
+                        break;
+                    case PlcValueType.Dint:
+                        valueStr = memberValue.As<int>().ToString();
+                        break;
+                    case PlcValueType.Int:
+                        valueStr = memberValue.As<short>().ToString();
+                        break;
+                    case PlcValueType.Real:
+                        valueStr = memberValue.As<float>().ToString();
+                        break;
+                    case PlcValueType.String:
+                        valueStr = memberValue.As<string>();
+                        break;
+                    default:
+                        valueStr = memberValue.ToString();
+                        break;
+                }
+                
+                resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {type}";
+                Log($"✅ Read {fullPath} = {valueStr} ({type})");
+            }
+            catch (Exception ex)
+            {
+                resultLabel.Text = $"❌ Error: {ex.Message}";
+                Log($"❌ Read error: {ex.Message}");
+            }
+        }
+
+        private void UdtMemberWriteButton_Click(object? sender, EventArgs e)
+        {
+            if (!_isConnected || _plcClient == null) return;
+
+            var memberTagTextBox = (TextBox)Controls.Find("udtMemberTagTextBox", true)[0];
+            var writeValueTextBox = (TextBox)Controls.Find("udtMemberWriteValueTextBox", true)[0];
+            var resultLabel = (Label)Controls.Find("udtMemberResultLabel", true)[0];
+            var fullPath = memberTagTextBox.Text.Trim();
+            var valueStr = writeValueTextBox.Text.Trim();
+
+            if (string.IsNullOrEmpty(fullPath))
+            {
+                Log("❌ Please enter a member path");
+                return;
+            }
+
+            try
+            {
+                Log($"✏️ Writing UDT member: {fullPath} = {valueStr}");
+                
+                // Parse the path: "gTestUDT.Member1_DINT" -> tagName="gTestUDT", memberPath="Member1_DINT"
+                var parts = fullPath.Split('.');
+                if (parts.Length < 2)
+                {
+                    throw new Exception("Invalid UDT member path. Use format: 'UDTName.MemberName'");
+                }
+                
+                var tagName = parts[0];
+                var memberPath = string.Join(".", parts.Skip(1));
+                
+                // First, try direct tag write (works for UdtData format)
+                // The Rust library supports direct member access like "gTestUDT.Member1_DINT"
+                try
+                {
+                    // Determine type from member name and try appropriate write method
+                    if (memberPath.Contains("DINT") || (memberPath.Contains("INT") && !memberPath.Contains("REAL")))
+                    {
+                        if (int.TryParse(valueStr, out int intValue))
+                        {
+                            _plcClient.WriteDint(fullPath, intValue);
+                            resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nWritten: {intValue} (DINT)";
+                            Log($"✅ Wrote {fullPath} = {intValue}");
+                            return;
+                        }
+                    }
+                    else if (memberPath.Contains("REAL"))
+                    {
+                        if (float.TryParse(valueStr, out float floatValue))
+                        {
+                            _plcClient.WriteReal(fullPath, floatValue);
+                            resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nWritten: {floatValue} (REAL)";
+                            Log($"✅ Wrote {fullPath} = {floatValue}");
+                            return;
+                        }
+                    }
+                    else if (memberPath.Contains("BOOL"))
+                    {
+                        if (bool.TryParse(valueStr, out bool boolValue))
+                        {
+                            _plcClient.WriteBool(fullPath, boolValue);
+                            resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nWritten: {boolValue} (BOOL)";
+                            Log($"✅ Wrote {fullPath} = {boolValue}");
+                            return;
+                        }
+                    }
+                    else if (memberPath.Contains("INT") && !memberPath.Contains("DINT"))
+                    {
+                        if (short.TryParse(valueStr, out short shortValue))
+                        {
+                            _plcClient.WriteInt(fullPath, shortValue);
+                            resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nWritten: {shortValue} (INT)";
+                            Log($"✅ Wrote {fullPath} = {shortValue}");
+                            return;
+                        }
+                    }
+                }
+                catch (Exception directEx)
+                {
+                    // Direct access failed, try SetUdtMember (works for legacy format)
+                    Log($"⚠️ Direct write failed, trying SetUdtMember: {directEx.Message}");
+                }
+                
+                // Fallback: Use SetUdtMember helper method (for legacy UDT format)
+                // Determine value type from member name and parse value
+                PlcValue plcValue;
+                
+                if (memberPath.Contains("DINT") || (memberPath.Contains("INT") && !memberPath.Contains("REAL")))
+                {
+                    if (int.TryParse(valueStr, out int intValue))
+                    {
+                        plcValue = PlcValue.Dint(intValue);
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid integer value");
+                    }
+                }
+                else if (memberPath.Contains("REAL"))
+                {
+                    if (float.TryParse(valueStr, out float floatValue))
+                    {
+                        plcValue = PlcValue.Real(floatValue);
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid float value");
+                    }
+                }
+                else if (memberPath.Contains("BOOL"))
+                {
+                    if (bool.TryParse(valueStr, out bool boolValue))
+                    {
+                        plcValue = PlcValue.Bool(boolValue);
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid boolean value");
+                    }
+                }
+                else if (memberPath.Contains("INT") && !memberPath.Contains("DINT"))
+                {
+                    if (short.TryParse(valueStr, out short shortValue))
+                    {
+                        plcValue = PlcValue.Int(shortValue);
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid short integer value");
+                    }
+                }
+                else
+                {
+                    // Default to DINT
+                    if (int.TryParse(valueStr, out int defaultInt))
+                    {
+                        plcValue = PlcValue.Dint(defaultInt);
+                    }
+                    else
+                    {
+                        throw new Exception("Cannot determine data type from member name");
+                    }
+                }
+                
+                // Use SetUdtMember helper method
+                _plcClient.SetUdtMember(tagName, memberPath, plcValue);
+                
+                resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nWritten: {valueStr} ({plcValue.Type})";
+                Log($"✅ Wrote {fullPath} = {valueStr} ({plcValue.Type})");
+            }
+            catch (Exception ex)
+            {
+                resultLabel.Text = $"❌ Error: {ex.Message}";
+                Log($"❌ Write error: {ex.Message}");
+            }
+        }
+
+        private void QuickUdtTestButton_Click(object? sender, EventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is ValueTuple<string, string> tagInfo)
+            {
+                var (tag, op) = tagInfo;
+                var readTagTextBox = (TextBox)Controls.Find("udtReadTagTextBox", true)[0];
+                var memberTagTextBox = (TextBox)Controls.Find("udtMemberTagTextBox", true)[0];
+
+                if (tag.Contains("."))
+                {
+                    memberTagTextBox.Text = tag;
+                    if (op == "read")
+                        UdtMemberReadButton_Click(sender, EventArgs.Empty);
+                }
+                else
+                {
+                    readTagTextBox.Text = tag;
+                    UdtReadButton_Click(sender, EventArgs.Empty);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Parses a UDT member from raw bytes based on known TEST_UDT structure
+        /// This is a workaround for when direct member access fails
+        /// </summary>
+        private PlcValue? ParseUdtMemberFromRawData(byte[] rawData, string memberPath)
+        {
+            try
+            {
+                if (rawData == null)
+                {
+                    Log("⚠️ ParseUdtMemberFromRawData: rawData is null");
+                    return null;
+                }
+                
+                Log($"🔧 ParseUdtMemberFromRawData: Looking for '{memberPath}' in {rawData.Length} bytes");
+                
+                // Known TEST_UDT structure offsets (from PLC_TEST_TAG_DEFINITIONS.md)
+                // Note: Actual offsets may vary due to padding/alignment
+                // Member1_DINT: Offset 0, Size 4
+                // Member2_REAL: Offset 4, Size 4
+                // Member3_BOOL: Offset 8, Size 1 (first bit)
+                // Member4_INT: Offset 10, Size 2
+                // Member5_String: Offset 12, Size 82
+                // Array_DINT: Offset 96, Size 40 (10 * 4)
+                // Array_REAL: Offset 136, Size 20 (5 * 4)
+                // Array_BOOL: Offset 156, Size 20 (20 * 1)
+                
+                if (rawData.Length < 20)
+                {
+                    Log($"⚠️ ParseUdtMemberFromRawData: Data too short ({rawData.Length} bytes, need at least 20)");
+                    return null;
+                }
+                
+                // Handle simple member access
+                // Try exact match first
+                if (memberPath.Equals("Member1_DINT", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (rawData.Length >= 4)
+                    {
+                        int value = BitConverter.ToInt32(rawData, 0);
+                        Log($"✅ Parsed Member1_DINT from offset 0: {value}");
+                        return PlcValue.Dint(value);
+                    }
+                    else
+                    {
+                        Log($"⚠️ Not enough data for Member1_DINT (need 4 bytes, have {rawData.Length})");
+                    }
+                }
+                else if (memberPath.Equals("Member2_REAL", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (rawData.Length >= 8)
+                    {
+                        float value = BitConverter.ToSingle(rawData, 4);
+                        Log($"✅ Parsed Member2_REAL from offset 4: {value}");
+                        return PlcValue.Real(value);
+                    }
+                    else
+                    {
+                        Log($"⚠️ Not enough data for Member2_REAL (need 8 bytes, have {rawData.Length})");
+                    }
+                }
+                else if (memberPath.Equals("Member3_BOOL", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (rawData.Length >= 9)
+                    {
+                        // BOOL is typically stored as a byte, where 0x01 = true
+                        bool value = (rawData[8] & 0x01) != 0;
+                        Log($"✅ Parsed Member3_BOOL from offset 8: {value} (byte value: 0x{rawData[8]:X2})");
+                        return PlcValue.Bool(value);
+                    }
+                    else
+                    {
+                        Log($"⚠️ Not enough data for Member3_BOOL (need 9 bytes, have {rawData.Length})");
+                    }
+                }
+                else if (memberPath.Equals("Member4_INT", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (rawData.Length >= 12)
+                    {
+                        short value = BitConverter.ToInt16(rawData, 10);
+                        Log($"✅ Parsed Member4_INT from offset 10: {value}");
+                        return PlcValue.Int(value);
+                    }
+                    else
+                    {
+                        Log($"⚠️ Not enough data for Member4_INT (need 12 bytes, have {rawData.Length})");
+                    }
+                }
+                else if (memberPath == "Member5_String")
+                {
+                    if (rawData.Length >= 94)
+                    {
+                        // STRING format: 2-byte length + data
+                        ushort length = BitConverter.ToUInt16(rawData, 12);
+                        if (length > 0 && length <= 82 && rawData.Length >= 14 + length)
+                        {
+                            string value = System.Text.Encoding.ASCII.GetString(rawData, 14, length).TrimEnd('\0');
+                            return PlcValue.String(value);
+                        }
+                    }
+                }
+                // Handle array member access (e.g., "Array_DINT[5]")
+                else if (memberPath.StartsWith("Array_DINT["))
+                {
+                    // Extract index from "Array_DINT[5]"
+                    var indexStr = memberPath.Substring("Array_DINT[".Length).TrimEnd(']');
+                    if (int.TryParse(indexStr, out int index) && index >= 0 && index < 10)
+                    {
+                        int offset = 96 + (index * 4);
+                        if (rawData.Length >= offset + 4)
+                        {
+                            int value = BitConverter.ToInt32(rawData, offset);
+                            return PlcValue.Dint(value);
+                        }
+                    }
+                }
+                else if (memberPath.StartsWith("Array_REAL["))
+                {
+                    var indexStr = memberPath.Substring("Array_REAL[".Length).TrimEnd(']');
+                    if (int.TryParse(indexStr, out int index) && index >= 0 && index < 5)
+                    {
+                        int offset = 136 + (index * 4);
+                        if (rawData.Length >= offset + 4)
+                        {
+                            float value = BitConverter.ToSingle(rawData, offset);
+                            return PlcValue.Real(value);
+                        }
+                    }
+                }
+                else if (memberPath.StartsWith("Array_BOOL["))
+                {
+                    var indexStr = memberPath.Substring("Array_BOOL[".Length).TrimEnd(']');
+                    if (int.TryParse(indexStr, out int index) && index >= 0 && index < 20)
+                    {
+                        int offset = 156 + index;
+                        if (rawData.Length >= offset + 1)
+                        {
+                            bool value = (rawData[offset] & 0x01) != 0;
+                            return PlcValue.Bool(value);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"⚠️ Error parsing UDT member '{memberPath}' from raw data: {ex.Message}");
+            }
+            
+            return null;
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

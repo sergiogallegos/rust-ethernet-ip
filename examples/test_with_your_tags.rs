@@ -1,10 +1,9 @@
 /// Test Array and UDT Operations with Your Actual Tags
-/// 
+///
 /// This tool lets you test with whatever tags you actually have in your PLC.
 /// Just modify the TAG_NAMES array below with your actual tag names.
-/// 
+///
 /// Run with: cargo run --example test_with_your_tags
-
 use rust_ethernet_ip::{EipClient, PlcValue};
 
 const PLC_ADDRESS: &str = "192.168.0.1:44818";
@@ -15,24 +14,21 @@ const PLC_ADDRESS: &str = "192.168.0.1:44818";
 
 // Array tags to test (modify these to match your actual array tag names)
 const ARRAY_TAGS: &[&str] = &[
-    "gTestArray_DINT",      // Change to your actual array name
-    "TestArray_DINT",       // Alternative name
-    "MyArray",              // Another alternative
+    "gTestArray_DINT", // Change to your actual array name
+    "TestArray_DINT",  // Alternative name
+    "MyArray",         // Another alternative
 ];
 
 // UDT tags to test (modify these to match your actual UDT tag names)
 const UDT_TAGS: &[&str] = &[
-    "gTestUDT",             // Change to your actual UDT name
-    "TestUDT",              // Alternative name
-    "MyUDT",                // Another alternative
+    "gTestUDT", // Change to your actual UDT name
+    "TestUDT",  // Alternative name
+    "MyUDT",    // Another alternative
 ];
 
 // Program-scoped tags (modify program name and tag names)
-const PROGRAM_NAME: &str = "TestProgram";  // Change to your actual program name
-const PROGRAM_ARRAY_TAGS: &[&str] = &[
-    "gTestArray_DINT",
-    "TestArray_DINT",
-];
+const PROGRAM_NAME: &str = "TestProgram"; // Change to your actual program name
+const PROGRAM_ARRAY_TAGS: &[&str] = &["gTestArray_DINT", "TestArray_DINT"];
 
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -45,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 1: Try to read array base (without index)
     println!("📋 Test 1: Reading array base tags (without index)");
     let mut found_array: Option<String> = None;
-    
+
     for tag in ARRAY_TAGS {
         println!("   Trying: '{}'", tag);
         match client.read_tag(tag).await {
@@ -67,8 +63,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 2: If we found an array, test element addressing
     if let Some(array_name) = &found_array {
-        println!("📋 Test 2: Testing array element addressing with '{}'", array_name);
-        
+        println!(
+            "📋 Test 2: Testing array element addressing with '{}'",
+            array_name
+        );
+
         // Test reading element [0]
         let tag0 = format!("{}[0]", array_name);
         println!("   Reading: '{}'", tag0);
@@ -80,20 +79,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("   ❌ Element [0] read failed: {}", e);
             }
         }
-        
+
         // Test reading element [5]
         let tag5 = format!("{}[5]", array_name);
         println!("   Reading: '{}'", tag5);
         match client.read_tag(&tag5).await {
             Ok(value) => {
                 println!("   ✅ Element [5] read successful: {:?}", value);
-                
+
                 // Test writing to element [5]
                 println!("   Writing: '{}' = 999", tag5);
                 match client.write_tag(&tag5, PlcValue::Dint(999)).await {
                     Ok(_) => {
                         println!("   ✅ Write successful");
-                        
+
                         // Read back to verify
                         match client.read_tag(&tag5).await {
                             Ok(read_back) => {
@@ -116,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("   ❌ Element [5] read failed: {}", e);
             }
         }
-        
+
         // Test reading element [300] (16-bit index)
         let tag300 = format!("{}[300]", array_name);
         println!("   Reading: '{}' (16-bit index test)", tag300);
@@ -142,7 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 3: Try to read UDT
     println!("📋 Test 3: Reading UDT tags");
     let mut found_udt: Option<String> = None;
-    
+
     for tag in UDT_TAGS {
         println!("   Trying: '{}'", tag);
         match client.read_tag(tag).await {
@@ -170,10 +169,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 4: If we found a UDT, test member access
     if let Some(udt_name) = &found_udt {
         println!("📋 Test 4: Testing UDT member access with '{}'", udt_name);
-        
+
         // Try common member names
         let member_names = vec!["Member1_DINT", "Member1", "Value", "Data", "Status"];
-        
+
         for member in &member_names {
             let member_tag = format!("{}.{}", udt_name, member);
             println!("   Trying: '{}'", member_tag);
@@ -193,14 +192,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Test 5: Program-scoped tags
-    println!("📋 Test 5: Testing program-scoped tags (Program: {})", PROGRAM_NAME);
+    println!(
+        "📋 Test 5: Testing program-scoped tags (Program: {})",
+        PROGRAM_NAME
+    );
     for tag in PROGRAM_ARRAY_TAGS {
         let program_tag = format!("Program:{}.{}", PROGRAM_NAME, tag);
         println!("   Trying: '{}'", program_tag);
         match client.read_tag(&program_tag).await {
             Ok(value) => {
                 println!("   ✅ Program tag found: '{}' = {:?}", program_tag, value);
-                
+
                 // Test array element
                 let element_tag = format!("Program:{}.{}[0]", PROGRAM_NAME, tag);
                 match client.read_tag(&element_tag).await {
@@ -227,7 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("   ❌ Array operations: No arrays found");
         println!("      → Update ARRAY_TAGS in the source code with your tag names");
     }
-    
+
     if found_udt.is_some() {
         println!("   ✅ UDT operations: WORKING");
     } else {
@@ -243,4 +245,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

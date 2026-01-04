@@ -18,8 +18,28 @@ var (
 	mu     sync.Mutex
 )
 
+// CORS middleware
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		// Handle preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	r := mux.NewRouter()
+
+	// Apply CORS middleware to all routes
+	r.Use(corsMiddleware)
 
 	// REST endpoints
 	r.HandleFunc("/api/connect", handleConnect).Methods("POST")
@@ -32,6 +52,13 @@ func main() {
 	r.HandleFunc("/api/benchmark", handleBenchmark).Methods("POST")
 	// Array element test endpoint
 	r.HandleFunc("/api/test-arrays", handleTestArrays).Methods("POST")
+
+	// Array operations
+	r.HandleFunc("/api/array/{tagName}", handleArray).Methods("GET", "POST")
+
+	// UDT operations
+	r.HandleFunc("/api/udt/{tagName}", handleUdt).Methods("GET", "POST")
+	r.HandleFunc("/api/udt-member/{memberPath}", handleUdtMember).Methods("GET", "POST")
 
 	// Production endpoints
 	r.HandleFunc("/api/health", handleHealth).Methods("GET")
@@ -48,12 +75,19 @@ func main() {
 
 func handleConnect(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		IPAddress string `json:"ipAddress"`
+		IPAddress    string `json:"ipAddress"`
+		UseRoutePath bool   `json:"useRoutePath"`
+		CpuSlot      int    `json:"cpuSlot"`
 	}
+
+	log.Printf("🔌 [DEBUG] Connect request received")
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("❌ [DEBUG] Failed to decode request: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("🔌 [DEBUG] Connect request: IPAddress=%s, UseRoutePath=%v, CpuSlot=%d", req.IPAddress, req.UseRoutePath, req.CpuSlot)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -63,13 +97,29 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var err error
+	// Regular connection
+	log.Printf("🔌 [DEBUG] Creating new client for: %s", req.IPAddress)
 	client, err = gowrapper.NewClient(req.IPAddress)
 	if err != nil {
+		log.Printf("❌ [DEBUG] Failed to create client: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	log.Printf("✅ [DEBUG] Client created successfully")
+
+	// Note: RoutePath support will be added when DLL exports are available
+	if req.UseRoutePath && req.CpuSlot >= 0 {
+		log.Printf("ℹ️ RoutePath requested (CPU Slot %d) but not yet supported in this build", req.CpuSlot)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]interface{}{
+		"success": true,
+		"message": "Connected successfully",
+	}
+	log.Printf("✅ [DEBUG] Sending success response: %+v", response)
+	json.NewEncoder(w).Encode(response)
 }
 
 func handleDisconnect(w http.ResponseWriter, r *http.Request) {
@@ -923,4 +973,333 @@ func handleTestArrays(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
+}
+
+// Array operations handler
+func handleArray(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if client == nil {
+		http.Error(w, "Not connected", http.StatusBadRequest)
+		return
+	}
+
+	vars := mux.Vars(r)
+	tagName := vars["tagName"]
+	if tagName == "" {
+		http.Error(w, "Tag name required", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		// Read array element - determine type from tag name
+		var value interface{}
+		var typeStr string
+
+		if contains(tagName, "_DINT") || contains(tagName, "[") && contains(tagName, "DINT") {
+			val, err := client.ReadDint(tagName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			value = val
+			typeStr = "Dint"
+		} else if contains(tagName, "_REAL") || contains(tagName, "[") && contains(tagName, "REAL") {
+			val, err := client.ReadReal(tagName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			value = val
+			typeStr = "Real"
+		} else if contains(tagName, "_BOOL") || contains(tagName, "[") && contains(tagName, "BOOL") {
+			val, err := client.ReadBool(tagName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			value = val
+			typeStr = "Bool"
+		} else if contains(tagName, "_INT") || contains(tagName, "[") && contains(tagName, "INT") && !contains(tagName, "DINT") {
+			val, err := client.ReadInt(tagName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			value = val
+			typeStr = "Int"
+		} else {
+			// Default to DINT
+			val, err := client.ReadDint(tagName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			value = val
+			typeStr = "Dint"
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"tag":     tagName,
+			"value":   value,
+			"type":    typeStr,
+		})
+
+	case "POST":
+		// Write array element
+		var req struct {
+			Value interface{} `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Determine type from tag name
+		if contains(tagName, "_DINT") || contains(tagName, "[") && contains(tagName, "DINT") {
+			var val int32
+			if f, ok := req.Value.(float64); ok {
+				val = int32(f)
+			} else if i, ok := req.Value.(int); ok {
+				val = int32(i)
+			} else {
+				http.Error(w, "Invalid DINT value", http.StatusBadRequest)
+				return
+			}
+			err := client.WriteDint(tagName, val)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else if contains(tagName, "_REAL") || contains(tagName, "[") && contains(tagName, "REAL") {
+			var val float64
+			if f, ok := req.Value.(float64); ok {
+				val = f
+			} else {
+				http.Error(w, "Invalid REAL value", http.StatusBadRequest)
+				return
+			}
+			err := client.WriteReal(tagName, val)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else if contains(tagName, "_BOOL") || contains(tagName, "[") && contains(tagName, "BOOL") {
+			var val bool
+			if b, ok := req.Value.(bool); ok {
+				val = b
+			} else {
+				http.Error(w, "Invalid BOOL value", http.StatusBadRequest)
+				return
+			}
+			err := client.WriteBool(tagName, val)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else if contains(tagName, "_INT") || contains(tagName, "[") && contains(tagName, "INT") && !contains(tagName, "DINT") {
+			var val int16
+			if f, ok := req.Value.(float64); ok {
+				val = int16(f)
+			} else if i, ok := req.Value.(int); ok {
+				val = int16(i)
+			} else {
+				http.Error(w, "Invalid INT value", http.StatusBadRequest)
+				return
+			}
+			err := client.WriteInt(tagName, val)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			// Default to DINT
+			var val int32
+			if f, ok := req.Value.(float64); ok {
+				val = int32(f)
+			} else if i, ok := req.Value.(int); ok {
+				val = int32(i)
+			} else {
+				http.Error(w, "Invalid DINT value", http.StatusBadRequest)
+				return
+			}
+			err := client.WriteDint(tagName, val)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "Array element written successfully",
+		})
+	}
+}
+
+// UDT operations handler
+func handleUdt(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if client == nil {
+		http.Error(w, "Not connected", http.StatusBadRequest)
+		return
+	}
+
+	vars := mux.Vars(r)
+	tagName := vars["tagName"]
+	if tagName == "" {
+		http.Error(w, "Tag name required", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		// Read UDT
+		udtData, err := client.ReadUdtData(tagName)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":    true,
+			"tag":        tagName,
+			"symbolId":   udtData.SymbolID,
+			"dataLength": len(udtData.Data),
+			"data":       udtData.Data,
+		})
+
+	case "POST":
+		// Write UDT
+		var req struct {
+			SymbolID int    `json:"symbolId"`
+			Data     []byte `json:"data"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		udtData := &gowrapper.UdtData{
+			SymbolID: req.SymbolID,
+			Data:     req.Data,
+		}
+
+		err := client.WriteUdtData(tagName, udtData)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "UDT written successfully",
+		})
+	}
+}
+
+// UDT member operations handler
+func handleUdtMember(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if client == nil {
+		http.Error(w, "Not connected", http.StatusBadRequest)
+		return
+	}
+
+	vars := mux.Vars(r)
+	memberPath := vars["memberPath"]
+	if memberPath == "" {
+		http.Error(w, "Member path required", http.StatusBadRequest)
+		return
+	}
+
+	// Parse tag name and member name from path (e.g., "gTestUDT.Member1_DINT")
+	parts := splitUDTPath(memberPath)
+	if len(parts) != 2 {
+		http.Error(w, "Invalid member path format. Expected: TagName.MemberName", http.StatusBadRequest)
+		return
+	}
+	tagName := parts[0]
+	memberName := parts[1]
+
+	switch r.Method {
+	case "GET":
+		// Read UDT member
+		value, err := client.GetUdtMember(tagName, memberName)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":    true,
+			"tagName":    tagName,
+			"memberName": memberName,
+			"value":      value,
+		})
+
+	case "POST":
+		// Write UDT member
+		var req struct {
+			Value interface{} `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		err := client.WriteUdtMember(tagName, memberName, req.Value)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":    true,
+			"tagName":    tagName,
+			"memberName": memberName,
+			"message":    "UDT member written successfully",
+		})
+	}
+}
+
+// Helper functions
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > len(substr) && (s[:len(substr)] == substr ||
+			s[len(s)-len(substr):] == substr ||
+			indexOf(s, substr) >= 0)))
+}
+
+func indexOf(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+func splitUDTPath(path string) []string {
+	// Split on "." but handle array notation like "gTestUDT.Array_DINT[5]"
+	dotIndex := -1
+	for i := 0; i < len(path); i++ {
+		if path[i] == '.' {
+			// Check if this is the first dot (tag.member separator)
+			if dotIndex == -1 {
+				dotIndex = i
+			}
+		}
+	}
+	if dotIndex > 0 {
+		return []string{path[:dotIndex], path[dotIndex+1:]}
+	}
+	return []string{path}
 }

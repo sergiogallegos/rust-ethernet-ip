@@ -1,16 +1,15 @@
 /// Comprehensive Test for Array and UDT Operations
-/// 
+///
 /// This example tests the new array element addressing and UDT implementations
 /// with a real ControlLogix PLC.
-/// 
+///
 /// Prerequisites:
 /// - PLC at 192.168.0.1 with tags created per docs/PLC_TEST_TAG_DEFINITIONS.md
 /// - Controller-scoped tags: gTestArray_DINT, gTestArray_REAL, gTestArray_BOOL, etc.
 /// - Program-scoped tags: Program:TestProgram.gTestArray_DINT, etc.
 /// - UDT: TEST_UDT with members as specified
-/// 
+///
 /// Run with: cargo run --example test_comprehensive_arrays_udt
-
 use rust_ethernet_ip::{EipClient, PlcValue, RoutePath, UdtData};
 use std::collections::HashMap;
 
@@ -27,16 +26,19 @@ async fn detect_tag_scope(client: &mut EipClient) -> String {
         }
         Err(_) => {}
     }
-    
+
     // Try program-scoped
-    match client.read_tag("Program:TestProgram.gTestArray_DINT[0]").await {
+    match client
+        .read_tag("Program:TestProgram.gTestArray_DINT[0]")
+        .await
+    {
         Ok(_) => {
             println!("✅ Using program-scoped tags (Program:TestProgram.*)");
             return "Program:TestProgram.".to_string();
         }
         Err(_) => {}
     }
-    
+
     // Default to controller-scoped if neither works
     println!("⚠️  Could not detect scope, defaulting to controller-scoped");
     String::new()
@@ -47,18 +49,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔌 Connecting to ControlLogix PLC at {}...", PLC_ADDRESS);
     println!("   CPU Slot: {}", CPU_SLOT);
     println!("   Route Path: Port 1 (backplane), Slot {} (CPU)", CPU_SLOT);
-    
+
     // Create route path for ControlLogix
     // Reference: EtherNetIP_Connection_Paths_and_Routing.md
     // Port 1 = Backplane, Slot 0 = CPU location
     let route_path = RoutePath::new().add_slot(CPU_SLOT);
-    
+
     println!("   Route path bytes: {:02X?}", route_path.to_cip_bytes());
-    
+
     // Connect with route path
     let mut client = EipClient::with_route_path(PLC_ADDRESS, route_path).await?;
     println!("✅ Connected successfully!\n");
-    
+
     // Detect which scope works
     let scope_prefix = detect_tag_scope(&mut client).await;
     println!();
@@ -68,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ========================================================================
     println!("📋 Test 1: Read single array element (8-bit index)");
     println!("   Reading: gTestArray_DINT[5] (controller-scoped)");
-    let tag_name = match client.read_tag("gTestArray_DINT[5]").await {
+    let _tag_name = match client.read_tag("gTestArray_DINT[5]").await {
         Ok(value) => {
             println!("   ✅ Read successful (controller-scoped): {:?}", value);
             assert!(matches!(value, PlcValue::Dint(_)));
@@ -77,14 +79,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => {
             println!("   ⚠️  Controller-scoped failed: {}", e);
             println!("   Trying program-scoped: Program:TestProgram.gTestArray_DINT[5]");
-            match client.read_tag("Program:TestProgram.gTestArray_DINT[5]").await {
+            match client
+                .read_tag("Program:TestProgram.gTestArray_DINT[5]")
+                .await
+            {
                 Ok(value) => {
                     println!("   ✅ Read successful (program-scoped): {:?}", value);
                     assert!(matches!(value, PlcValue::Dint(_)));
                     "Program:TestProgram.gTestArray_DINT[5]".to_string()
                 }
                 Err(e2) => {
-                    println!("   ❌ Both scopes failed. Controller: {}, Program: {}", e, e2);
+                    println!(
+                        "   ❌ Both scopes failed. Controller: {}, Program: {}",
+                        e, e2
+                    );
                     return Err(format!("Failed to read array element from either scope").into());
                 }
             }
@@ -101,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.write_tag(&write_tag, PlcValue::Dint(999)).await {
         Ok(_) => {
             println!("   ✅ Write successful");
-            
+
             // Read back to verify
             match client.read_tag(&write_tag).await {
                 Ok(value) => {
@@ -144,10 +152,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📋 Test 4: Write single array element (16-bit index)");
     println!("   Writing: gTestArray_Large[300] = 12345");
     // Note: gTestArray_Large is controller-scoped
-    match client.write_tag("gTestArray_Large[300]", PlcValue::Dint(12345)).await {
+    match client
+        .write_tag("gTestArray_Large[300]", PlcValue::Dint(12345))
+        .await
+    {
         Ok(_) => {
             println!("   ✅ Write successful");
-            
+
             // Read back to verify
             match client.read_tag("gTestArray_Large[300]").await {
                 Ok(value) => {
@@ -175,19 +186,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.read_tag(&bool_tag).await {
         Ok(value) => {
             println!("   ✅ Read successful: {:?}", value);
-            
+
             // Write opposite value
             let new_value = if let PlcValue::Bool(b) = value {
                 PlcValue::Bool(!b)
             } else {
                 PlcValue::Bool(true)
             };
-            
+
             println!("   Writing: {} = {:?}", bool_tag, new_value);
             match client.write_tag(&bool_tag, new_value.clone()).await {
                 Ok(_) => {
                     println!("   ✅ Write successful");
-                    
+
                     // Read back
                     match client.read_tag(&bool_tag).await {
                         Ok(read_back) => {
@@ -220,7 +231,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("   ✅ Read successful");
                 println!("   📊 UDT symbol_id: {}", udt_data.symbol_id);
                 println!("   📊 UDT data length: {} bytes", udt_data.data.len());
-                
+
                 if udt_data.symbol_id == 0 {
                     println!("   ⚠️  Warning: symbol_id is 0 (may need tag attributes)");
                 } else {
@@ -263,13 +274,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.read_tag(&udt_array_tag).await {
         Ok(value) => {
             println!("   ✅ Read successful: {:?}", value);
-            
+
             // Write new value
             println!("   Writing: {} = 99", udt_array_tag);
             match client.write_tag(&udt_array_tag, PlcValue::Dint(99)).await {
                 Ok(_) => {
                     println!("   ✅ Write successful");
-                    
+
                     // Read back
                     match client.read_tag(&udt_array_tag).await {
                         Ok(read_back) => {
@@ -323,13 +334,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.read_tag(&udt_array_member_tag).await {
         Ok(value) => {
             println!("   ✅ Read successful: {:?}", value);
-            
+
             // Write new value
             println!("   Writing: {} = 777", udt_array_member_tag);
-            match client.write_tag(&udt_array_member_tag, PlcValue::Dint(777)).await {
+            match client
+                .write_tag(&udt_array_member_tag, PlcValue::Dint(777))
+                .await
+            {
                 Ok(_) => {
                     println!("   ✅ Write successful");
-                    
+
                     // Read back
                     match client.read_tag(&udt_array_member_tag).await {
                         Ok(read_back) => {
@@ -360,13 +374,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.read_tag(&udt_array_nested_tag).await {
         Ok(value) => {
             println!("   ✅ Read successful: {:?}", value);
-            
+
             // Write new value
             println!("   Writing: {} = 888", udt_array_nested_tag);
-            match client.write_tag(&udt_array_nested_tag, PlcValue::Dint(888)).await {
+            match client
+                .write_tag(&udt_array_nested_tag, PlcValue::Dint(888))
+                .await
+            {
                 Ok(_) => {
                     println!("   ✅ Write successful");
-                    
+
                     // Read back
                     match client.read_tag(&udt_array_nested_tag).await {
                         Ok(read_back) => {
@@ -393,18 +410,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ========================================================================
     println!("📋 Test 12: Program-scoped array");
     println!("   Reading: Program:TestProgram.gTestArray_DINT[5]");
-    match client.read_tag("Program:TestProgram.gTestArray_DINT[5]").await {
+    match client
+        .read_tag("Program:TestProgram.gTestArray_DINT[5]")
+        .await
+    {
         Ok(value) => {
             println!("   ✅ Read successful: {:?}", value);
-            
+
             // Write new value
             println!("   Writing: Program:TestProgram.gTestArray_DINT[5] = 5555");
-            match client.write_tag("Program:TestProgram.gTestArray_DINT[5]", PlcValue::Dint(5555)).await {
+            match client
+                .write_tag(
+                    "Program:TestProgram.gTestArray_DINT[5]",
+                    PlcValue::Dint(5555),
+                )
+                .await
+            {
                 Ok(_) => {
                     println!("   ✅ Write successful");
-                    
+
                     // Read back
-                    match client.read_tag("Program:TestProgram.gTestArray_DINT[5]").await {
+                    match client
+                        .read_tag("Program:TestProgram.gTestArray_DINT[5]")
+                        .await
+                    {
                         Ok(read_back) => {
                             println!("   ✅ Read back: {:?}", read_back);
                             if let PlcValue::Dint(v) = read_back {
@@ -466,4 +495,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

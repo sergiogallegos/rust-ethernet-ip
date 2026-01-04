@@ -48,22 +48,53 @@
                           Foreground="{StaticResource PrimaryBrush}"/>
                 
                 <!-- Connection Controls -->
-                <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="0,8,0,0">
-                    <TextBlock Text="PLC Address:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBox Text="{Binding PlcAddress}" Width="200" Padding="8,4">
-                        <TextBox.IsEnabled>
-                            <Binding Path="IsConnected" Converter="{StaticResource InvertedBoolConverter}"/>
-                        </TextBox.IsEnabled>
-                    </TextBox>
-                    <Button Content="Connect" Command="{Binding ConnectCommand}" 
-                            Style="{StaticResource SuccessButton}" Margin="8,0,0,0">
-                        <Button.IsEnabled>
-                            <Binding Path="IsConnected" Converter="{StaticResource InvertedBoolConverter}"/>
-                        </Button.IsEnabled>
-                    </Button>
-                    <Button Content="Disconnect" Command="{Binding DisconnectCommand}" 
-                            Style="{StaticResource ErrorButton}"
-                            IsEnabled="{Binding IsConnected}"/>
+                <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Vertical" Margin="0,8,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="PLC Address:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox Text="{Binding PlcAddress}" Width="200" Padding="8,4">
+                            <TextBox.IsEnabled>
+                                <Binding Path="IsConnected" Converter="{StaticResource InvertedBoolConverter}"/>
+                            </TextBox.IsEnabled>
+                        </TextBox>
+                        <CheckBox Content="ControlLogix (Route Path)" IsChecked="{Binding UseRoutePath}" 
+                                  VerticalAlignment="Center" Margin="16,0,8,0">
+                            <CheckBox.IsEnabled>
+                                <Binding Path="IsConnected" Converter="{StaticResource InvertedBoolConverter}"/>
+                            </CheckBox.IsEnabled>
+                        </CheckBox>
+                        <TextBlock Text="CPU Slot:" VerticalAlignment="Center" Margin="8,0,4,0">
+                            <TextBlock.IsEnabled>
+                                <Binding Path="UseRoutePath"/>
+                            </TextBlock.IsEnabled>
+                        </TextBlock>
+                        <TextBox Text="{Binding CpuSlot}" Width="50" Padding="4,2" VerticalContentAlignment="Center">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsConnected}" Value="False"/>
+                                                <Condition Binding="{Binding UseRoutePath}" Value="True"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="IsEnabled" Value="True"/>
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Connect" Command="{Binding ConnectCommand}" 
+                                Style="{StaticResource SuccessButton}">
+                            <Button.IsEnabled>
+                                <Binding Path="IsConnected" Converter="{StaticResource InvertedBoolConverter}"/>
+                            </Button.IsEnabled>
+                        </Button>
+                        <Button Content="Disconnect" Command="{Binding DisconnectCommand}" 
+                                Style="{StaticResource ErrorButton}" Margin="8,0,0,0"
+                                IsEnabled="{Binding IsConnected}"/>
+                    </StackPanel>
                 </StackPanel>
                 
                 <!-- Status -->
@@ -232,6 +263,195 @@
                                         </Style>
                                     </ListBox.ItemContainerStyle>
                                 </ListBox>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                
+                <!-- Array Tests Tab -->
+                <TabItem Header="📊 Array Tests">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Array Read Section -->
+                        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="📖 Read Array Element" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Tag Name:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding ArrayTagName}" Width="300" Padding="8,4" Margin="0,0,8,0"/>
+                                    <Button Content="Read" Command="{Binding ReadArrayElementCommand}"
+                                            Style="{StaticResource ModernButton}"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                </StackPanel>
+                                
+                                <TextBlock Grid.Row="2" Text="{Binding ArrayReadValue}" 
+                                           FontSize="14" FontWeight="Bold" 
+                                           Foreground="{StaticResource SuccessBrush}"/>
+                            </Grid>
+                        </Border>
+                        
+                        <!-- Array Write Section -->
+                        <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="✏️ Write Array Element" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <StackPanel Grid.Row="1" Orientation="Horizontal">
+                                    <TextBlock Text="Tag Name:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding ArrayTagName}" Width="200" Padding="8,4" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Value:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding ArrayWriteValue}" Width="100" Padding="8,4" Margin="0,0,8,0"/>
+                                    <Button Content="Write" Command="{Binding WriteArrayElementCommand}"
+                                            Style="{StaticResource WarningButton}"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        
+                        <!-- Results -->
+                        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="📊 Results" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <TextBlock Text="{Binding ArrayResult}" 
+                                               FontFamily="Consolas" FontSize="12" 
+                                               TextWrapping="Wrap"
+                                               Background="#1E1E1E" Foreground="#00FF00" Padding="8"/>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                
+                <!-- UDT Tests Tab -->
+                <TabItem Header="🏗️ UDT Tests">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- UDT Read Section -->
+                        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="📖 Read Full UDT" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <StackPanel Grid.Row="1" Orientation="Horizontal">
+                                    <TextBlock Text="Tag Name:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding UdtTagName}" Width="300" Padding="8,4" Margin="0,0,8,0"/>
+                                    <Button Content="Read UDT" Command="{Binding ReadUdtCommand}"
+                                            Style="{StaticResource ModernButton}"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        
+                        <!-- UDT Member Read Section -->
+                        <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="📖 Read UDT Member" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Member Path:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding UdtMemberPath}" Width="300" Padding="8,4" Margin="0,0,8,0"/>
+                                    <Button Content="Read Member" Command="{Binding ReadUdtMemberCommand}"
+                                            Style="{StaticResource ModernButton}"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                </StackPanel>
+                                
+                                <TextBlock Grid.Row="2" Text="{Binding UdtMemberReadValue}" 
+                                           FontSize="14" FontWeight="Bold" 
+                                           Foreground="{StaticResource SuccessBrush}"/>
+                            </Grid>
+                        </Border>
+                        
+                        <!-- UDT Member Write Section -->
+                        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="✏️ Write UDT Member" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <StackPanel Grid.Row="1" Orientation="Horizontal">
+                                    <TextBlock Text="Member Path:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding UdtMemberPath}" Width="200" Padding="8,4" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Value:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding UdtMemberWriteValue}" Width="100" Padding="8,4" Margin="0,0,8,0"/>
+                                    <Button Content="Write Member" Command="{Binding WriteUdtMemberCommand}"
+                                            Style="{StaticResource WarningButton}"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        
+                        <!-- Results -->
+                        <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="📊 Results" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <TextBlock Text="{Binding UdtResult}" 
+                                               FontFamily="Consolas" FontSize="12" 
+                                               TextWrapping="Wrap"
+                                               Background="#1E1E1E" Foreground="#00FF00" Padding="8"/>
+                                </ScrollViewer>
                             </Grid>
                         </Border>
                     </Grid>

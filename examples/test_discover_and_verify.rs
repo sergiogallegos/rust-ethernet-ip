@@ -1,10 +1,9 @@
 /// Discover Tags and Test with Real PLC Tags
-/// 
+///
 /// This tool discovers what tags actually exist in your PLC,
 /// then tests array and UDT operations with those tags.
-/// 
+///
 /// Run with: cargo run --example test_discover_and_verify
-
 use rust_ethernet_ip::EipClient;
 
 const PLC_ADDRESS: &str = "192.168.0.1:44818";
@@ -43,12 +42,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let mut found_tags = Vec::new();
-    
+
     for tag_name in &test_tag_names {
         if let Some(metadata) = client.get_tag_metadata(tag_name).await {
             println!("   ✅ Found: '{}'", tag_name);
-            println!("      Type: 0x{:04X}, Size: {}, Scope: {:?}", 
-                metadata.data_type, metadata.size, metadata.scope);
+            println!(
+                "      Type: 0x{:04X}, Size: {}, Scope: {:?}",
+                metadata.data_type, metadata.size, metadata.scope
+            );
             found_tags.push(tag_name.clone());
         }
     }
@@ -70,14 +71,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!();
         println!("✅ Found {} test tag(s)!", found_tags.len());
         println!("   Testing with found tags...\n");
-        
+
         // Test reading the first found tag
         if let Some(tag) = found_tags.first() {
             println!("📋 Testing read: '{}'", tag);
             match client.read_tag(tag).await {
                 Ok(value) => {
                     println!("   ✅ Read successful: {:?}", value);
-                    
+
                     // If it's an array, try reading an element
                     if tag.contains("Array") {
                         let element_tag = format!("{}[0]", tag);
@@ -113,4 +114,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

@@ -148,22 +148,10 @@ async fn demonstrate_data_types() -> Result<(), Box<dyn Error>> {
 
     // 6. User Defined Type (UDT)
     println!("\n6. User Defined Type (UDT):");
-    let mut motor_udt = HashMap::new();
-    motor_udt.insert("Speed".to_string(), PlcValue::Real(1750.0));
-    motor_udt.insert("Current".to_string(), PlcValue::Real(12.5));
-    motor_udt.insert("Running".to_string(), PlcValue::Bool(true));
-    motor_udt.insert("Faults".to_string(), PlcValue::Udint(0));
-
-    let udt_val = PlcValue::Udt(motor_udt);
-    println!(
-        "   UDT: Motor Data -> CIP Type: 0x{:04X}",
-        udt_val.get_data_type()
-    );
-    if let PlcValue::Udt(members) = &udt_val {
-        for (name, value) in members {
-            println!("     {}: {:?}", name, value);
-        }
-    }
+    println!("   Note: UDTs are now represented as UdtData with symbol_id and raw bytes");
+    println!("   To create a UDT, you need to read from PLC or use UdtData::from_hash_map()");
+    println!("   with a UDT definition. For demonstration, showing UDT type:");
+    println!("   UDT CIP Type: 0x{:04X}", 0x00A0);
 
     Ok(())
 }
@@ -296,14 +284,17 @@ async fn demonstrate_real_plc_data_types(client: &mut EipClient) -> Result<(), B
     }
 
     // UDT operations
-    let mut test_udt = HashMap::new();
-    test_udt.insert("Value1".to_string(), PlcValue::Dint(42));
-    test_udt.insert("Value2".to_string(), PlcValue::Real(std::f32::consts::PI));
-    test_udt.insert("Status".to_string(), PlcValue::Bool(true));
-
-    match client.write_tag("TestUdt", PlcValue::Udt(test_udt)).await {
-        Ok(_) => println!("   ✅ UDT written successfully"),
-        Err(e) => println!("   ❌ UDT write failed: {}", e),
+    // To write a UDT, first read it to get the symbol_id, then modify and write back
+    match client.read_tag("TestUdt").await {
+        Ok(PlcValue::Udt(mut udt_data)) => {
+            // Modify the UDT data if needed, then write back
+            match client.write_tag("TestUdt", PlcValue::Udt(udt_data)).await {
+                Ok(_) => println!("   ✅ UDT written successfully"),
+                Err(e) => println!("   ❌ UDT write failed: {}", e),
+            }
+        }
+        Ok(_) => println!("   ⚠️  TestUdt is not a UDT type"),
+        Err(e) => println!("   ❌ UDT read failed: {}", e),
     }
 
     // Test reading back the values
@@ -400,7 +391,8 @@ mod tests {
         assert_eq!(PlcValue::Real(0.0).get_data_type(), 0x00CA);
         assert_eq!(PlcValue::Lreal(0.0).get_data_type(), 0x00CB);
         assert_eq!(PlcValue::String("".to_string()).get_data_type(), 0x00DA);
-        assert_eq!(PlcValue::Udt(HashMap::new()).get_data_type(), 0x00A0);
+        use rust_ethernet_ip::UdtData;
+        assert_eq!(PlcValue::Udt(UdtData { symbol_id: 0, data: vec![] }).get_data_type(), 0x00A0);
     }
 
     #[test]

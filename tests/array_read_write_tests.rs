@@ -223,11 +223,11 @@ mod tests {
     }
 
     /// Test reading a single array element using direct element addressing
-    /// 
+    ///
     /// This test verifies that the new implementation correctly uses CIP element
     /// addressing (0x28 segment) in the Request Path to read a single element
     /// without reading the entire array.
-    /// 
+    ///
     /// Reference: 1756-PM020, Page 815-837 (Read Tag Service for Array Elements)
     #[tokio::test]
     #[ignore] // Ignore by default - requires real PLC
@@ -252,7 +252,10 @@ mod tests {
         let tag_name = "gArrayTest[10]";
         match client.read_tag(tag_name).await {
             Ok(value) => {
-                println!("✅ Read {} using direct element addressing: {:?}", tag_name, value);
+                println!(
+                    "✅ Read {} using direct element addressing: {:?}",
+                    tag_name, value
+                );
                 assert!(matches!(value, PlcValue::Dint(_)));
             }
             Err(e) => {
@@ -262,10 +265,10 @@ mod tests {
     }
 
     /// Test reading a range of array elements using element addressing
-    /// 
+    ///
     /// This test verifies that reading multiple elements uses element addressing
     /// with start_index in the path and count in Request Data.
-    /// 
+    ///
     /// Reference: 1756-PM020, Page 840-851 (Reading Multiple Array Elements)
     #[tokio::test]
     #[ignore] // Ignore by default - requires real PLC
@@ -302,10 +305,10 @@ mod tests {
     }
 
     /// Test writing a single array element using direct element addressing
-    /// 
+    ///
     /// This test verifies that writing a single element uses direct element
     /// addressing without reading the entire array first.
-    /// 
+    ///
     /// Reference: 1756-PM020, Page 855-867 (Write Tag Service for Array Elements)
     #[tokio::test]
     #[ignore] // Ignore by default - requires real PLC
@@ -332,7 +335,10 @@ mod tests {
 
         match client.write_tag(tag_name, test_value.clone()).await {
             Ok(_) => {
-                println!("✅ Wrote {} using direct element addressing: {:?}", tag_name, test_value);
+                println!(
+                    "✅ Wrote {} using direct element addressing: {:?}",
+                    tag_name, test_value
+                );
 
                 // Verify by reading back
                 match client.read_tag(tag_name).await {
@@ -355,10 +361,10 @@ mod tests {
     }
 
     /// Test reading array element with 16-bit element ID segment
-    /// 
+    ///
     /// This test verifies that indices > 255 correctly use 16-bit element ID
     /// segment (0x29) instead of 8-bit (0x28).
-    /// 
+    ///
     /// Reference: 1756-PM020, Page 666-684 (16-bit Element ID)
     #[tokio::test]
     #[ignore] // Ignore by default - requires real PLC
@@ -382,7 +388,10 @@ mod tests {
         let tag_name = "gArrayTest[300]";
         match client.read_tag(tag_name).await {
             Ok(value) => {
-                println!("✅ Read {} using 16-bit element addressing: {:?}", tag_name, value);
+                println!(
+                    "✅ Read {} using 16-bit element addressing: {:?}",
+                    tag_name, value
+                );
                 assert!(matches!(value, PlcValue::Dint(_)));
             }
             Err(e) => {

@@ -1,10 +1,9 @@
 /// Simple PLC Connectivity Test
-/// 
+///
 /// This example tests basic connectivity and tries to read a simple tag
 /// to verify the connection works before running comprehensive tests.
-/// 
+///
 /// Run with: cargo run --example test_plc_connectivity
-
 use rust_ethernet_ip::EipClient;
 
 const PLC_ADDRESS: &str = "192.168.0.1:44818";
@@ -84,4 +83,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

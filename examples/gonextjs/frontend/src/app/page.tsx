@@ -149,6 +149,7 @@ export default function Page() {
 
   // Connection handlers
   const handleConnect = async () => {
+    console.log('handleConnect called', { plcAddress, isConnecting });
     if (!plcAddress.trim()) {
       addLog('error', 'Please enter a PLC address');
       return;
@@ -158,7 +159,9 @@ export default function Page() {
     addLog('info', `Connecting to PLC at ${plcAddress}...`);
 
     try {
+      console.log('Calling connectToPlc with:', plcAddress);
       const result = await connectToPlc(plcAddress);
+      console.log('connectToPlc result:', result);
       if (result) {
         setIsConnected(true);
         setConnectionStatus('Connected');
@@ -167,8 +170,9 @@ export default function Page() {
         addLog('error', `Failed to connect to ${plcAddress}`);
         setConnectionIssues(true);
       }
-    } catch (error) {
-      addLog('error', `Connection error: ${error}`);
+    } catch (error: any) {
+      console.error('Connection error:', error);
+      addLog('error', `Connection error: ${error?.message || error}`);
       setConnectionIssues(true);
     } finally {
       setIsConnecting(false);
@@ -188,6 +192,11 @@ export default function Page() {
 
   // Individual tag operations
   const handleReadTag = async () => {
+    console.log('handleReadTag called', { tagName, tagType, isConnected });
+    if (!isConnected) {
+      addLog('error', 'Please connect to PLC first');
+      return;
+    }
     if (!tagName.trim()) {
       addLog('error', 'Please enter a tag name');
       return;
@@ -197,17 +206,25 @@ export default function Page() {
     addLog('info', `Reading tag: ${tagName}`);
 
     try {
+      console.log('Calling readTag with:', tagName, tagType);
       const result = await readTag(tagName, tagType);
+      console.log('readTag result:', result);
       setReadValue(result.value);
       addLog('success', `Read ${tagName}: ${result.value}`);
-    } catch (error) {
-      addLog('error', `Read error: ${error}`);
+    } catch (error: any) {
+      console.error('Read error:', error);
+      addLog('error', `Read error: ${error?.message || error}`);
     } finally {
       setIsReading(false);
     }
   };
 
   const handleWriteTag = async () => {
+    console.log('handleWriteTag called', { tagName, tagValue, tagType, isConnected });
+    if (!isConnected) {
+      addLog('error', 'Please connect to PLC first');
+      return;
+    }
     if (!tagName.trim()) {
       addLog('error', 'Please enter a tag name');
       return;
@@ -217,14 +234,17 @@ export default function Page() {
     addLog('info', `Writing to tag: ${tagName} = ${tagValue}`);
 
     try {
+      console.log('Calling writeTag with:', tagName, tagValue, tagType);
       const result = await writeTag(tagName, tagValue, tagType);
+      console.log('writeTag result:', result);
       if (result) {
         addLog('success', `Wrote to ${tagName}: ${tagValue}`);
       } else {
         addLog('error', `Failed to write to ${tagName}`);
       }
-    } catch (error) {
-      addLog('error', `Write error: ${error}`);
+    } catch (error: any) {
+      console.error('Write error:', error);
+      addLog('error', `Write error: ${error?.message || error}`);
     } finally {
       setIsWriting(false);
     }

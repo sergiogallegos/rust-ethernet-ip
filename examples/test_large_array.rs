@@ -23,7 +23,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let array_name = "gArrayRealTest";
     let array_size = 50;
 
-    println!("📊 Test: REAL Array ({} elements) Write and Read", array_size);
+    println!(
+        "📊 Test: REAL Array ({} elements) Write and Read",
+        array_size
+    );
     println!("{}", "=".repeat(60));
     println!();
 
@@ -35,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..array_size {
         let value = (i as f32) * 1.11 + 1.0; // Values: 1.0, 2.11, 3.22, 4.33, ...
         let tag_name = format!("{}[{}]", array_name, i);
-        
+
         print!("    Writing {} = {:.2}... ", tag_name, value);
         match client.write_tag(&tag_name, PlcValue::Real(value)).await {
             Ok(_) => {
@@ -64,27 +67,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..array_size {
         let expected_value = (i as f32) * 1.11 + 1.0;
         let tag_name = format!("{}[{}]", array_name, i);
-        
-        print!("    Reading {} (expected {:.2})... ", tag_name, expected_value);
+
+        print!(
+            "    Reading {} (expected {:.2})... ",
+            tag_name, expected_value
+        );
         match client.read_tag(&tag_name).await {
-            Ok(value) => {
-                match value {
-                    PlcValue::Real(actual) => {
-                        let diff = (actual - expected_value).abs();
-                        if diff < 0.01 {
-                            println!("✅ Got {:.2}", actual);
-                            read_success += 1;
-                        } else {
-                            println!("⚠️  Got {:.2} (expected {:.2}, diff: {:.2})", actual, expected_value, diff);
-                            read_mismatch += 1;
-                        }
-                    }
-                    _ => {
-                        println!("❌ Wrong type: {:?}", value);
-                        read_failed += 1;
+            Ok(value) => match value {
+                PlcValue::Real(actual) => {
+                    let diff = (actual - expected_value).abs();
+                    if diff < 0.01 {
+                        println!("✅ Got {:.2}", actual);
+                        read_success += 1;
+                    } else {
+                        println!(
+                            "⚠️  Got {:.2} (expected {:.2}, diff: {:.2})",
+                            actual, expected_value, diff
+                        );
+                        read_mismatch += 1;
                     }
                 }
-            }
+                _ => {
+                    println!("❌ Wrong type: {:?}", value);
+                    read_failed += 1;
+                }
+            },
             Err(e) => {
                 println!("❌ Error: {}", e);
                 read_failed += 1;
@@ -103,7 +110,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📈 Test Summary");
     println!("{}", "=".repeat(60));
     if write_success == array_size && read_success == array_size {
-        println!("🎉 All {} array operations completed successfully!", array_size * 2);
+        println!(
+            "🎉 All {} array operations completed successfully!",
+            array_size * 2
+        );
     } else {
         println!("⚠️  Some array operations had issues:");
         if write_failed > 0 {
@@ -119,4 +129,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

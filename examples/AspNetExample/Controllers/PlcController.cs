@@ -25,7 +25,8 @@ public class PlcController : ControllerBase
     [HttpPost("connect")]
     public IActionResult Connect([FromBody] ConnectRequest request)
     {
-        _logger.LogInformation("Connect request received. Address: {Address}", request?.Address ?? "null");
+        _logger.LogInformation("Connect request received. Address: {Address}, UseRoutePath: {UseRoutePath}, CpuSlot: {CpuSlot}", 
+            request?.Address ?? "null", request?.UseRoutePath ?? false, request?.CpuSlot ?? 0);
         
         if (request == null)
         {
@@ -40,11 +41,24 @@ public class PlcController : ControllerBase
         }
 
         _logger.LogInformation("Attempting to connect to PLC at address: {Address}", request.Address);
+        
+        if (request.UseRoutePath)
+        {
+            _logger.LogInformation("Using RoutePath: CPU Slot {CpuSlot}", request.CpuSlot);
+        }
+        
         var connected = _plcService.Connect(request.Address);
         if (connected)
         {
             _logger.LogInformation("Successfully connected to PLC at {Address}", request.Address);
-            return Ok(new { success = true, message = "Connected successfully" });
+            var sessionId = $"0x{_plcService.Client.ClientId:X8}";
+            return Ok(new { 
+                success = true, 
+                message = "Connected successfully",
+                sessionId = sessionId,
+                useRoutePath = request.UseRoutePath,
+                cpuSlot = request.UseRoutePath ? request.CpuSlot : (int?)null
+            });
         }
         else
         {
@@ -1109,6 +1123,166 @@ public class PlcController : ControllerBase
     }
 
     // ================================================================================
+    // ARRAY OPERATIONS - Array element addressing
+    // ================================================================================
+
+    /// <summary>
+    /// Read an array element from the PLC.
+    /// </summary>
+    [HttpGet("array/{tagName}")]
+    public IActionResult ReadArrayElement(string tagName)
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            _logger.LogInformation("Reading array element: {TagName}", tagName);
+            
+            // Try to determine type from tag name or try common types
+            object value;
+            string type = "UNKNOWN";
+            
+            if (tagName.Contains("DINT") || (tagName.Contains("[") && !tagName.Contains("REAL") && !tagName.Contains("BOOL")))
+            {
+                value = _plcService.ReadDint(tagName);
+                type = "DINT";
+            }
+            else if (tagName.Contains("REAL"))
+            {
+                value = _plcService.ReadReal(tagName);
+                type = "REAL";
+            }
+            else if (tagName.Contains("BOOL"))
+            {
+                value = _plcService.ReadBool(tagName);
+                type = "BOOL";
+            }
+            else if (tagName.Contains("INT") && !tagName.Contains("DINT"))
+            {
+                value = _plcService.ReadInt(tagName);
+                type = "INT";
+            }
+            else
+            {
+                // Default to DINT
+                value = _plcService.ReadDint(tagName);
+                type = "DINT";
+            }
+            
+            return Ok(new 
+            { 
+                success = true, 
+                value = value,
+                type = type,
+                tagName = tagName,
+                message = $"Successfully read {type} array element '{tagName}'"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reading array element {TagName}", tagName);
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Write an array element to the PLC.
+    /// </summary>
+    [HttpPost("array/{tagName}")]
+    public IActionResult WriteArrayElement(string tagName, [FromBody] ArrayWriteRequest request)
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        if (request?.Value == null)
+            return BadRequest(new { success = false, message = "Value is required" });
+
+        try
+        {
+            _logger.LogInformation("Writing array element: {TagName} = {Value}", tagName, request.Value);
+            
+            string type = "UNKNOWN";
+            
+            if (tagName.Contains("DINT") || (tagName.Contains("INT") && !tagName.Contains("REAL") && !tagName.Contains("BOOL")))
+            {
+                if (int.TryParse(request.Value.ToString(), out int intValue))
+                {
+                    _plcService.WriteDint(tagName, intValue);
+                    type = "DINT";
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Invalid DINT value" });
+                }
+            }
+            else if (tagName.Contains("REAL"))
+            {
+                if (float.TryParse(request.Value.ToString(), out float floatValue))
+                {
+                    _plcService.WriteReal(tagName, floatValue);
+                    type = "REAL";
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Invalid REAL value" });
+                }
+            }
+            else if (tagName.Contains("BOOL"))
+            {
+                if (bool.TryParse(request.Value.ToString(), out bool boolValue))
+                {
+                    _plcService.WriteBool(tagName, boolValue);
+                    type = "BOOL";
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Invalid BOOL value" });
+                }
+            }
+            else if (tagName.Contains("INT") && !tagName.Contains("DINT"))
+            {
+                if (short.TryParse(request.Value.ToString(), out short shortValue))
+                {
+                    _plcService.WriteInt(tagName, shortValue);
+                    type = "INT";
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Invalid INT value" });
+                }
+            }
+            else
+            {
+                // Default to DINT
+                if (int.TryParse(request.Value.ToString(), out int defaultIntValue))
+                {
+                    _plcService.WriteDint(tagName, defaultIntValue);
+                    type = "DINT";
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Invalid value" });
+                }
+            }
+            
+            return Ok(new 
+            { 
+                success = true, 
+                message = $"Successfully wrote {type} value '{request.Value}' to array element '{tagName}'",
+                tagName = tagName,
+                value = request.Value,
+                type = type
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error writing array element {TagName}", tagName);
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    // ================================================================================
     // UDT (User Defined Type) ENDPOINTS
     // ================================================================================
 
@@ -1227,11 +1401,262 @@ public class PlcController : ControllerBase
             return StatusCode(500, new { success = false, message = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Read a UDT member from the PLC.
+    /// </summary>
+    [HttpGet("udt-member/{memberPath}")]
+    public IActionResult ReadUdtMember(string memberPath)
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            _logger.LogInformation("Reading UDT member: {MemberPath}", memberPath);
+            
+            // Parse the path: "gTestUDT.Member1_DINT" -> tagName="gTestUDT", memberPath="Member1_DINT"
+            var parts = memberPath.Split('.');
+            if (parts.Length < 2)
+            {
+                return BadRequest(new { success = false, message = "Invalid UDT member path. Use format: 'UDTName.MemberName'" });
+            }
+
+            var tagName = parts[0];
+            var memberName = string.Join(".", parts.Skip(1));
+
+            // Try direct tag access first
+            try
+            {
+                if (memberName.Contains("DINT") || (memberName.Contains("INT") && !memberName.Contains("REAL")))
+                {
+                    var intValue = _plcService.ReadDint(memberPath);
+                    return Ok(new 
+                    { 
+                        success = true, 
+                        value = intValue,
+                        type = "DINT",
+                        tagName = tagName,
+                        memberName = memberName,
+                        fullPath = memberPath,
+                        message = $"Successfully read DINT member '{memberPath}'"
+                    });
+                }
+                else if (memberName.Contains("REAL"))
+                {
+                    var floatValue = _plcService.ReadReal(memberPath);
+                    return Ok(new 
+                    { 
+                        success = true, 
+                        value = floatValue,
+                        type = "REAL",
+                        tagName = tagName,
+                        memberName = memberName,
+                        fullPath = memberPath,
+                        message = $"Successfully read REAL member '{memberPath}'"
+                    });
+                }
+                else if (memberName.Contains("BOOL"))
+                {
+                    var boolValue = _plcService.ReadBool(memberPath);
+                    return Ok(new 
+                    { 
+                        success = true, 
+                        value = boolValue,
+                        type = "BOOL",
+                        tagName = tagName,
+                        memberName = memberName,
+                        fullPath = memberPath,
+                        message = $"Successfully read BOOL member '{memberPath}'"
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Direct tag access failed for '{MemberPath}': {Error}", memberPath, ex.Message);
+            }
+
+            // Fallback: Read full UDT and extract member
+            _logger.LogInformation("Reading full UDT '{TagName}' to extract member '{MemberName}'", tagName, memberName);
+            var udtValue = _plcService.ReadUdt(tagName);
+            var memberValue = _plcService.GetUdtMember(tagName, memberName);
+
+            if (memberValue == null)
+            {
+                return NotFound(new { success = false, message = $"Member '{memberName}' not found in UDT '{tagName}'" });
+            }
+
+            string valueStr = memberValue.Type switch
+            {
+                PlcValueType.Bool => memberValue.As<bool>().ToString(),
+                PlcValueType.Dint => memberValue.As<int>().ToString(),
+                PlcValueType.Int => memberValue.As<short>().ToString(),
+                PlcValueType.Real => memberValue.As<float>().ToString(),
+                PlcValueType.String => memberValue.As<string>(),
+                _ => memberValue.ToString()
+            };
+
+            return Ok(new 
+            { 
+                success = true, 
+                value = valueStr,
+                type = memberValue.Type.ToString(),
+                tagName = tagName,
+                memberName = memberName,
+                fullPath = memberPath,
+                message = $"Successfully read member '{memberPath}'"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reading UDT member {MemberPath}", memberPath);
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Write a UDT member to the PLC.
+    /// </summary>
+    [HttpPost("udt-member/{memberPath}")]
+    public IActionResult WriteUdtMember(string memberPath, [FromBody] UdtMemberWriteRequest request)
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        if (request?.Value == null)
+            return BadRequest(new { success = false, message = "Value is required" });
+
+        try
+        {
+            _logger.LogInformation("Writing UDT member: {MemberPath} = {Value}", memberPath, request.Value);
+            
+            // Parse the path
+            var parts = memberPath.Split('.');
+            if (parts.Length < 2)
+            {
+                return BadRequest(new { success = false, message = "Invalid UDT member path. Use format: 'UDTName.MemberName'" });
+            }
+
+            var tagName = parts[0];
+            var memberName = string.Join(".", parts.Skip(1));
+
+            // Try direct tag write first
+            try
+            {
+                if (memberName.Contains("DINT") || (memberName.Contains("INT") && !memberName.Contains("REAL")))
+                {
+                    if (int.TryParse(request.Value.ToString(), out int intValue))
+                    {
+                        _plcService.WriteDint(memberPath, intValue);
+                        return Ok(new 
+                        { 
+                            success = true, 
+                            message = $"Successfully wrote DINT value '{intValue}' to member '{memberPath}'",
+                            tagName = tagName,
+                            memberName = memberName,
+                            fullPath = memberPath,
+                            value = intValue,
+                            type = "DINT"
+                        });
+                    }
+                }
+                else if (memberName.Contains("REAL"))
+                {
+                    if (float.TryParse(request.Value.ToString(), out float floatValue))
+                    {
+                        _plcService.WriteReal(memberPath, floatValue);
+                        return Ok(new 
+                        { 
+                            success = true, 
+                            message = $"Successfully wrote REAL value '{floatValue}' to member '{memberPath}'",
+                            tagName = tagName,
+                            memberName = memberName,
+                            fullPath = memberPath,
+                            value = floatValue,
+                            type = "REAL"
+                        });
+                    }
+                }
+                else if (memberName.Contains("BOOL"))
+                {
+                    if (bool.TryParse(request.Value.ToString(), out bool boolValue))
+                    {
+                        _plcService.WriteBool(memberPath, boolValue);
+                        return Ok(new 
+                        { 
+                            success = true, 
+                            message = $"Successfully wrote BOOL value '{boolValue}' to member '{memberPath}'",
+                            tagName = tagName,
+                            memberName = memberName,
+                            fullPath = memberPath,
+                            value = boolValue,
+                            type = "BOOL"
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Direct write failed, trying SetUdtMember: {Error}", ex.Message);
+            }
+
+            // Fallback: Use SetUdtMember
+            if (memberName.Contains("DINT") && int.TryParse(request.Value.ToString(), out int dintValue))
+            {
+                _plcService.SetUdtMember(tagName, memberName, PlcValue.Dint(dintValue));
+                return Ok(new 
+                { 
+                    success = true, 
+                    message = $"Successfully wrote DINT value '{dintValue}' to member '{memberPath}' via SetUdtMember",
+                    tagName = tagName,
+                    memberName = memberName,
+                    fullPath = memberPath,
+                    value = dintValue,
+                    type = "DINT"
+                });
+            }
+            else if (memberName.Contains("REAL") && float.TryParse(request.Value.ToString(), out float realValue))
+            {
+                _plcService.SetUdtMember(tagName, memberName, PlcValue.Real(realValue));
+                return Ok(new 
+                { 
+                    success = true, 
+                    message = $"Successfully wrote REAL value '{realValue}' to member '{memberPath}' via SetUdtMember",
+                    tagName = tagName,
+                    memberName = memberName,
+                    fullPath = memberPath,
+                    value = realValue,
+                    type = "REAL"
+                });
+            }
+            else
+            {
+                return BadRequest(new { success = false, message = $"Failed to write UDT member '{memberName}'. Check tag exists and is writable." });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error writing UDT member {MemberPath}", memberPath);
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
 }
 
 public class ConnectRequest
 {
     public string Address { get; set; } = string.Empty;
+    public bool UseRoutePath { get; set; } = false;
+    public int CpuSlot { get; set; } = 0;
+}
+
+public class ArrayWriteRequest
+{
+    public object Value { get; set; } = null!;
+}
+
+public class UdtMemberWriteRequest
+{
+    public object Value { get; set; } = null!;
 }
 
 public class WriteTagRequest

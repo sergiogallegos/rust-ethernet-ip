@@ -247,4 +247,3 @@ async fn test_real_array(client: &mut EipClient) -> Result<(), Box<dyn std::erro
 
     Ok(())
 }
-

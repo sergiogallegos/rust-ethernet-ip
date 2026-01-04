@@ -66,11 +66,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("\n  Structure value:");
             println!("  {:?}", value);
 
-            // If it's a UDT, try to access some members
-            if let PlcValue::Udt(members) = &value {
-                println!("\n  UDT Members ({} total):", members.len());
-                for (member_name, member_value) in members {
-                    println!("    - {}: {:?}", member_name, member_value);
+            // If it's a UDT, show UdtData information
+            if let PlcValue::Udt(udt_data) = &value {
+                println!("\n  UDT Data:");
+                println!("    Symbol ID: {}", udt_data.symbol_id);
+                println!("    Data Size: {} bytes", udt_data.data.len());
+                println!("    Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+                if udt_data.data.len() > 32 {
+                    println!("    ... ({} more bytes)", udt_data.data.len() - 32);
                 }
             }
         }

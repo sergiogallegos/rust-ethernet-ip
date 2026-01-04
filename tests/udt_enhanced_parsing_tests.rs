@@ -25,26 +25,13 @@ mod udt_enhanced_parsing_tests {
         let result = client.read_tag("TestTagUDT").await;
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
-                println!("✅ UDT read successfully with {} members", udt_data.len());
+                println!("✅ UDT read successfully");
+                println!("   Symbol ID: {}", udt_data.symbol_id);
+                println!("   Data Size: {} bytes", udt_data.data.len());
 
-                // Check for expected members
-                if let Some(PlcValue::Dint(dint1)) = udt_data.get("TestTagUDT") {
-                    println!("✅ TestTagUDT (DINT): {}", dint1);
-                    assert!(*dint1 >= 0, "TestTagUDT should be non-negative");
-                }
-
-                if let Some(PlcValue::Dint(dint2)) = udt_data.get("TestTagUDT2") {
-                    println!("✅ TestTagUDT2 (DINT): {}", dint2);
-                    assert!(*dint2 >= 0, "TestTagUDT2 should be non-negative");
-                }
-
-                if let Some(PlcValue::Real(real)) = udt_data.get("TestTagUDT3") {
-                    println!("✅ TestTagUDT3 (REAL): {}", real);
-                    assert!(*real >= 0.0, "TestTagUDT3 should be non-negative");
-                }
-
-                // Verify we have at least one member
-                assert!(!udt_data.is_empty(), "UDT should have at least one member");
+                // Verify we have data
+                assert!(!udt_data.data.is_empty(), "UDT should have data");
+                assert!(udt_data.symbol_id >= 0, "UDT should have valid symbol_id");
             }
             Ok(other) => {
                 println!("✅ UDT read successfully (different type): {:?}", other);
@@ -80,8 +67,8 @@ mod udt_enhanced_parsing_tests {
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
                 println!(
-                    "✅ Chunked UDT read successfully with {} members",
-                    udt_data.len()
+                    "✅ Chunked UDT read successfully ({} bytes)",
+                    udt_data.data.len()
                 );
                 // Part_Data might be empty due to parsing limitations, but should not fail
             }
@@ -123,8 +110,8 @@ mod udt_enhanced_parsing_tests {
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
                 println!(
-                    "✅ gTracking UDT read successfully with {} members",
-                    udt_data.len()
+                    "✅ gTracking UDT read successfully ({} bytes)",
+                    udt_data.data.len()
                 );
                 // gTracking might have different structure
             }
@@ -206,31 +193,12 @@ mod udt_enhanced_parsing_tests {
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
                 println!("✅ UDT byte alignment detection successful");
+                println!("   Symbol ID: {}", udt_data.symbol_id);
+                println!("   Data Size: {} bytes", udt_data.data.len());
 
-                // Verify that parsed values are reasonable
-                for (key, value) in &udt_data {
-                    match value {
-                        PlcValue::Dint(dint_val) => {
-                            assert!(
-                                *dint_val >= -1000000 && *dint_val <= 1000000,
-                                "DINT value {} for {} should be reasonable",
-                                dint_val,
-                                key
-                            );
-                        }
-                        PlcValue::Real(real_val) => {
-                            assert!(
-                                *real_val >= -1000.0 && *real_val <= 1000.0,
-                                "REAL value {} for {} should be reasonable",
-                                real_val,
-                                key
-                            );
-                        }
-                        _ => {
-                            // Other types are acceptable
-                        }
-                    }
-                }
+                // UdtData now contains raw bytes, not parsed members
+                // To access members, you would need to parse using UDT definition
+                assert!(!udt_data.data.is_empty(), "UDT should have data");
             }
             Ok(_) => {
                 println!("✅ UDT read successful (non-UDT type)");

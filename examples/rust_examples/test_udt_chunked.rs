@@ -25,11 +25,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Check if it's a UDT and display members
             match &udt_value {
                 rust_ethernet_ip::PlcValue::Udt(udt_data) => {
-                    println!("📋 Found {} members in the UDT", udt_data.len());
-                    
-                    // Display each member
-                    for (key, value) in udt_data.iter() {
-                        println!("   - {}: {:?}", key, value);
+                    println!("📋 UDT Data:");
+                    println!("   Symbol ID: {}", udt_data.symbol_id);
+                    println!("   Data Size: {} bytes", udt_data.data.len());
+                    println!("   Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+                    if udt_data.data.len() > 32 {
+                        println!("   ... ({} more bytes)", udt_data.data.len() - 32);
                     }
                 }
                 other => {

@@ -981,11 +981,12 @@ namespace RustEtherNetIp
             {
                 CheckConnection();
                 IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
-                IntPtr resultPtr = Marshal.AllocHGlobal(8192); // Increased buffer for complex UDTs
+                IntPtr resultPtr = Marshal.AllocHGlobal(16384); // Increased buffer for complex UDTs
                 try
                 {
                     // First try normal UDT reading
-                    int result = eip_read_udt(_clientId, tagPtr, resultPtr, 8192);
+                    Console.WriteLine($"🔧 [DEBUG] Calling eip_read_udt for: {tagName}");
+                    int result = eip_read_udt(_clientId, tagPtr, resultPtr, 16384);
                     Console.WriteLine($"🔧 [DEBUG] eip_read_udt result: {result}");
                     
                     if (result == 0)
@@ -996,14 +997,18 @@ namespace RustEtherNetIp
                         {
                             Console.WriteLine($"🔧 [DEBUG] UDT read successful, JSON length: {jsonResult.Length}");
                             
+                            Console.WriteLine($"🔧 [DEBUG] JSON preview: {jsonResult.Substring(0, Math.Min(200, jsonResult.Length))}...");
+                            
                             // Try to parse as UdtData first (new format)
                             try
                             {
                                 var udtData = UdtData.FromJson(jsonResult);
+                                Console.WriteLine($"🔧 [DEBUG] Parsed as UdtData: SymbolId={udtData.SymbolId}, DataLength={udtData.Data?.Length ?? 0}");
                                 return PlcValue.UdtFromData(udtData);
                             }
-                            catch
+                            catch (Exception ex)
                             {
+                                Console.WriteLine($"🔧 [DEBUG] Failed to parse as UdtData: {ex.Message}, trying legacy format");
                                 // Fallback to legacy Dictionary format
                                 return PlcValue.FromJson(jsonResult);
                             }
@@ -1020,6 +1025,7 @@ namespace RustEtherNetIp
                     
                     // If normal reading failed, try chunked reading
                     // This handles "Partial transfer" errors for large UDTs
+                    Console.WriteLine($"🔧 [DEBUG] Falling back to chunked reading");
                     return ReadUdtWithChunkedFallback(tagName);
                 }
                 catch (Exception ex)
@@ -1039,54 +1045,59 @@ namespace RustEtherNetIp
 
         private PlcValue ReadUdtWithChunkedFallback(string tagName)
         {
-            // Implement chunked reading for large UDTs
-            // This handles the "Partial transfer" error (0x06) by reading the UDT in chunks
+            // Actually call the Rust library's chunked reading method
+            // NOTE: This method is called from within ExecuteWithLock, so we don't need another lock
             Console.WriteLine($"🔧 [DEBUG] Starting chunked reading for UDT: {tagName}");
+            
+            // Don't call ExecuteWithLock here - we're already inside a locked context from ReadUdt
+            CheckConnection();
+            IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+            IntPtr resultPtr = Marshal.AllocHGlobal(16384); // Larger buffer for chunked reading
             try
             {
-                // Try to use the Rust library's chunked reading via FFI
-                // First, let's try to read the UDT using the chunked method from Rust
-                Console.WriteLine($"🔧 [DEBUG] Attempting to read UDT using Rust chunked method");
+                Console.WriteLine($"🔧 [DEBUG] Calling eip_read_udt_chunked for: {tagName}");
+                int result = eip_read_udt_chunked(_clientId, tagPtr, resultPtr, 16384);
+                Console.WriteLine($"🔧 [DEBUG] eip_read_udt_chunked result: {result}");
                 
-                // For now, we'll implement a simplified chunked reading approach
-                // This will read the UDT in smaller chunks to avoid the "Partial transfer" error
-                
-                // Try to read the UDT with a smaller packet size
-                var udtMembers = new Dictionary<string, PlcValue>();
-                
-                // Attempt to read the UDT using the same approach as the Rust library
-                // We'll try to read it in chunks by using a different packet size
-                Console.WriteLine($"🔧 [DEBUG] Attempting chunked read for UDT: {tagName}");
-                
-                // For now, return the raw UDT data that we know exists
-                // In a real implementation, this would use the Rust library's chunked reading
-                udtMembers["_status"] = PlcValue.String("UDT read with chunked method");
-                udtMembers["_chunked_reading"] = PlcValue.Bool(true);
-                udtMembers["_tag_name"] = PlcValue.String(tagName);
-                udtMembers["_raw_data"] = PlcValue.String("[04, 00]"); // Raw UDT data from Rust library
-                udtMembers["_size"] = PlcValue.Dint(2); // UDT size in bytes
-                udtMembers["_note"] = PlcValue.String("Raw UDT data successfully read using chunked method");
-                
-                // Generic UDT parsing - no hardcoded tag names
-                // This is a simplified approach - in a real implementation, we'd use the UDT definition
-                // For now, return the raw UDT data with metadata
-                udtMembers["_parsed_members"] = PlcValue.Dint(1);
-                udtMembers["_total_size"] = PlcValue.Dint(2);
-                udtMembers["_parsing_method"] = PlcValue.String("Generic UDT chunked reading");
-                udtMembers["_note"] = PlcValue.String("UDT successfully read using chunked method - parsing requires UDT definition");
-                
-                Console.WriteLine($"🔧 [DEBUG] Chunked reading successful, returning UDT with {udtMembers.Count} members");
-                return PlcValue.Udt(udtMembers);
-            }
-            catch (Exception ex)
-            {
-                // Return error information
-                Console.WriteLine($"🔧 [DEBUG] Chunked reading failed: {ex.Message}");
-                return PlcValue.Udt(new Dictionary<string, PlcValue>
+                if (result == 0)
                 {
-                    ["_error"] = PlcValue.String($"Chunked reading failed: {ex.Message}"),
-                    ["_chunked_reading"] = PlcValue.Bool(true)
-                });
+                    // Success - convert the JSON result to PlcValue
+                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr);
+                    if (!string.IsNullOrEmpty(jsonResult))
+                    {
+                        Console.WriteLine($"🔧 [DEBUG] Chunked UDT read successful, JSON length: {jsonResult.Length}");
+                        Console.WriteLine($"🔧 [DEBUG] JSON preview: {jsonResult.Substring(0, Math.Min(200, jsonResult.Length))}...");
+                        
+                        // Try to parse as UdtData first (new format)
+                        try
+                        {
+                            var udtData = UdtData.FromJson(jsonResult);
+                            Console.WriteLine($"🔧 [DEBUG] Parsed as UdtData: SymbolId={udtData.SymbolId}, DataLength={udtData.Data?.Length ?? 0}");
+                            return PlcValue.UdtFromData(udtData);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"🔧 [DEBUG] Failed to parse as UdtData: {ex.Message}, trying legacy format");
+                            // Fallback to legacy Dictionary format
+                            return PlcValue.FromJson(jsonResult);
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"🔧 [DEBUG] Empty JSON result from chunked read");
+                        throw new Exception($"Empty response when reading UDT tag '{tagName}' with chunked reading.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"🔧 [DEBUG] eip_read_udt_chunked failed with result {result}");
+                    throw new Exception($"Failed to read UDT tag '{tagName}' with chunked reading. Check tag exists and is UDT type.");
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(tagPtr);
+                Marshal.FreeHGlobal(resultPtr);
             }
         }
 

@@ -28,36 +28,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             match value {
                 PlcValue::Udt(udt_data) => {
-                    println!("   📋 UDT contains {} members:", udt_data.len());
-                    for (key, val) in udt_data.iter() {
-                        println!("      - {}: {:?}", key, val);
+                    println!("   📋 UDT Data:");
+                    println!("      Symbol ID: {}", udt_data.symbol_id);
+                    println!("      Data Size: {} bytes", udt_data.data.len());
+                    println!("      Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+                    if udt_data.data.len() > 32 {
+                        println!("      ... ({} more bytes)", udt_data.data.len() - 32);
                     }
-                    
-                    // Try to access specific members if they exist
-                    let common_members = vec![
-                        "oFuse_Pass_Status",
-                        "oMachine_Running", 
-                        "oFuse_Resistance",
-                        "oProduction_Rate",
-                        "oFuse_Serial_Number",
-                        "oCurrent_Shift",
-                        "iStart_Production",
-                        "iStop_Production",
-                        "iTarget_Production",
-                        "iQuality_Threshold",
-                        "oFuse_Weight1",
-                        "oFuse_Weight2",
-                        "oFuseSandFillTime",
-                        "oFusePartStatus",
-                        "oFuseLastStationDone"
-                    ];
-                    
-                    println!("\n   🔍 Looking for common UDT members:");
-                    for member in common_members {
-                        if let Some(member_value) = udt_data.get(member) {
-                            println!("      ✅ {}: {:?}", member, member_value);
-                        }
-                    }
+                    println!("\n   💡 To access specific members, use UDT definition parsing");
                 }
                 PlcValue::Dint(actual_value) => {
                     println!("   📊 Direct DINT value: {}", actual_value);

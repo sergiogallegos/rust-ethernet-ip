@@ -32,52 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             match value {
                 PlcValue::Udt(udt_data) => {
-                    println!("   📋 UDT contains {} members:", udt_data.len());
-                    for (key, val) in udt_data.iter() {
-                        println!("      - {}: {:?}", key, val);
+                    println!("   📋 UDT Data:");
+                    println!("      Symbol ID: {}", udt_data.symbol_id);
+                    println!("      Data Size: {} bytes", udt_data.data.len());
+                    println!("      Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+                    if udt_data.data.len() > 32 {
+                        println!("      ... ({} more bytes)", udt_data.data.len() - 32);
                     }
-                    
-                    // Check for expected members
-                    let expected_dint_members = vec![
-                        ("TestTagUDT", 99),
-                        ("TestTagUDT2", 88),
-                    ];
-                    
-                    let expected_real_members = vec![
-                        ("TestTagUDT3", 12.12),
-                    ];
-                    
-                    println!("\n   🔍 Verifying expected DINT members:");
-                    for (member_name, expected_value) in expected_dint_members {
-                        if let Some(member_value) = udt_data.get(member_name) {
-                            match member_value {
-                                PlcValue::Dint(actual_value) if *actual_value == expected_value => {
-                                    println!("      ✅ {}: {} (expected: {})", member_name, actual_value, expected_value);
-                                }
-                                _ => {
-                                    println!("      ⚠️  {}: {:?} (expected: {})", member_name, member_value, expected_value);
-                                }
-                            }
-                        } else {
-                            println!("      ❌ {}: Not found", member_name);
-                        }
-                    }
-                    
-                    println!("\n   🔍 Verifying expected REAL members:");
-                    for (member_name, expected_value) in expected_real_members {
-                        if let Some(member_value) = udt_data.get(member_name) {
-                            match member_value {
-                                PlcValue::Real(actual_value) if (*actual_value - expected_value).abs() < 0.01 => {
-                                    println!("      ✅ {}: {} (expected: {})", member_name, actual_value, expected_value);
-                                }
-                                _ => {
-                                    println!("      ⚠️  {}: {:?} (expected: {})", member_name, member_value, expected_value);
-                                }
-                            }
-                        } else {
-                            println!("      ❌ {}: Not found", member_name);
-                        }
-                    }
+                    println!("\n   💡 To access specific members, use UDT definition parsing");
                 }
                 _ => {
                     println!("   ⚠️  Unexpected type: {:?}", value);

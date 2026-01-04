@@ -64,10 +64,13 @@ async fn test_udt_reading(client: &mut EipClient, tag_path: &str) -> Result<rust
     
     // Check if it's a UDT
     match &result {
-        rust_ethernet_ip::PlcValue::Udt(udt) => {
-            println!("   📋 UDT found with {} members", udt.len());
-            for (key, value) in udt.iter() {
-                println!("      - {}: {:?}", key, value);
+        rust_ethernet_ip::PlcValue::Udt(udt_data) => {
+            println!("   📋 UDT Data:");
+            println!("      Symbol ID: {}", udt_data.symbol_id);
+            println!("      Data Size: {} bytes", udt_data.data.len());
+            println!("      Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+            if udt_data.data.len() > 32 {
+                println!("      ... ({} more bytes)", udt_data.data.len() - 32);
             }
             Ok(result)
         }

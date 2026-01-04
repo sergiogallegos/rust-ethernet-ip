@@ -29,32 +29,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             match value {
                 PlcValue::Udt(udt_data) => {
-                    println!("   📋 UDT contains {} members:", udt_data.len());
-                    for (key, val) in udt_data.iter() {
-                        println!("      - {}: {:?}", key, val);
+                    println!("   📋 UDT Data:");
+                    println!("      Symbol ID: {}", udt_data.symbol_id);
+                    println!("      Data Size: {} bytes", udt_data.data.len());
+                    println!("      Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+                    if udt_data.data.len() > 32 {
+                        println!("      ... ({} more bytes)", udt_data.data.len() - 32);
                     }
-                    
-                    // Analyze the data types
-                    let mut dint_count = 0;
-                    let mut real_count = 0;
-                    let mut bool_count = 0;
-                    let mut string_count = 0;
-                    
-                    for (_, val) in udt_data.iter() {
-                        match val {
-                            PlcValue::Dint(_) => dint_count += 1,
-                            PlcValue::Real(_) => real_count += 1,
-                            PlcValue::Bool(_) => bool_count += 1,
-                            PlcValue::String(_) => string_count += 1,
-                            _ => {}
-                        }
-                    }
-                    
-                    println!("\n   📊 Data Type Analysis:");
-                    println!("      - DINT members: {}", dint_count);
-                    println!("      - REAL members: {}", real_count);
-                    println!("      - BOOL members: {}", bool_count);
-                    println!("      - STRING members: {}", string_count);
                 }
                 _ => {
                     println!("   ⚠️  Unexpected type: {:?}", value);
@@ -80,9 +61,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             match value {
                 PlcValue::Udt(udt_data) => {
-                    println!("   📋 Chunked UDT contains {} members:", udt_data.len());
-                    for (key, val) in udt_data.iter() {
-                        println!("      - {}: {:?}", key, val);
+                    println!("   📋 Chunked UDT Data:");
+                    println!("      Symbol ID: {}", udt_data.symbol_id);
+                    println!("      Data Size: {} bytes", udt_data.data.len());
+                    println!("      Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+                    if udt_data.data.len() > 32 {
+                        println!("      ... ({} more bytes)", udt_data.data.len() - 32);
                     }
                 }
                 _ => {

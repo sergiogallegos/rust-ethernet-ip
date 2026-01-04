@@ -1,10 +1,9 @@
 /// Tag Verification and Diagnostic Tool
-/// 
+///
 /// This tool helps verify tag names and test basic connectivity.
 /// It tries different variations of tag names to find what works.
-/// 
+///
 /// Run with: cargo run --example test_tag_verification
-
 use rust_ethernet_ip::EipClient;
 
 const PLC_ADDRESS: &str = "192.168.0.1:44818";
@@ -59,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(value) => {
                 println!("   ✅ SUCCESS! '{}' exists: {:?}", tag, value);
                 println!("   📊 Array element addressing is working!");
-                
+
                 // Try reading element [5] to test direct addressing
                 let base_name = tag.split('[').next().unwrap();
                 let test_tag = format!("{}[5]", base_name);
@@ -88,12 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 3: Try UDT
     println!("📋 Test 3: Reading UDT");
-    let udt_tags = vec![
-        "gTestUDT",
-        "TestUDT",
-        "gUDT",
-        "UDT",
-    ];
+    let udt_tags = vec!["gTestUDT", "TestUDT", "gUDT", "UDT"];
 
     for tag in &udt_tags {
         println!("   Trying: '{}'", tag);
@@ -121,18 +115,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 4: Try program-scoped tags
     println!("📋 Test 4: Reading program-scoped tags");
     let program_names = vec!["TestProgram", "MainProgram", "Main", "Program1"];
-    
+
     for prog_name in &program_names {
         let test_tag = format!("Program:{}", prog_name);
         println!("   Trying program: '{}'", test_tag);
-        
+
         // Try to read a simple tag in the program
         let test_tags = vec![
             format!("Program:{}.gTestArray_DINT", prog_name),
             format!("Program:{}.TestArray_DINT", prog_name),
             format!("Program:{}.gTestArray_DINT[0]", prog_name),
         ];
-        
+
         let mut found = false;
         for tag in &test_tags {
             match client.read_tag(tag).await {
@@ -170,4 +164,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

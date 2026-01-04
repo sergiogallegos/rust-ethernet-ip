@@ -421,11 +421,9 @@ async fn test_udt_chunked_reading() {
     assert!(result.is_ok());
 
     if let Ok(PlcValue::Udt(udt_data)) = result {
-        assert_eq!(udt_data.get("bool1"), Some(&PlcValue::Bool(true)));
-        assert_eq!(
-            udt_data.get("string1"),
-            Some(&PlcValue::String("Hello UDT!".to_string()))
-        );
+        // UdtData now contains raw bytes, not parsed members
+        assert!(udt_data.symbol_id >= 0);
+        assert!(!udt_data.data.is_empty());
     }
 
     // Test chunked reading failure
@@ -541,8 +539,9 @@ async fn test_udt_comprehensive_workflow() {
     // 1. Read entire UDT
     let udt_value = client.read_tag("Part_Data").await.unwrap();
     if let PlcValue::Udt(udt_data) = udt_value {
-        assert_eq!(udt_data.len(), 5); // 5 members total
-        assert_eq!(udt_data.get("bool1"), Some(&PlcValue::Bool(true)));
+        // UdtData now contains raw bytes, not parsed members
+        assert!(udt_data.symbol_id >= 0);
+        assert!(!udt_data.data.is_empty());
     }
 
     // 2. Read individual members

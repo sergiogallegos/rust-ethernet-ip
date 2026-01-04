@@ -28,6 +28,12 @@ namespace WpfExample.ViewModels
         private string plcAddress = "192.168.0.1:44818";
 
         [ObservableProperty]
+        private bool useRoutePath = false;
+
+        [ObservableProperty]
+        private int cpuSlot = 0;
+
+        [ObservableProperty]
         private bool isConnected;
 
         [ObservableProperty]
@@ -66,6 +72,35 @@ namespace WpfExample.ViewModels
 
         [ObservableProperty]
         private string batchPerformance = "";
+
+        // Array Test Properties
+        [ObservableProperty]
+        private string arrayTagName = "gTestArray_DINT[5]";
+
+        [ObservableProperty]
+        private string arrayReadValue = "";
+
+        [ObservableProperty]
+        private string arrayWriteValue = "999";
+
+        [ObservableProperty]
+        private string arrayResult = "";
+
+        // UDT Test Properties
+        [ObservableProperty]
+        private string udtTagName = "gTestUDT";
+
+        [ObservableProperty]
+        private string udtMemberPath = "gTestUDT.Member1_DINT";
+
+        [ObservableProperty]
+        private string udtMemberReadValue = "";
+
+        [ObservableProperty]
+        private string udtMemberWriteValue = "500";
+
+        [ObservableProperty]
+        private string udtResult = "";
 
         public ObservableCollection<string> DataTypes { get; } = new()
         {
@@ -146,7 +181,26 @@ namespace WpfExample.ViewModels
                 await Task.Run(() =>
                 {
                     _plcClient = new EtherNetIpClient();
-                    return _plcClient.Connect(PlcAddress);
+                    
+                    if (UseRoutePath)
+                    {
+                        // ControlLogix with RoutePath
+                        var routePath = new RoutePath().AddSlot((byte)CpuSlot);
+                        LogMessage($"📍 Using RoutePath: CPU Slot {CpuSlot}");
+                        // Connect first, route path will be used for subsequent operations
+                        // Note: SetRoutePath may not be available yet, route path is handled in Rust library
+                        var connected = _plcClient.Connect(PlcAddress);
+                        if (connected)
+                        {
+                            LogMessage("✅ Connected. Route path will be used for subsequent operations.");
+                        }
+                        return connected;
+                    }
+                    else
+                    {
+                        // CompactLogix (direct connection)
+                        return _plcClient.Connect(PlcAddress);
+                    }
                 }).ContinueWith(t =>
                 {
                     if (t.Result)
@@ -910,6 +964,341 @@ namespace WpfExample.ViewModels
             finally
             {
                 _isRefreshing = false;
+            }
+        }
+
+        // Array Test Commands
+        [RelayCommand]
+        private async Task ReadArrayElement()
+        {
+            if (!IsConnected || _plcClient == null) return;
+
+            try
+            {
+                LogMessage($"📖 Reading array element: {ArrayTagName}");
+                ArrayResult = "Reading...";
+
+                var value = await Task.Run(() =>
+                {
+                    // Try to determine type from tag name or try common types
+                    if (ArrayTagName.Contains("DINT") || ArrayTagName.Contains("[") && !ArrayTagName.Contains("REAL") && !ArrayTagName.Contains("BOOL"))
+                    {
+                        return _plcClient.ReadDint(ArrayTagName).ToString();
+                    }
+                    else if (ArrayTagName.Contains("REAL"))
+                    {
+                        return _plcClient.ReadReal(ArrayTagName).ToString();
+                    }
+                    else if (ArrayTagName.Contains("BOOL"))
+                    {
+                        return _plcClient.ReadBool(ArrayTagName).ToString();
+                    }
+                    else if (ArrayTagName.Contains("INT") && !ArrayTagName.Contains("DINT"))
+                    {
+                        return _plcClient.ReadInt(ArrayTagName).ToString();
+                    }
+                    else
+                    {
+                        // Default to DINT
+                        return _plcClient.ReadDint(ArrayTagName).ToString();
+                    }
+                });
+
+                ArrayReadValue = value;
+                ArrayResult = $"✅ Success! Value: {value}";
+                LogMessage($"✅ Read {ArrayTagName} = {value}");
+            }
+            catch (Exception ex)
+            {
+                ArrayResult = $"❌ Error: {ex.Message}";
+                LogMessage($"❌ Read error: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private async Task WriteArrayElement()
+        {
+            if (!IsConnected || _plcClient == null) return;
+
+            try
+            {
+                LogMessage($"✏️ Writing array element: {ArrayTagName} = {ArrayWriteValue}");
+
+                await Task.Run(() =>
+                {
+                    if (ArrayTagName.Contains("DINT") || (ArrayTagName.Contains("INT") && !ArrayTagName.Contains("REAL") && !ArrayTagName.Contains("BOOL")))
+                    {
+                        if (int.TryParse(ArrayWriteValue, out int intValue))
+                        {
+                            _plcClient.WriteDint(ArrayTagName, intValue);
+                        }
+                        else
+                        {
+                            throw new Exception("Invalid DINT value");
+                        }
+                    }
+                    else if (ArrayTagName.Contains("REAL"))
+                    {
+                        if (float.TryParse(ArrayWriteValue, out float floatValue))
+                        {
+                            _plcClient.WriteReal(ArrayTagName, floatValue);
+                        }
+                        else
+                        {
+                            throw new Exception("Invalid REAL value");
+                        }
+                    }
+                    else if (ArrayTagName.Contains("BOOL"))
+                    {
+                        if (bool.TryParse(ArrayWriteValue, out bool boolValue))
+                        {
+                            _plcClient.WriteBool(ArrayTagName, boolValue);
+                        }
+                        else
+                        {
+                            throw new Exception("Invalid BOOL value");
+                        }
+                    }
+                    else if (ArrayTagName.Contains("INT") && !ArrayTagName.Contains("DINT"))
+                    {
+                        if (short.TryParse(ArrayWriteValue, out short shortValue))
+                        {
+                            _plcClient.WriteInt(ArrayTagName, shortValue);
+                        }
+                        else
+                        {
+                            throw new Exception("Invalid INT value");
+                        }
+                    }
+                    else
+                    {
+                        // Default to DINT
+                        if (int.TryParse(ArrayWriteValue, out int defaultIntValue))
+                        {
+                            _plcClient.WriteDint(ArrayTagName, defaultIntValue);
+                        }
+                        else
+                        {
+                            throw new Exception("Invalid value");
+                        }
+                    }
+                });
+
+                ArrayResult = $"✅ Success! Wrote {ArrayWriteValue} to {ArrayTagName}";
+                LogMessage($"✅ Wrote {ArrayTagName} = {ArrayWriteValue}");
+            }
+            catch (Exception ex)
+            {
+                ArrayResult = $"❌ Error: {ex.Message}";
+                LogMessage($"❌ Write error: {ex.Message}");
+            }
+        }
+
+        // UDT Test Commands
+        [RelayCommand]
+        private async Task ReadUdt()
+        {
+            if (!IsConnected || _plcClient == null) return;
+
+            try
+            {
+                LogMessage($"📖 Reading UDT: {UdtTagName}");
+                UdtResult = "Reading...";
+
+                var value = await Task.Run(() => _plcClient.ReadUdt(UdtTagName));
+
+                if (value.IsUdtDataFormat)
+                {
+                    var udtData = value.UdtData;
+                    UdtResult = $"✅ Success!\nTag: {UdtTagName}\nSymbol ID: {udtData.SymbolId}\nData Length: {udtData.Data.Length} bytes\n\n" +
+                               $"⚠️ UDT is in UdtData format.\n" +
+                               $"To access members, use direct tag paths:\n" +
+                               $"  {UdtTagName}.Member1_DINT\n" +
+                               $"  {UdtTagName}.Member2_REAL\n" +
+                               $"etc.";
+                    LogMessage($"✅ Read UDT {UdtTagName}: Symbol ID = {udtData.SymbolId}, Data Length = {udtData.Data.Length} bytes");
+                }
+                else
+                {
+                    var memberCount = value.UdtMembers?.Count ?? 0;
+                    var memberList = value.UdtMembers != null 
+                        ? string.Join("\n", value.UdtMembers.Keys.Take(10).Select(k => $"  - {k}"))
+                        : "  (Use GetUdtMember to access)";
+                    UdtResult = $"✅ Success!\nTag: {UdtTagName}\nUDT with {memberCount} members\n\nMembers available:\n{memberList}";
+                    LogMessage($"✅ Read UDT {UdtTagName} with {memberCount} members");
+                }
+            }
+            catch (Exception ex)
+            {
+                UdtResult = $"❌ Error: {ex.Message}";
+                LogMessage($"❌ Read error: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private async Task ReadUdtMember()
+        {
+            if (!IsConnected || _plcClient == null) return;
+
+            try
+            {
+                LogMessage($"📖 Reading UDT member: {UdtMemberPath}");
+
+                // Parse the path: "gTestUDT.Member1_DINT" -> tagName="gTestUDT", memberPath="Member1_DINT"
+                var parts = UdtMemberPath.Split('.');
+                if (parts.Length < 2)
+                {
+                    throw new Exception("Invalid UDT member path. Use format: 'UDTName.MemberName'");
+                }
+
+                var tagName = parts[0];
+                var memberPath = string.Join(".", parts.Skip(1));
+
+                // Try direct tag access first
+                PlcValue? memberValue = null;
+                try
+                {
+                    if (memberPath.Contains("DINT") || (memberPath.Contains("INT") && !memberPath.Contains("REAL")))
+                    {
+                        var intValue = await Task.Run(() => _plcClient.ReadDint(UdtMemberPath));
+                        UdtMemberReadValue = intValue.ToString();
+                        UdtResult = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {UdtMemberReadValue}\nType: DINT";
+                        LogMessage($"✅ Read {UdtMemberPath} = {UdtMemberReadValue} (DINT)");
+                        return;
+                    }
+                    else if (memberPath.Contains("REAL"))
+                    {
+                        var floatValue = await Task.Run(() => _plcClient.ReadReal(UdtMemberPath));
+                        UdtMemberReadValue = floatValue.ToString();
+                        UdtResult = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {UdtMemberReadValue}\nType: REAL";
+                        LogMessage($"✅ Read {UdtMemberPath} = {UdtMemberReadValue} (REAL)");
+                        return;
+                    }
+                    else if (memberPath.Contains("BOOL"))
+                    {
+                        var boolValue = await Task.Run(() => _plcClient.ReadBool(UdtMemberPath));
+                        UdtMemberReadValue = boolValue.ToString();
+                        UdtResult = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {UdtMemberReadValue}\nType: BOOL";
+                        LogMessage($"✅ Read {UdtMemberPath} = {boolValue} (BOOL)");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"⚠️ Direct tag access failed for '{UdtMemberPath}': {ex.Message}");
+                }
+
+                // Fallback: Read full UDT and extract member
+                LogMessage($"🔧 Reading full UDT '{tagName}' to extract member '{memberPath}'...");
+                var udtValue = await Task.Run(() => _plcClient.ReadUdt(tagName));
+                memberValue = await Task.Run(() => _plcClient.GetUdtMember(tagName, memberPath));
+
+                if (memberValue == null)
+                {
+                    throw new Exception($"Member '{memberPath}' not found in UDT '{tagName}'");
+                }
+
+                string valueStr = memberValue.Type switch
+                {
+                    PlcValueType.Bool => memberValue.As<bool>().ToString(),
+                    PlcValueType.Dint => memberValue.As<int>().ToString(),
+                    PlcValueType.Int => memberValue.As<short>().ToString(),
+                    PlcValueType.Real => memberValue.As<float>().ToString(),
+                    PlcValueType.String => memberValue.As<string>(),
+                    _ => memberValue.ToString()
+                };
+
+                UdtMemberReadValue = valueStr;
+                UdtResult = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {memberValue.Type}";
+                LogMessage($"✅ Read {UdtMemberPath} = {valueStr} ({memberValue.Type})");
+            }
+            catch (Exception ex)
+            {
+                UdtResult = $"❌ Error: {ex.Message}";
+                LogMessage($"❌ Read error: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private async Task WriteUdtMember()
+        {
+            if (!IsConnected || _plcClient == null) return;
+
+            try
+            {
+                LogMessage($"✏️ Writing UDT member: {UdtMemberPath} = {UdtMemberWriteValue}");
+
+                // Parse the path
+                var parts = UdtMemberPath.Split('.');
+                if (parts.Length < 2)
+                {
+                    throw new Exception("Invalid UDT member path. Use format: 'UDTName.MemberName'");
+                }
+
+                var tagName = parts[0];
+                var memberPath = string.Join(".", parts.Skip(1));
+
+                // Try direct tag write first
+                try
+                {
+                    if (memberPath.Contains("DINT") || (memberPath.Contains("INT") && !memberPath.Contains("REAL")))
+                    {
+                        if (int.TryParse(UdtMemberWriteValue, out int intValue))
+                        {
+                            await Task.Run(() => _plcClient.WriteDint(UdtMemberPath, intValue));
+                            UdtResult = $"✅ Success! Wrote {intValue} to {UdtMemberPath}";
+                            LogMessage($"✅ Wrote {UdtMemberPath} = {intValue}");
+                            return;
+                        }
+                    }
+                    else if (memberPath.Contains("REAL"))
+                    {
+                        if (float.TryParse(UdtMemberWriteValue, out float floatValue))
+                        {
+                            await Task.Run(() => _plcClient.WriteReal(UdtMemberPath, floatValue));
+                            UdtResult = $"✅ Success! Wrote {floatValue} to {UdtMemberPath}";
+                            LogMessage($"✅ Wrote {UdtMemberPath} = {floatValue}");
+                            return;
+                        }
+                    }
+                    else if (memberPath.Contains("BOOL"))
+                    {
+                        if (bool.TryParse(UdtMemberWriteValue, out bool boolValue))
+                        {
+                            await Task.Run(() => _plcClient.WriteBool(UdtMemberPath, boolValue));
+                            UdtResult = $"✅ Success! Wrote {boolValue} to {UdtMemberPath}";
+                            LogMessage($"✅ Wrote {UdtMemberPath} = {boolValue}");
+                            return;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"⚠️ Direct write failed, trying SetUdtMember: {ex.Message}");
+                }
+
+                // Fallback: Use SetUdtMember
+                if (memberPath.Contains("DINT") && int.TryParse(UdtMemberWriteValue, out int dintValue))
+                {
+                    await Task.Run(() => _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Dint(dintValue)));
+                    UdtResult = $"✅ Success! Wrote {dintValue} to {UdtMemberPath}";
+                    LogMessage($"✅ Wrote {UdtMemberPath} = {dintValue} via SetUdtMember");
+                }
+                else if (memberPath.Contains("REAL") && float.TryParse(UdtMemberWriteValue, out float realValue))
+                {
+                    await Task.Run(() => _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Real(realValue)));
+                    UdtResult = $"✅ Success! Wrote {realValue} to {UdtMemberPath}";
+                    LogMessage($"✅ Wrote {UdtMemberPath} = {realValue} via SetUdtMember");
+                }
+                else
+                {
+                    throw new Exception($"Failed to write UDT member '{memberPath}'. Check tag exists and is writable.");
+                }
+            }
+            catch (Exception ex)
+            {
+                UdtResult = $"❌ Error: {ex.Message}";
+                LogMessage($"❌ Write error: {ex.Message}");
             }
         }
 

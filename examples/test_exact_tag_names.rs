@@ -1,7 +1,6 @@
 /// Test to help identify exact tag names on the PLC
-/// 
+///
 /// This will try various tag name formats to find what works
-
 use rust_ethernet_ip::EipClient;
 
 const PLC_ADDRESS: &str = "192.168.0.1:44818";
@@ -18,17 +17,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Controller",
         "Controller.Type",
         "Controller.MajorRev",
-        
         // Your test tags - try different variations
         "gTestArray_DINT",
         "gTestArray_DINT[0]",
         "gTestArray_DINT[5]",
         "gTestUDT",
-        
         // Try without 'g' prefix
         "TestArray_DINT",
         "TestUDT",
-        
         // Try with different case
         "GTestArray_DINT",
         "GTESTARRAY_DINT",
@@ -60,4 +56,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

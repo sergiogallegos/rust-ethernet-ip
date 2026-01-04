@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using RustEtherNetIp;
 using System.Linq;
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace WinFormsExample
 {
@@ -2947,7 +2948,7 @@ namespace WinFormsExample
         }
 
         // UDT Test Event Handlers
-        private void UdtReadButton_Click(object? sender, EventArgs e)
+        private async void UdtReadButton_Click(object? sender, EventArgs e)
         {
             if (!_isConnected || _plcClient == null) return;
 
@@ -2961,11 +2962,19 @@ namespace WinFormsExample
                 return;
             }
 
+            // Disable button to prevent multiple clicks
+            Button? readButton = sender as Button;
+            if (readButton != null) readButton.Enabled = false;
+            resultLabel.Text = "Reading...";
+
             try
             {
                 Log($"📖 Reading UDT: {tagName}");
-                var value = _plcClient.ReadUdt(tagName);
                 
+                // Run on background thread to avoid blocking UI
+                var value = await Task.Run(() => _plcClient.ReadUdt(tagName));
+                
+                // Update UI on UI thread
                 if (value.IsUdtDataFormat)
                 {
                     var udtData = value.UdtData;
@@ -2993,9 +3002,14 @@ namespace WinFormsExample
                 resultLabel.Text = $"❌ Error: {ex.Message}";
                 Log($"❌ Read error: {ex.Message}");
             }
+            finally
+            {
+                // Re-enable button
+                if (readButton != null) readButton.Enabled = true;
+            }
         }
 
-        private void UdtMemberReadButton_Click(object? sender, EventArgs e)
+        private async void UdtMemberReadButton_Click(object? sender, EventArgs e)
         {
             if (!_isConnected || _plcClient == null) return;
 
@@ -3008,6 +3022,11 @@ namespace WinFormsExample
                 Log("❌ Please enter a member path");
                 return;
             }
+
+            // Disable button to prevent multiple clicks
+            Button? readButton = sender as Button;
+            if (readButton != null) readButton.Enabled = false;
+            resultLabel.Text = "Reading...";
 
             try
             {
@@ -3034,9 +3053,10 @@ namespace WinFormsExample
                 {
                     // Try direct tag read - this works even with UdtData format
                     // Determine type from member name and try appropriate read method
+                    // Run on background thread to avoid blocking UI
                     if (memberPath.Contains("DINT") || (memberPath.Contains("INT") && !memberPath.Contains("REAL")))
                     {
-                        var intValue = _plcClient.ReadDint(fullPath);
+                        var intValue = await Task.Run(() => _plcClient.ReadDint(fullPath));
                         valueStr = intValue.ToString();
                         type = "DINT";
                         resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {type}";
@@ -3045,7 +3065,7 @@ namespace WinFormsExample
                     }
                     else if (memberPath.Contains("REAL"))
                     {
-                        var floatValue = _plcClient.ReadReal(fullPath);
+                        var floatValue = await Task.Run(() => _plcClient.ReadReal(fullPath));
                         valueStr = floatValue.ToString();
                         type = "REAL";
                         resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {type}";
@@ -3054,7 +3074,7 @@ namespace WinFormsExample
                     }
                     else if (memberPath.Contains("BOOL"))
                     {
-                        var boolValue = _plcClient.ReadBool(fullPath);
+                        var boolValue = await Task.Run(() => _plcClient.ReadBool(fullPath));
                         valueStr = boolValue.ToString();
                         type = "BOOL";
                         resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {type}";
@@ -3063,7 +3083,7 @@ namespace WinFormsExample
                     }
                     else if (memberPath.Contains("INT") && !memberPath.Contains("DINT"))
                     {
-                        var shortValue = _plcClient.ReadInt(fullPath);
+                        var shortValue = await Task.Run(() => _plcClient.ReadInt(fullPath));
                         valueStr = shortValue.ToString();
                         type = "INT";
                         resultLabel.Text = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {valueStr}\nType: {type}";
@@ -3082,7 +3102,8 @@ namespace WinFormsExample
                 try
                 {
                     Log($"🔧 Reading full UDT '{tagName}' to extract member '{memberPath}'...");
-                    var udtValue = _plcClient.ReadUdt(tagName);
+                    // Run on background thread to avoid blocking UI
+                    var udtValue = await Task.Run(() => _plcClient.ReadUdt(tagName));
                     
                     if (udtValue == null)
                     {
@@ -3199,7 +3220,8 @@ namespace WinFormsExample
                     // Try GetUdtMember (works for legacy format) - only if we haven't found it yet
                     if (memberValue == null)
                     {
-                        memberValue = _plcClient.GetUdtMember(tagName, memberPath);
+                        // Run on background thread to avoid blocking UI
+                        memberValue = await Task.Run(() => _plcClient.GetUdtMember(tagName, memberPath));
                         if (memberValue != null)
                         {
                             Log($"✅ Got member via GetUdtMember");
@@ -3310,6 +3332,11 @@ namespace WinFormsExample
             {
                 resultLabel.Text = $"❌ Error: {ex.Message}";
                 Log($"❌ Read error: {ex.Message}");
+            }
+            finally
+            {
+                // Re-enable button
+                if (readButton != null) readButton.Enabled = true;
             }
         }
 

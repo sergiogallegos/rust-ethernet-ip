@@ -82,7 +82,7 @@ pub unsafe extern "C" fn eip_connect_with_route(
 
     // Build route path
     let mut route_path = crate::RoutePath::new();
-    
+
     // Add slots
     if !slots.is_null() && slot_count > 0 {
         let slots_slice = unsafe { std::slice::from_raw_parts(slots, slot_count as usize) };
@@ -90,7 +90,7 @@ pub unsafe extern "C" fn eip_connect_with_route(
             route_path = route_path.add_slot(slot);
         }
     }
-    
+
     // Add ports
     if !ports.is_null() && port_count > 0 {
         let ports_slice = unsafe { std::slice::from_raw_parts(ports, port_count as usize) };
@@ -98,10 +98,11 @@ pub unsafe extern "C" fn eip_connect_with_route(
             route_path = route_path.add_port(port);
         }
     }
-    
+
     // Add addresses
     if !addresses.is_null() && address_count > 0 {
-        let addresses_slice = unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
+        let addresses_slice =
+            unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
         for &addr_ptr in addresses_slice {
             if !addr_ptr.is_null() {
                 if let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str() {
@@ -156,7 +157,7 @@ pub unsafe extern "C" fn eip_set_route_path(
 
     // Build route path
     let mut route_path = crate::RoutePath::new();
-    
+
     // Add slots
     if !slots.is_null() && slot_count > 0 {
         let slots_slice = unsafe { std::slice::from_raw_parts(slots, slot_count as usize) };
@@ -164,7 +165,7 @@ pub unsafe extern "C" fn eip_set_route_path(
             route_path = route_path.add_slot(slot);
         }
     }
-    
+
     // Add ports
     if !ports.is_null() && port_count > 0 {
         let ports_slice = unsafe { std::slice::from_raw_parts(ports, port_count as usize) };
@@ -172,10 +173,11 @@ pub unsafe extern "C" fn eip_set_route_path(
             route_path = route_path.add_port(port);
         }
     }
-    
+
     // Add addresses
     if !addresses.is_null() && address_count > 0 {
-        let addresses_slice = unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
+        let addresses_slice =
+            unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
         for &addr_ptr in addresses_slice {
             if !addr_ptr.is_null() {
                 if let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str() {
@@ -1062,13 +1064,13 @@ pub unsafe extern "C" fn eip_write_udt(
 
         // Get UDT definition to serialize HashMap to bytes
         let udt_def = client.get_udt_definition(tag_name_str).await?;
-        
+
         // Convert UdtDefinition to UserDefinedType
         let mut user_def = crate::udt::UserDefinedType::new(udt_def.name.clone());
         for member in &udt_def.members {
             user_def.add_member(member.clone());
         }
-        
+
         // Convert HashMap to UdtData using the definition
         crate::UdtData::from_hash_map(&udt_members, &user_def, existing_udt.symbol_id)
     }) {

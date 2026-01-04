@@ -244,6 +244,32 @@ public class PlcService : IDisposable
     public void WriteString(string tagName, string value) => _plcClient.WriteString(tagName, value);
     public void WriteUdt(string tagName, Dictionary<string, object> value) => _plcClient.WriteUdt(tagName, value);
 
+    public PlcValue GetUdtMember(string tagName, string memberPath)
+    {
+        try
+        {
+            return _plcClient.GetUdtMember(tagName, memberPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting UDT member {TagName}.{MemberPath}", tagName, memberPath);
+            throw;
+        }
+    }
+
+    public void SetUdtMember(string tagName, string memberPath, PlcValue value)
+    {
+        try
+        {
+            _plcClient.SetUdtMember(tagName, memberPath, value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting UDT member {TagName}.{MemberPath}", tagName, memberPath);
+            throw;
+        }
+    }
+
     private void UpdateLastReadTime(string tagName)
     {
         _lastReadTimes.AddOrUpdate(tagName, DateTime.Now, (_, _) => DateTime.Now);

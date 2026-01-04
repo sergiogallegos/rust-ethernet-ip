@@ -11,8 +11,9 @@ package ethernetip
 
 // C function declarations for the Rust library
 extern int eip_connect(const char* ip_address);
-extern int eip_connect_with_route(const char* ip_address, unsigned char* slots, int slot_count, unsigned char* ports, int port_count, char** addresses, int address_count);
-extern int eip_set_route_path(int client_id, unsigned char* slots, int slot_count, unsigned char* ports, int port_count, char** addresses, int address_count);
+// RoutePath functions - temporarily commented out until DLL exports are verified
+// extern int eip_connect_with_route(const char* ip_address, unsigned char* slots, int slot_count, unsigned char* ports, int port_count, char** addresses, int address_count);
+// extern int eip_set_route_path(int client_id, unsigned char* slots, int slot_count, unsigned char* ports, int port_count, char** addresses, int address_count);
 extern int eip_disconnect(int client_id);
 
 // Boolean operations
@@ -395,8 +396,108 @@ func NewClientWithRoute(ipAddress string, routePath *RoutePath) (*EipClient, err
 	var clientID C.int
 
 	// If route path is provided, use eip_connect_with_route
+	// Temporarily disabled until DLL exports are verified
 	if routePath != nil && !routePath.IsEmpty() {
-		log.Printf("🔌 [DEBUG] Connecting with route path: slots=%v, ports=%v, addresses=%v", routePath.Slots, routePath.Ports, routePath.Addresses)
+		// RoutePath support temporarily disabled
+		return nil, NewEipError(ErrConnectionFailed, "RoutePath support temporarily disabled - use regular NewClient()")
+	}
+
+	// Regular connection (RoutePath code commented out below)
+	/*
+		// RoutePath connection code - temporarily disabled:
+		if routePath != nil && !routePath.IsEmpty() {
+			log.Printf("🔌 [DEBUG] Connecting with route path: slots=%v, ports=%v, addresses=%v", routePath.Slots, routePath.Ports, routePath.Addresses)
+
+			// Prepare slots
+			var cSlots *C.uchar
+			var slotCount C.int
+			if len(routePath.Slots) > 0 {
+				cSlots = (*C.uchar)(C.malloc(C.size_t(len(routePath.Slots))))
+				defer C.free(unsafe.Pointer(cSlots))
+				for i, slot := range routePath.Slots {
+					*(*C.uchar)(unsafe.Pointer(uintptr(unsafe.Pointer(cSlots)) + uintptr(i))) = C.uchar(slot)
+				}
+				slotCount = C.int(len(routePath.Slots))
+			}
+
+			// Prepare ports
+			var cPorts *C.uchar
+			var portCount C.int
+			if len(routePath.Ports) > 0 {
+				cPorts = (*C.uchar)(C.malloc(C.size_t(len(routePath.Ports))))
+				defer C.free(unsafe.Pointer(cPorts))
+				for i, port := range routePath.Ports {
+					*(*C.uchar)(unsafe.Pointer(uintptr(unsafe.Pointer(cPorts)) + uintptr(i))) = C.uchar(port)
+				}
+				portCount = C.int(len(routePath.Ports))
+			}
+
+			// Prepare addresses
+			var cAddresses **C.char
+			var addressCount C.int
+			if len(routePath.Addresses) > 0 {
+				cAddresses = (**C.char)(C.malloc(C.size_t(len(routePath.Addresses) * int(unsafe.Sizeof((*C.char)(nil))))))
+				defer C.free(unsafe.Pointer(cAddresses))
+				for i, addr := range routePath.Addresses {
+					cAddr := C.CString(addr)
+					defer C.free(unsafe.Pointer(cAddr))
+					*(**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(cAddresses)) + uintptr(i)*unsafe.Sizeof((*C.char)(nil)))) = cAddr
+				}
+				addressCount = C.int(len(routePath.Addresses))
+			}
+
+			// Call the Rust library to connect with route
+			clientID = C.eip_connect_with_route(cIPAddress, cSlots, slotCount, cPorts, portCount, cAddresses, addressCount)
+		} else {
+	*/
+	// Call the Rust library to connect without route
+	clientID = C.eip_connect(cIPAddress)
+	// }
+
+	if clientID < 0 {
+		log.Printf("❌ [DEBUG] Failed to connect to PLC at %s", ipAddress)
+		return nil, NewEipErrorWithDetails(ErrConnectionFailed,
+			fmt.Sprintf("Failed to connect to PLC at %s", ipAddress),
+			map[string]interface{}{
+				"ip_address": ipAddress,
+				"error_code": int(clientID),
+			})
+	}
+
+	log.Printf("✅ [DEBUG] Successfully connected to PLC at %s with client ID %d", ipAddress, clientID)
+
+	// Create and initialize the client
+	client := &EipClient{
+		clientID:      int(clientID),
+		ipAddr:        ipAddress,
+		subscriptions: make(map[string]chan struct{}),
+		tagCache:      make(map[string]*TagMetadata),
+		keepAliveStop: make(chan struct{}),
+	}
+
+	// Set default max packet size
+	if err := client.SetMaxPacketSize(4000); err != nil {
+		log.Printf("⚠️ [DEBUG] Failed to set max packet size: %v", err)
+	}
+
+	// Start keep-alive mechanism
+	client.startKeepAlive(30 * time.Second)
+
+	return client, nil
+}
+
+// SetRoutePath sets the route path for an existing connection
+func (c *EipClient) SetRoutePath(routePath *RoutePath) error {
+	// Temporarily disabled until DLL exports are verified
+	return NewEipError(ErrConnectionFailed, "RoutePath support temporarily disabled")
+
+	/*
+		// Temporarily disabled code:
+		if routePath == nil || routePath.IsEmpty() {
+			return NewEipError(ErrInvalidOperation, "Route path cannot be empty")
+		}
+
+		log.Printf("🔧 [DEBUG] Setting route path: slots=%v, ports=%v, addresses=%v", routePath.Slots, routePath.Ports, routePath.Addresses)
 
 		// Prepare slots
 		var cSlots *C.uchar
@@ -436,104 +537,20 @@ func NewClientWithRoute(ipAddress string, routePath *RoutePath) (*EipClient, err
 			addressCount = C.int(len(routePath.Addresses))
 		}
 
-		// Call the Rust library to connect with route
-		clientID = C.eip_connect_with_route(cIPAddress, cSlots, slotCount, cPorts, portCount, cAddresses, addressCount)
-	} else {
-		// Call the Rust library to connect without route
-		clientID = C.eip_connect(cIPAddress)
-	}
-
-	if clientID < 0 {
-		log.Printf("❌ [DEBUG] Failed to connect to PLC at %s", ipAddress)
-		return nil, NewEipErrorWithDetails(ErrConnectionFailed,
-			fmt.Sprintf("Failed to connect to PLC at %s", ipAddress),
-			map[string]interface{}{
-				"ip_address": ipAddress,
-				"error_code": int(clientID),
-			})
-	}
-
-	log.Printf("✅ [DEBUG] Successfully connected to PLC at %s with client ID %d", ipAddress, clientID)
-
-	// Create and initialize the client
-	client := &EipClient{
-		clientID:      int(clientID),
-		ipAddr:        ipAddress,
-		subscriptions: make(map[string]chan struct{}),
-		tagCache:      make(map[string]*TagMetadata),
-		keepAliveStop: make(chan struct{}),
-	}
-
-	// Set default max packet size
-	if err := client.SetMaxPacketSize(4000); err != nil {
-		log.Printf("⚠️ [DEBUG] Failed to set max packet size: %v", err)
-	}
-
-	// Start keep-alive mechanism
-	client.startKeepAlive(30 * time.Second)
-
-	return client, nil
-}
-
-// SetRoutePath sets the route path for an existing connection
-func (c *EipClient) SetRoutePath(routePath *RoutePath) error {
-	if routePath == nil || routePath.IsEmpty() {
-		return NewEipError(ErrInvalidOperation, "Route path cannot be empty")
-	}
-
-	log.Printf("🔧 [DEBUG] Setting route path: slots=%v, ports=%v, addresses=%v", routePath.Slots, routePath.Ports, routePath.Addresses)
-
-	// Prepare slots
-	var cSlots *C.uchar
-	var slotCount C.int
-	if len(routePath.Slots) > 0 {
-		cSlots = (*C.uchar)(C.malloc(C.size_t(len(routePath.Slots))))
-		defer C.free(unsafe.Pointer(cSlots))
-		for i, slot := range routePath.Slots {
-			*(*C.uchar)(unsafe.Pointer(uintptr(unsafe.Pointer(cSlots)) + uintptr(i))) = C.uchar(slot)
+		// Call the Rust library to set route path
+		// Temporarily disabled
+		// retCode := int(C.eip_set_route_path(C.int(c.clientID), cSlots, slotCount, cPorts, portCount, cAddresses, addressCount))
+		retCode := -1 // Temporarily return error
+		if retCode != 0 {
+			return NewEipErrorWithDetails(ErrConnectionFailed,
+				"Failed to set route path",
+				map[string]interface{}{
+					"client_id":  c.clientID,
+				})
 		}
-		slotCount = C.int(len(routePath.Slots))
-	}
 
-	// Prepare ports
-	var cPorts *C.uchar
-	var portCount C.int
-	if len(routePath.Ports) > 0 {
-		cPorts = (*C.uchar)(C.malloc(C.size_t(len(routePath.Ports))))
-		defer C.free(unsafe.Pointer(cPorts))
-		for i, port := range routePath.Ports {
-			*(*C.uchar)(unsafe.Pointer(uintptr(unsafe.Pointer(cPorts)) + uintptr(i))) = C.uchar(port)
-		}
-		portCount = C.int(len(routePath.Ports))
-	}
-
-	// Prepare addresses
-	var cAddresses **C.char
-	var addressCount C.int
-	if len(routePath.Addresses) > 0 {
-		cAddresses = (**C.char)(C.malloc(C.size_t(len(routePath.Addresses) * int(unsafe.Sizeof((*C.char)(nil))))))
-		defer C.free(unsafe.Pointer(cAddresses))
-		for i, addr := range routePath.Addresses {
-			cAddr := C.CString(addr)
-			defer C.free(unsafe.Pointer(cAddr))
-			*(**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(cAddresses)) + uintptr(i)*unsafe.Sizeof((*C.char)(nil)))) = cAddr
-		}
-		addressCount = C.int(len(routePath.Addresses))
-	}
-
-	// Call the Rust library to set route path
-	retCode := int(C.eip_set_route_path(C.int(c.clientID), cSlots, slotCount, cPorts, portCount, cAddresses, addressCount))
-	if retCode != 0 {
-		return NewEipErrorWithDetails(ErrConnectionFailed,
-			"Failed to set route path",
-			map[string]interface{}{
-				"client_id":  c.clientID,
-				"error_code": retCode,
-			})
-	}
-
-	log.Printf("✅ [DEBUG] Route path set successfully")
-	return nil
+		return nil
+	*/
 }
 
 // Close disconnects from the PLC

@@ -29,7 +29,11 @@ impl PyEipClient {
         }
     }
 
-    pub fn connect_with_route(&mut self, address: &str, route_path: &PyRoutePath) -> PyResult<bool> {
+    pub fn connect_with_route(
+        &mut self,
+        address: &str,
+        route_path: &PyRoutePath,
+    ) -> PyResult<bool> {
         let route = route_path.inner.clone();
         let client = self.rt.block_on(EipClient::with_route_path(address, route));
         match client {
@@ -85,9 +89,7 @@ impl PyEipClient {
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Not connected"))?;
         let value = self.rt.block_on(client.read_tag(tag));
         match value {
-            Ok(PlcValue::Udt(udt_data)) => Ok(PyUdtData {
-                inner: udt_data,
-            }),
+            Ok(PlcValue::Udt(udt_data)) => Ok(PyUdtData { inner: udt_data }),
             Ok(_) => Err(pyo3::exceptions::PyTypeError::new_err("Tag is not a UDT")),
             Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e.to_string())),
         }
@@ -139,7 +141,9 @@ impl PyRoutePath {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.inner.slots.is_empty() && self.inner.ports.is_empty() && self.inner.addresses.is_empty()
+        self.inner.slots.is_empty()
+            && self.inner.ports.is_empty()
+            && self.inner.addresses.is_empty()
     }
 }
 
@@ -154,10 +158,7 @@ impl PyUdtData {
     #[new]
     pub fn new(symbol_id: i32, data: Vec<u8>) -> Self {
         Self {
-            inner: UdtData {
-                symbol_id,
-                data,
-            },
+            inner: UdtData { symbol_id, data },
         }
     }
 

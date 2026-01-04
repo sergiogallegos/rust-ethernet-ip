@@ -1,5 +1,5 @@
 //! Tests for the new generic UdtData format
-//! 
+//!
 //! This test suite validates the new UDT handling approach that uses
 //! UdtData with symbol_id and raw bytes instead of hardcoded member names.
 
@@ -27,18 +27,23 @@ async fn test_udt_read_returns_udt_data() {
 
     // Read a UDT - should return UdtData with symbol_id and raw bytes
     let result = client.read_tag("Part_Data").await;
-    
+
     match result {
         Ok(PlcValue::Udt(udt_data)) => {
             println!("✅ UDT read successfully");
             println!("   Symbol ID: {}", udt_data.symbol_id);
             println!("   Data size: {} bytes", udt_data.data.len());
-            println!("   Raw data (first 32 bytes): {:02X?}", 
-                     &udt_data.data[..udt_data.data.len().min(32)]);
-            
+            println!(
+                "   Raw data (first 32 bytes): {:02X?}",
+                &udt_data.data[..udt_data.data.len().min(32)]
+            );
+
             // Verify we have a valid symbol_id (should be > 0 for real UDTs)
-            assert!(udt_data.symbol_id > 0, "symbol_id should be > 0 for valid UDT");
-            
+            assert!(
+                udt_data.symbol_id > 0,
+                "symbol_id should be > 0 for valid UDT"
+            );
+
             // Verify we have data
             assert!(!udt_data.data.is_empty(), "UDT data should not be empty");
         }
@@ -69,7 +74,7 @@ async fn test_udt_write_with_symbol_id() {
 
     // First, read the UDT to get symbol_id
     let read_result = client.read_tag("Part_Data").await;
-    
+
     let udt_data = match read_result {
         Ok(PlcValue::Udt(data)) => {
             println!("✅ Read UDT with symbol_id: {}", data.symbol_id);
@@ -90,7 +95,7 @@ async fn test_udt_write_with_symbol_id() {
     // Modify the data (for testing, we'll just write back the same data)
     // In a real scenario, you'd modify specific bytes based on UDT definition
     let mut modified_data = udt_data.data.clone();
-    
+
     // Example: modify first byte (if it's a BOOL member)
     if !modified_data.is_empty() {
         modified_data[0] = if modified_data[0] == 0 { 0xFF } else { 0x00 };
@@ -103,9 +108,15 @@ async fn test_udt_write_with_symbol_id() {
     };
 
     // Write it back
-    match client.write_tag("Part_Data", PlcValue::Udt(modified_udt.clone())).await {
+    match client
+        .write_tag("Part_Data", PlcValue::Udt(modified_udt.clone()))
+        .await
+    {
         Ok(_) => {
-            println!("✅ UDT written successfully with symbol_id: {}", modified_udt.symbol_id);
+            println!(
+                "✅ UDT written successfully with symbol_id: {}",
+                modified_udt.symbol_id
+            );
         }
         Err(e) => {
             // Writing might fail if tag is read-only, that's okay
@@ -127,7 +138,7 @@ async fn test_udt_write_auto_reads_symbol_id() {
 
     // Create UdtData with symbol_id = 0 (should trigger auto-read)
     let udt_data = UdtData {
-        symbol_id: 0, // Will trigger read to get symbol_id
+        symbol_id: 0,                       // Will trigger read to get symbol_id
         data: vec![0x00, 0x00, 0x00, 0x00], // Example data
     };
 
@@ -149,8 +160,8 @@ async fn test_udt_write_auto_reads_symbol_id() {
 
 #[tokio::test]
 async fn test_udt_data_parse_with_definition() {
-    use rust_ethernet_ip::udt::{UserDefinedType, UdtMember};
-    
+    use rust_ethernet_ip::udt::{UdtMember, UserDefinedType};
+
     // Create a mock UDT definition
     let mut udt_def = UserDefinedType::new("TestUDT".to_string());
     udt_def.add_member(UdtMember {
@@ -162,7 +173,7 @@ async fn test_udt_data_parse_with_definition() {
     udt_def.add_member(UdtMember {
         name: "Dint1".to_string(),
         data_type: 0x00C4, // DINT
-        offset: 4, // Assuming 4-byte alignment
+        offset: 4,         // Assuming 4-byte alignment
         size: 4,
     });
 
@@ -192,8 +203,8 @@ async fn test_udt_data_parse_with_definition() {
 
 #[tokio::test]
 async fn test_udt_data_from_hash_map() {
-    use rust_ethernet_ip::udt::{UserDefinedType, UdtMember};
-    
+    use rust_ethernet_ip::udt::{UdtMember, UserDefinedType};
+
     // Create a mock UDT definition
     let mut udt_def = UserDefinedType::new("TestUDT".to_string());
     udt_def.add_member(UdtMember {
@@ -220,7 +231,7 @@ async fn test_udt_data_from_hash_map() {
             println!("✅ Created UdtData from HashMap");
             assert_eq!(udt_data.symbol_id, 123);
             assert!(!udt_data.data.is_empty());
-            
+
             // Verify the data
             assert_eq!(udt_data.data[0], 0xFF); // Bool = true
             let dint_value = i32::from_le_bytes([
@@ -239,8 +250,8 @@ async fn test_udt_data_from_hash_map() {
 
 #[tokio::test]
 async fn test_udt_data_round_trip() {
-    use rust_ethernet_ip::udt::{UserDefinedType, UdtMember};
-    
+    use rust_ethernet_ip::udt::{UdtMember, UserDefinedType};
+
     // Create a mock UDT definition
     let mut udt_def = UserDefinedType::new("TestUDT".to_string());
     udt_def.add_member(UdtMember {
@@ -263,14 +274,14 @@ async fn test_udt_data_round_trip() {
 
     // Convert to UdtData
     let udt_data = UdtData::from_hash_map(&original_members, &udt_def, 123).unwrap();
-    
+
     // Parse back to HashMap
     let parsed_members = udt_data.parse(&udt_def).unwrap();
-    
+
     // Verify round-trip
     assert_eq!(parsed_members.get("Bool1"), original_members.get("Bool1"));
     assert_eq!(parsed_members.get("Dint1"), original_members.get("Dint1"));
-    
+
     println!("✅ Round-trip conversion successful");
 }
 
@@ -287,14 +298,14 @@ async fn test_udt_generic_any_udt() {
 
     // Test with different UDT names - should work generically
     let udt_names = vec!["Part_Data", "MotorData", "TestUDT"];
-    
+
     for udt_name in udt_names {
         match client.read_tag(udt_name).await {
             Ok(PlcValue::Udt(udt_data)) => {
                 println!("✅ Successfully read generic UDT: {}", udt_name);
                 println!("   Symbol ID: {}", udt_data.symbol_id);
                 println!("   Data size: {} bytes", udt_data.data.len());
-                
+
                 // Verify it's valid
                 assert!(udt_data.symbol_id > 0, "symbol_id should be > 0");
                 assert!(!udt_data.data.is_empty(), "data should not be empty");
@@ -314,4 +325,3 @@ async fn test_udt_generic_any_udt() {
         }
     }
 }
-

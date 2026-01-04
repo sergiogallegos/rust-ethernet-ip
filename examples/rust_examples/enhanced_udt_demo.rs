@@ -41,9 +41,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✅ UDT read successfully in {:?}", duration);
 
             if let PlcValue::Udt(udt_data) = udt_value {
-                println!("📊 UDT contains {} members:", udt_data.len());
-                for (key, value) in udt_data {
-                    println!("  {} = {:?}", key, value);
+                println!("📊 UDT Data:");
+                println!("  Symbol ID: {}", udt_data.symbol_id);
+                println!("  Data Size: {} bytes", udt_data.data.len());
+                println!("  Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+                if udt_data.data.len() > 32 {
+                    println!("  ... ({} more bytes)", udt_data.data.len() - 32);
                 }
             }
         }
@@ -217,19 +220,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.read_tag("Part_Data").await {
         Ok(udt_value) => {
             if let PlcValue::Udt(udt_data) = udt_value {
-                println!("  ✅ UDT contains {} members", udt_data.len());
+                println!("  ✅ UDT Data:");
+                println!("     Symbol ID: {}", udt_data.symbol_id);
+                println!("     Data Size: {} bytes", udt_data.data.len());
 
-                // Show some key members
-                let key_members = [
-                    "oFuse_Pass_Status",
-                    "oMachine_Running",
-                    "oFuse_Resistance",
-                    "oFuse_Serial_Number",
-                ];
-                for member in &key_members {
-                    if let Some(value) = udt_data.get(*member) {
-                        println!("    {} = {:?}", member, value);
-                    }
+                // To access specific members, you would need to parse using UDT definition
+                // For now, just show the raw data preview
+                println!("     Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+                if udt_data.data.len() > 32 {
+                    println!("     ... ({} more bytes)", udt_data.data.len() - 32);
                 }
             }
         }

@@ -29,9 +29,18 @@
                 <div>
                     <h1 class="text-2xl font-bold text-gray-800">🦀 Rust EtherNet/IP Driver - ASP.NET Demo</h1>
                     <div class="mt-2">
-                        <div class="flex items-center space-x-4">
+                        <div class="flex flex-wrap items-center gap-4">
                             <input type="text" id="plcAddress" placeholder="PLC Address" 
                                    class="px-4 py-2 border rounded-lg" value="192.168.0.1:44818">
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" id="useRoutePath" class="w-4 h-4">
+                                <span>ControlLogix (Route Path)</span>
+                            </label>
+                            <div class="flex items-center space-x-2">
+                                <label>CPU Slot:</label>
+                                <input type="number" id="cpuSlot" min="0" max="255" value="0" 
+                                       class="px-2 py-1 border rounded-lg w-20" disabled>
+                            </div>
                             <button id="connectBtn" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
                                 Connect
                             </button>
@@ -67,6 +76,48 @@
             </div>
         </div>
 
+        <!-- Array Testing Section -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">📊 Array Element Testing</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Array Element Read</label>
+                    <div class="flex space-x-2">
+                        <input type="text" id="arrayTagName" placeholder="gTestArray_DINT[5]" 
+                               class="flex-1 px-4 py-2 border rounded-lg" value="gTestArray_DINT[5]">
+                        <button id="readArrayBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600" disabled>
+                            Read
+                        </button>
+                    </div>
+                    <div id="arrayReadResult" class="mt-2 text-sm text-gray-600"></div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Array Element Write</label>
+                    <div class="flex space-x-2">
+                        <input type="text" id="arrayTagNameWrite" placeholder="gTestArray_DINT[5]" 
+                               class="flex-1 px-4 py-2 border rounded-lg" value="gTestArray_DINT[5]">
+                        <input type="text" id="arrayWriteValue" placeholder="999" 
+                               class="w-24 px-4 py-2 border rounded-lg" value="999">
+                        <button id="writeArrayBtn" class="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600" disabled>
+                            Write
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <h3 class="text-lg font-semibold mb-2">Quick Test Buttons</h3>
+                <div class="flex flex-wrap gap-2">
+                    <button class="quickArrayTest px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm" data-tag="gTestArray_DINT[5]" disabled>gTestArray_DINT[5]</button>
+                    <button class="quickArrayTest px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm" data-tag="gTestArray_REAL[0]" disabled>gTestArray_REAL[0]</button>
+                    <button class="quickArrayTest px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm" data-tag="gTestArray_BOOL[0]" disabled>gTestArray_BOOL[0]</button>
+                    <button class="quickArrayTest px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm" data-tag="gTestArray_INT[0]" disabled>gTestArray_INT[0]</button>
+                    <button class="quickArrayTest px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm" data-tag="Program:TestProgram.gTestArray_DINT[5]" disabled>Program:TestProgram.gTestArray_DINT[5]</button>
+                </div>
+            </div>
+        </div>
+
         <!-- UDT Testing Section -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 class="text-xl font-bold mb-4">🏗️ UDT (User Defined Type) Testing</h2>
@@ -75,8 +126,8 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">UDT Name</label>
-                    <input type="text" id="udtName" placeholder="Part_Data" 
-                           class="w-full px-4 py-2 border rounded-lg" value="Part_Data">
+                    <input type="text" id="udtName" placeholder="gTestUDT" 
+                           class="w-full px-4 py-2 border rounded-lg" value="gTestUDT">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Action</label>
@@ -97,31 +148,8 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">UDT Member</label>
-                        <select id="udtMemberSelect" class="w-full px-4 py-2 border rounded-lg">
-                            <option value="Part_Data.oFuse_Serial_Number">Part_Data.oFuse_Serial_Number</option>
-                            <option value="Part_Data.oFuse_Resistance">Part_Data.oFuse_Resistance</option>
-                            <option value="Part_Data.oFuse_Weight">Part_Data.oFuse_Weight</option>
-                            <option value="Part_Data.oMachine_Running">Part_Data.oMachine_Running</option>
-                            <option value="Part_Data.oMachine_Ready">Part_Data.oMachine_Ready</option>
-                            <option value="Part_Data.oProduction_Rate">Part_Data.oProduction_Rate</option>
-                            <option value="Part_Data.iStart_Production">Part_Data.iStart_Production</option>
-                            <option value="Part_Data.iTarget_Production">Part_Data.iTarget_Production</option>
-                            <option value="Part_Data.iStop_Production">Part_Data.iStop_Production</option>
-                            <option value="Part_Data.iReset_Production">Part_Data.iReset_Production</option>
-                            <option value="Part_Data.iEmergency_Stop">Part_Data.iEmergency_Stop</option>
-                            <option value="Part_Data.iMaintenance_Mode">Part_Data.iMaintenance_Mode</option>
-                            <option value="Part_Data.iQuality_Check">Part_Data.iQuality_Check</option>
-                            <option value="Part_Data.iCalibration_Required">Part_Data.iCalibration_Required</option>
-                            <option value="Part_Data.iOperator_Override">Part_Data.iOperator_Override</option>
-                            <option value="Part_Data.iSystem_Ready">Part_Data.iSystem_Ready</option>
-                            <option value="Part_Data.iProduction_Complete">Part_Data.iProduction_Complete</option>
-                            <option value="Part_Data.iError_State">Part_Data.iError_State</option>
-                            <option value="Part_Data.iWarning_State">Part_Data.iWarning_State</option>
-                            <option value="Part_Data.iData_Valid">Part_Data.iData_Valid</option>
-                            <option value="Part_Data.iCommunication_OK">Part_Data.iCommunication_OK</option>
-                            <option value="Part_Data.iSystem_Status">Part_Data.iSystem_Status</option>
-                            <option value="Part_Data.iProduction_Count">Part_Data.iProduction_Count</option>
-                        </select>
+                        <input type="text" id="udtMemberSelect" placeholder="gTestUDT.Member1_DINT" 
+                               class="w-full px-4 py-2 border rounded-lg" value="gTestUDT.Member1_DINT">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Action</label>
@@ -146,6 +174,16 @@
                 <h3 class="text-lg font-semibold mb-2">UDT Results</h3>
                 <div id="udtResults" class="bg-gray-900 text-green-400 p-4 rounded-lg h-[300px] overflow-y-auto font-mono text-sm">
                     <!-- UDT results will be displayed here -->
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <h3 class="text-lg font-semibold mb-2">Quick Test Buttons</h3>
+                <div class="flex flex-wrap gap-2">
+                    <button class="quickUdtTest px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm" data-tag="gTestUDT" disabled>gTestUDT</button>
+                    <button class="quickUdtMemberTest px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm" data-tag="gTestUDT.Member1_DINT" disabled>gTestUDT.Member1_DINT</button>
+                    <button class="quickUdtMemberTest px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm" data-tag="gTestUDT.Array_DINT[5]" disabled>gTestUDT.Array_DINT[5]</button>
+                    <button class="quickUdtTest px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm" data-tag="Program:TestProgram.gTestUDT" disabled>Program:TestProgram.gTestUDT</button>
                 </div>
             </div>
         </div>
@@ -231,6 +269,8 @@
         const readBtn = document.getElementById('readBtn');
         const writeBtn = document.getElementById('writeBtn');
         const plcAddress = document.getElementById('plcAddress');
+        const useRoutePath = document.getElementById('useRoutePath');
+        const cpuSlot = document.getElementById('cpuSlot');
         const tagToDiscover = document.getElementById('tagToDiscover');
         const tagName = document.getElementById('tagName');
         const dataType = document.getElementById('dataType');
@@ -242,6 +282,14 @@
         const tagsTable = document.getElementById('tagsTable');
         const logContainer = document.getElementById('logContainer');
         
+        // Array Elements
+        const arrayTagName = document.getElementById('arrayTagName');
+        const arrayTagNameWrite = document.getElementById('arrayTagNameWrite');
+        const arrayWriteValue = document.getElementById('arrayWriteValue');
+        const readArrayBtn = document.getElementById('readArrayBtn');
+        const writeArrayBtn = document.getElementById('writeArrayBtn');
+        const arrayReadResult = document.getElementById('arrayReadResult');
+        
         // UDT Elements
         const udtName = document.getElementById('udtName');
         const readUdtBtn = document.getElementById('readUdtBtn');
@@ -251,6 +299,11 @@
         const writeUdtMemberBtn = document.getElementById('writeUdtMemberBtn');
         const udtMemberValue = document.getElementById('udtMemberValue');
         const udtResults = document.getElementById('udtResults');
+        
+        // Enable/disable CPU Slot based on RoutePath checkbox
+        useRoutePath.addEventListener('change', function() {
+            cpuSlot.disabled = !this.checked;
+        });
 
         // Event Listeners
         connectBtn.addEventListener('click', connect);
@@ -260,11 +313,34 @@
         readBtn.addEventListener('click', readTag);
         writeBtn.addEventListener('click', writeTag);
         
+        // Array Event Listeners
+        readArrayBtn.addEventListener('click', readArrayElement);
+        writeArrayBtn.addEventListener('click', writeArrayElement);
+        document.querySelectorAll('.quickArrayTest').forEach(btn => {
+            btn.addEventListener('click', function() {
+                arrayTagName.value = this.dataset.tag;
+                arrayTagNameWrite.value = this.dataset.tag;
+                readArrayElement();
+            });
+        });
+        
         // UDT Event Listeners
         readUdtBtn.addEventListener('click', readUdt);
         readUdtAsDictBtn.addEventListener('click', readUdtAsDictionary);
         readUdtMemberBtn.addEventListener('click', readUdtMember);
         writeUdtMemberBtn.addEventListener('click', writeUdtMember);
+        document.querySelectorAll('.quickUdtTest').forEach(btn => {
+            btn.addEventListener('click', function() {
+                udtName.value = this.dataset.tag;
+                readUdt();
+            });
+        });
+        document.querySelectorAll('.quickUdtMemberTest').forEach(btn => {
+            btn.addEventListener('click', function() {
+                udtMemberSelect.value = this.dataset.tag;
+                readUdtMember();
+            });
+        });
 
         // Functions
         async function connect() {
@@ -275,12 +351,19 @@
                 }
 
                 log('🔌 Connecting to PLC...');
+                if (useRoutePath.checked) {
+                    log(`📍 Using RoutePath: CPU Slot ${cpuSlot.value}`);
+                }
                 connectBtn.disabled = true;
                 
                 const response = await fetch('/api/plc/connect', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ Address: plcAddress.value.trim() })
+                    body: JSON.stringify({ 
+                        Address: plcAddress.value.trim(),
+                        UseRoutePath: useRoutePath.checked,
+                        CpuSlot: parseInt(cpuSlot.value) || 0
+                    })
                 });
                 
                 const data = await response.json();
@@ -313,10 +396,18 @@
         }
 
         async function initializeTags() {
+            // Default test tags from PLC_TEST_TAG_DEFINITIONS.md
             const testTags = [
-                { name: 'TestTag', type: 'BOOL', value: false },
-                { name: 'TestDint', type: 'DINT', value: 0 },
-                { name: 'TestReal', type: 'REAL', value: 0.0 }
+                { name: 'gTestArray_DINT[0]', type: 'DINT', value: 10 },
+                { name: 'gTestArray_DINT[5]', type: 'DINT', value: 60 },
+                { name: 'gTestArray_REAL[0]', type: 'REAL', value: 1.1 },
+                { name: 'gTestArray_BOOL[0]', type: 'BOOL', value: true },
+                { name: 'gTestArray_INT[0]', type: 'INT', value: 100 },
+                { name: 'gTestUDT.Member1_DINT', type: 'DINT', value: 100 },
+                { name: 'gTestUDT.Member2_REAL', type: 'REAL', value: 3.14159 },
+                { name: 'gTestUDT.Member3_BOOL', type: 'BOOL', value: true },
+                { name: 'gTestUDT.Array_DINT[5]', type: 'DINT', value: 6 },
+                { name: 'Program:TestProgram.gTestArray_DINT[5]', type: 'DINT', value: 6000 }
             ];
 
             for (const tag of testTags) {
@@ -477,11 +568,17 @@
                 discoverBtn.disabled = false;
                 readBtn.disabled = false;
                 writeBtn.disabled = false;
+                // Enable Array buttons
+                readArrayBtn.disabled = false;
+                writeArrayBtn.disabled = false;
+                document.querySelectorAll('.quickArrayTest').forEach(btn => btn.disabled = false);
+                
                 // Enable UDT buttons
                 readUdtBtn.disabled = false;
                 readUdtAsDictBtn.disabled = false;
                 readUdtMemberBtn.disabled = false;
                 writeUdtMemberBtn.disabled = false;
+                document.querySelectorAll('.quickUdtTest, .quickUdtMemberTest').forEach(btn => btn.disabled = false);
                 
                 // Start monitoring connection status
                 startConnectionMonitor();
@@ -495,11 +592,16 @@
                 discoverBtn.disabled = true;
                 readBtn.disabled = true;
                 writeBtn.disabled = true;
+                // Disable Array buttons
+                readArrayBtn.disabled = true;
+                writeArrayBtn.disabled = true;
+                document.querySelectorAll('.quickArrayTest').forEach(btn => btn.disabled = true);
                 // Disable UDT buttons
                 readUdtBtn.disabled = true;
                 readUdtAsDictBtn.disabled = true;
                 readUdtMemberBtn.disabled = true;
                 writeUdtMemberBtn.disabled = true;
+                document.querySelectorAll('.quickUdtTest, .quickUdtMemberTest').forEach(btn => btn.disabled = true);
                 
                 // Stop monitoring connection status
                 stopConnectionMonitor();
@@ -560,7 +662,11 @@
                 const response = await fetch('/api/plc/connect', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ Address: plcAddress.value.trim() })
+                    body: JSON.stringify({ 
+                        Address: plcAddress.value.trim(),
+                        UseRoutePath: useRoutePath.checked,
+                        CpuSlot: parseInt(cpuSlot.value) || 0
+                    })
                 });
 
                 const data = await response.json();
@@ -582,12 +688,24 @@
         }
 
         function startRefresh() {
-            // Add test tags
-            tags.set('TestTag', { name: 'TestTag', type: 'BOOL', value: null, updated: null });
-            tags.set('TestDint', { name: 'TestDint', type: 'DINT', value: null, updated: null });
-            tags.set('TestReal', { name: 'TestReal', type: 'REAL', value: null, updated: null });
-            // Add UDT tag
-            tags.set('Part_Data.oMachine_Running', { name: 'Part_Data.oMachine_Running', type: 'UDT', value: null, updated: null });
+            // Add test tags from PLC_TEST_TAG_DEFINITIONS.md
+            const testTags = [
+                'gTestArray_DINT[0]',
+                'gTestArray_DINT[5]',
+                'gTestArray_REAL[0]',
+                'gTestArray_BOOL[0]',
+                'gTestArray_INT[0]',
+                'gTestUDT.Member1_DINT',
+                'gTestUDT.Member2_REAL',
+                'gTestUDT.Member3_BOOL',
+                'gTestUDT.Array_DINT[5]',
+                'Program:TestProgram.gTestArray_DINT[5]'
+            ];
+            
+            testTags.forEach(tagName => {
+                tags.set(tagName, { name: tagName, type: 'UNKNOWN', value: null, updated: null });
+            });
+            
             updateTagsTable();
             
             // Start refresh interval with a longer delay
@@ -753,23 +871,24 @@
             }
         }
 
-        async function readUdtMember() {
+        // Array Functions
+        async function readArrayElement() {
             if (!isConnected) {
                 log('❌ Not connected to PLC');
                 return;
             }
 
-            const member = udtMemberSelect.value.trim();
-            if (!member) {
-                log('❌ Please select a UDT member');
+            const tag = arrayTagName.value.trim();
+            if (!tag) {
+                log('❌ Please enter an array tag name');
                 return;
             }
 
             try {
-                log(`🔍 Reading UDT Member: ${member}`);
-                udtResults.innerHTML = 'Loading...';
+                log(`📖 Reading array element: ${tag}`);
+                arrayReadResult.textContent = 'Reading...';
                 
-                const response = await fetch(`/api/plc/tag/${encodeURIComponent(member)}`);
+                const response = await fetch(`/api/plc/array/${encodeURIComponent(tag)}`);
                 
                 if (!response.ok) {
                     const errorData = await response.json();
@@ -779,9 +898,97 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    log(`✅ Successfully read UDT Member: ${member}`);
+                    log(`✅ Successfully read array element: ${tag} = ${data.value} (${data.type})`);
+                    arrayReadResult.textContent = `✅ Value: ${data.value} (${data.type})`;
+                    arrayReadResult.className = 'mt-2 text-sm text-green-600';
+                } else {
+                    log(`❌ Failed to read array element: ${data.message}`);
+                    arrayReadResult.textContent = `❌ Error: ${data.message}`;
+                    arrayReadResult.className = 'mt-2 text-sm text-red-600';
+                }
+            } catch (error) {
+                log(`❌ Error reading array element: ${error.message}`);
+                arrayReadResult.textContent = `❌ Error: ${error.message}`;
+                arrayReadResult.className = 'mt-2 text-sm text-red-600';
+            }
+        }
+
+        async function writeArrayElement() {
+            if (!isConnected) {
+                log('❌ Not connected to PLC');
+                return;
+            }
+
+            const tag = arrayTagNameWrite.value.trim();
+            const value = arrayWriteValue.value.trim();
+            
+            if (!tag) {
+                log('❌ Please enter an array tag name');
+                return;
+            }
+            
+            if (!value) {
+                log('❌ Please enter a value to write');
+                return;
+            }
+
+            try {
+                log(`✏️ Writing array element: ${tag} = ${value}`);
+                
+                const response = await fetch(`/api/plc/array/${encodeURIComponent(tag)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ Value: value })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`✅ Successfully wrote array element: ${tag} = ${value}`);
+                } else {
+                    log(`❌ Failed to write array element: ${data.message}`);
+                }
+            } catch (error) {
+                log(`❌ Error writing array element: ${error.message}`);
+            }
+        }
+
+        async function readUdtMember() {
+            if (!isConnected) {
+                log('❌ Not connected to PLC');
+                return;
+            }
+
+            const member = udtMemberSelect.value.trim();
+            if (!member) {
+                log('❌ Please enter a UDT member path');
+                return;
+            }
+
+            try {
+                log(`📖 Reading UDT Member: ${member}`);
+                udtResults.innerHTML = 'Loading...';
+                
+                // Use the new udt-member endpoint
+                const response = await fetch(`/api/plc/udt-member/${encodeURIComponent(member)}`);
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`✅ Successfully read UDT Member: ${member} = ${data.value} (${data.type})`);
                     udtResults.innerHTML = `<div class="text-green-400">✅ UDT Member Read Successfully</div>
-                        <div class="mt-2">Member: ${member}</div>
+                        <div class="mt-2">Tag: ${data.tagName}</div>
+                        <div>Member: ${data.memberName}</div>
                         <div>Type: ${data.type}</div>
                         <div>Value: ${JSON.stringify(data.value, null, 2)}</div>`;
                 } else {
@@ -804,7 +1011,7 @@
             const value = udtMemberValue.value.trim();
             
             if (!member) {
-                log('❌ Please select a UDT member');
+                log('❌ Please enter a UDT member path');
                 return;
             }
             
@@ -814,15 +1021,14 @@
             }
 
             try {
-                log(`✍️ Writing UDT Member: ${member} = ${value}`);
+                log(`✏️ Writing UDT Member: ${member} = ${value}`);
                 udtResults.innerHTML = 'Loading...';
                 
-                const response = await fetch(`/api/plc/tag/${encodeURIComponent(member)}`, {
+                // Use the new udt-member endpoint
+                const response = await fetch(`/api/plc/udt-member/${encodeURIComponent(member)}`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ value: value })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ Value: value })
                 });
                 
                 if (!response.ok) {
@@ -835,7 +1041,9 @@
                 if (data.success) {
                     log(`✅ Successfully wrote UDT Member: ${member} = ${value}`);
                     udtResults.innerHTML = `<div class="text-green-400">✅ UDT Member Write Successfully</div>
-                        <div class="mt-2">Member: ${member}</div>
+                        <div class="mt-2">Tag: ${data.tagName}</div>
+                        <div>Member: ${data.memberName}</div>
+                        <div>Type: ${data.type}</div>
                         <div>Value Written: ${value}</div>`;
                 } else {
                     log(`❌ Failed to write UDT Member: ${data.message}`);

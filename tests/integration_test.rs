@@ -50,27 +50,25 @@ async fn test_udt_operations() {
 
     // Read a UDT
     let udt_value = client.read_tag("MotorData").await.unwrap();
-    if let PlcValue::Udt(members) = udt_value {
-        assert!(members.contains_key("Speed"));
-        assert!(members.contains_key("Current"));
-        assert!(members.contains_key("Status"));
+    if let PlcValue::Udt(udt_data) = udt_value {
+        // UdtData now contains symbol_id and raw data bytes
+        assert!(udt_data.symbol_id >= 0);
+        assert!(!udt_data.data.is_empty());
     } else {
         panic!("Expected UDT value");
     }
 
-    // Write a UDT
-    let mut members = HashMap::new();
-    members.insert("Speed".to_string(), PlcValue::Dint(1500));
-    members.insert("Current".to_string(), PlcValue::Real(10.5));
-    members.insert(
-        "Status".to_string(),
-        PlcValue::String("Running".to_string()),
-    );
-
-    client
-        .write_tag("MotorData", PlcValue::Udt(members))
-        .await
-        .unwrap();
+    // Write a UDT - need to read first to get symbol_id, then modify and write back
+    let udt_value = client.read_tag("MotorData").await.unwrap();
+    if let PlcValue::Udt(mut udt_data) = udt_value {
+        // For now, just write back the same data (proper modification would require UDT definition)
+        client
+            .write_tag("MotorData", PlcValue::Udt(udt_data))
+            .await
+            .unwrap();
+    } else {
+        panic!("Expected UDT value");
+    }
 }
 
 #[tokio::test]

@@ -71,7 +71,9 @@ namespace RustEtherNetIp
             var root = doc.RootElement;
 
             int symbolId = root.GetProperty("symbol_id").GetInt32();
-            string dataBase64 = root.GetProperty("data").GetString();
+            string? dataBase64 = root.GetProperty("data").GetString();
+            if (string.IsNullOrEmpty(dataBase64))
+                throw new ArgumentException("UdtData JSON missing or empty 'data' field");
             byte[] data = Convert.FromBase64String(dataBase64);
 
             return new UdtData(symbolId, data);

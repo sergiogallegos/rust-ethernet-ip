@@ -1,7 +1,8 @@
 [workspace]
 members = [
     ".",  # Main library (current directory)
-    "pywrapper"  # Python wrapper
+    "pywrapper",  # Python wrapper
+    "examples/desktop_app"  # Desktop application
 ]
 
 [package]

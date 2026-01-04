@@ -1,6 +1,6 @@
 # Documentation Index
 
-This directory contains documentation for the Rust EtherNet/IP library, including protocol references, implementation guides, and testing documentation.
+This directory contains documentation for the Rust EtherNet/IP library, including protocol references, implementation guides, testing documentation, and limitations documentation.
 
 ## Protocol Reference Documentation
 
@@ -74,12 +74,30 @@ This directory contains documentation for the Rust EtherNet/IP library, includin
 | REAL | `0x00CA` | 4 bytes |
 | UDT | `0x00A0` | Variable |
 
+## Limitations Documentation
+
+### Library Limitations
+- **`LIBRARY_LIMITATIONS.md`** - Overview of library limitations for all wrapper users
+  - STRING tag writing limitations
+  - UDT array element member write limitations
+  - Test results and error handling
+
+### Technical Limitations Reference
+- **`AB_String_UDT_Write_Limitations.md`** - Comprehensive technical documentation on STRING and UDT write limitations
+  - Official Rockwell documentation references (1756-PM020)
+  - Technical background on CIP protocol restrictions
+  - Structure Handle and Tag Type Service Parameter details
+  - Workarounds and recommendations
+  - CIP error codes reference
+
 ## Quick Links
 
 - **Protocol Reference:** `CIP_PROTOCOL_REFERENCE_1756-PM020.md`
 - **Array Implementation Guide:** `ARRAY_ELEMENT_ADDRESSING_GUIDE.md`
 - **Implementation Status:** `IMPLEMENTATION_STATUS.md`
 - **PDF Summary:** `PDF_EXTRACTION_SUMMARY.md`
+- **Library Limitations:** `LIBRARY_LIMITATIONS.md`
+- **Technical Limitations:** `AB_String_UDT_Write_Limitations.md`
 
 ## Related Files
 

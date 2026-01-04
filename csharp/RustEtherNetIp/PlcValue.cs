@@ -99,7 +99,7 @@ namespace RustEtherNetIp
         /// <summary>
         /// Gets the value as the specified type with a default if conversion fails
         /// </summary>
-        public T AsOrDefault<T>(T defaultValue = default(T))
+        public T AsOrDefault<T>(T? defaultValue = default(T))
         {
             try
             {
@@ -129,7 +129,7 @@ namespace RustEtherNetIp
         /// <summary>
         /// Gets the UDT members if this is a UDT value (legacy format)
         /// </summary>
-        public Dictionary<string, PlcValue> UdtMembers
+        public Dictionary<string, PlcValue>? UdtMembers
         {
             get
             {
@@ -151,7 +151,7 @@ namespace RustEtherNetIp
         /// <summary>
         /// Gets the UDT data if this is a UDT value (new generic format)
         /// </summary>
-        public UdtData UdtData => IsUdt && _value is UdtData data ? data : null;
+        public UdtData? UdtData => IsUdt && _value is UdtData data ? data : null;
 
         /// <summary>
         /// Checks if this UDT value uses the new UdtData format
@@ -161,7 +161,7 @@ namespace RustEtherNetIp
         /// <summary>
         /// Gets a nested UDT member by path (e.g., "Status.Running")
         /// </summary>
-        public PlcValue GetNestedValue(string path)
+        public PlcValue? GetNestedValue(string path)
         {
             if (!IsUdt) return null;
 
@@ -211,6 +211,75 @@ namespace RustEtherNetIp
 
         private static PlcValue FromJsonElement(JsonElement element)
         {
+            // Handle Rust enum format: {"Dint": 42}, {"Bool": true}, {"String": "value"}, etc.
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                var obj = element.EnumerateObject();
+                if (obj.Count() == 1)
+                {
+                    var firstProp = obj.First();
+                    var key = firstProp.Name;
+                    var value = firstProp.Value;
+
+                    switch (key)
+                    {
+                        case "Bool":
+                            return Bool(value.GetBoolean());
+                        case "Sint":
+                            return Sint((sbyte)value.GetInt32());
+                        case "Int":
+                            return Int((short)value.GetInt32());
+                        case "Dint":
+                            return Dint(value.GetInt32());
+                        case "Lint":
+                            return Lint(value.GetInt64());
+                        case "Usint":
+                            return Usint((byte)value.GetUInt32());
+                        case "Uint":
+                            return Uint((ushort)value.GetUInt32());
+                        case "Udint":
+                            return Udint(value.GetUInt32());
+                        case "Ulint":
+                            return Ulint(value.GetUInt64());
+                        case "Real":
+                            return Real(value.GetSingle());
+                        case "Lreal":
+                            return Lreal(value.GetDouble());
+                        case "String":
+                            return String(value.GetString() ?? string.Empty);
+                        case "Udt":
+                            // UDT format: {"Udt": {"symbol_id": 123, "data": [1,2,3,...]}}
+                            if (value.ValueKind == JsonValueKind.Object)
+                            {
+                                var udtObj = value;
+                                if (udtObj.TryGetProperty("symbol_id", out var symbolId) &&
+                                    udtObj.TryGetProperty("data", out var data))
+                                {
+                                    var dataArray = data.EnumerateArray().Select(b => (byte)b.GetUInt32()).ToArray();
+                                    var udtData = new UdtData { SymbolId = symbolId.GetInt32(), Data = dataArray };
+                                    return UdtFromData(udtData);
+                                }
+                                // Fallback: try to parse as nested dictionary
+                                var udtDict = new Dictionary<string, PlcValue>();
+                                foreach (var udtProp in udtObj.EnumerateObject())
+                                {
+                                    udtDict[udtProp.Name] = FromJsonElement(udtProp.Value);
+                                }
+                                return Udt(udtDict);
+                            }
+                            break;
+                    }
+                }
+                // If not a single-key enum, treat as UDT dictionary
+                var dict = new Dictionary<string, PlcValue>();
+                foreach (var dictProp in element.EnumerateObject())
+                {
+                    dict[dictProp.Name] = FromJsonElement(dictProp.Value);
+                }
+                return Udt(dict);
+            }
+
+            // Handle simple JSON values (fallback for non-enum format)
             switch (element.ValueKind)
             {
                 case JsonValueKind.True:
@@ -227,18 +296,10 @@ namespace RustEtherNetIp
                     break;
 
                 case JsonValueKind.String:
-                    return String(element.GetString());
-
-                case JsonValueKind.Object:
-                    var dict = new Dictionary<string, PlcValue>();
-                    foreach (var prop in element.EnumerateObject())
-                    {
-                        dict[prop.Name] = FromJsonElement(prop.Value);
-                    }
-                    return Udt(dict);
+                    return String(element.GetString() ?? string.Empty);
             }
 
-            throw new ArgumentException("Unsupported JSON value type");
+            throw new ArgumentException($"Unsupported JSON value type: {element.ValueKind}");
         }
 
         public override string ToString()
@@ -246,7 +307,7 @@ namespace RustEtherNetIp
             return _value?.ToString() ?? "null";
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is PlcValue other)
             {

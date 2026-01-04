@@ -9,6 +9,7 @@ from .rust_ethernet_ip import (
     PyRoutePath,
     PyUdtData,
 )
+from .client import EipClient, RoutePath, PlcValue, UdtData
 
 __version__ = "0.5.3"
 
@@ -18,4 +19,8 @@ __all__ = [
     "PySubscriptionOptions",
     "PyRoutePath",
     "PyUdtData",
+    "EipClient",
+    "RoutePath",
+    "PlcValue",
+    "UdtData",
 ] 

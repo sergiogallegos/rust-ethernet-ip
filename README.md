@@ -16,6 +16,22 @@ A high-performance, production-ready EtherNet/IP communication library specifica
  
  **📦 Available on [crates.io](https://crates.io/crates/rust-ethernet-ip)**
 
+## 🎯 **Current Development Focus**
+
+**We are currently focusing on polishing the .NET stack (C# wrappers and examples) to production quality.**
+
+- 🎯 **Active Development**: 
+  - C# wrapper library (`RustEtherNetIp.dll`)
+  - WinForms example application
+  - WPF example application  
+  - ASP.NET example application
+  - Advanced features: TagGroup, Statistics, Batch Operations, STRING support, UDT arrays
+- ⏸️ **On Hold**: 
+  - Go wrapper and applications (will resume after .NET stack is complete)
+  - Python wrapper and applications (will resume after .NET stack is complete)
+
+This focused approach ensures we deliver a robust, well-tested, production-ready .NET integration before expanding to other language ecosystems. The .NET stack serves as the reference implementation for future language bindings.
+
 ## 🎯 **Project Focus**
 
 This library is specifically designed for:
@@ -51,7 +67,7 @@ This library is specifically designed for:
 - **🎯 Program Tag Support**: Fixed program-scoped tag access with correct CIP path format
 - **🧠 Enhanced UDT Parsing**: Intelligent multi-member UDT parsing with byte alignment detection
 - **⚡ Advanced Chunked Reading**: Multiple strategies for large UDTs with intelligent error recovery
-- **🌐 Cross-Language Compatibility**: Updated Go wrapper with all Rust improvements
+- **🎯 .NET Stack Focus**: Comprehensive C# wrapper with WinForms, WPF, and ASP.NET examples
 
 > **🎉 Major Milestone Achieved!**  
 > v0.6.0 introduces a new generic UDT format (`UdtData`) that works with any UDT without requiring prior knowledge of member structure. The library core is production-ready with all 31 unit tests passing.
@@ -66,12 +82,14 @@ This library is specifically designed for:
 - **Template Management**: Full UDT template parsing and member discovery
 - **Program-Scoped Discovery**: Find tags within specific program scopes
 
-### 🛣️ **Route Path Support (v0.5.4)**
-- **Slot Configuration**: Support for slots 0-31
-- **Backplane Routing**: Direct communication with CPUs in different slots
-- **Network Routing**: Multi-hop routing through complex topologies
-- **Remote Rack Connections**: Connect to PLCs in remote racks
-- **Dynamic Path Building**: Automatic CIP route path generation
+### 🛣️ **Route Path Support (v0.5.4, Enhanced in v0.6.0)**
+- **Slot Configuration**: Support for slots 0-31 (✅ Fully implemented and tested)
+- **Backplane Routing**: Direct communication with CPUs in different slots (✅ Fully implemented)
+- **Network Routing**: Multi-hop routing through network addresses and ports (✅ Implemented)
+- **CIP Path Building**: Automatic CIP route path byte generation (✅ Implemented)
+- **ControlLogix Support**: Tested with ControlLogix systems with CPUs in different slots
+- **Remote Rack Connections**: Basic support exists, needs additional testing
+- **Dynamic Path Building**: Automatic CIP route path generation from slots, ports, and addresses
 
 ### 📦 **Packet Size Optimization (v0.5.4)**
 - **Dynamic Negotiation**: Automatically negotiates optimal packet size with PLC
@@ -91,6 +109,89 @@ This library is specifically designed for:
 - **Connection health monitoring** with configurable timeouts
 - **Network resilience** handling for industrial environments
 - **Comprehensive error handling** with detailed CIP error mapping
+
+### ⚠️ **Known Limitations**
+
+The following operations are **not supported** due to PLC firmware restrictions. These limitations are inherent to the Allen-Bradley PLC firmware and cannot be bypassed at the library level.
+
+#### STRING Tag Writing
+
+**Cannot write directly to STRING tags** (e.g., `gTest_STRING`, `Program:TestProgram.gTest_STRING`).
+
+**Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC rejects direct write operations to STRING tags, regardless of the communication method used.
+
+**What Works:**
+- ✅ Reading STRING tags: `gTest_STRING` (read successfully)
+- ✅ Reading STRING members in UDTs: `gTestUDT.Member5_String` (read successfully)
+
+**What Doesn't Work:**
+- ❌ Writing simple STRING tags: `gTest_STRING` (write fails - PLC limitation)
+- ❌ Writing program-scoped STRING tags: `Program:TestProgram.gTest_STRING` (write fails - PLC limitation)
+- ❌ Writing STRING members in UDTs directly: `gTestUDT.Member5_String` (write fails - must write entire UDT)
+
+**Workaround for STRING Members in UDTs:**
+If the STRING is part of a UDT structure, you can write it by reading the entire UDT, modifying the STRING member in memory, then writing the entire UDT back:
+
+```rust
+// Read entire UDT
+let mut udt = client.read_tag("gTestUDT").await?;
+
+// Modify STRING member in memory (if UDT structure is known)
+// ... modify UDT structure ...
+
+// Write entire UDT back
+client.write_tag("gTestUDT", udt).await?;
+```
+
+**Note:** For standalone STRING tags (not part of a UDT), there is no workaround at the communication library level. Alternative approaches may include using PLC ladder logic or other PLC-side mechanisms to update STRING values.
+
+#### UDT Array Element Member Writing
+
+**Cannot write directly to members of UDT array elements** (e.g., `gTestUDT_Array[0].Member1_DINT`).
+
+**Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC does not support direct write operations to individual members within UDT array elements.
+
+**What Works:**
+- ✅ Reading UDT array element members: `gTestUDT_Array[0].Member1_DINT` (read successfully)
+- ✅ Writing entire UDT array elements: `gTestUDT_Array[0]` (write full UDT structure)
+- ✅ Writing UDT members (non-array): `gTestUDT.Member1_DINT` (write individual members of non-array UDTs)
+- ✅ Writing simple array elements: `gArray[5]` (write elements of simple arrays like DINT[], REAL[], etc.)
+
+**What Doesn't Work:**
+- ❌ Writing UDT array element members: `gTestUDT_Array[0].Member1_DINT` (write fails - PLC limitation)
+- ❌ Writing program-scoped UDT array element members: `Program:TestProgram.gTestUDT_Array[0].Member1_DINT` (write fails - PLC limitation)
+
+**Workaround:**
+Use a read-modify-write pattern:
+
+```rust
+// Read entire UDT array element
+let mut element = client.read_tag("gTestUDT_Array[0]").await?;
+
+// Modify member in memory (if UDT structure is known)
+// ... modify UDT structure ...
+
+// Write entire UDT array element back
+client.write_tag("gTestUDT_Array[0]", element).await?;
+```
+
+#### Summary of Limitations
+
+**Test Results (392 tags tested):**
+- ✅ **333/392 tags** (84.9%) successfully read and written
+- ❌ **59/392 tags** failed due to PLC firmware limitations:
+  - 55 tags: UDT array element member writes (e.g., `gTestUDT_Array[0].Member1_DINT`)
+  - 2 tags: Simple STRING tag writes (e.g., `gTest_STRING`)
+  - 2 tags: STRING member writes in UDTs (e.g., `gTestUDT.Member5_String`)
+
+**Important Notes:**
+- These limitations are **PLC firmware restrictions**, not library bugs
+- The library correctly implements the EtherNet/IP and CIP protocols
+- All read operations work correctly for all tag types
+- Workarounds are available for UDT array element members and STRING members in UDTs
+- Standalone STRING tag writes have no workaround at the communication library level
+
+**📚 For detailed technical information about these limitations, including official Rockwell documentation references and technical background, see [AB_String_UDT_Write_Limitations.md](docs/AB_String_UDT_Write_Limitations.md).**
 
 ### 📍 **Advanced Tag Addressing** ✅ **COMPLETED**
 - **Program-scoped tags**: `Program:MainProgram.Tag1` ✅ **FIXED in v0.5.4**
@@ -120,30 +221,33 @@ All Allen-Bradley native data types with proper CIP encoding:
 - **STRING** - Variable-length strings (CIP type 0x00DA)
 - **UDT** - User Defined Types with full nesting support (CIP type 0x00A0)
 
-### 🔗 **Language Bindings** ✅ **COMPLETED**
+### 🔗 **Language Bindings**
 
-#### **C# Integration** ✅ **COMPLETED**
+#### **C# Integration** 🎯 **CURRENT FOCUS - Active Development**
 - **Complete C# wrapper** with all data types
 - **22 FFI functions** for seamless integration
 - **Type-safe API** with comprehensive error handling
-- **NuGet package ready** for easy distribution
 - **Cross-platform support** (Windows, Linux, macOS)
+- **Production-ready examples**: WinForms, WPF, ASP.NET
+- **Advanced features**: TagGroup, Statistics, Batch Operations, STRING support
+- **Status**: Actively being polished to production quality
 
-#### **Go Integration** ✅ **NEW in v0.4.0**
+#### **Go Integration** ⏸️ **ON HOLD**
 - **CGO wrapper** with comprehensive API coverage
 - **Type-safe Go bindings** for all PLC data types
 - **Connection management** and health monitoring
 - **Error handling** with Go-idiomatic patterns
 - **Full-stack example** with Go backend + Next.js frontend ([see example](examples/gonextjs/README.md))
+- **Status**: Development paused until .NET stack is complete
 
-#### **Python Integration** ✅ **NEW in v0.4.0**
+#### **Python Integration** ⏸️ **ON HOLD**
 - **PyO3-based Python wrapper** with full API coverage
 - **Type-safe Python bindings** for all PLC data types
 - **Synchronous and asynchronous APIs** for flexible usage
 - **Comprehensive error handling** with Python exceptions
 - **Easy installation** via pip or maturin
 - **Cross-platform support** (Windows, Linux, macOS)
-- **Write_tag method now correctly returns a boolean indicating success or failure**
+- **Status**: Development paused until .NET stack is complete
 
 ### ⚠️ **Comprehensive Error Handling** ✅ **COMPLETED**
 - **Detailed CIP error mapping** with 40+ error codes
@@ -250,15 +354,19 @@ Optimized for PC applications with excellent performance:
 - [x] **Code Quality** - Comprehensive examples and tests updated for new API
 - [x] **Community features** - Discord server, GitHub discussions, sponsorship program
 
-### 🚀 **Phase 4: Industrial Routing Support** 📋 **PLANNED**
-- [ ] **Basic slot configuration** - Support for CPUs in slots 1-31 (v0.6.0)
-- [ ] **Simple backplane routing** - Direct backplane communication (v0.6.0)
-- [ ] **Route path building** - CIP route path construction (v0.6.0)
-- [ ] **Remote rack support** - Connect to remote racks via network (v0.7.0)
-- [ ] **Network routing** - Multi-hop network routing (v0.7.0)
-- [ ] **Path validation** - Route path verification and error handling (v0.7.0)
-- [ ] **Advanced routing** - Complex network topologies (v0.8.0)
-- [ ] **Route discovery** - Automatic path detection (v0.8.0)
+### 🚀 **Phase 4: Industrial Routing Support** ✅ **PARTIALLY IMPLEMENTED**
+- [x] **Basic slot configuration** - Support for CPUs in slots 0-31 (✅ Implemented in v0.6.0)
+- [x] **Simple backplane routing** - Direct backplane communication (✅ Implemented in v0.6.0)
+- [x] **Route path building** - CIP route path construction (✅ Implemented in v0.6.0)
+- [x] **Network routing** - Multi-hop network routing via addresses and ports (✅ Implemented in v0.6.0)
+- [x] **Path validation** - Route path verification and CIP byte construction (✅ Implemented in v0.6.0)
+- [ ] **Remote rack support** - Connect to remote racks via network (⚠️ Basic support exists, needs testing)
+- [ ] **Advanced routing** - Complex network topologies (⚠️ Basic support exists, needs validation)
+- [ ] **Route discovery** - Automatic path detection (❌ Not implemented)
+
+**Note:** ControlLogix systems with CPUs in different slots can be tested using the `RoutePath` API. 
+Use `EipClient::with_route_path()` or `set_route_path()` with `RoutePath::new().add_slot(slot_number)` 
+to connect to ControlLogix CPUs in slots 0-31.
 
 ## 🛠️ **Installation**
 

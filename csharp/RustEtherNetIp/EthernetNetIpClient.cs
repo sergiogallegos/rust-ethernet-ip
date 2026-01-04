@@ -2,6 +2,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Text.Json;
@@ -21,6 +22,39 @@ namespace RustEtherNetIp
     /// Supported PLCs: CompactLogix L1x-L5x, ControlLogix L6x-L8x series
     /// Supported Data Types: BOOL, SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL, STRING, UDT
     /// Advanced Features: Program-scoped tags, array addressing, bit operations, UDT member access
+    /// 
+    /// <para><strong>⚠️ Known Limitations (PLC Firmware Restrictions):</strong></para>
+    /// <para>
+    /// The following operations are not supported due to PLC firmware restrictions.
+    /// These limitations are inherent to the Allen-Bradley PLC firmware and cannot be bypassed at the library level.
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><strong>STRING Tags:</strong> Cannot write directly to STRING tags (e.g., "gTest_STRING", "Program:TestProgram.gTest_STRING"). 
+    /// This is a PLC firmware limitation (CIP Error 0x2107). STRING tags can be read successfully but cannot be written directly.
+    /// For STRING members in UDTs, use the workaround: read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
+    /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs 
+    /// (e.g., "gTestUDT.Member5_String"). Must read the entire UDT structure, modify the STRING member in memory, then write the entire UDT back.</description></item>
+    /// <item><description><strong>UDT Array Element Members:</strong> Cannot write directly to members of UDT array elements 
+    /// (e.g., "gTestUDT_Array[0].Member1_DINT", "Program:TestProgram.gTestUDT_Array[0].Member1_DINT"). 
+    /// Must read the entire UDT array element, modify the member in memory, then write the entire element back.</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>✅ What Works:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Reading all tag types including STRING tags and UDT members</description></item>
+    /// <item><description>Writing DINT, REAL, BOOL, INT, and other numeric types</description></item>
+    /// <item><description>Writing UDT members (non-STRING) for non-array UDTs (e.g., "gTestUDT.Member1_DINT")</description></item>
+    /// <item><description>Writing entire UDT array elements (e.g., "gTestUDT_Array[0]")</description></item>
+    /// <item><description>Writing simple array elements (e.g., "gArray[5]")</description></item>
+    /// <item><description>Reading UDT array element members (e.g., "gTestUDT_Array[0].Member1_DINT")</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>💡 Workarounds:</strong></para>
+    /// <list type="bullet">
+    /// <item><description><strong>UDT Array Element Members:</strong> Read the entire UDT array element, modify the member in memory, then write the entire UDT array element back.</description></item>
+    /// <item><description><strong>STRING Members in UDTs:</strong> Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
+    /// <item><description><strong>Standalone STRING Tags:</strong> There is no workaround at the communication library level. Alternative approaches may include using PLC ladder logic or other PLC-side mechanisms.</description></item>
+    /// </list>
     /// </remarks>
     /// <example>
     /// Basic usage:
@@ -58,6 +92,7 @@ namespace RustEtherNetIp
         private readonly Dictionary<string, TagSubscription> _subscriptions = new();
         private readonly Dictionary<string, CancellationTokenSource> _subscriptionTokens = new();
         private readonly object _subscriptionLock = new();
+        private readonly ClientStatistics _statistics = new();
 
         #region DLL Imports
         // These are the low-level FFI calls to the Rust library
@@ -168,6 +203,9 @@ namespace RustEtherNetIp
 
         // UDT operations
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_read_tag(int client_id, IntPtr tag_name, IntPtr result, int max_size);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
         private static extern int eip_read_udt(int client_id, IntPtr tag_name, IntPtr result, int max_size);
 
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
@@ -218,6 +256,80 @@ namespace RustEtherNetIp
         #endregion
 
         #region Connection Management
+
+        /// <summary>
+        /// Establishes connection to a CompactLogix or ControlLogix PLC via EtherNet/IP with route path.
+        /// Use this method for ControlLogix systems where the CPU is in a specific slot.
+        /// </summary>
+        /// <param name="address">
+        /// PLC network address in format "IP:PORT" (e.g., "192.168.1.100:44818").
+        /// Port 44818 is the standard EtherNet/IP port for Allen-Bradley PLCs.
+        /// </param>
+        /// <param name="routePath">Route path specifying CPU slot and/or network routing</param>
+        /// <returns>True if connection successful, false otherwise.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if already connected to a PLC.</exception>
+        /// <example>
+        /// <code>
+        /// // ControlLogix: CPU in Slot 0
+        /// var route = new RoutePath().AddSlot(0);
+        /// var client = new EtherNetIpClient();
+        /// if (client.ConnectWithRoute("192.168.0.1:44818", route))
+        /// {
+        ///     // Connected successfully
+        /// }
+        /// </code>
+        /// </example>
+        public bool ConnectWithRoute(string address, RoutePath routePath)
+        {
+            if (_isDisposed)
+                throw new ObjectDisposedException(nameof(EtherNetIpClient));
+
+            lock (_lock)
+            {
+                if (_clientId != -1)
+                    throw new InvalidOperationException("Already connected to a PLC. Call Disconnect() first.");
+
+                if (routePath == null)
+                    throw new ArgumentNullException(nameof(routePath));
+
+                IntPtr addressPtr = Marshal.StringToHGlobalAnsi(address);
+                try
+                {
+                    // Prepare route path for FFI
+                    var (slots, ports, addressPtrs, addressHandles) = routePath.PrepareForFFI();
+                    
+                    try
+                    {
+                        _clientId = eip_connect_with_route(
+                            addressPtr,
+                            slots,
+                            slots.Length,
+                            ports,
+                            ports.Length,
+                            addressPtrs,
+                            addressPtrs.Length);
+                        
+                        if (_clientId >= 0)
+                        {
+                            _currentAddress = address;
+                            eip_set_max_packet_size(_clientId, 4000);
+                            StartKeepAlive();
+                        }
+                    }
+                    finally
+                    {
+                        // Release pinned memory
+                        routePath.ReleaseFFIHandles(addressHandles);
+                    }
+                    
+                    return _clientId >= 0;
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(addressPtr);
+                }
+            }
+        }
 
         /// <summary>
         /// Establishes connection to a CompactLogix or ControlLogix PLC via EtherNet/IP.
@@ -281,6 +393,12 @@ namespace RustEtherNetIp
         public bool IsConnected => _clientId >= 0;
 
         /// <summary>
+        /// Gets performance statistics for this client instance.
+        /// Tracks read/write counts, errors, and average response times.
+        /// </summary>
+        public ClientStatistics Statistics => _statistics;
+
+        /// <summary>
         /// Gets the internal client ID used for this connection.
         /// </summary>
         public int ClientId => _clientId;
@@ -339,7 +457,8 @@ namespace RustEtherNetIp
 
         /// <summary>
         /// Reads a BOOL (boolean) tag from the PLC.
-        /// Supports advanced tag addressing including program-scoped tags, array elements, and bit access.
+        /// Supports advanced tag addressing including program-scoped tags, array elements, bit access,
+        /// and UDT array element members (e.g., "gTestUDT_Array[0].Member3_BOOL").
         /// </summary>
         /// <param name="tagName">
         /// Name of the PLC tag to read. Examples:
@@ -347,6 +466,7 @@ namespace RustEtherNetIp
         /// - Program-scoped: "Program:MainProgram.StartButton"
         /// - Array element: "StatusArray[5]"
         /// - Bit access: "StatusWord.15"
+        /// - UDT array element member: "gTestUDT_Array[0].Member3_BOOL"
         /// </param>
         /// <returns>The boolean value of the tag (true/false).</returns>
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC.</exception>
@@ -355,18 +475,58 @@ namespace RustEtherNetIp
         {
             return ExecuteWithLock(() =>
             {
-                CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
-                    int result = eip_read_bool(_clientId, tagPtr, out int value);
-                    if (result != 0)
+                    CheckConnection();
+                    IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                    try
+                    {
+                        // First try the type-specific FFI function
+                        int result = eip_read_bool(_clientId, tagPtr, out int value);
+                        if (result == 0)
+                        {
+                            _statistics.IncrementRead();
+                            return value != 0;
+                        }
+
+                    // If that failed, try the generic read_tag function (handles complex paths better)
+                    IntPtr resultPtr = Marshal.AllocHGlobal(4096);
+                    try
+                    {
+                        result = eip_read_tag(_clientId, tagPtr, resultPtr, 4096);
+                        if (result == 0)
+                        {
+                            string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                            if (!string.IsNullOrEmpty(jsonResult))
+                            {
+                                var plcValue = PlcValue.FromJson(jsonResult);
+                                if (plcValue.Type == PlcValueType.Bool)
+                                    return plcValue.As<bool>();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(resultPtr);
+                    }
+
                         throw new Exception($"Failed to read BOOL tag '{tagName}'. Check tag exists and is BOOL type.");
-                    return value != 0;
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(tagPtr);
+                    }
+                }
+                catch
+                {
+                    _statistics.IncrementError();
+                    throw;
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    sw.Stop();
+                    _statistics.AddResponseTime(sw.ElapsedMilliseconds);
                 }
             });
         }
@@ -382,17 +542,32 @@ namespace RustEtherNetIp
         {
             ExecuteWithLock(() =>
             {
-                CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
-                    int result = eip_write_bool(_clientId, tagPtr, value ? 1 : 0);
-                    if (result != 0)
-                        throw new Exception($"Failed to write BOOL tag '{tagName}'. Check tag exists and is writable.");
+                    CheckConnection();
+                    IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                    try
+                    {
+                        int result = eip_write_bool(_clientId, tagPtr, value ? 1 : 0);
+                        if (result != 0)
+                            throw new Exception($"Failed to write BOOL tag '{tagName}'. Check tag exists and is writable.");
+                        _statistics.IncrementWrite();
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(tagPtr);
+                    }
+                }
+                catch
+                {
+                    _statistics.IncrementError();
+                    throw;
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    sw.Stop();
+                    _statistics.AddResponseTime(sw.ElapsedMilliseconds);
                 }
             });
         }
@@ -454,6 +629,7 @@ namespace RustEtherNetIp
         /// <summary>
         /// Reads an INT (16-bit signed integer) tag from the PLC.
         /// Range: -32,768 to 32,767
+        /// Supports complex paths like UDT array element members (e.g., "gTestUDT_Array[0].Member4_INT").
         /// </summary>
         /// <param name="tagName">Name of the PLC tag to read.</param>
         /// <returns>The INT value of the tag.</returns>
@@ -465,10 +641,33 @@ namespace RustEtherNetIp
                 IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
                 try
                 {
+                    // First try the type-specific FFI function
                     int result = eip_read_int(_clientId, tagPtr, out short value);
-                    if (result != 0)
-                        throw new Exception($"Failed to read INT tag '{tagName}'. Check tag exists and is INT type.");
-                    return value;
+                    if (result == 0)
+                        return value;
+
+                    // If that failed, try the generic read_tag function (handles complex paths better)
+                    IntPtr resultPtr = Marshal.AllocHGlobal(4096);
+                    try
+                    {
+                        result = eip_read_tag(_clientId, tagPtr, resultPtr, 4096);
+                        if (result == 0)
+                        {
+                            string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                            if (!string.IsNullOrEmpty(jsonResult))
+                            {
+                                var plcValue = PlcValue.FromJson(jsonResult);
+                                if (plcValue.Type == PlcValueType.Int)
+                                    return plcValue.As<short>();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(resultPtr);
+                    }
+
+                    throw new Exception($"Failed to read INT tag '{tagName}'. Check tag exists and is INT type.");
                 }
                 finally
                 {
@@ -915,6 +1114,7 @@ namespace RustEtherNetIp
 
         /// <summary>
         /// Reads a STRING tag from the PLC.
+        /// Supports complex paths like UDT members (e.g., "gTestUDT.Member5_String").
         /// </summary>
         /// <param name="tagName">Name of the PLC tag to read.</param>
         /// <returns>The string value of the tag.</returns>
@@ -924,18 +1124,51 @@ namespace RustEtherNetIp
             {
                 CheckConnection();
                 IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
-                IntPtr resultPtr = Marshal.AllocHGlobal(256); // Allocate buffer for string
                 try
                 {
-                    int result = eip_read_string(_clientId, tagPtr, resultPtr, 256);
-                    if (result != 0)
-                        throw new Exception($"Failed to read STRING tag '{tagName}'. Check tag exists and is STRING type.");
-                    return Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    // First try the type-specific FFI function with larger buffer
+                    IntPtr resultPtr = Marshal.AllocHGlobal(512); // Increased buffer for longer strings
+                    try
+                    {
+                        int result = eip_read_string(_clientId, tagPtr, resultPtr, 512);
+                        if (result == 0)
+                        {
+                            string value = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                            if (!string.IsNullOrEmpty(value))
+                                return value;
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(resultPtr);
+                    }
+
+                    // If that failed, try the generic read_tag function (handles complex paths better)
+                    IntPtr resultPtr2 = Marshal.AllocHGlobal(4096);
+                    try
+                    {
+                        int result = eip_read_tag(_clientId, tagPtr, resultPtr2, 4096);
+                        if (result == 0)
+                        {
+                            string jsonResult = Marshal.PtrToStringAnsi(resultPtr2) ?? string.Empty;
+                            if (!string.IsNullOrEmpty(jsonResult))
+                            {
+                                var plcValue = PlcValue.FromJson(jsonResult);
+                                if (plcValue.Type == PlcValueType.String)
+                                    return plcValue.As<string>();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(resultPtr2);
+                    }
+
+                    throw new Exception($"Failed to read STRING tag '{tagName}'. Check tag exists and is STRING type.");
                 }
                 finally
                 {
                     Marshal.FreeHGlobal(tagPtr);
-                    Marshal.FreeHGlobal(resultPtr);
                 }
             });
         }
@@ -945,6 +1178,17 @@ namespace RustEtherNetIp
         /// </summary>
         /// <param name="tagName">Name of the PLC tag to write to.</param>
         /// <param name="value">String value to write.</param>
+        /// <exception cref="Exception">Thrown if the write operation fails. Note: STRING tag writes may fail with CIP Error 0x2107 
+        /// due to PLC firmware limitations. STRING tags can be read but not written directly.</exception>
+        /// <remarks>
+        /// <para><strong>⚠️ PLC Limitation:</strong> Most PLCs do not support direct writes to STRING tags (CIP Error 0x2107). 
+        /// This is a firmware restriction, not a library bug. STRING tags can be read successfully, but writes will fail.</para>
+        /// <para>If you need to modify STRING values, consider:</para>
+        /// <list type="bullet">
+        /// <item><description>Using ladder logic or other PLC-side mechanisms to update STRING values</description></item>
+        /// <item><description>If the STRING is part of a UDT, write the entire UDT structure (though STRING members in UDTs also have limitations)</description></item>
+        /// </list>
+        /// </remarks>
         public void WriteString(string tagName, string value)
         {
             ExecuteWithLock(() =>
@@ -964,6 +1208,63 @@ namespace RustEtherNetIp
                     Marshal.FreeHGlobal(valuePtr);
                 }
             });
+        }
+
+        /// <summary>
+        /// Writes a STRING tag to the PLC using the LogixString structure format.
+        /// This method attempts to write the STRING as a UDT structure (len + data fields),
+        /// following the ASComm.NET pattern for Logix string handling.
+        /// </summary>
+        /// <param name="tagName">Name of the PLC tag to write to.</param>
+        /// <param name="logixString">LogixString structure containing the string data.</param>
+        /// <exception cref="Exception">Thrown if the write operation fails. Note: STRING tag writes may fail 
+        /// with CIP Error 0x2107 due to PLC firmware limitations.</exception>
+        /// <remarks>
+        /// <para><strong>⚠️ PLC Limitation:</strong> Most PLCs do not support direct writes to STRING tags 
+        /// (CIP Error 0x2107). This is a firmware restriction, not a library bug. STRING tags can be read 
+        /// successfully, but writes will typically fail even when using the structured format.</para>
+        /// <para>This method converts the LogixString structure to a UDT format and attempts to write it.
+        /// The LogixString structure matches the Allen-Bradley STRING format: len (DINT) + data (SINT array).</para>
+        /// </remarks>
+        public void WriteStringAsUdt(string tagName, LogixString logixString)
+        {
+            if (logixString == null)
+                throw new ArgumentNullException(nameof(logixString));
+
+            // Note: This method attempts to write a STRING tag as a UDT structure.
+            // However, due to PLC firmware limitations (CIP Error 0x2107), STRING tag writes
+            // typically fail even when using the structured format.
+            // 
+            // The LogixString structure represents: len (DINT) + data (SINT array)
+            // For now, we'll attempt to write the LEN field separately as a workaround.
+            // Writing the full structure requires raw byte marshaling which is complex.
+            
+            try
+            {
+                // Attempt to write LEN field directly
+                WriteDint($"{tagName}.LEN", logixString.len);
+                
+                // Note: Writing the DATA array field directly also fails due to PLC limitations.
+                // The full STRING structure write is not supported by the PLC firmware.
+            }
+            catch
+            {
+                // If writing LEN fails, try the full UDT approach (which will also likely fail)
+                // Convert LogixString to raw bytes and write as UDT
+                // Logix STRING format: len (4 bytes, DINT) + data (variable length, SINT array)
+                var totalSize = 4 + logixString.data.Length; // 4 bytes for len + data array
+                var rawBytes = new byte[totalSize];
+                
+                // Write len as DINT (4 bytes, little-endian)
+                BitConverter.GetBytes(logixString.len).CopyTo(rawBytes, 0);
+                
+                // Copy data array
+                Array.Copy(logixString.data, 0, rawBytes, 4, logixString.data.Length);
+                
+                // Create UdtData with raw bytes (symbol_id 0 means unknown, will be determined by PLC)
+                var udtData = new UdtData { SymbolId = 0, Data = rawBytes };
+                WriteUdtData(tagName, udtData);
+            }
         }
 
         #endregion
@@ -1244,6 +1545,20 @@ namespace RustEtherNetIp
         /// <param name="tagName">Name of the UDT tag.</param>
         /// <param name="memberPath">Dot-separated path to the nested member (e.g., "Status.Running").</param>
         /// <param name="value">Value to set.</param>
+        /// <exception cref="Exception">Thrown if the operation fails. Note: Writing to UDT array element members 
+        /// (e.g., "gTestUDT_Array[0].Member1_DINT") or STRING members in UDTs will fail with CIP Error 0x2107 due to PLC firmware limitations.</exception>
+        /// <remarks>
+        /// <para><strong>⚠️ PLC Limitations:</strong></para>
+        /// <list type="bullet">
+        /// <item><description><strong>UDT Array Element Members:</strong> Cannot write directly to members of UDT array elements 
+        /// (e.g., "gTestUDT_Array[0].Member1_DINT"). The PLC returns CIP Error 0x2107. 
+        /// Workaround: Read the entire UDT array element, modify the member in memory, then write the entire element back.</description></item>
+        /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs 
+        /// (e.g., "gTestUDT.Member5_String"). The PLC returns CIP Error 0x2107. 
+        /// Workaround: Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
+        /// </list>
+        /// <para><strong>✅ What Works:</strong> Writing to non-STRING members of non-array UDTs (e.g., "gTestUDT.Member1_DINT").</para>
+        /// </remarks>
         public void SetUdtMember(string tagName, string memberPath, PlcValue value)
         {
             var udtValue = ReadUdt(tagName);
@@ -1524,14 +1839,14 @@ namespace RustEtherNetIp
         /// <returns>Dictionary of tag names to read results</returns>
         /// <exception cref="ArgumentException">Thrown if tagNames array is null or empty</exception>
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
-        public Dictionary<string, TagReadResult> ReadTagsBatch(string[] tagNames)
+        public Dictionary<string, TagReadResultBatch> ReadTagsBatch(string[] tagNames)
         {
             if (tagNames == null || tagNames.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
             // For now, return a simplified implementation that calls individual reads
             // TODO: Implement proper batch FFI when Rust FFI is updated
-            var results = new Dictionary<string, TagReadResult>();
+            var results = new Dictionary<string, TagReadResultBatch>();
             
             foreach (string tagName in tagNames)
             {
@@ -1618,7 +1933,7 @@ namespace RustEtherNetIp
 
                     if (success)
                     {
-                        results[tagName] = new TagReadResult
+                        results[tagName] = new TagReadResultBatch
                         {
                             TagName = tagName,
                             Success = true,
@@ -1630,7 +1945,7 @@ namespace RustEtherNetIp
                     }
                     else
                     {
-                        results[tagName] = new TagReadResult
+                        results[tagName] = new TagReadResultBatch
                         {
                             TagName = tagName,
                             Success = false,
@@ -1643,7 +1958,7 @@ namespace RustEtherNetIp
                 }
                 catch (Exception ex)
                 {
-                    results[tagName] = new TagReadResult
+                    results[tagName] = new TagReadResultBatch
                     {
                         TagName = tagName,
                         Success = false,
@@ -2066,6 +2381,247 @@ namespace RustEtherNetIp
             return results;
         }
 
+        /// <summary>
+        /// Reads a tag of any type and returns it as a PlcValue.
+        /// This is a generic read method that automatically detects the tag type.
+        /// </summary>
+        /// <param name="tagName">Name of the tag to read</param>
+        /// <returns>PlcValue containing the tag value</returns>
+        private PlcValue ReadTag(string tagName)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                CheckConnection();
+                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr resultPtr = Marshal.AllocHGlobal(4096);
+                try
+                {
+                    int result = eip_read_tag(_clientId, tagPtr, resultPtr, 4096);
+                    if (result != 0)
+                        throw new Exception($"Failed to read tag '{tagName}'");
+
+                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    if (string.IsNullOrEmpty(jsonResult))
+                        throw new Exception($"Empty response for tag '{tagName}'");
+
+                    _statistics.IncrementRead();
+                    return PlcValue.FromJson(jsonResult);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(tagPtr);
+                    Marshal.FreeHGlobal(resultPtr);
+                }
+            }
+            catch
+            {
+                _statistics.IncrementError();
+                throw;
+            }
+            finally
+            {
+                sw.Stop();
+                _statistics.AddResponseTime(sw.ElapsedMilliseconds);
+            }
+        }
+
+        /// <summary>
+        /// Writes a tag of any type using a PlcValue.
+        /// This is a generic write method that automatically handles the tag type.
+        /// </summary>
+        /// <param name="tagName">Name of the tag to write</param>
+        /// <param name="value">PlcValue containing the value to write</param>
+        private void WriteTag(string tagName, PlcValue value)
+        {
+            CheckConnection();
+            
+            // Use the appropriate write method based on PlcValue type
+            switch (value.Type)
+            {
+                case PlcValueType.Bool:
+                    WriteBool(tagName, value.As<bool>());
+                    break;
+                case PlcValueType.Dint:
+                    WriteDint(tagName, value.As<int>());
+                    break;
+                case PlcValueType.Real:
+                    WriteReal(tagName, value.As<float>());
+                    break;
+                case PlcValueType.Int:
+                    WriteInt(tagName, value.As<short>());
+                    break;
+                case PlcValueType.String:
+                    WriteString(tagName, value.As<string>());
+                    break;
+                case PlcValueType.Udt:
+                    WriteUdt(tagName, value);
+                    break;
+                default:
+                    throw new NotSupportedException($"Writing {value.Type} is not supported");
+            }
+        }
+
+        /// <summary>
+        /// Reads a tag and returns detailed result including value, quality, and timestamp.
+        /// </summary>
+        /// <param name="tagName">Name of the tag to read</param>
+        /// <returns>TagReadResult containing value, quality, and timestamp</returns>
+        /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
+        public TagReadResult ReadTagWithDetails(string tagName)
+        {
+            return ExecuteWithLock(() =>
+            {
+                var timestamp = DateTime.Now;
+                try
+                {
+                    CheckConnection();
+                    var value = ReadTag(tagName);
+                    return new TagReadResult
+                    {
+                        TagName = tagName,
+                        Value = value,
+                        Quality = DataQuality.Good,
+                        TimeStamp = timestamp,
+                        Success = true
+                    };
+                }
+                catch (Exception ex)
+                {
+                    return new TagReadResult
+                    {
+                        TagName = tagName,
+                        Value = null!,
+                        Quality = DataQuality.Bad,
+                        TimeStamp = timestamp,
+                        Success = false,
+                        ErrorMessage = ex.Message
+                    };
+                }
+            });
+        }
+
+        /// <summary>
+        /// Reads multiple tags in a single batch operation.
+        /// Returns an array of PlcValue objects, one for each tag.
+        /// More efficient than individual ReadTag calls.
+        /// </summary>
+        /// <param name="tagNames">Array of tag names to read</param>
+        /// <returns>Array of PlcValue objects corresponding to each tag</returns>
+        /// <exception cref="ArgumentException">Thrown if tagNames array is null or empty</exception>
+        /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
+        public PlcValue[] ReadTags(string[] tagNames)
+        {
+            if (tagNames == null || tagNames.Length == 0)
+                throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
+
+            return ExecuteWithLock(() =>
+            {
+                CheckConnection();
+                var results = new PlcValue[tagNames.Length];
+                for (int i = 0; i < tagNames.Length; i++)
+                {
+                    try
+                    {
+                        results[i] = ReadTag(tagNames[i]);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to read tag '{tagNames[i]}': {ex.Message}", ex);
+                    }
+                }
+                return results;
+            });
+        }
+
+        /// <summary>
+        /// Reads multiple tags in a single batch operation with detailed results.
+        /// Returns an array of TagReadResult objects, one for each tag, including quality and timestamp.
+        /// </summary>
+        /// <param name="tagNames">Array of tag names to read</param>
+        /// <returns>Array of TagReadResult objects corresponding to each tag</returns>
+        /// <exception cref="ArgumentException">Thrown if tagNames array is null or empty</exception>
+        /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
+        public TagReadResult[] ReadTagsWithDetails(string[] tagNames)
+        {
+            if (tagNames == null || tagNames.Length == 0)
+                throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
+
+            return ExecuteWithLock(() =>
+            {
+                CheckConnection();
+                var timestamp = DateTime.Now;
+                var results = new TagReadResult[tagNames.Length];
+                
+                for (int i = 0; i < tagNames.Length; i++)
+                {
+                    try
+                    {
+                        var value = ReadTag(tagNames[i]);
+                        results[i] = new TagReadResult
+                        {
+                            TagName = tagNames[i],
+                            Value = value,
+                            Quality = DataQuality.Good,
+                            TimeStamp = timestamp,
+                            Success = true
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        results[i] = new TagReadResult
+                        {
+                            TagName = tagNames[i],
+                            Value = null!,
+                            Quality = DataQuality.Bad,
+                            TimeStamp = timestamp,
+                            Success = false,
+                            ErrorMessage = ex.Message
+                        };
+                    }
+                }
+                
+                return results;
+            });
+        }
+
+        /// <summary>
+        /// Writes multiple tags in a single batch operation.
+        /// Returns an array of success flags, one for each tag.
+        /// More efficient than individual WriteTag calls.
+        /// </summary>
+        /// <param name="tagNames">Array of tag names to write</param>
+        /// <param name="values">Array of PlcValue objects to write (must match tagNames length)</param>
+        /// <returns>Array of boolean success flags, one for each tag</returns>
+        /// <exception cref="ArgumentException">Thrown if arrays are null, empty, or mismatched lengths</exception>
+        /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
+        public bool[] WriteTags(string[] tagNames, PlcValue[] values)
+        {
+            if (tagNames == null || values == null)
+                throw new ArgumentNullException("Tag names and values arrays cannot be null");
+            if (tagNames.Length != values.Length)
+                throw new ArgumentException("Tag names and values arrays must have the same length");
+
+            return ExecuteWithLock(() =>
+            {
+                CheckConnection();
+                var results = new bool[tagNames.Length];
+                for (int i = 0; i < tagNames.Length; i++)
+                {
+                    try
+                    {
+                        WriteTag(tagNames[i], values[i]);
+                        results[i] = true;
+                    }
+                    catch
+                    {
+                        results[i] = false;
+                    }
+                }
+                return results;
+            });
+        }
+
         #endregion
 
         #region Tag Management
@@ -2161,7 +2717,7 @@ namespace RustEtherNetIp
         /// <param name="tagName">Name of the tag to subscribe to</param>
         /// <param name="options">Optional subscription configuration</param>
         /// <returns>The subscription object that can be used to handle value changes</returns>
-        public TagSubscription SubscribeToTag(string tagName, SubscriptionOptions options = null)
+        public TagSubscription SubscribeToTag(string tagName, SubscriptionOptions? options = null)
         {
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(EtherNetIpClient));
@@ -2501,9 +3057,10 @@ namespace RustEtherNetIp
     }
     
     /// <summary>
-    /// Result of a tag read operation in a batch.
+    /// Result of a tag read operation in a batch (legacy format for batch operations).
+    /// Note: For detailed read results with quality and timestamp, use the TagReadResult class from TagReadResult.cs
     /// </summary>
-    public class TagReadResult
+    public class TagReadResultBatch
     {
         /// <summary>
         /// Name of the tag that was read.

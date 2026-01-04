@@ -917,9 +917,158 @@ pub unsafe extern "C" fn eip_read_string(
     };
 
     let value = match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::String(value)) => value,
-        Ok(_) => return -1,  // Wrong data type
-        Err(_) => return -1, // Error reading tag
+        Ok(PlcValue::String(value)) => {
+            eprintln!(
+                "✅ [FFI] Read STRING tag '{}' succeeded: '{}'",
+                tag_name_str, value
+            );
+            value
+        }
+        Ok(PlcValue::Udt(udt_data)) => {
+            // Allen-Bradley STRING tags are returned as UDT structures (0x02A0)
+            // STRING UDT format: 4-byte length (DINT) followed by string data (up to 82 bytes)
+            eprintln!("⚠️ [FFI] STRING tag '{}' returned as UDT, attempting to extract string from UDT data ({} bytes): {:02X?}",
+                tag_name_str, udt_data.data.len(),
+                &udt_data.data[..std::cmp::min(20, udt_data.data.len())]);
+
+            // Allen-Bradley STRING UDT format when returned as 0x02A0:
+            // The UDT data might have a header before the actual STRING data
+            // Try multiple formats:
+            // Format 1: Direct STRING format - 4-byte length (DINT) at start
+            // Format 2: UDT wrapper - might have type code (0x0FCE) + length (2 bytes) + data
+            // Format 3: Just find the string data by looking for printable ASCII
+
+            eprintln!(
+                "🔧 [FFI] Attempting to parse STRING from UDT data ({} bytes)",
+                udt_data.data.len()
+            );
+
+            // Try Format 1: Standard STRING format (4-byte DINT length at start)
+            if udt_data.data.len() >= 4 {
+                let length = u32::from_le_bytes([
+                    udt_data.data[0],
+                    udt_data.data[1],
+                    udt_data.data[2],
+                    udt_data.data[3],
+                ]) as usize;
+
+                // If length is reasonable (<= 82 for STRING), try this format
+                if length <= 82 && udt_data.data.len() >= 4 + length {
+                    let string_data = &udt_data.data[4..4 + length];
+                    let trimmed_data: Vec<u8> = string_data
+                        .iter()
+                        .take_while(|&&b| b != 0)
+                        .copied()
+                        .collect();
+                    if let Ok(s) = String::from_utf8(trimmed_data) {
+                        eprintln!("✅ [FFI] Extracted STRING (Format 1): '{}'", s);
+                        unsafe {
+                            let c_string = CString::new(s).unwrap();
+                            let bytes = c_string.as_bytes_with_nul();
+                            if bytes.len() > max_length as usize {
+                                return -1;
+                            }
+                            ptr::copy_nonoverlapping(
+                                bytes.as_ptr(),
+                                result as *mut u8,
+                                bytes.len(),
+                            );
+                            return 0;
+                        }
+                    }
+                }
+
+                // Try Format 2: UDT wrapper with type code (bytes 0-1) + length (bytes 2-3) + padding (bytes 4-5) + data (bytes 6+)
+                if udt_data.data.len() >= 6 {
+                    let length = u16::from_le_bytes([udt_data.data[2], udt_data.data[3]]) as usize;
+                    // Check if length is reasonable and we have enough data
+                    if length > 0 && length <= 82 && udt_data.data.len() >= 6 + length {
+                        let string_data = &udt_data.data[6..6 + length];
+                        let trimmed_data: Vec<u8> = string_data
+                            .iter()
+                            .take_while(|&&b| b != 0)
+                            .copied()
+                            .collect();
+                        if let Ok(s) = String::from_utf8(trimmed_data) {
+                            if !s.is_empty() {
+                                eprintln!(
+                                    "✅ [FFI] Extracted STRING (Format 2): '{}' (length={})",
+                                    s, length
+                                );
+                                unsafe {
+                                    let c_string = CString::new(s).unwrap();
+                                    let bytes = c_string.as_bytes_with_nul();
+                                    if bytes.len() > max_length as usize {
+                                        return -1;
+                                    }
+                                    ptr::copy_nonoverlapping(
+                                        bytes.as_ptr(),
+                                        result as *mut u8,
+                                        bytes.len(),
+                                    );
+                                    return 0;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Try Format 3: Find string data by scanning for printable ASCII
+                // Look for the first sequence of printable ASCII characters
+                for start in 0..std::cmp::min(udt_data.data.len() - 1, 20) {
+                    if udt_data.data[start].is_ascii() && !udt_data.data[start].is_ascii_control() {
+                        let mut end = start;
+                        while end < udt_data.data.len()
+                            && udt_data.data[end] != 0
+                            && udt_data.data[end].is_ascii()
+                        {
+                            end += 1;
+                        }
+                        if end > start {
+                            let string_data = &udt_data.data[start..end];
+                            if let Ok(s) = String::from_utf8(string_data.to_vec()) {
+                                eprintln!("✅ [FFI] Extracted STRING (Format 3, scanned): '{}'", s);
+                                unsafe {
+                                    let c_string = CString::new(s).unwrap();
+                                    let bytes = c_string.as_bytes_with_nul();
+                                    if bytes.len() > max_length as usize {
+                                        return -1;
+                                    }
+                                    ptr::copy_nonoverlapping(
+                                        bytes.as_ptr(),
+                                        result as *mut u8,
+                                        bytes.len(),
+                                    );
+                                    return 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            eprintln!(
+                "❌ [FFI] Could not extract STRING from UDT data for tag '{}'",
+                tag_name_str
+            );
+            eprintln!(
+                "❌ [FFI] Could not extract STRING from UDT data for tag '{}'",
+                tag_name_str
+            );
+            return -1;
+        }
+        Ok(other) => {
+            eprintln!(
+                "❌ [FFI] Expected STRING for tag '{}' but got: {:?}",
+                tag_name_str,
+                std::mem::discriminant(&other)
+            );
+            return -1; // Wrong data type
+        }
+        Err(e) => {
+            eprintln!("❌ [FFI] Read STRING tag '{}' failed: {}", tag_name_str, e);
+            return -1; // Error reading tag
+        }
     };
 
     let Ok(c_string) = CString::new(value) else {
@@ -969,6 +1118,92 @@ pub unsafe extern "C" fn eip_write_string(
     } else {
         -1
     }
+}
+
+/// Read any tag and return as JSON (generic read function)
+///
+/// This function reads any tag type and returns it as JSON, allowing the caller
+/// to determine the type dynamically. This is useful for complex paths like
+/// UDT array element members (e.g., "gTestUDT_Array[0].Member1_DINT").
+///
+/// # Safety
+///
+/// This function is unsafe because:
+/// - `tag_name` must be a valid null-terminated C string pointer
+/// - `result` must be a valid mutable pointer to a buffer of at least `max_size` bytes
+/// - The caller must ensure both pointers remain valid for the duration of the call
+/// - `client_id` must be a valid client ID returned from `eip_connect`
+#[no_mangle]
+pub unsafe extern "C" fn eip_read_tag(
+    client_id: c_int,
+    tag_name: *const c_char,
+    result: *mut c_char,
+    max_size: c_int,
+) -> c_int {
+    if tag_name.is_null() || result.is_null() || max_size <= 0 {
+        return -1;
+    }
+
+    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
+        return -1;
+    };
+
+    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let Some(client) = clients.get_mut(&client_id) else {
+        eprintln!("❌ [FFI] Client ID {} not found", client_id);
+        return -1;
+    };
+
+    let value = match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(value) => {
+            eprintln!(
+                "✅ [FFI] Read tag '{}' succeeded, type: {:?}",
+                tag_name_str,
+                std::mem::discriminant(&value)
+            );
+            value
+        }
+        Err(e) => {
+            eprintln!("❌ [FFI] Read tag '{}' failed: {}", tag_name_str, e);
+            return -1;
+        }
+    };
+
+    // Serialize PlcValue to JSON for C# consumption
+    let json_result = match serde_json::to_string(&value) {
+        Ok(json) => json,
+        Err(e) => {
+            eprintln!(
+                "❌ [FFI] Failed to serialize tag '{}' to JSON: {}",
+                tag_name_str, e
+            );
+            return -1;
+        }
+    };
+
+    let Ok(c_string) = CString::new(json_result) else {
+        eprintln!(
+            "❌ [FFI] Failed to create C string for tag '{}'",
+            tag_name_str
+        );
+        return -1;
+    };
+
+    let bytes = c_string.as_bytes_with_nul();
+    if bytes.len() > max_size as usize {
+        eprintln!(
+            "❌ [FFI] JSON result too long for tag '{}': {} bytes (max: {})",
+            tag_name_str,
+            bytes.len(),
+            max_size
+        );
+        return -1; // JSON too long
+    }
+
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
+    }
+    0
 }
 
 // UDT operations

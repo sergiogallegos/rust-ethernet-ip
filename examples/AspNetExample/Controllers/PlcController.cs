@@ -539,7 +539,9 @@ public class PlcController : ControllerBase
 
     /// <summary>
     /// Write a STRING tag to the PLC.
-    /// Supports Allen-Bradley STRING format with automatic length validation.
+    /// ⚠️ WARNING: This operation will fail due to PLC firmware limitations (CIP Error 0x2107).
+    /// STRING tags cannot be written directly. This is a PLC firmware restriction, not a library bug.
+    /// For STRING members in UDTs, use the workaround: read entire UDT, modify STRING member, write entire UDT back.
     /// </summary>
     [HttpPost("string/{tagName}")]
     public IActionResult WriteString(string tagName, [FromBody] StringWriteRequest request)
@@ -570,7 +572,14 @@ public class PlcController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error writing STRING tag {TagName}", tagName);
-            return StatusCode(500, new { success = false, message = ex.Message });
+            string errorMsg = ex.Message;
+            if (errorMsg.Contains("0x2107") || errorMsg.Contains("2107"))
+            {
+                errorMsg = "PLC firmware limitation (CIP Error 0x2107): STRING tags cannot be written directly. " +
+                          "This is a PLC restriction, not a library bug. " +
+                          "For STRING members in UDTs, use the LogixString helper and write the entire UDT.";
+            }
+            return StatusCode(500, new { success = false, message = errorMsg, isPlcLimitation = errorMsg.Contains("0x2107") || errorMsg.Contains("2107") });
         }
     }
 
@@ -1111,13 +1120,76 @@ public class PlcController : ControllerBase
                 LastReadTimes = _plcService.LastReadTimes.ToDictionary(
                     kvp => kvp.Key,
                     kvp => kvp.Value.ToString("HH:mm:ss.fff")
-                )
+                ),
+                Statistics = _plcService.IsConnected ? new
+                {
+                    ReadCount = _plcService.Client.Statistics.ReadCount,
+                    WriteCount = _plcService.Client.Statistics.WriteCount,
+                    ErrorCount = _plcService.Client.Statistics.ErrorCount,
+                    AverageResponseTimeMs = _plcService.Client.Statistics.AverageResponseTime.TotalMilliseconds
+                } : null
             };
             return Ok(new { success = true, status });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting status");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Get performance statistics for the PLC client.
+    /// </summary>
+    [HttpGet("statistics")]
+    public IActionResult GetStatistics()
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            var stats = _plcService.Client.Statistics;
+            return Ok(new
+            {
+                success = true,
+                statistics = new
+                {
+                    readCount = stats.ReadCount,
+                    writeCount = stats.WriteCount,
+                    errorCount = stats.ErrorCount,
+                    averageResponseTimeMs = stats.AverageResponseTime.TotalMilliseconds,
+                    totalOperations = stats.ReadCount + stats.WriteCount,
+                    successRate = (stats.ReadCount + stats.WriteCount) > 0
+                        ? ((double)(stats.ReadCount + stats.WriteCount - stats.ErrorCount) / (stats.ReadCount + stats.WriteCount)) * 100
+                        : 0
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting statistics");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Reset performance statistics.
+    /// </summary>
+    [HttpPost("statistics/reset")]
+    public IActionResult ResetStatistics()
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            _plcService.Client.Statistics.Reset();
+            return Ok(new { success = true, message = "Statistics reset successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting statistics");
             return StatusCode(500, new { success = false, message = ex.Message });
         }
     }

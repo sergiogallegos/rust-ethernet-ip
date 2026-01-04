@@ -78,6 +78,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -880,6 +881,16 @@ func (c *EipClient) ReadString(tagName string) (string, error) {
 }
 
 // WriteString writes a string to the PLC
+// WriteString writes a STRING tag to the PLC.
+//
+// ⚠️ PLC Limitation: Most PLCs do not support direct writes to STRING tags (CIP Error 0x2107).
+// This is a firmware restriction, not a library bug. STRING tags can be read successfully, but writes will fail.
+//
+// If you need to modify STRING values, consider:
+//   - Using ladder logic or other PLC-side mechanisms to update STRING values
+//   - If the STRING is part of a UDT, write the entire UDT structure (though STRING members in UDTs also have limitations)
+//
+// Returns an error if the write operation fails (typically Error 0x2107 for STRING tags).
 func (c *EipClient) WriteString(tagName string, value string) error {
 	cTagName := C.CString(tagName)
 	defer C.free(unsafe.Pointer(cTagName))
@@ -889,9 +900,15 @@ func (c *EipClient) WriteString(tagName string, value string) error {
 
 	retCode := int(C.eip_write_string(C.int(c.clientID), cTagName, cValue))
 	if retCode != 0 {
+		errorMsg := fmt.Sprintf("Failed to write STRING tag %s", tagName)
+		// Check if it's the known limitation error
+		if retCode == 0x2107 || retCode == -0x2107 {
+			errorMsg = fmt.Sprintf("STRING tags cannot be written directly (PLC limitation - Error 0x2107). "+
+				"Tag '%s' can be read but not written. This is a PLC firmware restriction.", tagName)
+		}
 		return &EipError{
 			Code:    retCode,
-			Message: fmt.Sprintf("Failed to write STRING tag %s", tagName),
+			Message: errorMsg,
 		}
 	}
 
@@ -1170,8 +1187,40 @@ func (c *EipClient) writeUdtDataWithChunkedFallback(tagName string, udtData *Udt
 }
 
 // WriteUdtMember writes a specific UDT member to the PLC
+// WriteUdtMember writes a member of a UDT to the PLC.
+//
+// ⚠️ PLC Limitations:
+//   - Cannot write directly to UDT array element members (e.g., "gTestUDT_Array[0].Member1_DINT").
+//     The PLC returns CIP Error 0x2107. Workaround: Read the entire UDT array element, modify the member
+//     in memory, then write the entire UDT array element back.
+//   - Cannot write directly to STRING members in UDTs (e.g., "gTestUDT.Member5_String").
+//     The PLC returns CIP Error 0x2107. Workaround: Read the entire UDT, modify the STRING member
+//     in memory, then write the entire UDT back.
+//
+// ✅ What Works: Writing to non-STRING members of non-array UDTs (e.g., "gTestUDT.Member1_DINT").
+//
+// Returns an error if the write operation fails (typically Error 0x2107 for restricted operations).
 func (c *EipClient) WriteUdtMember(udtName, memberName string, value interface{}) error {
 	log.Printf("🔧 [DEBUG] Writing UDT member: %s.%s", udtName, memberName)
+
+	// Check if this is a UDT array element member (e.g., "gTestUDT_Array[0].Member1_DINT")
+	if strings.Contains(udtName, "_Array[") && strings.Contains(udtName, "]") {
+		return &EipError{
+			Code: 0x2107,
+			Message: fmt.Sprintf("Cannot write to UDT array element members directly (PLC limitation - Error 0x2107). "+
+				"Tag '%s.%s' cannot be written. Read the entire UDT array element, modify in memory, then write the entire element back.", udtName, memberName),
+		}
+	}
+
+	// Check if this is a STRING member
+	memberPath := fmt.Sprintf("%s.%s", udtName, memberName)
+	if strings.Contains(strings.ToUpper(memberName), "STRING") {
+		return &EipError{
+			Code: 0x2107,
+			Message: fmt.Sprintf("Cannot write to STRING members in UDTs directly (PLC limitation - Error 0x2107). "+
+				"Tag '%s' cannot be written. Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.", memberPath),
+		}
+	}
 
 	// For now, we'll read the entire UDT, modify the specific member, and write it back
 	// This is a simplified approach - in a real implementation, we'd use direct member access

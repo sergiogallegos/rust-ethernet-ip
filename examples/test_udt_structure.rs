@@ -71,7 +71,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("\n  UDT Data:");
                 println!("    Symbol ID: {}", udt_data.symbol_id);
                 println!("    Data Size: {} bytes", udt_data.data.len());
-                println!("    Data Preview: {:02X?}", &udt_data.data[..udt_data.data.len().min(32)]);
+                println!(
+                    "    Data Preview: {:02X?}",
+                    &udt_data.data[..udt_data.data.len().min(32)]
+                );
                 if udt_data.data.len() > 32 {
                     println!("    ... ({} more bytes)", udt_data.data.len() - 32);
                 }

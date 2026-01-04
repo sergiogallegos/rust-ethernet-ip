@@ -109,6 +109,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(_) => {
                 println!("✅");
                 written_tags.push(tag.name.clone());
+
+                // For STRING types, immediately read back to verify write
+                if matches!(tag.test_value, PlcValue::String(_)) {
+                    print!("      Reading back {}... ", tag.name);
+                    match client.read_tag(&tag.name).await {
+                        Ok(read_value) => {
+                            if values_match(&read_value, &tag.test_value) {
+                                println!("✅ VERIFIED: {:?}", read_value);
+                            } else {
+                                println!("⚠️  MISMATCH after write!");
+                                println!("         Expected: {:?}", tag.test_value);
+                                println!("         Got:      {:?}", read_value);
+                            }
+                        }
+                        Err(e) => {
+                            println!("❌ FAILED TO READ BACK: {}", e);
+                        }
+                    }
+                }
             }
             Err(e) => {
                 let error_msg = format!("{}", e);
@@ -150,6 +169,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("❌ MISMATCH!");
                     println!("      Expected: {:?}", tag.test_value);
                     println!("      Got:      {:?}", value);
+
+                    // For STRING types, show detailed comparison
+                    if let (PlcValue::String(expected_str), PlcValue::String(actual_str)) =
+                        (&tag.test_value, &value)
+                    {
+                        println!("      Expected string length: {}", expected_str.len());
+                        println!("      Actual string length:   {}", actual_str.len());
+                        println!("      Expected bytes: {:?}", expected_str.as_bytes());
+                        println!("      Actual bytes:   {:?}", actual_str.as_bytes());
+                        println!("      Expected text: \"{}\"", expected_str);
+                        println!("      Actual text:   \"{}\"", actual_str);
+                    }
+
                     verify_failures.push((
                         tag.name.clone(),
                         format!(
@@ -240,7 +272,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::collections::HashMap::new();
             for (tag_name, error) in &write_failures {
                 // Extract error pattern (simplify long error messages)
-                let error_key = if error.contains("UDT array element members directly") {
+                let error_key = if error.contains("0x2107") || error.contains("2107") {
+                    // Check if it's a UDT array element member (e.g., gTestUDT_Array[0].Member1_DINT)
+                    if tag_name.contains("_Array[") && tag_name.contains('.') {
+                        "PLC does not support writing to UDT array element members directly (Error 0x2107)".to_string()
+                    }
+                    // Check if it's a STRING member in a UDT (e.g., gTestUDT.Member5_String)
+                    else if tag_name.contains("Member5_String")
+                        || tag_name.ends_with(".Member5_String")
+                    {
+                        "PLC does not support writing to STRING members in UDTs directly (Error 0x2107)".to_string()
+                    }
+                    // Check if it's a simple STRING tag (e.g., gTest_STRING)
+                    else if tag_name == "gTest_STRING"
+                        || tag_name == "Program:TestProgram.gTest_STRING"
+                    {
+                        "PLC does not support writing to STRING tags directly (Error 0x2107)"
+                            .to_string()
+                    }
+                    // Other 0x2107 errors
+                    else {
+                        format!("Error 0x2107: {}", error)
+                    }
+                } else if error.contains("UDT array element members directly") {
                     "PLC does not support writing to UDT array element members directly (Error 0x2107)".to_string()
                 } else {
                     error.clone()
@@ -428,6 +482,14 @@ fn create_test_tags() -> Vec<TestTag> {
         });
     }
 
+    // Simple STRING tag (controller-scoped)
+    tags.push(TestTag {
+        name: "gTest_STRING".to_string(),
+        initial_value: PlcValue::String("Initial String Value".to_string()),
+        test_value: PlcValue::String("Test String Write 789".to_string()),
+        description: "Controller simple STRING tag (not UDT member)".to_string(),
+    });
+
     // ============================================================================
     // Controller-Scoped UDT Members
     // ============================================================================
@@ -458,6 +520,13 @@ fn create_test_tags() -> Vec<TestTag> {
         initial_value: PlcValue::Int(42),
         test_value: PlcValue::Int(8888),
         description: "Controller UDT member: Member4_INT".to_string(),
+    });
+
+    tags.push(TestTag {
+        name: "gTestUDT.Member5_String".to_string(),
+        initial_value: PlcValue::String("Hello PLC".to_string()),
+        test_value: PlcValue::String("Test String 123".to_string()),
+        description: "Controller UDT member: Member5_String".to_string(),
     });
 
     // UDT Array_DINT - elements 0-9
@@ -598,6 +667,14 @@ fn create_test_tags() -> Vec<TestTag> {
         });
     }
 
+    // Simple STRING tag (program-scoped)
+    tags.push(TestTag {
+        name: "Program:TestProgram.gTest_STRING".to_string(),
+        initial_value: PlcValue::String("Program Initial String".to_string()),
+        test_value: PlcValue::String("Program Test String Write 999".to_string()),
+        description: "Program-scoped simple STRING tag (not UDT member)".to_string(),
+    });
+
     // ============================================================================
     // Program-Scoped UDT Members
     // ============================================================================
@@ -628,6 +705,13 @@ fn create_test_tags() -> Vec<TestTag> {
         initial_value: PlcValue::Int(24),
         test_value: PlcValue::Int(9999),
         description: "Program-scoped UDT member: Member4_INT".to_string(),
+    });
+
+    tags.push(TestTag {
+        name: "Program:TestProgram.gTestUDT.Member5_String".to_string(),
+        initial_value: PlcValue::String("Program UDT".to_string()),
+        test_value: PlcValue::String("Program Test String 456".to_string()),
+        description: "Program-scoped UDT member: Member5_String".to_string(),
     });
 
     // Program UDT Array_DINT - elements 0-9

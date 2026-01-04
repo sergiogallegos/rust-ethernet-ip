@@ -457,6 +457,230 @@
                     </Grid>
                 </TabItem>
                 
+                <!-- STRING Operations Tab -->
+                <TabItem Header="📝 STRING Operations">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Limitations Notice -->
+                        <Border Grid.Row="0" Background="#FFFBF7" BorderBrush="#FCD34D" BorderThickness="1" 
+                                CornerRadius="4" Padding="8" Margin="0,0,0,16">
+                            <TextBlock Text="⚠️ PLC LIMITATIONS: STRING tags cannot be written directly due to PLC firmware restrictions (CIP Error 0x2107).&#x0a;✅ STRING tags CAN be read successfully.&#x0a;💡 Workaround: If STRING is part of a UDT, read entire UDT, modify STRING member, then write entire UDT back."
+                                       FontSize="12" Foreground="#A16207" TextWrapping="Wrap"/>
+                        </Border>
+                        
+                        <!-- STRING Read Section -->
+                        <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="📖 Read STRING Tag" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Tag Name:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding StringReadTagName}" Width="300" Padding="8,4" Margin="0,0,8,0"/>
+                                    <Button Content="Read STRING" Command="{Binding ReadStringCommand}"
+                                            Style="{StaticResource ModernButton}"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                </StackPanel>
+                                
+                                <TextBlock Grid.Row="2" Text="{Binding StringReadResult}" 
+                                           FontSize="14" FontWeight="Bold" 
+                                           Foreground="{StaticResource SuccessBrush}"/>
+                            </Grid>
+                        </Border>
+                        
+                        <!-- STRING Write Section -->
+                        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="✏️ Write STRING Tag (PLC Limitation)" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Tag Name:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding StringWriteTagName}" Width="200" Padding="8,4" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Value:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding StringWriteValue}" Width="200" Padding="8,4" Margin="0,0,8,0"/>
+                                    <Button Content="Write STRING (Will Fail)" Command="{Binding WriteStringCommand}"
+                                            Style="{StaticResource ErrorButton}"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                </StackPanel>
+                                
+                                <TextBlock Grid.Row="2" Text="{Binding StringWriteResult}" 
+                                           FontSize="12" 
+                                           Foreground="{StaticResource ErrorBrush}"/>
+                            </Grid>
+                        </Border>
+                        
+                        <!-- LogixString Helper Section -->
+                        <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="💡 LogixString Helper (For UDT STRING Members)" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <TextBlock Grid.Row="1" Text="{Binding LogixStringExample}" 
+                                           FontFamily="Consolas" FontSize="12" 
+                                           TextWrapping="Wrap"
+                                           Background="#1E1E1E" Foreground="#00FF00" Padding="8"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                
+                <!-- Tag Group Tab -->
+                <TabItem Header="🔄 Tag Group">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Tag Group Configuration -->
+                        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="🔄 Tag Group Configuration" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Tag Names (one per line):" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding TagGroupTagNames}" Width="400" Height="80" 
+                                             TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Margin="0,0,8,0"/>
+                                    <StackPanel Orientation="Vertical">
+                                        <TextBlock Text="Update Rate (ms):" Margin="0,0,0,4"/>
+                                        <TextBox Text="{Binding TagGroupUpdateRate}" Width="100" Padding="4,2"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Row="2" Orientation="Horizontal">
+                                    <Button Content="Start" Command="{Binding TagGroupStartCommand}"
+                                            Style="{StaticResource SuccessButton}" Margin="0,0,8,0"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                    <Button Content="Stop" Command="{Binding TagGroupStopCommand}"
+                                            Style="{StaticResource ErrorButton}" Margin="0,0,8,0"
+                                            IsEnabled="{Binding IsTagGroupActive}"/>
+                                    <Button Content="Suspend" Command="{Binding TagGroupSuspendCommand}"
+                                            Style="{StaticResource WarningButton}" Margin="0,0,8,0"
+                                            IsEnabled="{Binding IsTagGroupActive}"/>
+                                    <Button Content="Resume" Command="{Binding TagGroupResumeCommand}"
+                                            Style="{StaticResource SuccessButton}"
+                                            IsEnabled="{Binding IsTagGroupSuspended}"/>
+                                    <TextBlock Text="{Binding TagGroupStatus}" Margin="16,0,0,0" 
+                                               VerticalAlignment="Center" FontWeight="Bold"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        
+                        <!-- Tag Group Values -->
+                        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="Tag Group Values" 
+                                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                
+                                <DataGrid Grid.Row="1" ItemsSource="{Binding TagGroupValues}" 
+                                          AutoGenerateColumns="False" CanUserAddRows="False"
+                                          GridLinesVisibility="Horizontal" HeadersVisibility="Column">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Tag Name" Binding="{Binding TagName}" Width="*"/>
+                                        <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*"/>
+                                        <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Last Updated" 
+                                                          Binding="{Binding LastUpdated, StringFormat='HH:mm:ss'}" Width="Auto"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                
+                <!-- Statistics Tab -->
+                <TabItem Header="📊 Statistics">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="8" Padding="16" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Read Count" FontSize="12" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding StatisticsReadCount, StringFormat={}{0:N0}}" 
+                                               FontSize="20" FontWeight="Bold"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Write Count" FontSize="12" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding StatisticsWriteCount, StringFormat={}{0:N0}}" 
+                                               FontSize="20" FontWeight="Bold"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Error Count" FontSize="12" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding StatisticsErrorCount, StringFormat={}{0:N0}}" 
+                                               FontSize="20" FontWeight="Bold" Foreground="{StaticResource ErrorBrush}"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="3">
+                                    <TextBlock Text="Avg Response Time" FontSize="12" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding StatisticsAvgResponseTime, StringFormat={}{0:F2} ms}" 
+                                               FontSize="20" FontWeight="Bold"/>
+                                </StackPanel>
+                                
+                                <Button Grid.Column="4" Content="Reset" Command="{Binding ResetStatisticsCommand}"
+                                        Style="{StaticResource ModernButton}"
+                                        IsEnabled="{Binding IsConnected}"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                
                 <!-- Batch Operations Tab -->
                 <TabItem Header="🚀 Batch Operations">
                     <Grid Margin="16">

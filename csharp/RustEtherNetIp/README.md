@@ -228,6 +228,76 @@ catch (Exception ex)
 }
 ```
 
+## Known Limitations
+
+The following operations are **not supported** due to PLC firmware restrictions. These limitations are inherent to the Allen-Bradley PLC firmware and cannot be bypassed at the library level.
+
+### STRING Tag Writing
+
+**Cannot write directly to STRING tags** (e.g., `gTest_STRING`, `Program:TestProgram.gTest_STRING`).
+
+**Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC rejects direct write operations to STRING tags.
+
+**What Works:**
+- ✅ Reading STRING tags: `gTest_STRING` (read successfully)
+- ✅ Reading STRING members in UDTs: `gTestUDT.Member5_String` (read successfully)
+
+**What Doesn't Work:**
+- ❌ Writing simple STRING tags: `gTest_STRING` (write fails - PLC limitation)
+- ❌ Writing program-scoped STRING tags: `Program:TestProgram.gTest_STRING` (write fails)
+- ❌ Writing STRING members in UDTs directly: `gTestUDT.Member5_String` (write fails)
+
+**Workaround for STRING Members in UDTs:**
+```csharp
+// Read entire UDT
+var udt = client.ReadUdt("gTestUDT");
+
+// Modify STRING member in memory (if UDT structure is known)
+// ... modify UDT structure ...
+
+// Write entire UDT back
+client.WriteUdt("gTestUDT", udt);
+```
+
+**Note:** For standalone STRING tags (not part of a UDT), there is no workaround at the communication library level.
+
+### UDT Array Element Member Writing
+
+**Cannot write directly to members of UDT array elements** (e.g., `gTestUDT_Array[0].Member1_DINT`).
+
+**Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC does not support direct write operations to individual members within UDT array elements.
+
+**What Works:**
+- ✅ Reading UDT array element members: `gTestUDT_Array[0].Member1_DINT` (read successfully)
+- ✅ Writing entire UDT array elements: `gTestUDT_Array[0]` (write full UDT structure)
+- ✅ Writing UDT members (non-array): `gTestUDT.Member1_DINT` (write individual members)
+- ✅ Writing simple array elements: `gArray[5]` (write elements of simple arrays)
+
+**What Doesn't Work:**
+- ❌ Writing UDT array element members: `gTestUDT_Array[0].Member1_DINT` (write fails)
+- ❌ Writing program-scoped UDT array element members: `Program:TestProgram.gTestUDT_Array[0].Member1_DINT` (write fails)
+
+**Workaround:**
+```csharp
+// Read entire UDT array element
+var element = client.ReadUdt("gTestUDT_Array[0]");
+
+// Modify member in memory (if UDT structure is known)
+// ... modify UDT structure ...
+
+// Write entire UDT array element back
+client.WriteUdt("gTestUDT_Array[0]", element);
+```
+
+### Summary
+
+**Important Notes:**
+- These limitations are **PLC firmware restrictions**, not library bugs
+- The library correctly implements the EtherNet/IP and CIP protocols
+- All read operations work correctly for all tag types
+- Workarounds are available for UDT array element members and STRING members in UDTs
+- Standalone STRING tag writes have no workaround at the communication library level
+
 ## Use Cases
 
 ### Data Acquisition

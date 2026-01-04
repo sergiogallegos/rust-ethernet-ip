@@ -126,6 +126,7 @@ namespace WpfExample.ViewModels
         {
             InitializeTags();
             SetupTimer();
+            SetupStatisticsTimer();
         }
 
         private void InitializeTags()
@@ -1302,6 +1303,61 @@ namespace WpfExample.ViewModels
             }
         }
 
+        // STRING Operations Properties
+        [ObservableProperty]
+        private string stringReadTagName = "gTest_STRING";
+
+        [ObservableProperty]
+        private string stringReadResult = "";
+
+        [ObservableProperty]
+        private string stringWriteTagName = "gTest_STRING";
+
+        [ObservableProperty]
+        private string stringWriteValue = "Hello PLC!";
+
+        [ObservableProperty]
+        private string stringWriteResult = "⚠️ This operation will fail due to PLC firmware limitation.";
+
+        [ObservableProperty]
+        private string logixStringExample = "";
+
+        // Tag Group Properties
+        [ObservableProperty]
+        private string tagGroupTagNames = "TestTag\nTestBool\nTestInt\nTestReal";
+
+        [ObservableProperty]
+        private int tagGroupUpdateRate = 500;
+
+        [ObservableProperty]
+        private bool isTagGroupActive = false;
+
+        [ObservableProperty]
+        private bool isTagGroupSuspended = false;
+
+        [ObservableProperty]
+        private string tagGroupStatus = "Status: Not Started";
+
+        [ObservableProperty]
+        private ObservableCollection<TagGroupValue> tagGroupValues = new();
+
+        private TagGroup? _tagGroup;
+
+        // Statistics Properties
+        [ObservableProperty]
+        private long statisticsReadCount;
+
+        [ObservableProperty]
+        private long statisticsWriteCount;
+
+        [ObservableProperty]
+        private long statisticsErrorCount;
+
+        [ObservableProperty]
+        private double statisticsAvgResponseTime;
+
+        private DispatcherTimer? _statisticsTimer;
+
         private void LogMessage(string message)
         {
             var timestamp = DateTime.Now.ToString("HH:mm:ss");
@@ -1318,5 +1374,206 @@ namespace WpfExample.ViewModels
                 }
             });
         }
+
+        // STRING Operations Commands
+        [RelayCommand]
+        private async Task ReadString()
+        {
+            if (!IsConnected || _plcClient == null) return;
+
+            try
+            {
+                LogMessage($"📖 Reading STRING tag: {StringReadTagName}");
+                var value = await Task.Run(() => _plcClient.ReadString(StringReadTagName));
+                StringReadResult = $"✅ Success! Value: \"{value}\" (Length: {value.Length})";
+                LogMessage($"✅ Read STRING tag: {StringReadTagName} = \"{value}\"");
+            }
+            catch (Exception ex)
+            {
+                StringReadResult = $"❌ Error: {ex.Message}";
+                LogMessage($"❌ Read error: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private async Task WriteString()
+        {
+            if (!IsConnected || _plcClient == null) return;
+
+            try
+            {
+                LogMessage($"✏️ Attempting to write STRING tag: {StringWriteTagName} = \"{StringWriteValue}\"");
+                await Task.Run(() => _plcClient.WriteString(StringWriteTagName, StringWriteValue));
+                StringWriteResult = $"✅ Success! Wrote \"{StringWriteValue}\" to {StringWriteTagName}";
+                LogMessage($"✅ Wrote STRING tag: {StringWriteTagName} = \"{StringWriteValue}\"");
+            }
+            catch (Exception ex)
+            {
+                string errorMsg = ex.Message;
+                if (errorMsg.Contains("0x2107") || errorMsg.Contains("2107"))
+                {
+                    errorMsg = "PLC firmware limitation (CIP Error 0x2107): STRING tags cannot be written directly. " +
+                              "This is a PLC restriction, not a library bug. " +
+                              "For STRING members in UDTs, use the LogixString helper and write the entire UDT.";
+                }
+                StringWriteResult = $"❌ {errorMsg}";
+                LogMessage($"❌ Write error: {errorMsg}");
+            }
+        }
+
+        // Tag Group Commands
+        [RelayCommand]
+        private async Task TagGroupStart()
+        {
+            if (!IsConnected || _plcClient == null) return;
+
+            try
+            {
+                var tagNames = TagGroupTagNames.Split('\n')
+                    .Select(line => line.Trim())
+                    .Where(line => !string.IsNullOrEmpty(line))
+                    .ToArray();
+
+                if (tagNames.Length == 0)
+                {
+                    LogMessage("❌ Please enter at least one tag name for the tag group");
+                    return;
+                }
+
+                _tagGroup?.Dispose();
+                _tagGroup = new TagGroup(_plcClient)
+                {
+                    TagNames = tagNames,
+                    UpdateRateMs = TagGroupUpdateRate
+                };
+                _tagGroup.DataChanged += TagGroup_DataChanged;
+                _tagGroup.Start();
+
+                IsTagGroupActive = true;
+                IsTagGroupSuspended = false;
+                TagGroupStatus = $"Status: Active (Polling {tagNames.Length} tags every {TagGroupUpdateRate}ms)";
+                LogMessage($"🔄 TagGroup started: {tagNames.Length} tags, {TagGroupUpdateRate}ms update rate");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"❌ TagGroup start error: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private void TagGroupStop()
+        {
+            _tagGroup?.Stop();
+            IsTagGroupActive = false;
+            IsTagGroupSuspended = false;
+            TagGroupStatus = "Status: Stopped";
+            LogMessage("🔄 TagGroup stopped");
+        }
+
+        [RelayCommand]
+        private void TagGroupSuspend()
+        {
+            _tagGroup?.Suspend();
+            IsTagGroupSuspended = true;
+            TagGroupStatus = "Status: Suspended";
+            LogMessage("🔄 TagGroup suspended");
+        }
+
+        [RelayCommand]
+        private void TagGroupResume()
+        {
+            _tagGroup?.Resume();
+            IsTagGroupSuspended = false;
+            TagGroupStatus = "Status: Active";
+            LogMessage("🔄 TagGroup resumed");
+        }
+
+        private void TagGroup_DataChanged(object? sender, GroupDataChangedEventArgs e)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                TagGroupValues.Clear();
+                foreach (var kvp in e.AllValues)
+                {
+                    TagGroupValues.Add(new TagGroupValue
+                    {
+                        TagName = kvp.Key,
+                        Value = kvp.Value?.ToString() ?? "N/A",
+                        Type = kvp.Value?.Type.ToString() ?? "N/A",
+                        LastUpdated = DateTime.Now
+                    });
+                }
+
+                if (e.ChangedTags.Length > 0)
+                {
+                    LogMessage($"🔄 TagGroup: {e.ChangedTags.Length} tag(s) changed: {string.Join(", ", e.ChangedTags)}");
+                }
+            });
+        }
+
+        // Statistics Commands
+        [RelayCommand]
+        private void ResetStatistics()
+        {
+            if (_plcClient == null) return;
+            _plcClient.Statistics.Reset();
+            UpdateStatistics();
+            LogMessage("📊 Statistics reset");
+        }
+
+        private void UpdateStatistics()
+        {
+            if (_plcClient == null) return;
+
+            try
+            {
+                var stats = _plcClient.Statistics;
+                StatisticsReadCount = stats.ReadCount;
+                StatisticsWriteCount = stats.WriteCount;
+                StatisticsErrorCount = stats.ErrorCount;
+                StatisticsAvgResponseTime = stats.AverageResponseTime.TotalMilliseconds;
+            }
+            catch { }
+        }
+
+        private void SetupStatisticsTimer()
+        {
+            _statisticsTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _statisticsTimer.Tick += (s, e) => UpdateStatistics();
+        }
+
+        partial void OnIsConnectedChanged(bool value)
+        {
+            if (value)
+            {
+                _statisticsTimer?.Start();
+                LogixStringExample = "Example code:\n" +
+                                    "var logixString = new LogixString();\n" +
+                                    "logixString.SetString(\"Hello\");\n" +
+                                    "client.WriteStringAsUdt(\"gTestUDT.Member5_String\", logixString);\n" +
+                                    "\nNote: Even this may fail if the STRING is standalone.";
+            }
+            else
+            {
+                _statisticsTimer?.Stop();
+                _tagGroup?.Stop();
+                _tagGroup?.Dispose();
+                _tagGroup = null;
+                IsTagGroupActive = false;
+                IsTagGroupSuspended = false;
+                TagGroupStatus = "Status: Not Started";
+            }
+        }
+    }
+
+    public class TagGroupValue
+    {
+        public string TagName { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public DateTime LastUpdated { get; set; }
     }
 }

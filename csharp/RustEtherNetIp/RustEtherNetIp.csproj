@@ -38,7 +38,7 @@
     </None>
   </ItemGroup>
   <ItemGroup Condition=" '$(OS)' == 'Windows_NT' ">
-    <None Include="../../rust_ethernet_ip.dll">
+    <None Include="../../target/release/rust_ethernet_ip.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>rust_ethernet_ip.dll</Link>
     </None>
@@ -46,7 +46,7 @@
 
   <Target Name="CopyNativeLibrary" AfterTargets="Build">
     <Copy SourceFiles="../../target/release/librust_ethernet_ip.dylib" DestinationFolder="$(OutputPath)" Condition="'$(OS)' == 'OSX'" />
-    <Copy SourceFiles="../../rust_ethernet_ip.dll" DestinationFolder="$(OutputPath)" Condition="'$(OS)' == 'Windows_NT'" />
+    <Copy SourceFiles="../../target/release/rust_ethernet_ip.dll" DestinationFolder="$(OutputPath)" Condition="'$(OS)' == 'Windows_NT'" />
     <Message Text="Copying native library to $(OutputPath)" Importance="high" />
   </Target>
 </Project>

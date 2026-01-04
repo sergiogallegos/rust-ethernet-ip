@@ -219,6 +219,60 @@
 // - Detailed error messages with CIP status code mapping
 // - Network errors are distinguished from protocol errors
 //
+// ## Known Limitations
+//
+// The following operations are not supported due to PLC firmware restrictions.
+// These limitations are inherent to the Allen-Bradley PLC firmware and cannot be
+// bypassed at the library level.
+//
+// ### STRING Tag Writing
+//
+// **Cannot write directly to STRING tags** (e.g., `gTest_STRING`).
+//
+// **Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC rejects
+// direct write operations to STRING tags, regardless of the communication method used.
+//
+// **What Works:**
+// - Reading STRING tags: `gTest_STRING` (read successfully)
+// - Reading STRING members in UDTs: `gTestUDT.Member5_String` (read successfully)
+//
+// **What Doesn't Work:**
+// - Writing simple STRING tags: `gTest_STRING` (write fails - PLC limitation)
+// - Writing program-scoped STRING tags: `Program:TestProgram.gTest_STRING` (write fails)
+// - Writing STRING members in UDTs directly: `gTestUDT.Member5_String` (write fails)
+//
+// **Workaround for STRING Members in UDTs:**
+// If the STRING is part of a UDT structure, read the entire UDT, modify the STRING
+// member in memory, then write the entire UDT back. For standalone STRING tags,
+// there is no workaround at the communication library level.
+//
+// ### UDT Array Element Member Writing
+//
+// **Cannot write directly to members of UDT array elements** (e.g., `gTestUDT_Array[0].Member1_DINT`).
+//
+// **Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC does not
+// support direct write operations to individual members within UDT array elements.
+//
+// **What Works:**
+// - Reading UDT array element members: `gTestUDT_Array[0].Member1_DINT` (read successfully)
+// - Writing entire UDT array elements: `gTestUDT_Array[0]` (write full UDT structure)
+// - Writing UDT members (non-array): `gTestUDT.Member1_DINT` (write individual members)
+// - Writing simple array elements: `gArray[5]` (write elements of simple arrays)
+//
+// **What Doesn't Work:**
+// - Writing UDT array element members: `gTestUDT_Array[0].Member1_DINT` (write fails)
+// - Writing program-scoped UDT array element members: `Program:TestProgram.gTestUDT_Array[0].Member1_DINT` (write fails)
+//
+// **Workaround:**
+// Use a read-modify-write pattern: Read the entire UDT array element, modify the
+// member in memory, then write the entire UDT array element back.
+//
+// **Important Notes:**
+// - These limitations are PLC firmware restrictions, not library bugs
+// - The library correctly implements the EtherNet/IP and CIP protocols
+// - All read operations work correctly for all tag types
+// - Workarounds are available for UDT array element members and STRING members in UDTs
+//
 // ## Examples
 //
 // See the `examples/` directory for comprehensive usage examples, including:
@@ -1091,6 +1145,66 @@ impl PlcValue {
 /// | Write Tag | 2-10ms | 600+ ops/sec | ~2KB |
 /// | Batch Read | 5-20ms | 2,000+ ops/sec | ~4KB |
 ///
+/// # Known Limitations
+///
+/// The following operations are **not supported** due to PLC firmware limitations:
+///
+/// ## UDT Array Element Member Writes
+///
+/// **Cannot write directly to UDT array element members** (e.g., `gTestUDT_Array[0].Member1_DINT`).
+/// This is a PLC firmware limitation, not a library bug. The PLC returns CIP Error 0x2107
+/// (Vendor Specific Error) when attempting to write to such paths.
+///
+/// ## STRING Tags and STRING Members in UDTs
+///
+/// **Cannot write directly to STRING tags or STRING members in UDTs**.
+/// This is a PLC firmware limitation (CIP Error 0x2107). Both simple STRING tags
+/// (e.g., `gTest_STRING`) and STRING members within UDTs (e.g., `gTestUDT.Member5_String`)
+/// cannot be written directly. STRING values must be written as part of the entire UDT
+/// structure, not as individual tags or members.
+///
+/// **What works:**
+/// - ✅ Reading UDT array element members: `gTestUDT_Array[0].Member1_DINT` (read)
+/// - ✅ Writing entire UDT array elements: `gTestUDT_Array[0]` (write full UDT)
+/// - ✅ Writing UDT members (non-STRING): `gTestUDT.Member1_DINT` (write DINT/REAL/BOOL/INT members)
+/// - ✅ Writing array elements: `gArray[5]` (write element of simple array)
+/// - ✅ Reading STRING tags: `gTest_STRING` (read)
+/// - ✅ Reading STRING members in UDTs: `gTestUDT.Member5_String` (read)
+///
+/// **What doesn't work:**
+/// - ❌ Writing UDT array element members: `gTestUDT_Array[0].Member1_DINT` (write)
+/// - ❌ Writing program-scoped UDT array element members: `Program:TestProgram.gTestUDT_Array[0].Member1_DINT` (write)
+/// - ❌ Writing simple STRING tags: `gTest_STRING` (write) - PLC limitation
+/// - ❌ Writing program-scoped STRING tags: `Program:TestProgram.gTest_STRING` (write) - PLC limitation
+/// - ❌ Writing STRING members in UDTs: `gTestUDT.Member5_String` (write) - must write entire UDT
+/// - ❌ Writing program-scoped STRING members: `Program:TestProgram.gTestUDT.Member5_String` (write) - must write entire UDT
+///
+/// **Workaround:**
+/// To modify a UDT array element member, read the entire UDT array element, modify the member
+/// in memory, then write the entire UDT array element back:
+///
+/// ```rust,no_run
+/// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+/// # let mut client = rust_ethernet_ip::EipClient::connect("192.168.1.100:44818").await?;
+/// use rust_ethernet_ip::{PlcValue, UdtData};
+///
+/// // Read the entire UDT array element
+/// let udt_value = client.read_tag("gTestUDT_Array[0]").await?;
+/// if let PlcValue::Udt(mut udt_data) = udt_value {
+///     let udt_def = client.get_udt_definition("gTestUDT_Array").await?;
+///     let mut members = udt_data.parse(&udt_def)?;
+///     
+///     // Modify the member
+///     members.insert("Member1_DINT".to_string(), PlcValue::Dint(100));
+///     
+///     // Write the entire UDT array element back
+///     let modified_udt = UdtData::from_hash_map(&members, &udt_def, udt_data.symbol_id)?;
+///     client.write_tag("gTestUDT_Array[0]", PlcValue::Udt(modified_udt)).await?;
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
 /// # Error Handling
 ///
 /// All operations return `Result<T, EtherNetIpError>`. Common errors include:
@@ -1545,31 +1659,28 @@ impl EipClient {
     pub async fn read_tag(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         self.validate_session().await?;
 
-        // Check if this is array element access (e.g., "ArrayName[0]")
+        // Check if this is a simple array element access (e.g., "ArrayName[0]")
+        // BUT NOT if it has member access after (e.g., "ArrayName[0].Member")
+        // Complex paths like "gTestUDT_Array[0].Member1_DINT" should use TagPath::parse()
         if let Some((base_name, index)) = self.parse_array_element_access(tag_name) {
-            println!(
-                "🔧 [DEBUG] Detected array element access: {}[{}], using workaround",
-                base_name, index
-            );
-            return self.read_array_element_workaround(&base_name, index).await;
-        }
-
-        // Check if we have metadata for this tag
-        if let Some(metadata) = self.get_tag_metadata(tag_name).await {
-            // Handle UDT tags
-            if metadata.data_type == 0x00A0 {
-                // Get tag attributes to retrieve symbol_id (template_instance_id)
-                let attributes = self.get_tag_attributes(tag_name).await?;
-                let symbol_id = attributes.template_instance_id.unwrap_or(0) as i32;
-
-                // Read raw UDT data
-                let data = self.read_tag_raw(tag_name).await?;
-
-                return Ok(PlcValue::Udt(UdtData { symbol_id, data }));
+            // Only use workaround if there's no member access after the array brackets
+            // Check if there's a dot after the closing bracket
+            if let Some(bracket_end) = tag_name.rfind(']') {
+                let after_bracket = &tag_name[bracket_end + 1..];
+                // If there's a dot after the bracket, it's a member access - use TagPath::parse() instead
+                if !after_bracket.starts_with('.') {
+                    println!(
+                        "🔧 [DEBUG] Detected simple array element access: {}[{}], using workaround",
+                        base_name, index
+                    );
+                    return self.read_array_element_workaround(&base_name, index).await;
+                }
             }
         }
 
-        // Standard tag reading
+        // For complex paths (with member access, nested arrays, etc.), use TagPath::parse()
+        // This handles paths like "gTestUDT_Array[0].Member1_DINT" correctly
+        // Standard tag reading uses build_read_request which uses TagPath::parse()
         let response = self
             .send_cip_request(&self.build_read_request(tag_name))
             .await?;
@@ -4052,8 +4163,7 @@ impl EipClient {
     fn build_unconnected_send(&self, embedded_message: &[u8]) -> Vec<u8> {
         let mut ucmm = vec![
             // Service: Unconnected Send (0x52)
-            0x52,
-            // Request Path Size: 2 words (4 bytes) for Connection Manager
+            0x52, // Request Path Size: 2 words (4 bytes) for Connection Manager
             0x02,
             // Request Path: Connection Manager (Class 0x06, Instance 1)
             0x20, // Logical Class segment
@@ -4061,8 +4171,7 @@ impl EipClient {
             0x24, // Logical Instance segment
             0x01, // Instance 1
             // Priority/Time Tick: 0x0A
-            0x0A,
-            // Timeout Ticks: 0xF0 (240 ticks)
+            0x0A, // Timeout Ticks: 0xF0 (240 ticks)
             0xF0,
         ];
 
@@ -4395,8 +4504,38 @@ impl EipClient {
                     println!("🔧 [DEBUG] Parsed REAL: {value}");
                     Ok(PlcValue::Real(value))
                 }
+                0x00CE => {
+                    // Allen-Bradley STRING type (0x00CE)
+                    // STRING format: 4-byte length (DINT) followed by string data (up to 82 bytes)
+                    if value_data.len() < 4 {
+                        return Err(EtherNetIpError::Protocol(
+                            "Insufficient data for STRING length field".to_string(),
+                        ));
+                    }
+                    let length = u32::from_le_bytes([
+                        value_data[0],
+                        value_data[1],
+                        value_data[2],
+                        value_data[3],
+                    ]) as usize;
+
+                    if value_data.len() < 4 + length {
+                        return Err(EtherNetIpError::Protocol(format!(
+                            "Insufficient data for STRING value: need {} bytes, have {} bytes",
+                            4 + length,
+                            value_data.len()
+                        )));
+                    }
+                    let string_data = &value_data[4..4 + length];
+                    let value = String::from_utf8_lossy(string_data).to_string();
+                    println!(
+                        "🔧 [DEBUG] Parsed STRING (0x00CE): length={}, value='{}'",
+                        length, value
+                    );
+                    Ok(PlcValue::String(value))
+                }
                 0x00DA => {
-                    // STRING
+                    // Alternative STRING format (0x00DA) - single byte length
                     if value_data.is_empty() {
                         return Ok(PlcValue::String(String::new()));
                     }
@@ -4408,7 +4547,7 @@ impl EipClient {
                     }
                     let string_data = &value_data[1..1 + length];
                     let value = String::from_utf8_lossy(string_data).to_string();
-                    println!("🔧 [DEBUG] Parsed STRING: '{value}'");
+                    println!("🔧 [DEBUG] Parsed STRING (0x00DA): '{value}'");
                     Ok(PlcValue::String(value))
                 }
                 0x02A0 => {

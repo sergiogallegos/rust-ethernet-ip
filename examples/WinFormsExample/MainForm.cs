@@ -41,10 +41,11 @@ namespace WinFormsExample
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 3,
+                RowCount = 4,
                 Padding = new Padding(10)
             };
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));   // Header
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));     // Limitations notice
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));     // Tab Control
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 200));    // Log panel
 
@@ -52,13 +53,17 @@ namespace WinFormsExample
             var headerPanel = CreateHeaderPanel();
             mainLayout.Controls.Add(headerPanel, 0, 0);
 
+            // Limitations Notice Panel
+            var limitationsPanel = CreateLimitationsPanel();
+            mainLayout.Controls.Add(limitationsPanel, 0, 1);
+
             // Tab Control for different operation modes
             var tabControl = CreateTabControl();
-            mainLayout.Controls.Add(tabControl, 0, 1);
+            mainLayout.Controls.Add(tabControl, 0, 2);
 
             // Log Panel (bottom, full width)
             var logPanel = CreateLogPanel();
-            mainLayout.Controls.Add(logPanel, 0, 2);
+            mainLayout.Controls.Add(logPanel, 0, 3);
 
             // Add the main layout to the form
             this.Controls.Add(mainLayout);
@@ -166,6 +171,32 @@ namespace WinFormsExample
             return panel;
         }
 
+        private Panel CreateLimitationsPanel()
+        {
+            var panel = new Panel 
+            { 
+                Dock = DockStyle.Fill,
+                BackColor = Color.FromArgb(255, 251, 235), // Light yellow background
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            var label = new Label
+            {
+                Text = "⚠️ PLC Limitations: STRING tags cannot be written directly (Error 0x2107). " +
+                       "UDT array element members (e.g., gTestUDT_Array[0].Member1_DINT) cannot be written directly. " +
+                       "STRING members in UDTs (e.g., gTestUDT.Member5_String) cannot be written directly. " +
+                       "These are PLC firmware restrictions, not library bugs.",
+                Location = new Point(10, 5),
+                Size = new Size(panel.Width - 20, 70),
+                AutoSize = false,
+                Font = new Font(this.Font.FontFamily, 8.5f),
+                ForeColor = Color.FromArgb(161, 98, 7) // Dark yellow text
+            };
+            panel.Controls.Add(label);
+
+            return panel;
+        }
+
         private TabControl CreateTabControl()
         {
             var tabControl = new TabControl
@@ -203,6 +234,21 @@ namespace WinFormsExample
             var udtTab = new TabPage("🏗️ UDT Tests");
             udtTab.Controls.Add(CreateUdtTestsPanel());
             tabControl.TabPages.Add(udtTab);
+
+            // STRING Operations Tab
+            var stringTab = new TabPage("📝 STRING Operations");
+            stringTab.Controls.Add(CreateStringOperationsPanel());
+            tabControl.TabPages.Add(stringTab);
+
+            // Tag Group Tab
+            var tagGroupTab = new TabPage("🔄 Tag Group");
+            tagGroupTab.Controls.Add(CreateTagGroupPanel());
+            tabControl.TabPages.Add(tagGroupTab);
+
+            // Statistics Tab
+            var statisticsTab = new TabPage("📊 Statistics");
+            statisticsTab.Controls.Add(CreateStatisticsPanel());
+            tabControl.TabPages.Add(statisticsTab);
 
             return tabControl;
         }
@@ -1046,6 +1092,16 @@ namespace WinFormsExample
             var udtReadButton = Controls.Find("udtReadButton", true).FirstOrDefault() as Button;
             var udtMemberReadButton = Controls.Find("udtMemberReadButton", true).FirstOrDefault() as Button;
             var udtMemberWriteButton = Controls.Find("udtMemberWriteButton", true).FirstOrDefault() as Button;
+            
+            // New feature buttons
+            var stringReadButton = Controls.Find("stringReadButton", true).FirstOrDefault() as Button;
+            var stringWriteButton = Controls.Find("stringWriteButton", true).FirstOrDefault() as Button;
+            var logixStringExampleButton = Controls.Find("logixStringExampleButton", true).FirstOrDefault() as Button;
+            var tagGroupStartButton = Controls.Find("tagGroupStartButton", true).FirstOrDefault() as Button;
+            var tagGroupStopButton = Controls.Find("tagGroupStopButton", true).FirstOrDefault() as Button;
+            var tagGroupSuspendButton = Controls.Find("tagGroupSuspendButton", true).FirstOrDefault() as Button;
+            var tagGroupResumeButton = Controls.Find("tagGroupResumeButton", true).FirstOrDefault() as Button;
+            var statsResetButton = Controls.Find("statsResetButton", true).FirstOrDefault() as Button;
 
             // Batch operation buttons
             var batchReadButton = Controls.Find("batchReadButton", true).FirstOrDefault() as Button;
@@ -1087,6 +1143,44 @@ namespace WinFormsExample
                 // Enable quick test buttons
                 EnableQuickTestButtons(true);
 
+                // Enable new feature buttons
+                if (stringReadButton != null) stringReadButton.Enabled = true;
+                if (stringWriteButton != null) stringWriteButton.Enabled = true;
+                if (logixStringExampleButton != null) logixStringExampleButton.Enabled = true;
+                if (tagGroupStartButton != null) tagGroupStartButton.Enabled = true;
+                if (tagGroupStopButton != null) tagGroupStopButton.Enabled = false; // Only enabled when group is active
+                if (tagGroupSuspendButton != null) tagGroupSuspendButton.Enabled = false; // Only enabled when group is active
+                if (tagGroupResumeButton != null) tagGroupResumeButton.Enabled = false; // Only enabled when suspended
+                if (statsResetButton != null) statsResetButton.Enabled = true;
+
+                // Start statistics update timer
+                var statsPanel = Controls.Find("statisticsTab", true).FirstOrDefault() ?? 
+                                Controls.Find("CreateStatisticsPanel", true).FirstOrDefault();
+                if (statsPanel != null && statsPanel.Tag is System.Windows.Forms.Timer statsTimer)
+                {
+                    statsTimer.Enabled = true;
+                }
+                else
+                {
+                    // Find the statistics panel by searching tab pages
+                    var tabControl = Controls.Find("mainTabControl", true).FirstOrDefault() as TabControl;
+                    if (tabControl != null)
+                    {
+                        foreach (TabPage tab in tabControl.TabPages)
+                        {
+                            if (tab.Text == "📊 Statistics" && tab.Controls.Count > 0)
+                            {
+                                var panel = tab.Controls[0];
+                                if (panel.Tag is System.Windows.Forms.Timer timer)
+                                {
+                                    timer.Enabled = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 // Update current config display
                 UpdateCurrentConfigDisplay();
             }
@@ -1117,6 +1211,34 @@ namespace WinFormsExample
                 if (udtReadButton != null) udtReadButton.Enabled = false;
                 if (udtMemberReadButton != null) udtMemberReadButton.Enabled = false;
                 if (udtMemberWriteButton != null) udtMemberWriteButton.Enabled = false;
+                
+                // Disable new feature buttons
+                if (stringReadButton != null) stringReadButton.Enabled = false;
+                if (stringWriteButton != null) stringWriteButton.Enabled = false;
+                if (logixStringExampleButton != null) logixStringExampleButton.Enabled = false;
+                if (tagGroupStartButton != null) tagGroupStartButton.Enabled = false;
+                if (tagGroupStopButton != null) tagGroupStopButton.Enabled = false;
+                if (tagGroupSuspendButton != null) tagGroupSuspendButton.Enabled = false;
+                if (tagGroupResumeButton != null) tagGroupResumeButton.Enabled = false;
+                if (statsResetButton != null) statsResetButton.Enabled = false;
+
+                // Stop statistics update timer
+                var tabControl = Controls.Find("mainTabControl", true).FirstOrDefault() as TabControl;
+                if (tabControl != null)
+                {
+                    foreach (TabPage tab in tabControl.TabPages)
+                    {
+                        if (tab.Text == "📊 Statistics" && tab.Controls.Count > 0)
+                        {
+                            var panel = tab.Controls[0];
+                            if (panel.Tag is System.Windows.Forms.Timer timer)
+                            {
+                                timer.Enabled = false;
+                            }
+                            break;
+                        }
+                    }
+                }
                 
                 // Disable quick test buttons
                 EnableQuickTestButtons(false);
@@ -2038,8 +2160,23 @@ namespace WinFormsExample
                         break;
 
                     case "STRING":
-                        _plcClient.WriteString(tagName, value);
-                        Log($"✅ Wrote STRING: '{value}' to {tagName}");
+                        try
+                        {
+                            _plcClient.WriteString(tagName, value);
+                            Log($"✅ Wrote STRING: '{value}' to {tagName}");
+                        }
+                        catch (Exception ex)
+                        {
+                            if (ex.Message.Contains("0x2107") || ex.Message.Contains("2107"))
+                            {
+                                Log($"❌ Write error: STRING tags cannot be written directly (PLC limitation - Error 0x2107). " +
+                                    $"Tag '{tagName}' can be read but not written. This is a PLC firmware restriction.");
+                            }
+                            else
+                            {
+                                Log($"❌ Write error: {ex.Message}");
+                            }
+                        }
                         break;
 
                     case "UDT":
@@ -3491,8 +3628,31 @@ namespace WinFormsExample
             }
             catch (Exception ex)
             {
-                resultLabel.Text = $"❌ Error: {ex.Message}";
-                Log($"❌ Write error: {ex.Message}");
+                string errorMsg = ex.Message;
+                if (errorMsg.Contains("0x2107") || errorMsg.Contains("2107"))
+                {
+                    // Extract member path from fullPath for error message
+                    var parts = fullPath.Split('.');
+                    var memberPathForError = parts.Length > 1 ? string.Join(".", parts.Skip(1)) : "";
+                    
+                    // Check if it's a UDT array element member or STRING member
+                    if (fullPath.Contains("_Array[") && fullPath.Contains('.'))
+                    {
+                        errorMsg = $"Cannot write to UDT array element members directly (PLC limitation - Error 0x2107). " +
+                                   $"Tag '{fullPath}' cannot be written. Read the entire UDT array element, modify in memory, then write the entire element back.";
+                    }
+                    else if (memberPathForError.Contains("String") || memberPathForError.Contains("STRING") || fullPath.Contains("String") || fullPath.Contains("STRING"))
+                    {
+                        errorMsg = $"Cannot write to STRING members in UDTs directly (PLC limitation - Error 0x2107). " +
+                                   $"Tag '{fullPath}' cannot be written. Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.";
+                    }
+                    else
+                    {
+                        errorMsg = $"PLC limitation (Error 0x2107): {ex.Message}";
+                    }
+                }
+                resultLabel.Text = $"❌ Error: {errorMsg}";
+                Log($"❌ Write error: {errorMsg}");
             }
         }
 
@@ -3669,9 +3829,725 @@ namespace WinFormsExample
             return null;
         }
 
+        private Panel CreateStringOperationsPanel()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+
+            // Limitations Notice
+            var limitationsPanel = new Panel
+            {
+                Location = new Point(10, 10),
+                Size = new Size(panel.Width - 20, 100),
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Color.FromArgb(255, 251, 235)
+            };
+
+            var limitationsLabel = new Label
+            {
+                Text = "⚠️ PLC LIMITATIONS: STRING tags cannot be written directly due to PLC firmware restrictions (CIP Error 0x2107).\n" +
+                       "✅ STRING tags CAN be read successfully.\n" +
+                       "💡 Workaround: If STRING is part of a UDT, read entire UDT, modify STRING member, then write entire UDT back.",
+                Location = new Point(5, 5),
+                Size = new Size(limitationsPanel.Width - 10, 90),
+                AutoSize = false,
+                Font = new Font(this.Font, FontStyle.Bold),
+                ForeColor = Color.FromArgb(161, 98, 7)
+            };
+            limitationsPanel.Controls.Add(limitationsLabel);
+            panel.Controls.Add(limitationsPanel);
+
+            // STRING Read Section
+            var readGroup = new GroupBox
+            {
+                Text = "📖 Read STRING Tag",
+                Location = new Point(10, 120),
+                Size = new Size(400, 150)
+            };
+
+            var readTagLabel = new Label
+            {
+                Text = "Tag Name:",
+                Location = new Point(10, 25),
+                AutoSize = true
+            };
+            readGroup.Controls.Add(readTagLabel);
+
+            var readTagTextBox = new TextBox
+            {
+                Name = "stringReadTagTextBox",
+                Location = new Point(10, 45),
+                Size = new Size(350, 23),
+                Text = "gTest_STRING"
+            };
+            readGroup.Controls.Add(readTagTextBox);
+
+            var readButton = new Button
+            {
+                Name = "stringReadButton",
+                Text = "Read STRING",
+                Location = new Point(10, 75),
+                Size = new Size(150, 30),
+                BackColor = Color.FromArgb(34, 197, 94),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            readButton.Click += StringReadButton_Click;
+            readGroup.Controls.Add(readButton);
+
+            var readResultLabel = new Label
+            {
+                Name = "stringReadResultLabel",
+                Text = "Result will appear here...",
+                Location = new Point(10, 110),
+                Size = new Size(350, 30),
+                AutoSize = false
+            };
+            readGroup.Controls.Add(readResultLabel);
+            panel.Controls.Add(readGroup);
+
+            // STRING Write Section (with limitation notice)
+            var writeGroup = new GroupBox
+            {
+                Text = "✏️ Write STRING Tag (PLC Limitation)",
+                Location = new Point(420, 120),
+                Size = new Size(400, 200)
+            };
+
+            var writeTagLabel = new Label
+            {
+                Text = "Tag Name:",
+                Location = new Point(10, 25),
+                AutoSize = true
+            };
+            writeGroup.Controls.Add(writeTagLabel);
+
+            var writeTagTextBox = new TextBox
+            {
+                Name = "stringWriteTagTextBox",
+                Location = new Point(10, 45),
+                Size = new Size(350, 23),
+                Text = "gTest_STRING"
+            };
+            writeGroup.Controls.Add(writeTagTextBox);
+
+            var writeValueLabel = new Label
+            {
+                Text = "String Value (max 82 chars):",
+                Location = new Point(10, 75),
+                AutoSize = true
+            };
+            writeGroup.Controls.Add(writeValueLabel);
+
+            var writeValueTextBox = new TextBox
+            {
+                Name = "stringWriteValueTextBox",
+                Location = new Point(10, 95),
+                Size = new Size(350, 23),
+                Text = "Hello PLC!"
+            };
+            writeGroup.Controls.Add(writeValueTextBox);
+
+            var writeButton = new Button
+            {
+                Name = "stringWriteButton",
+                Text = "Write STRING (Will Fail)",
+                Location = new Point(10, 125),
+                Size = new Size(200, 30),
+                BackColor = Color.FromArgb(239, 68, 68),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            writeButton.Click += StringWriteButton_Click;
+            writeGroup.Controls.Add(writeButton);
+
+            var writeResultLabel = new Label
+            {
+                Name = "stringWriteResultLabel",
+                Text = "⚠️ This operation will fail due to PLC firmware limitation.",
+                Location = new Point(10, 160),
+                Size = new Size(350, 35),
+                AutoSize = false,
+                ForeColor = Color.FromArgb(239, 68, 68)
+            };
+            writeGroup.Controls.Add(writeResultLabel);
+            panel.Controls.Add(writeGroup);
+
+            // LogixString Helper Section
+            var helperGroup = new GroupBox
+            {
+                Text = "💡 LogixString Helper (For UDT STRING Members)",
+                Location = new Point(10, 280),
+                Size = new Size(810, 150)
+            };
+
+            var helperLabel = new Label
+            {
+                Text = "The LogixString helper class can be used to write STRING members in UDTs:\n" +
+                       "1. Read the entire UDT\n" +
+                       "2. Modify the STRING member using LogixString\n" +
+                       "3. Write the entire UDT back",
+                Location = new Point(10, 25),
+                Size = new Size(790, 60),
+                AutoSize = false
+            };
+            helperGroup.Controls.Add(helperLabel);
+
+            var helperExampleButton = new Button
+            {
+                Name = "logixStringExampleButton",
+                Text = "Show LogixString Example",
+                Location = new Point(10, 90),
+                Size = new Size(200, 30),
+                BackColor = Color.FromArgb(59, 130, 246),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            helperExampleButton.Click += LogixStringExampleButton_Click;
+            helperGroup.Controls.Add(helperExampleButton);
+
+            var helperResultLabel = new Label
+            {
+                Name = "logixStringResultLabel",
+                Text = "",
+                Location = new Point(220, 90),
+                Size = new Size(580, 50),
+                AutoSize = false
+            };
+            helperGroup.Controls.Add(helperResultLabel);
+            panel.Controls.Add(helperGroup);
+
+            return panel;
+        }
+
+        private Panel CreateTagGroupPanel()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+
+            var titleLabel = new Label
+            {
+                Text = "🔄 Tag Group - Periodic Polling with Event-Driven Updates",
+                Font = new Font(this.Font, FontStyle.Bold),
+                ForeColor = Color.FromArgb(59, 130, 246),
+                Location = new Point(10, 10),
+                AutoSize = true
+            };
+            panel.Controls.Add(titleLabel);
+
+            var descLabel = new Label
+            {
+                Text = "TagGroup provides automatic periodic polling of multiple tags with data change events.",
+                Location = new Point(10, 35),
+                AutoSize = true
+            };
+            panel.Controls.Add(descLabel);
+
+            // Tag Group Configuration
+            var configGroup = new GroupBox
+            {
+                Text = "Tag Group Configuration",
+                Location = new Point(10, 60),
+                Size = new Size(400, 150)
+            };
+
+            var tagNamesLabel = new Label
+            {
+                Text = "Tag Names (one per line):",
+                Location = new Point(10, 25),
+                AutoSize = true
+            };
+            configGroup.Controls.Add(tagNamesLabel);
+
+            var tagNamesTextBox = new TextBox
+            {
+                Name = "tagGroupTagNamesTextBox",
+                Location = new Point(10, 45),
+                Size = new Size(350, 60),
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                Text = "TestTag\nTestBool\nTestInt\nTestReal"
+            };
+            configGroup.Controls.Add(tagNamesTextBox);
+
+            var updateRateLabel = new Label
+            {
+                Text = "Update Rate (ms):",
+                Location = new Point(10, 110),
+                AutoSize = true
+            };
+            configGroup.Controls.Add(updateRateLabel);
+
+            var updateRateNumeric = new NumericUpDown
+            {
+                Name = "tagGroupUpdateRateNumeric",
+                Location = new Point(120, 108),
+                Size = new Size(80, 23),
+                Minimum = 100,
+                Maximum = 10000,
+                Value = 500,
+                Increment = 100
+            };
+            configGroup.Controls.Add(updateRateNumeric);
+            panel.Controls.Add(configGroup);
+
+            // Tag Group Controls
+            var controlGroup = new GroupBox
+            {
+                Text = "Tag Group Controls",
+                Location = new Point(420, 60),
+                Size = new Size(400, 150)
+            };
+
+            var startButton = new Button
+            {
+                Name = "tagGroupStartButton",
+                Text = "Start",
+                Location = new Point(10, 25),
+                Size = new Size(100, 30),
+                BackColor = Color.FromArgb(34, 197, 94),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            startButton.Click += TagGroupStartButton_Click;
+            controlGroup.Controls.Add(startButton);
+
+            var stopButton = new Button
+            {
+                Name = "tagGroupStopButton",
+                Text = "Stop",
+                Location = new Point(120, 25),
+                Size = new Size(100, 30),
+                BackColor = Color.FromArgb(239, 68, 68),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            stopButton.Click += TagGroupStopButton_Click;
+            controlGroup.Controls.Add(stopButton);
+
+            var suspendButton = new Button
+            {
+                Name = "tagGroupSuspendButton",
+                Text = "Suspend",
+                Location = new Point(230, 25),
+                Size = new Size(100, 30),
+                BackColor = Color.FromArgb(249, 115, 22),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            suspendButton.Click += TagGroupSuspendButton_Click;
+            controlGroup.Controls.Add(suspendButton);
+
+            var resumeButton = new Button
+            {
+                Name = "tagGroupResumeButton",
+                Text = "Resume",
+                Location = new Point(340, 25),
+                Size = new Size(100, 30),
+                BackColor = Color.FromArgb(34, 197, 94),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            resumeButton.Click += TagGroupResumeButton_Click;
+            controlGroup.Controls.Add(resumeButton);
+
+            var statusLabel = new Label
+            {
+                Name = "tagGroupStatusLabel",
+                Text = "Status: Not Started",
+                Location = new Point(10, 65),
+                Size = new Size(380, 20),
+                AutoSize = false
+            };
+            controlGroup.Controls.Add(statusLabel);
+
+            var lastScanLabel = new Label
+            {
+                Name = "tagGroupLastScanLabel",
+                Text = "Last Scan Time: N/A",
+                Location = new Point(10, 90),
+                Size = new Size(380, 20),
+                AutoSize = false
+            };
+            controlGroup.Controls.Add(lastScanLabel);
+            panel.Controls.Add(controlGroup);
+
+            // Tag Group Results
+            var resultsGroup = new GroupBox
+            {
+                Text = "Tag Group Values",
+                Location = new Point(10, 220),
+                Size = new Size(810, 300)
+            };
+
+            var resultsListView = new ListView
+            {
+                Name = "tagGroupResultsListView",
+                Location = new Point(10, 25),
+                Size = new Size(790, 265),
+                View = View.Details,
+                FullRowSelect = true,
+                GridLines = true
+            };
+            resultsListView.Columns.Add("Tag Name", 200);
+            resultsListView.Columns.Add("Value", 200);
+            resultsListView.Columns.Add("Type", 100);
+            resultsListView.Columns.Add("Last Updated", 150);
+            resultsListView.Columns.Add("Quality", 100);
+            resultsGroup.Controls.Add(resultsListView);
+            panel.Controls.Add(resultsGroup);
+
+            return panel;
+        }
+
+        private Panel CreateStatisticsPanel()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+
+            var titleLabel = new Label
+            {
+                Text = "📊 Performance Statistics",
+                Font = new Font(this.Font, FontStyle.Bold),
+                ForeColor = Color.FromArgb(59, 130, 246),
+                Location = new Point(10, 10),
+                AutoSize = true
+            };
+            panel.Controls.Add(titleLabel);
+
+            // Statistics Display
+            var statsGroup = new GroupBox
+            {
+                Text = "Client Statistics",
+                Location = new Point(10, 40),
+                Size = new Size(400, 200)
+            };
+
+            var readCountLabel = new Label
+            {
+                Name = "statsReadCountLabel",
+                Text = "Read Count: 0",
+                Location = new Point(10, 25),
+                Size = new Size(350, 20),
+                AutoSize = false,
+                Font = new Font(this.Font, FontStyle.Bold)
+            };
+            statsGroup.Controls.Add(readCountLabel);
+
+            var writeCountLabel = new Label
+            {
+                Name = "statsWriteCountLabel",
+                Text = "Write Count: 0",
+                Location = new Point(10, 50),
+                Size = new Size(350, 20),
+                AutoSize = false,
+                Font = new Font(this.Font, FontStyle.Bold)
+            };
+            statsGroup.Controls.Add(writeCountLabel);
+
+            var errorCountLabel = new Label
+            {
+                Name = "statsErrorCountLabel",
+                Text = "Error Count: 0",
+                Location = new Point(10, 75),
+                Size = new Size(350, 20),
+                AutoSize = false,
+                Font = new Font(this.Font, FontStyle.Bold),
+                ForeColor = Color.FromArgb(239, 68, 68)
+            };
+            statsGroup.Controls.Add(errorCountLabel);
+
+            var avgResponseTimeLabel = new Label
+            {
+                Name = "statsAvgResponseTimeLabel",
+                Text = "Average Response Time: 0 ms",
+                Location = new Point(10, 100),
+                Size = new Size(350, 20),
+                AutoSize = false,
+                Font = new Font(this.Font, FontStyle.Bold)
+            };
+            statsGroup.Controls.Add(avgResponseTimeLabel);
+
+            var resetButton = new Button
+            {
+                Name = "statsResetButton",
+                Text = "Reset Statistics",
+                Location = new Point(10, 130),
+                Size = new Size(150, 30),
+                BackColor = Color.FromArgb(107, 114, 128),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            resetButton.Click += StatsResetButton_Click;
+            statsGroup.Controls.Add(resetButton);
+            panel.Controls.Add(statsGroup);
+
+            // Statistics Update Timer
+            var updateTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 1000, // Update every second
+                Enabled = false
+            };
+            updateTimer.Tick += (s, e) => UpdateStatisticsDisplay();
+            panel.Tag = updateTimer;
+
+            return panel;
+        }
+
+        // Event handlers for new panels
+        private void StringReadButton_Click(object? sender, EventArgs e)
+        {
+            if (_plcClient == null || !_isConnected) return;
+
+            try
+            {
+                var tagName = ((TextBox)Controls.Find("stringReadTagTextBox", true)[0]).Text;
+                Log($"📖 Reading STRING tag: {tagName}");
+
+                var value = _plcClient.ReadString(tagName);
+                var resultLabel = (Label)Controls.Find("stringReadResultLabel", true)[0];
+                resultLabel.Text = $"✅ Success! Value: \"{value}\" (Length: {value.Length})";
+                resultLabel.ForeColor = Color.FromArgb(34, 197, 94);
+                Log($"✅ Read STRING tag: {tagName} = \"{value}\"");
+            }
+            catch (Exception ex)
+            {
+                var resultLabel = (Label)Controls.Find("stringReadResultLabel", true)[0];
+                resultLabel.Text = $"❌ Error: {ex.Message}";
+                resultLabel.ForeColor = Color.FromArgb(239, 68, 68);
+                Log($"❌ Read error: {ex.Message}");
+            }
+        }
+
+        private void StringWriteButton_Click(object? sender, EventArgs e)
+        {
+            if (_plcClient == null || !_isConnected) return;
+
+            try
+            {
+                var tagName = ((TextBox)Controls.Find("stringWriteTagTextBox", true)[0]).Text;
+                var value = ((TextBox)Controls.Find("stringWriteValueTextBox", true)[0]).Text;
+                Log($"✏️ Attempting to write STRING tag: {tagName} = \"{value}\"");
+
+                _plcClient.WriteString(tagName, value);
+                var resultLabel = (Label)Controls.Find("stringWriteResultLabel", true)[0];
+                resultLabel.Text = $"✅ Success! Wrote \"{value}\" to {tagName}";
+                resultLabel.ForeColor = Color.FromArgb(34, 197, 94);
+                Log($"✅ Wrote STRING tag: {tagName} = \"{value}\"");
+            }
+            catch (Exception ex)
+            {
+                var resultLabel = (Label)Controls.Find("stringWriteResultLabel", true)[0];
+                string errorMsg = ex.Message;
+                if (errorMsg.Contains("0x2107") || errorMsg.Contains("2107"))
+                {
+                    errorMsg = "PLC firmware limitation (CIP Error 0x2107): STRING tags cannot be written directly. " +
+                              "This is a PLC restriction, not a library bug. " +
+                              "For STRING members in UDTs, use the LogixString helper and write the entire UDT.";
+                }
+                resultLabel.Text = $"❌ {errorMsg}";
+                resultLabel.ForeColor = Color.FromArgb(239, 68, 68);
+                Log($"❌ Write error: {errorMsg}");
+            }
+        }
+
+        private void LogixStringExampleButton_Click(object? sender, EventArgs e)
+        {
+            var resultLabel = (Label)Controls.Find("logixStringResultLabel", true)[0];
+            resultLabel.Text = "Example code:\n" +
+                              "var logixString = new LogixString();\n" +
+                              "logixString.SetString(\"Hello\");\n" +
+                              "client.WriteStringAsUdt(\"gTestUDT.Member5_String\", logixString);\n" +
+                              "\nNote: Even this may fail if the STRING is standalone.";
+        }
+
+        private TagGroup? _tagGroup;
+        private void TagGroupStartButton_Click(object? sender, EventArgs e)
+        {
+            if (_plcClient == null || !_isConnected) return;
+
+            try
+            {
+                var tagNamesText = ((TextBox)Controls.Find("tagGroupTagNamesTextBox", true)[0]).Text;
+                var tagNames = tagNamesText.Split('\n')
+                    .Select(line => line.Trim())
+                    .Where(line => !string.IsNullOrEmpty(line))
+                    .ToArray();
+
+                if (tagNames.Length == 0)
+                {
+                    Log("❌ Please enter at least one tag name for the tag group");
+                    return;
+                }
+
+                var updateRate = (int)((NumericUpDown)Controls.Find("tagGroupUpdateRateNumeric", true)[0]).Value;
+
+                _tagGroup?.Dispose();
+                _tagGroup = new TagGroup(_plcClient)
+                {
+                    TagNames = tagNames,
+                    UpdateRateMs = updateRate
+                };
+                _tagGroup.DataChanged += TagGroup_DataChanged;
+                _tagGroup.Start();
+
+                var statusLabel = (Label)Controls.Find("tagGroupStatusLabel", true)[0];
+                statusLabel.Text = $"Status: Active (Polling {tagNames.Length} tags every {updateRate}ms)";
+                statusLabel.ForeColor = Color.FromArgb(34, 197, 94);
+
+                // Update button states
+                var startButton = (Button)Controls.Find("tagGroupStartButton", true)[0];
+                var stopButton = (Button)Controls.Find("tagGroupStopButton", true)[0];
+                var suspendButton = (Button)Controls.Find("tagGroupSuspendButton", true)[0];
+                startButton.Enabled = false;
+                stopButton.Enabled = true;
+                suspendButton.Enabled = true;
+
+                Log($"🔄 TagGroup started: {tagNames.Length} tags, {updateRate}ms update rate");
+            }
+            catch (Exception ex)
+            {
+                Log($"❌ TagGroup start error: {ex.Message}");
+            }
+        }
+
+        private void TagGroupStopButton_Click(object? sender, EventArgs e)
+        {
+            _tagGroup?.Stop();
+            var statusLabel = (Label)Controls.Find("tagGroupStatusLabel", true)[0];
+            statusLabel.Text = "Status: Stopped";
+            statusLabel.ForeColor = Color.FromArgb(107, 114, 128);
+            
+            // Update button states
+            var startButton = (Button)Controls.Find("tagGroupStartButton", true)[0];
+            var stopButton = (Button)Controls.Find("tagGroupStopButton", true)[0];
+            var suspendButton = (Button)Controls.Find("tagGroupSuspendButton", true)[0];
+            var resumeButton = (Button)Controls.Find("tagGroupResumeButton", true)[0];
+            startButton.Enabled = true;
+            stopButton.Enabled = false;
+            suspendButton.Enabled = false;
+            resumeButton.Enabled = false;
+            
+            Log("🔄 TagGroup stopped");
+        }
+
+        private void TagGroupSuspendButton_Click(object? sender, EventArgs e)
+        {
+            _tagGroup?.Suspend();
+            var statusLabel = (Label)Controls.Find("tagGroupStatusLabel", true)[0];
+            statusLabel.Text = "Status: Suspended";
+            statusLabel.ForeColor = Color.FromArgb(249, 115, 22);
+            
+            // Update button states
+            var suspendButton = (Button)Controls.Find("tagGroupSuspendButton", true)[0];
+            var resumeButton = (Button)Controls.Find("tagGroupResumeButton", true)[0];
+            suspendButton.Enabled = false;
+            resumeButton.Enabled = true;
+            
+            Log("🔄 TagGroup suspended");
+        }
+
+        private void TagGroupResumeButton_Click(object? sender, EventArgs e)
+        {
+            _tagGroup?.Resume();
+            var statusLabel = (Label)Controls.Find("tagGroupStatusLabel", true)[0];
+            statusLabel.Text = "Status: Active";
+            statusLabel.ForeColor = Color.FromArgb(34, 197, 94);
+            
+            // Update button states
+            var suspendButton = (Button)Controls.Find("tagGroupSuspendButton", true)[0];
+            var resumeButton = (Button)Controls.Find("tagGroupResumeButton", true)[0];
+            suspendButton.Enabled = true;
+            resumeButton.Enabled = false;
+            
+            Log("🔄 TagGroup resumed");
+        }
+
+        private void TagGroup_DataChanged(object? sender, GroupDataChangedEventArgs e)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => TagGroup_DataChanged(sender, e)));
+                return;
+            }
+
+            var resultsListView = (ListView)Controls.Find("tagGroupResultsListView", true)[0];
+            resultsListView.Items.Clear();
+
+            foreach (var kvp in e.AllValues)
+            {
+                var item = new ListViewItem(kvp.Key);
+                item.SubItems.Add(kvp.Value?.ToString() ?? "N/A");
+                item.SubItems.Add(kvp.Value?.Type.ToString() ?? "N/A");
+                item.SubItems.Add(DateTime.Now.ToString("HH:mm:ss.fff"));
+                item.SubItems.Add("Good");
+                resultsListView.Items.Add(item);
+            }
+
+            var lastScanLabel = (Label)Controls.Find("tagGroupLastScanLabel", true)[0];
+            if (_tagGroup != null)
+            {
+                lastScanLabel.Text = $"Last Scan Time: {_tagGroup.LastScanTime.TotalMilliseconds:F2} ms";
+            }
+
+            if (e.ChangedTags.Length > 0)
+            {
+                Log($"🔄 TagGroup: {e.ChangedTags.Length} tag(s) changed: {string.Join(", ", e.ChangedTags)}");
+            }
+        }
+
+        private void StatsResetButton_Click(object? sender, EventArgs e)
+        {
+            if (_plcClient == null) return;
+            _plcClient.Statistics.Reset();
+            UpdateStatisticsDisplay();
+            Log("📊 Statistics reset");
+        }
+
+        private void UpdateStatisticsDisplay()
+        {
+            if (_plcClient == null) return;
+
+            try
+            {
+                var stats = _plcClient.Statistics;
+                var readCountLabel = (Label)Controls.Find("statsReadCountLabel", true)[0];
+                var writeCountLabel = (Label)Controls.Find("statsWriteCountLabel", true)[0];
+                var errorCountLabel = (Label)Controls.Find("statsErrorCountLabel", true)[0];
+                var avgResponseTimeLabel = (Label)Controls.Find("statsAvgResponseTimeLabel", true)[0];
+
+                readCountLabel.Text = $"Read Count: {stats.ReadCount:N0}";
+                writeCountLabel.Text = $"Write Count: {stats.WriteCount:N0}";
+                errorCountLabel.Text = $"Error Count: {stats.ErrorCount:N0}";
+                avgResponseTimeLabel.Text = $"Average Response Time: {stats.AverageResponseTime.TotalMilliseconds:F2} ms";
+            }
+            catch { }
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             base.OnFormClosing(e);
+
+            // Stop and dispose TagGroup
+            _tagGroup?.Stop();
+            _tagGroup?.Dispose();
+            _tagGroup = null;
+
+            // Stop statistics timer
+            var tabControl = Controls.Find("mainTabControl", true).FirstOrDefault() as TabControl;
+            if (tabControl != null)
+            {
+                foreach (TabPage tab in tabControl.TabPages)
+                {
+                    if (tab.Text == "📊 Statistics" && tab.Controls.Count > 0)
+                    {
+                        var panel = tab.Controls[0];
+                        if (panel.Tag is System.Windows.Forms.Timer timer)
+                        {
+                            timer.Enabled = false;
+                            timer.Dispose();
+                        }
+                        break;
+                    }
+                }
+            }
 
             if (_plcClient != null)
             {

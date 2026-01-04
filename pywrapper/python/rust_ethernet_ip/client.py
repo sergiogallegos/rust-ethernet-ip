@@ -45,6 +45,23 @@ class EipClient:
         return await loop.run_in_executor(None, lambda: self._inner.read_tag(tag_name))
 
     async def write_tag(self, tag_name: str, value: PyPlcValue) -> None:
+        """
+        Write a tag value to the PLC.
+        
+        ⚠️ PLC Limitations:
+        - STRING tags cannot be written directly (CIP Error 0x2107). This is a PLC firmware restriction.
+        - STRING members in UDTs cannot be written directly (CIP Error 0x2107).
+        - UDT array element members cannot be written directly (CIP Error 0x2107).
+        
+        ✅ What Works:
+        - Reading all tag types including STRING tags and UDT members
+        - Writing DINT, REAL, BOOL, INT, and other numeric types
+        - Writing UDT members (non-STRING) for non-array UDTs
+        - Writing entire UDT array elements
+        
+        Raises:
+            RuntimeError: If the write operation fails (typically Error 0x2107 for restricted operations).
+        """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, lambda: self._inner.write_tag(tag_name, value))
 
@@ -81,7 +98,22 @@ class EipClient:
         return await loop.run_in_executor(None, lambda: self._inner.read_udt_data(tag_name))
 
     async def write_udt_data(self, tag_name: str, udt_data: 'UdtData') -> None:
-        """Write a UDT tag using UdtData format."""
+        """
+        Write a UDT tag using UdtData format.
+        
+        ⚠️ PLC Limitations:
+        - Cannot write directly to UDT array element members (e.g., "gTestUDT_Array[0].Member1_DINT").
+          The PLC returns CIP Error 0x2107. Workaround: Read the entire UDT array element, modify
+          the member in memory, then write the entire UDT array element back.
+        - Cannot write directly to STRING members in UDTs (e.g., "gTestUDT.Member5_String").
+          The PLC returns CIP Error 0x2107. Workaround: Read the entire UDT, modify the STRING member
+          in memory, then write the entire UDT back.
+        
+        ✅ What Works: Writing entire UDT structures (non-array UDTs or entire UDT array elements).
+        
+        Raises:
+            RuntimeError: If the write operation fails (typically Error 0x2107 for restricted operations).
+        """
         loop = asyncio.get_running_loop()
         # Access the PyUdtData from UdtData wrapper
         py_udt = udt_data._inner

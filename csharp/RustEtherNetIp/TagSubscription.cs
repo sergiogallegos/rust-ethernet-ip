@@ -15,7 +15,7 @@ namespace RustEtherNetIp
         /// <summary>
         /// The current value of the tag
         /// </summary>
-        public object Value { get; private set; }
+        public object? Value { get; private set; }
 
         /// <summary>
         /// The last time the value was updated
@@ -25,15 +25,16 @@ namespace RustEtherNetIp
         /// <summary>
         /// Event raised when the tag value changes
         /// </summary>
-        public event EventHandler<TagValueChangedEventArgs> ValueChanged;
+        public event EventHandler<TagValueChangedEventArgs>? ValueChanged;
 
         internal TagSubscription(string tagName)
         {
             TagName = tagName;
             LastUpdate = DateTime.MinValue;
+            ValueChanged = null; // Initialize to null
         }
 
-        internal void UpdateValue(object newValue)
+        internal void UpdateValue(object? newValue)
         {
             if (!Equals(Value, newValue))
             {

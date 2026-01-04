@@ -1579,9 +1579,7 @@ pub unsafe extern "C" fn eip_get_udt_definition(
                         offset: member.offset as c_int,
                         size: member.size as c_int,
                     };
-                    unsafe {
-                        std::ptr::write(members_ptr.add(i), member_c);
-                    }
+                    std::ptr::write(members_ptr.add(i), member_c);
                 }
             }
             0
@@ -1701,9 +1699,7 @@ pub unsafe extern "C" fn eip_discover_tags_detailed(
                         size: tag.size as c_int,
                         template_instance_id: tag.template_instance_id.unwrap_or(0) as c_int,
                     };
-                    unsafe {
-                        std::ptr::write(tags_ptr.add(i), tag_c);
-                    }
+                    std::ptr::write(tags_ptr.add(i), tag_c);
                 }
             }
             0

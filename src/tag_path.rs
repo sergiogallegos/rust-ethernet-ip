@@ -283,7 +283,7 @@ impl TagPath {
                 // Add array index
                 path.push(0x28); // Element segment
                 path.push(0x04); // Size: 4 bytes for 32-bit index (DINT)
-                let index_u32 = *index as u32;
+                let index_u32 = *index;
                 path.extend_from_slice(&index_u32.to_le_bytes());
             }
         }

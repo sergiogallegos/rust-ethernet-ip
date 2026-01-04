@@ -764,7 +764,7 @@ impl ConnectedSession {
 /// - **BOOL**: Boolean value (true/false)
 /// - **STRING**: Variable-length string
 /// - **UDT**: User Defined Type (structured data)
-
+///
 /// Represents raw UDT (User Defined Type) data
 ///
 /// This structure stores UDT data in a generic format that works for any UDT
@@ -1626,9 +1626,7 @@ impl EipClient {
         let test_cip_data = self.extract_cip_from_response(&test_response)?;
 
         // Check for errors in test read
-        if let Err(e) = self.check_cip_error(&test_cip_data) {
-            return Err(e);
-        }
+        self.check_cip_error(&test_cip_data)?;
 
         // Check if it's a BOOL array (data type 0x00D3 = DWORD)
         if test_cip_data.len() >= 6 {
@@ -1649,9 +1647,7 @@ impl EipClient {
         let cip_data = self.extract_cip_from_response(&response)?;
 
         // Check for errors (including extended errors)
-        if let Err(e) = self.check_cip_error(&cip_data) {
-            return Err(e);
-        }
+        self.check_cip_error(&cip_data)?;
 
         // Parse response - should be consistent format now
         // Reference: 1756-PM020, Page 828-837 (Response format)
@@ -1686,9 +1682,7 @@ impl EipClient {
         }
 
         // Check for errors (including extended errors)
-        if let Err(e) = self.check_cip_error(&cip_data) {
-            return Err(e);
-        }
+        self.check_cip_error(&cip_data)?;
 
         let service_reply = cip_data[0];
         if service_reply != 0xCC {
@@ -1750,6 +1744,7 @@ impl EipClient {
     /// allowing efficient reading of large arrays without reading from element 0 each time.
     ///
     /// Reference: 1756-PM020, Pages 276-315 (Read Tag Fragmented Service), 840-851 (Reading Multiple Array Elements)
+    #[allow(dead_code)]
     async fn read_array_in_chunks(
         &mut self,
         base_array_name: &str,
@@ -1856,7 +1851,7 @@ impl EipClient {
             }
 
             // Check service reply
-            if cip_data.len() >= 1 && cip_data[0] != 0xCC {
+            if !cip_data.is_empty() && cip_data[0] != 0xCC {
                 return Err(EtherNetIpError::Protocol(format!(
                     "Unexpected service reply in chunk: 0x{:02X} (expected 0xCC)",
                     cip_data[0]
@@ -1893,7 +1888,7 @@ impl EipClient {
 
             // With element addressing, the response directly contains the requested range
             // No need to extract a portion - use all the data we received
-            if chunk_data.len() > 0 {
+            if !chunk_data.is_empty() {
                 all_data.extend_from_slice(chunk_data);
                 let elements_received = chunk_data.len() / element_size;
                 next_chunk_start += elements_received as u32;
@@ -1959,8 +1954,7 @@ impl EipClient {
                         let final_data_type =
                             u16::from_le_bytes([final_cip_data[4], final_cip_data[5]]);
                         if final_data_type == data_type {
-                            let final_value_data_start =
-                                if final_cip_data.len() >= 14 { 8 } else { 8 };
+                            let final_value_data_start = 8;
                             let final_value_data = &final_cip_data[final_value_data_start..];
                             let final_complete_bytes =
                                 (final_value_data.len() / element_size) * element_size;
@@ -2214,6 +2208,7 @@ impl EipClient {
     /// Builds a write request for an entire array (legacy method - writes from element 0)
     ///
     /// Reference: 1756-PM020, Page 318-357 (Write Tag Service)
+    #[allow(dead_code)]
     fn build_write_array_request(
         &self,
         tag_name: &str,
@@ -2512,7 +2507,7 @@ impl EipClient {
 
                     // Try smaller chunk by reducing size and continuing
                     if chunk_size > 4 {
-                        chunk_size = chunk_size / 2;
+                        chunk_size /= 2;
                         continue;
                     }
                 }
@@ -2668,7 +2663,7 @@ impl EipClient {
                 }
                 Err(_) => {
                     // Reduce chunk size and try again
-                    chunk_size = chunk_size / 2;
+                    chunk_size /= 2;
                     if chunk_size < 4 {
                         break;
                     }
@@ -2700,6 +2695,7 @@ impl EipClient {
     }
 
     /// Reads a UDT in chunks to handle large structures
+    #[allow(dead_code)]
     async fn read_udt_in_chunks(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         const MAX_CHUNK_SIZE: usize = 1000; // Conservative chunk size
         let mut all_data = Vec::new();
@@ -2750,6 +2746,7 @@ impl EipClient {
     }
 
     /// Reads a specific chunk of a UDT
+    #[allow(dead_code)]
     async fn read_udt_chunk(
         &mut self,
         tag_name: &str,
@@ -4053,25 +4050,21 @@ impl EipClient {
     /// - Reserved byte
     /// - Route Path ← Route path goes HERE
     fn build_unconnected_send(&self, embedded_message: &[u8]) -> Vec<u8> {
-        let mut ucmm = Vec::new();
-
-        // Service: Unconnected Send (0x52)
-        ucmm.push(0x52);
-
-        // Request Path Size: 2 words (4 bytes) for Connection Manager
-        ucmm.push(0x02);
-
-        // Request Path: Connection Manager (Class 0x06, Instance 1)
-        ucmm.push(0x20); // Logical Class segment
-        ucmm.push(0x06); // Class 0x06 (Connection Manager)
-        ucmm.push(0x24); // Logical Instance segment
-        ucmm.push(0x01); // Instance 1
-
-        // Priority/Time Tick: 0x0A
-        ucmm.push(0x0A);
-
-        // Timeout Ticks: 0xF0 (240 ticks)
-        ucmm.push(0xF0);
+        let mut ucmm = vec![
+            // Service: Unconnected Send (0x52)
+            0x52,
+            // Request Path Size: 2 words (4 bytes) for Connection Manager
+            0x02,
+            // Request Path: Connection Manager (Class 0x06, Instance 1)
+            0x20, // Logical Class segment
+            0x06, // Class 0x06 (Connection Manager)
+            0x24, // Logical Instance segment
+            0x01, // Instance 1
+            // Priority/Time Tick: 0x0A
+            0x0A,
+            // Timeout Ticks: 0xF0 (240 ticks)
+            0xF0,
+        ];
 
         // Embedded message length (16-bit, little-endian)
         let msg_len = embedded_message.len() as u16;
@@ -6717,12 +6710,13 @@ impl EipClient {
     }
 
     /// Enhanced UDT structure parser - tries multiple parsing strategies
+    #[allow(dead_code)]
     fn parse_udt_structure(&self, data: &[u8]) -> crate::error::Result<PlcValue> {
         println!("🔧 [DEBUG] Parsing UDT structure with {} bytes", data.len());
 
         // Strategy 1: Try to parse as TestTagUDT structure (DINT, DINT, REAL)
         if data.len() >= 12 {
-            let mut offset = 0;
+            let _offset = 0;
 
             // Try different byte alignments and interpretations
             for alignment in 0..4 {
@@ -6824,6 +6818,7 @@ impl EipClient {
 
     /// Simple UDT parser fallback
     /// Note: This is a legacy method. New code should use generic UdtData approach.
+    #[allow(dead_code)]
     fn parse_udt_simple(&self, data: &[u8]) -> crate::error::Result<PlcValue> {
         // Legacy parsing - return raw data with symbol_id=0
         Ok(PlcValue::Udt(UdtData {
@@ -6833,6 +6828,7 @@ impl EipClient {
     }
 
     /// Check if UDT values look reasonable
+    #[allow(dead_code)]
     fn is_reasonable_udt_values(&self, dint1: i32, dint2: i32, real: f32) -> bool {
         // Check for reasonable ranges
         let dint1_reasonable = (-1000..=1000).contains(&dint1);
@@ -6848,6 +6844,7 @@ impl EipClient {
     }
 
     /// Check if a single value looks reasonable
+    #[allow(dead_code)]
     fn is_reasonable_value(&self, value: i32) -> bool {
         (-1000..=1000).contains(&value)
     }

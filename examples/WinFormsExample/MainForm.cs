@@ -1405,20 +1405,48 @@ namespace WinFormsExample
                     {
                         await Task.Run(() =>
                         {
-                            switch (type)
+                            // If the name contains a dot, treat it as a UDT member and use SetUdtMember
+                            if (name.Contains('.'))
                             {
-                                case "BOOL":
-                                    _plcClient.WriteBool(name, (bool)value);
-                                    break;
-                                case "DINT":
-                                    _plcClient.WriteDint(name, (int)value);
-                                    break;
-                                case "REAL":
-                                    _plcClient.WriteReal(name, (float)value);
-                                    break;
-                                case "STRING":
-                                    _plcClient.WriteString(name, (string)value);
-                                    break;
+                                var parts = name.Split(new[] { '.' }, 2);
+                                var tagName = parts[0];
+                                var memberPath = parts[1];
+                                switch (type)
+                                {
+                                    case "BOOL":
+                                        _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Bool((bool)value));
+                                        break;
+                                    case "DINT":
+                                        _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Dint((int)value));
+                                        break;
+                                    case "REAL":
+                                        _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Real((float)value));
+                                        break;
+                                    case "STRING":
+                                        _plcClient.SetUdtMember(tagName, memberPath, PlcValue.String((string)value));
+                                        break;
+                                    default:
+                                        // Fallback to attempting direct write
+                                        break;
+                                }
+                            }
+                            else
+                            {
+                                switch (type)
+                                {
+                                    case "BOOL":
+                                        _plcClient.WriteBool(name, (bool)value);
+                                        break;
+                                    case "DINT":
+                                        _plcClient.WriteDint(name, (int)value);
+                                        break;
+                                    case "REAL":
+                                        _plcClient.WriteReal(name, (float)value);
+                                        break;
+                                    case "STRING":
+                                        _plcClient.WriteString(name, (string)value);
+                                        break;
+                                }
                             }
                         });
                         
@@ -2180,7 +2208,8 @@ namespace WinFormsExample
                         break;
 
                     case "UDT":
-                        Log("❌ UDT writing not supported in this example");
+                        Log("⚠️ For UDT writes, use the UDT tests panel (read, modify, then use SetUdtMember or WriteUdt to write back). " +
+                            "Writing full UDTs is supported via WriteUdt(tagName, Dictionary<string, object>) or SetUdtMember for single members.");
                         break;
 
                     default:

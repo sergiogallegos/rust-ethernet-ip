@@ -640,7 +640,8 @@ namespace WpfExample.ViewModels
                         break;
                         
                     case "UDT":
-                        LogMessage("❌ UDT writing not supported in this example");
+                        LogMessage("⚠️ For UDT writes, use the UDT tools (read full UDT, modify member, then call SetUdtMember or WriteUdt). " +
+                                   "You can use SetUdtMember to update single members or WriteUdt to write the full UDT.");
                         break;
                         
                     default:

@@ -717,25 +717,30 @@ public class PlcService : IDisposable
 
         try
         {
-            var results = _plcClient.ReadTagsBatch(tagNames);
-            stopwatch.Stop();
+                var clientResults = _plcClient.ReadTagsBatch(tagNames);
+                stopwatch.Stop();
 
-            // Update read times for all tags
-            foreach (var tagName in tagNames)
-            {
-                UpdateLastReadTime(tagName);
-            }
+                // Update read times for all tags
+                foreach (var tagName in tagNames)
+                {
+                    UpdateLastReadTime(tagName);
+                }
 
-            var successCount = results.Count(r => r.Value.Success);
-            var result = new BatchReadResult
-            {
-                Success = true,
-                Results = results,
-                TotalTimeMs = stopwatch.ElapsedMilliseconds,
-                SuccessCount = successCount,
-                ErrorCount = results.Count - successCount,
-                AverageTimePerTagMs = (double)stopwatch.ElapsedMilliseconds / tagNames.Length
-            };
+                // Convert client batch result (legacy TagReadResultBatch) to API TagReadResult format
+                var results = clientResults.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => MapBatchReadResult(kvp.Value)
+                );
+                var successCount = results.Count(r => r.Value.Success);
+                var result = new BatchReadResult
+                {
+                    Success = true,
+                    Results = results,
+                    TotalTimeMs = stopwatch.ElapsedMilliseconds,
+                    SuccessCount = successCount,
+                    ErrorCount = results.Count - successCount,
+                    AverageTimePerTagMs = (double)stopwatch.ElapsedMilliseconds / tagNames.Length
+                };
 
             // Update statistics
             UpdateBatchStats("Read", tagNames.Length, stopwatch.ElapsedMilliseconds, successCount);
@@ -757,6 +762,30 @@ public class PlcService : IDisposable
                 TotalTimeMs = stopwatch.ElapsedMilliseconds
             };
         }
+    }
+
+    // Helper to convert legacy TagReadResultBatch to API TagReadResult
+    private TagReadResult MapBatchReadResult(RustEtherNetIp.TagReadResultBatch batch)
+    {
+        var api = new TagReadResult
+        {
+            TagName = batch.TagName,
+            Success = batch.Success,
+            ErrorMessage = batch.ErrorMessage,
+            TimeStamp = DateTime.Now,
+            Quality = batch.Success ? DataQuality.Good : DataQuality.Bad,
+            Value = batch.Value switch
+            {
+                bool b => PlcValue.Bool(b),
+                int i => PlcValue.Dint(i),
+                float f => PlcValue.Real(f),
+                double d => PlcValue.Real((float)d),
+                string s => PlcValue.String(s),
+                _ => null
+            }
+        };
+
+        return api;
     }
 
     /// <summary>

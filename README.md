@@ -384,7 +384,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "0.5.3"
+rust-ethernet-ip = "0.6.0"
 tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -392,7 +392,7 @@ tokio = { version = "1.0", features = ["full"] }
 Install via NuGet:
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="0.5.2" />
+<PackageReference Include="RustEtherNetIp" Version="0.6.0" />
 ```
 
 Or via Package Manager Console:
@@ -1184,7 +1184,7 @@ See [BUILD.md](BUILD.md) for details.
 
 ## 🆕 Version
 
-**Current Release:** v0.5.4 ([Release Notes](RELEASE_NOTES_v0.5.4.md))
+**Current Release:** v0.6.0 ([CHANGELOG.md](CHANGELOG.md))
 
 ## 📝 Changelog
 
@@ -1193,6 +1193,9 @@ See [BUILD.md](BUILD.md) for details.
 - **✅ Library Health**: All 31 unit tests passing, production-ready core
 - **📊 Array Element Access**: Full read/write support for array elements
 - **✍️ Array Element Writing**: Write individual array elements with automatic array modification
+- **🚀 C# Wrapper Enhancements**: Batch operations, TagGroup, Statistics, Data Quality & Timestamp
+- **🔧 Connection Fixes**: Fixed RoutePath handling in WinForms, WPF, and ASP.NET applications
+- **📚 Documentation**: Comprehensive documentation for STRING and UDT array write limitations
 
 ### v0.5.5 (December 2025)
 - **📊 Array Element Access**: Full read/write support for array elements using intelligent workaround

@@ -47,7 +47,7 @@ public class PlcController : ControllerBase
             _logger.LogInformation("Using RoutePath: CPU Slot {CpuSlot}", request.CpuSlot);
         }
         
-        var connected = _plcService.Connect(request.Address);
+        var connected = _plcService.Connect(request.Address, request.UseRoutePath, request.CpuSlot);
         if (connected)
         {
             _logger.LogInformation("Successfully connected to PLC at {Address}", request.Address);

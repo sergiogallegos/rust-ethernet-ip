@@ -1318,14 +1318,10 @@ namespace WinFormsExample
                     // ControlLogix with RoutePath
                     var routePath = new RoutePath().AddSlot((byte)cpuSlotNumeric.Value);
                     Log($"📍 Using RoutePath: CPU Slot {cpuSlotNumeric.Value}");
-                    // Connect first, then set route path
-                    _isConnected = _plcClient.Connect(address);
+                    _isConnected = _plcClient.ConnectWithRoute(address, routePath);
                     if (_isConnected)
                     {
-                        // SetRoutePath will be called if the method exists
-                        // For now, route path is set during connection in the Rust library
-                        // This is a workaround until ConnectWithRoute is fully implemented
-                        Log("✅ Connected. Route path will be used for subsequent operations.");
+                        Log("✅ Connected successfully with RoutePath!");
                     }
                 }
                 else
@@ -1339,7 +1335,33 @@ namespace WinFormsExample
                 if (_isConnected)
                 {
                     Log($"✅ Connected! Session ID: 0x{_plcClient.ClientId:X8}");
+                    Log($"💡 Tip: If tag operations fail, verify the tags exist in your PLC.");
+                    Log($"💡 The test tags (gTestArray_DINT, gTestUDT, etc.) need to be created in the PLC first.");
                     UpdateConnectionStatus();
+                    
+                    // Test connection by trying to read a simple tag
+                    _ = Task.Run(() =>
+                    {
+                        try
+                        {
+                            // Try reading a simple tag to verify connection works
+                            var testResult = _plcClient.ReadTagWithDetails("gTestArray_INT[0]");
+                            if (testResult.Success)
+                            {
+                                Log($"✅ Connection verified: Successfully read test tag gTestArray_INT[0] = {testResult.Value}");
+                            }
+                            else
+                            {
+                                Log($"⚠️ Connection test: Could not read gTestArray_INT[0] - {testResult.ErrorMessage}");
+                                Log($"💡 This may indicate the tag doesn't exist or there's a connection issue.");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log($"⚠️ Connection test failed: {ex.Message}");
+                        }
+                    });
+                    
                     _ = InitializeTags();
                 }
                 else
@@ -1405,48 +1427,20 @@ namespace WinFormsExample
                     {
                         await Task.Run(() =>
                         {
-                            // If the name contains a dot, treat it as a UDT member and use SetUdtMember
-                            if (name.Contains('.'))
+                            switch (type)
                             {
-                                var parts = name.Split(new[] { '.' }, 2);
-                                var tagName = parts[0];
-                                var memberPath = parts[1];
-                                switch (type)
-                                {
-                                    case "BOOL":
-                                        _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Bool((bool)value));
-                                        break;
-                                    case "DINT":
-                                        _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Dint((int)value));
-                                        break;
-                                    case "REAL":
-                                        _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Real((float)value));
-                                        break;
-                                    case "STRING":
-                                        _plcClient.SetUdtMember(tagName, memberPath, PlcValue.String((string)value));
-                                        break;
-                                    default:
-                                        // Fallback to attempting direct write
-                                        break;
-                                }
-                            }
-                            else
-                            {
-                                switch (type)
-                                {
-                                    case "BOOL":
-                                        _plcClient.WriteBool(name, (bool)value);
-                                        break;
-                                    case "DINT":
-                                        _plcClient.WriteDint(name, (int)value);
-                                        break;
-                                    case "REAL":
-                                        _plcClient.WriteReal(name, (float)value);
-                                        break;
-                                    case "STRING":
-                                        _plcClient.WriteString(name, (string)value);
-                                        break;
-                                }
+                                case "BOOL":
+                                    _plcClient.WriteBool(name, (bool)value);
+                                    break;
+                                case "DINT":
+                                    _plcClient.WriteDint(name, (int)value);
+                                    break;
+                                case "REAL":
+                                    _plcClient.WriteReal(name, (float)value);
+                                    break;
+                                case "STRING":
+                                    _plcClient.WriteString(name, (string)value);
+                                    break;
                             }
                         });
                         
@@ -1983,52 +1977,149 @@ namespace WinFormsExample
                 return;
             }
 
+            // Disable button to prevent multiple clicks
+            Button? readButton = sender as Button;
+            if (readButton != null) readButton.Enabled = false;
+
             try
             {
                 Log($"📖 Reading tag: {tagName}");
 
-                // Try to read the tag as different types
-                try
-                {
-                    var boolValue = _plcClient.ReadBool(tagName);
-                    tagValueTextBox.Text = boolValue.ToString();
-                    Log($"✅ Read BOOL tag: {tagName} = {boolValue}");
-                    return;
-                }
-                catch { }
+                // Use ReadTagWithDetails first - it's more robust and handles all types
+                TagReadResult? result = null;
+                Exception? lastException = null;
 
                 try
                 {
-                    var dintValue = _plcClient.ReadDint(tagName);
-                    tagValueTextBox.Text = dintValue.ToString();
-                    Log($"✅ Read DINT tag: {tagName} = {dintValue}");
-                    return;
+                    result = _plcClient.ReadTagWithDetails(tagName);
+                    if (result.Success && result.Value != null)
+                    {
+                        tagValueTextBox.Text = result.Value.ToString();
+                        Log($"✅ Read tag: {tagName} = {result.Value}");
+                        return;
+                    }
+                    else if (result != null)
+                    {
+                        Log($"⚠️ ReadTagWithDetails returned Success=false: {result.ErrorMessage ?? "Unknown error"}");
+                        lastException = new Exception(result.ErrorMessage ?? "ReadTagWithDetails failed");
+                    }
                 }
-                catch { }
+                catch (Exception ex) 
+                { 
+                    lastException = ex;
+                    Log($"⚠️ ReadTagWithDetails exception: {ex.Message}");
+                    Log($"   Exception type: {ex.GetType().Name}");
+                    if (ex.InnerException != null)
+                    {
+                        Log($"   Inner exception: {ex.InnerException.Message}");
+                    }
+                }
 
-                try
+                // Fallback to type-specific methods based on tag name
+                if (tagName.Contains("STRING") || tagName.Contains("String") || tagName.EndsWith(".Member5_String"))
                 {
-                    var realValue = _plcClient.ReadReal(tagName);
-                    tagValueTextBox.Text = realValue.ToString();
-                    Log($"✅ Read REAL tag: {tagName} = {realValue}");
-                    return;
+                    try
+                    {
+                        var stringValue = _plcClient.ReadString(tagName);
+                        tagValueTextBox.Text = stringValue;
+                        Log($"✅ Read STRING tag: {tagName} = {stringValue}");
+                        return;
+                    }
+                    catch (Exception ex) 
+                    { 
+                        lastException = ex;
+                        Log($"⚠️ ReadString failed: {ex.Message}");
+                    }
                 }
-                catch { }
-
-                try
+                else if (tagName.Contains("_DINT") || tagName.Contains("DINT["))
                 {
-                    var stringValue = _plcClient.ReadString(tagName);
-                    tagValueTextBox.Text = stringValue;
-                    Log($"✅ Read STRING tag: {tagName} = {stringValue}");
-                    return;
+                    try
+                    {
+                        var dintValue = _plcClient.ReadDint(tagName);
+                        tagValueTextBox.Text = dintValue.ToString();
+                        Log($"✅ Read DINT tag: {tagName} = {dintValue}");
+                        return;
+                    }
+                    catch (Exception ex) 
+                    { 
+                        lastException = ex;
+                        Log($"⚠️ ReadDint failed: {ex.Message}");
+                    }
                 }
-                catch { }
+                else if (tagName.Contains("_REAL") || tagName.Contains("REAL["))
+                {
+                    try
+                    {
+                        var realValue = _plcClient.ReadReal(tagName);
+                        tagValueTextBox.Text = realValue.ToString();
+                        Log($"✅ Read REAL tag: {tagName} = {realValue}");
+                        return;
+                    }
+                    catch (Exception ex) 
+                    { 
+                        lastException = ex;
+                        Log($"⚠️ ReadReal failed: {ex.Message}");
+                    }
+                }
+                else if (tagName.Contains("_BOOL") || tagName.Contains("BOOL["))
+                {
+                    try
+                    {
+                        var boolValue = _plcClient.ReadBool(tagName);
+                        tagValueTextBox.Text = boolValue.ToString();
+                        Log($"✅ Read BOOL tag: {tagName} = {boolValue}");
+                        return;
+                    }
+                    catch (Exception ex) 
+                    { 
+                        lastException = ex;
+                        Log($"⚠️ ReadBool failed: {ex.Message}");
+                    }
+                }
+                else if ((tagName.Contains("_INT") || tagName.Contains("INT[")) && !tagName.Contains("DINT"))
+                {
+                    try
+                    {
+                        var intValue = _plcClient.ReadInt(tagName);
+                        tagValueTextBox.Text = intValue.ToString();
+                        Log($"✅ Read INT tag: {tagName} = {intValue}");
+                        return;
+                    }
+                    catch (Exception ex) 
+                    { 
+                        lastException = ex;
+                        Log($"⚠️ ReadInt failed: {ex.Message}");
+                    }
+                }
 
+                // If all methods failed
                 Log($"❌ Could not read tag: {tagName}");
+                if (lastException != null)
+                {
+                    Log($"   Error details: {lastException.Message}");
+                    Log($"   Error type: {lastException.GetType().Name}");
+                    if (lastException.InnerException != null)
+                    {
+                        Log($"   Inner exception: {lastException.InnerException.Message}");
+                    }
+                }
             }
             catch (Exception ex)
             {
                 Log($"❌ Read error: {ex.Message}");
+                Log($"   Exception type: {ex.GetType().Name}");
+                if (ex.InnerException != null)
+                {
+                    Log($"   Inner exception: {ex.InnerException.Message}");
+                }
+            }
+            finally
+            {
+                // Re-enable button
+                if (readButton != null)
+                {
+                    readButton.Enabled = true;
+                }
             }
         }
 
@@ -2208,8 +2299,7 @@ namespace WinFormsExample
                         break;
 
                     case "UDT":
-                        Log("⚠️ For UDT writes, use the UDT tests panel (read, modify, then use SetUdtMember or WriteUdt to write back). " +
-                            "Writing full UDTs is supported via WriteUdt(tagName, Dictionary<string, object>) or SetUdtMember for single members.");
+                        Log("❌ UDT writing not supported in this example");
                         break;
 
                     default:

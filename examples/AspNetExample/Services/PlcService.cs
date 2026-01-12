@@ -38,7 +38,7 @@ public class PlcService : IDisposable
         _currentAddress = string.Empty;
     }
 
-    public bool Connect(string address)
+    public bool Connect(string address, bool useRoutePath = false, int cpuSlot = 0)
     {
         if (_isConnected && _currentAddress == address)
             return true;
@@ -47,7 +47,18 @@ public class PlcService : IDisposable
             _plcClient.Dispose();
 
         _plcClient = new EtherNetIpClient();
-        _isConnected = _plcClient.Connect(address);
+        
+        if (useRoutePath)
+        {
+            var routePath = new RoutePath().AddSlot((byte)cpuSlot);
+            _logger.LogInformation("Connecting with RoutePath: CPU Slot {CpuSlot}", cpuSlot);
+            _isConnected = _plcClient.ConnectWithRoute(address, routePath);
+        }
+        else
+        {
+            _isConnected = _plcClient.Connect(address);
+        }
+        
         _currentAddress = address;
         
         if (_isConnected)
@@ -717,30 +728,65 @@ public class PlcService : IDisposable
 
         try
         {
-                var clientResults = _plcClient.ReadTagsBatch(tagNames);
-                stopwatch.Stop();
+            var batchResults = _plcClient.ReadTagsBatch(tagNames);
+            stopwatch.Stop();
 
-                // Update read times for all tags
-                foreach (var tagName in tagNames)
+            // Update read times for all tags
+            foreach (var tagName in tagNames)
+            {
+                UpdateLastReadTime(tagName);
+            }
+
+            // Convert TagReadResultBatch to TagReadResult
+            var results = new Dictionary<string, TagReadResult>();
+            foreach (var kvp in batchResults)
+            {
+                var batchResult = kvp.Value;
+                PlcValue? plcValue = null;
+                
+                if (batchResult.Success && batchResult.Value != null)
                 {
-                    UpdateLastReadTime(tagName);
+                    // Convert object to PlcValue based on DataType
+                    plcValue = batchResult.DataType switch
+                    {
+                        "BOOL" => PlcValue.Bool((bool)batchResult.Value),
+                        "SINT" => PlcValue.Sint((sbyte)batchResult.Value),
+                        "INT" => PlcValue.Int((short)batchResult.Value),
+                        "DINT" => PlcValue.Dint((int)batchResult.Value),
+                        "LINT" => PlcValue.Lint((long)batchResult.Value),
+                        "USINT" => PlcValue.Usint((byte)batchResult.Value),
+                        "UINT" => PlcValue.Uint((ushort)batchResult.Value),
+                        "UDINT" => PlcValue.Udint((uint)batchResult.Value),
+                        "ULINT" => PlcValue.Ulint((ulong)batchResult.Value),
+                        "REAL" => PlcValue.Real((float)batchResult.Value),
+                        "LREAL" => PlcValue.Lreal((double)batchResult.Value),
+                        "STRING" => PlcValue.String((string)batchResult.Value),
+                        _ => null
+                    };
                 }
-
-                // Convert client batch result (legacy TagReadResultBatch) to API TagReadResult format
-                var results = clientResults.ToDictionary(
-                    kvp => kvp.Key,
-                    kvp => MapBatchReadResult(kvp.Value)
-                );
-                var successCount = results.Count(r => r.Value.Success);
-                var result = new BatchReadResult
+                
+                var tagResult = new TagReadResult
                 {
-                    Success = true,
-                    Results = results,
-                    TotalTimeMs = stopwatch.ElapsedMilliseconds,
-                    SuccessCount = successCount,
-                    ErrorCount = results.Count - successCount,
-                    AverageTimePerTagMs = (double)stopwatch.ElapsedMilliseconds / tagNames.Length
+                    TagName = batchResult.TagName,
+                    Success = batchResult.Success,
+                    Value = plcValue,
+                    Quality = batchResult.Success ? DataQuality.Good : DataQuality.Bad,
+                    TimeStamp = DateTime.Now,
+                    ErrorMessage = batchResult.ErrorMessage
                 };
+                results[kvp.Key] = tagResult;
+            }
+
+            var successCount = results.Count(r => r.Value.Success);
+            var result = new BatchReadResult
+            {
+                Success = true,
+                Results = results,
+                TotalTimeMs = stopwatch.ElapsedMilliseconds,
+                SuccessCount = successCount,
+                ErrorCount = results.Count - successCount,
+                AverageTimePerTagMs = (double)stopwatch.ElapsedMilliseconds / tagNames.Length
+            };
 
             // Update statistics
             UpdateBatchStats("Read", tagNames.Length, stopwatch.ElapsedMilliseconds, successCount);
@@ -762,30 +808,6 @@ public class PlcService : IDisposable
                 TotalTimeMs = stopwatch.ElapsedMilliseconds
             };
         }
-    }
-
-    // Helper to convert legacy TagReadResultBatch to API TagReadResult
-    private TagReadResult MapBatchReadResult(RustEtherNetIp.TagReadResultBatch batch)
-    {
-        var api = new TagReadResult
-        {
-            TagName = batch.TagName,
-            Success = batch.Success,
-            ErrorMessage = batch.ErrorMessage,
-            TimeStamp = DateTime.Now,
-            Quality = batch.Success ? DataQuality.Good : DataQuality.Bad,
-            Value = batch.Value switch
-            {
-                bool b => PlcValue.Bool(b),
-                int i => PlcValue.Dint(i),
-                float f => PlcValue.Real(f),
-                double d => PlcValue.Real((float)d),
-                string s => PlcValue.String(s),
-                _ => null
-            }
-        };
-
-        return api;
     }
 
     /// <summary>

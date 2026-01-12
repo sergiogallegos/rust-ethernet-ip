@@ -5,6 +5,37 @@ All notable changes to the rust-ethernet-ip project will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-01-XX
+
+### ✨ Added - C# Wrapper Enhancements
+- **Batch Operations**: `ReadTagsBatch()` and `WriteTagsBatch()` for high-performance multi-tag operations
+- **TagGroup**: Periodic polling with event-driven updates (`TagGroup` class with `DataChanged` event)
+- **Performance Statistics**: `ClientStatistics` class tracking read/write counts, errors, and average response times
+- **Data Quality & Timestamp**: `TagReadResult` with `Quality`, `TimeStamp`, and detailed error information
+- **Value Scaling**: `ValueScaling` utility class with `ScaleLinear()` and `ScaleSquareRoot()` methods
+- **Enhanced Error Handling**: Detailed error messages with quality indicators and timestamps
+
+### 🔧 Fixed - Connection & RoutePath
+- **WinForms Application**: Fixed connection to use `ConnectWithRoute()` when RoutePath is enabled
+- **WPF Application**: Fixed connection to use `ConnectWithRoute()` when RoutePath is enabled
+- **ASP.NET Application**: Updated `PlcService.Connect()` to accept and use RoutePath parameters
+- **Connection Verification**: Added automatic connection tests after successful connection
+- **Error Handling**: Improved error messages and exception handling across all example applications
+
+### 🐛 Fixed - Type System
+- **TagReadResult Duplicate**: Renamed internal `TagReadResult` to `TagReadResultBatch` to resolve naming conflicts
+- **Nullability Warnings**: Fixed nullable reference type warnings in `PlcValue`, `TagSubscription`, `UdtData`, and `EthernetNetIpClient`
+- **DLL Deployment**: Fixed DLL path in `RustEtherNetIp.csproj` to ensure `rust_ethernet_ip.dll` is correctly copied
+
+### 📚 Documentation
+- **Known Limitations**: Added comprehensive documentation for STRING and UDT array write limitations
+- **AB_String_UDT_Write_Limitations.md**: Detailed technical document explaining PLC firmware restrictions
+- **Updated Examples**: All example applications (WinForms, WPF, ASP.NET) updated with new features and proper error handling
+
+### 🎯 Current Development Focus
+- **.NET Stack**: Actively polishing C# wrapper and example applications to production quality
+- **Go & Python Wrappers**: Development paused until .NET stack is complete
+
 ## [0.5.3] - 2025-01-15
 
 ### Fixed

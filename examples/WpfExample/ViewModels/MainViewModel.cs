@@ -188,12 +188,10 @@ namespace WpfExample.ViewModels
                         // ControlLogix with RoutePath
                         var routePath = new RoutePath().AddSlot((byte)CpuSlot);
                         LogMessage($"📍 Using RoutePath: CPU Slot {CpuSlot}");
-                        // Connect first, route path will be used for subsequent operations
-                        // Note: SetRoutePath may not be available yet, route path is handled in Rust library
-                        var connected = _plcClient.Connect(PlcAddress);
+                        var connected = _plcClient.ConnectWithRoute(PlcAddress, routePath);
                         if (connected)
                         {
-                            LogMessage("✅ Connected. Route path will be used for subsequent operations.");
+                            LogMessage("✅ Connected successfully with RoutePath!");
                         }
                         return connected;
                     }
@@ -212,6 +210,28 @@ namespace WpfExample.ViewModels
                         
                         _refreshTimer?.Start();
                         LogMessage($"✅ Connected! Session ID: {SessionId}");
+                        LogMessage($"💡 Tip: If tag operations fail, verify the tags exist in your PLC.");
+                        
+                        // Test connection by trying to read a simple tag
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var testResult = _plcClient?.ReadTagWithDetails("gTestArray_INT[0]");
+                                if (testResult != null && testResult.Success)
+                                {
+                                    LogMessage($"✅ Connection verified: Successfully read test tag gTestArray_INT[0] = {testResult.Value}");
+                                }
+                                else if (testResult != null)
+                                {
+                                    LogMessage($"⚠️ Connection test: Could not read gTestArray_INT[0] - {testResult.ErrorMessage}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogMessage($"⚠️ Connection test failed: {ex.Message}");
+                            }
+                        });
                     }
                     else
                     {
@@ -458,7 +478,27 @@ namespace WpfExample.ViewModels
                 
                 await RetryOperation(async () =>
                 {
-                    // Run the synchronous PLC operations on a background thread
+                    // Try ReadTagWithDetails first for better error handling
+                    try
+                    {
+                        var result = await Task.Run(() => _plcClient.ReadTagWithDetails(TagName));
+                        if (result.Success && result.Value != null)
+                        {
+                            TagValue = result.Value.ToString() ?? string.Empty;
+                            LogMessage($"✅ Read tag: {TagName} = {result.Value}");
+                            return true;
+                        }
+                        else
+                        {
+                            LogMessage($"⚠️ ReadTagWithDetails returned Success=false: {result.ErrorMessage ?? "Unknown error"}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"⚠️ ReadTagWithDetails exception: {ex.Message}");
+                    }
+                    
+                    // Fallback to type-specific methods
                     return await Task.Run(() =>
                     {
                         object value = SelectedDataType switch
@@ -488,6 +528,11 @@ namespace WpfExample.ViewModels
             catch (Exception ex)
             {
                 LogMessage($"❌ Read error: {ex.Message}");
+                LogMessage($"   Exception type: {ex.GetType().Name}");
+                if (ex.InnerException != null)
+                {
+                    LogMessage($"   Inner exception: {ex.InnerException.Message}");
+                }
             }
         }
 
@@ -640,8 +685,7 @@ namespace WpfExample.ViewModels
                         break;
                         
                     case "UDT":
-                        LogMessage("⚠️ For UDT writes, use the UDT tools (read full UDT, modify member, then call SetUdtMember or WriteUdt). " +
-                                   "You can use SetUdtMember to update single members or WriteUdt to write the full UDT.");
+                        LogMessage("❌ UDT writing not supported in this example");
                         break;
                         
                     default:
@@ -982,7 +1026,18 @@ namespace WpfExample.ViewModels
 
                 var value = await Task.Run(() =>
                 {
-                    // Try to determine type from tag name or try common types
+                    // Try ReadTagWithDetails first for better error handling
+                    try
+                    {
+                        var result = _plcClient.ReadTagWithDetails(ArrayTagName);
+                        if (result.Success && result.Value != null)
+                        {
+                            return result.Value.ToString() ?? string.Empty;
+                        }
+                    }
+                    catch { }
+                    
+                    // Fallback to type-specific methods based on tag name
                     if (ArrayTagName.Contains("DINT") || ArrayTagName.Contains("[") && !ArrayTagName.Contains("REAL") && !ArrayTagName.Contains("BOOL"))
                     {
                         return _plcClient.ReadDint(ArrayTagName).ToString();

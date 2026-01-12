@@ -1559,7 +1559,7 @@ namespace RustEtherNetIp
         /// </list>
         /// <para><strong>✅ What Works:</strong> Writing to non-STRING members of non-array UDTs (e.g., "gTestUDT.Member1_DINT").</para>
         /// </remarks>
-        public virtual void SetUdtMember(string tagName, string memberPath, PlcValue value)
+        public void SetUdtMember(string tagName, string memberPath, PlcValue value)
         {
             var udtValue = ReadUdt(tagName);
             if (udtValue == null || !udtValue.IsUdt)
@@ -1994,153 +1994,92 @@ namespace RustEtherNetIp
             {
                 try
                 {
-                    // If the tagName contains a dot, treat it as a UDT member write and use SetUdtMember
-                    if (kvp.Key.Contains('.'))
+                    // Determine type and call appropriate write method
+                    switch (kvp.Value)
                     {
-                        var parts = kvp.Key.Split(new[] { '.' }, 2);
-                        var tagName = parts[0];
-                        var memberPath = parts[1];
-                        PlcValue plcValue;
-
-                        switch (kvp.Value)
-                        {
-                            case System.Text.Json.JsonElement jsonElement:
-                                switch (jsonElement.ValueKind)
-                                {
-                                    case System.Text.Json.JsonValueKind.True:
-                                        plcValue = PlcValue.Bool(true);
-                                        break;
-                                    case System.Text.Json.JsonValueKind.False:
-                                        plcValue = PlcValue.Bool(false);
-                                        break;
-                                    case System.Text.Json.JsonValueKind.Number:
-                                        var numberValue = jsonElement.GetDouble();
-                                        if (numberValue == Math.Floor(numberValue) && numberValue >= int.MinValue && numberValue <= int.MaxValue)
-                                            plcValue = PlcValue.Dint((int)numberValue);
-                                        else
-                                            plcValue = PlcValue.Real((float)numberValue);
-                                        break;
-                                    case System.Text.Json.JsonValueKind.String:
-                                        plcValue = PlcValue.String(jsonElement.GetString() ?? string.Empty);
-                                        break;
-                                    default:
-                                        throw new ArgumentException($"Unsupported JSON value kind: {jsonElement.ValueKind} for tag '{kvp.Key}'. Value: {jsonElement}");
-                                }
-                                break;
-                            case bool boolValue:
-                                plcValue = PlcValue.Bool(boolValue);
-                                break;
-                            case int intValue:
-                                plcValue = PlcValue.Dint(intValue);
-                                break;
-                            case double doubleValue:
-                                if (doubleValue == Math.Floor(doubleValue) && doubleValue >= int.MinValue && doubleValue <= int.MaxValue)
-                                    plcValue = PlcValue.Dint((int)doubleValue);
-                                else
-                                    plcValue = PlcValue.Real((float)doubleValue);
-                                break;
-                            case float floatValue:
-                                plcValue = PlcValue.Real(floatValue);
-                                break;
-                            case string stringValue:
-                                plcValue = PlcValue.String(stringValue ?? string.Empty);
-                                break;
-                            default:
-                                throw new ArgumentException($"Unsupported value type: {kvp.Value.GetType()} for UDT member '{kvp.Key}'. Value: {kvp.Value}");
-                        }
-
-                        // Use SetUdtMember which reads the UDT, updates the member, and writes the full UDT back (works for array elements and string members)
-                        SetUdtMember(tagName, memberPath, plcValue);
-                    }
-                    else
-                    {
-                        // Non-UDT member writes: preserve existing behavior
-                        switch (kvp.Value)
-                        {
-                            case System.Text.Json.JsonElement jsonElement:
-                                // Handle JSON deserialized values from ASP.NET Core
-                                switch (jsonElement.ValueKind)
-                                {
-                                    case System.Text.Json.JsonValueKind.True:
-                                        WriteBool(kvp.Key, true);
-                                        break;
-                                    case System.Text.Json.JsonValueKind.False:
-                                        WriteBool(kvp.Key, false);
-                                        break;
-                                    case System.Text.Json.JsonValueKind.Number:
-                                        var numberValue = jsonElement.GetDouble();
-                                        if (numberValue == Math.Floor(numberValue) && numberValue >= int.MinValue && numberValue <= int.MaxValue)
-                                        {
-                                            // Looks like an integer value, write as DINT
-                                            WriteDint(kvp.Key, (int)numberValue);
-                                        }
-                                        else
-                                        {
-                                            // Decimal value, write as REAL
-                                            WriteReal(kvp.Key, (float)numberValue);
-                                        }
-                                        break;
-                                    case System.Text.Json.JsonValueKind.String:
-                                        try
-                                        {
-                                            WriteString(kvp.Key, jsonElement.GetString() ?? string.Empty);
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            // Handle any unexpected errors during STRING operations
-                                            if (ex.Message.Contains("DllNotFoundException") || ex.Message.Contains("EntryPointNotFoundException"))
-                                            {
-                                                throw new Exception("STRING support library not found or accessible");
-                                            }
-                                            throw;
-                                        }
-                                        break;
-                                    default:
-                                        throw new ArgumentException($"Unsupported JSON value kind: {jsonElement.ValueKind} for tag '{kvp.Key}'. Value: {jsonElement}");
-                                }
-                                break;
-                            case bool boolValue:
-                                WriteBool(kvp.Key, boolValue);
-                                break;
-                            case int intValue:
-                                WriteDint(kvp.Key, intValue);
-                                break;
-                            case double doubleValue:
-                                // JavaScript sends all numbers as double - determine if it should be int or float
-                                if (doubleValue == Math.Floor(doubleValue) && doubleValue >= int.MinValue && doubleValue <= int.MaxValue)
-                                {
-                                    // Looks like an integer value, write as DINT
-                                    WriteDint(kvp.Key, (int)doubleValue);
-                                }
-                                else
-                                {
-                                    // Decimal value, write as REAL
-                                    WriteReal(kvp.Key, (float)doubleValue);
-                                }
-                                break;
-                            case float floatValue:
-                                WriteReal(kvp.Key, floatValue);
-                                break;
-                            case string stringValue:
-                                try
-                                {
-                                    WriteString(kvp.Key, stringValue ?? string.Empty);
-                                }
-                                catch (Exception ex)
-                                {
-                                    // Handle any unexpected errors during STRING operations
-                                    if (ex.Message.Contains("DllNotFoundException") || ex.Message.Contains("EntryPointNotFoundException"))
+                        case System.Text.Json.JsonElement jsonElement:
+                            // Handle JSON deserialized values from ASP.NET Core
+                            switch (jsonElement.ValueKind)
+                            {
+                                case System.Text.Json.JsonValueKind.True:
+                                    WriteBool(kvp.Key, true);
+                                    break;
+                                case System.Text.Json.JsonValueKind.False:
+                                    WriteBool(kvp.Key, false);
+                                    break;
+                                case System.Text.Json.JsonValueKind.Number:
+                                    var numberValue = jsonElement.GetDouble();
+                                    if (numberValue == Math.Floor(numberValue) && numberValue >= int.MinValue && numberValue <= int.MaxValue)
                                     {
-                                        throw new Exception("STRING support library not found or accessible");
+                                        // Looks like an integer value, write as DINT
+                                        WriteDint(kvp.Key, (int)numberValue);
                                     }
-                                    throw;
+                                    else
+                                    {
+                                        // Decimal value, write as REAL
+                                        WriteReal(kvp.Key, (float)numberValue);
+                                    }
+                                    break;
+                                case System.Text.Json.JsonValueKind.String:
+                                    try
+                                    {
+                                        WriteString(kvp.Key, jsonElement.GetString() ?? "");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        // Handle any unexpected errors during STRING operations
+                                        if (ex.Message.Contains("DllNotFoundException") || ex.Message.Contains("EntryPointNotFoundException"))
+                                        {
+                                            throw new Exception("STRING support library not found or accessible");
+                                        }
+                                        throw;
+                                    }
+                                    break;
+                                default:
+                                    throw new ArgumentException($"Unsupported JSON value kind: {jsonElement.ValueKind} for tag '{kvp.Key}'. Value: {jsonElement}");
+                            }
+                            break;
+                        case bool boolValue:
+                            WriteBool(kvp.Key, boolValue);
+                            break;
+                        case int intValue:
+                            WriteDint(kvp.Key, intValue);
+                            break;
+                        case double doubleValue:
+                            // JavaScript sends all numbers as double - determine if it should be int or float
+                            if (doubleValue == Math.Floor(doubleValue) && doubleValue >= int.MinValue && doubleValue <= int.MaxValue)
+                            {
+                                // Looks like an integer value, write as DINT
+                                WriteDint(kvp.Key, (int)doubleValue);
+                            }
+                            else
+                            {
+                                // Decimal value, write as REAL
+                                WriteReal(kvp.Key, (float)doubleValue);
+                            }
+                            break;
+                        case float floatValue:
+                            WriteReal(kvp.Key, floatValue);
+                            break;
+                        case string stringValue:
+                            try
+                            {
+                                WriteString(kvp.Key, stringValue);
+                            }
+                            catch (Exception ex)
+                            {
+                                // Handle any unexpected errors during STRING operations
+                                if (ex.Message.Contains("DllNotFoundException") || ex.Message.Contains("EntryPointNotFoundException"))
+                                {
+                                    throw new Exception("STRING support library not found or accessible");
                                 }
-                                break;
-                            default:
-                                throw new ArgumentException($"Unsupported value type: {kvp.Value.GetType()} for tag '{kvp.Key}'. Value: {kvp.Value}");
-                        }
+                                throw;
+                            }
+                            break;
+                        default:
+                            throw new ArgumentException($"Unsupported value type: {kvp.Value.GetType()} for tag '{kvp.Key}'. Value: {kvp.Value}");
                     }
-
+                    
                     results[kvp.Key] = new TagWriteResult
                     {
                         TagName = kvp.Key,

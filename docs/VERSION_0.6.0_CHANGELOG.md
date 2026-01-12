@@ -1,6 +1,6 @@
 # Version 0.6.0 Changelog
 
-**Release Date:** 2026-01-03  
+**Release Date:** January 2026  
 **Status:** ✅ Production Ready
 
 ## 🎉 Major Changes
@@ -17,6 +17,26 @@
 - **Comprehensive examples updated**: All examples now use new `UdtData` API
 - **Integration tests updated**: Tests updated for new UDT format
 - **Code quality**: Fixed clippy warnings and improved code consistency
+
+### 🚀 C# Wrapper Enhancements
+- **Batch Operations**: `ReadTagsBatch()` and `WriteTagsBatch()` for high-performance multi-tag operations
+- **TagGroup**: Periodic polling with event-driven updates (`TagGroup` class with `DataChanged` event)
+- **Performance Statistics**: `ClientStatistics` class tracking read/write counts, errors, and average response times
+- **Data Quality & Timestamp**: `TagReadResult` with `Quality`, `TimeStamp`, and detailed error information
+- **Value Scaling**: `ValueScaling` utility class with `ScaleLinear()` and `ScaleSquareRoot()` methods
+- **Enhanced Error Handling**: Detailed error messages with quality indicators and timestamps
+
+### 🔧 Connection & RoutePath Fixes
+- **WinForms Application**: Fixed connection to use `ConnectWithRoute()` when RoutePath is enabled
+- **WPF Application**: Fixed connection to use `ConnectWithRoute()` when RoutePath is enabled
+- **ASP.NET Application**: Updated `PlcService.Connect()` to accept and use RoutePath parameters
+- **Connection Verification**: Added automatic connection tests after successful connection
+- **Error Handling**: Improved error messages and exception handling across all example applications
+
+### 🐛 Bug Fixes
+- **TagReadResult Duplicate**: Renamed internal `TagReadResult` to `TagReadResultBatch` to resolve naming conflicts
+- **Nullability Warnings**: Fixed nullable reference type warnings in `PlcValue`, `TagSubscription`, `UdtData`, and `EthernetNetIpClient`
+- **DLL Deployment**: Fixed DLL path in `RustEtherNetIp.csproj` to ensure `rust_ethernet_ip.dll` is correctly copied
 
 ## 📊 Breaking Changes
 

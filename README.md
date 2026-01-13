@@ -1085,6 +1085,50 @@ We value your input! Help us improve the library by sharing:
 
 **[Submit Feedback →](https://github.com/sergiogallegos/rust-ethernet-ip/issues/new/choose)**
 
+## 🔧 **Troubleshooting**
+
+Experiencing issues? Check out our comprehensive troubleshooting guide:
+
+📖 **[Complete Troubleshooting Guide](docs/TROUBLESHOOTING.md)**
+
+### Quick Reference: Common Errors
+
+| Error Code | Meaning | Quick Fix |
+|------------|---------|-----------|
+| **0x01** | Connection failure | Check tag name, scope, and External Access permissions |
+| **0x04** | Path segment error | Verify tag path format (controller vs program-scoped) |
+| **0x05** | Path destination unknown | Check ControlLogix slot routing |
+| **0x16** | Object does not exist | Verify tag exists and is downloaded to PLC |
+
+### Most Common Issues
+
+**1. CIP Error 0x01: Connection Failure**
+- ✅ Verify tag name is exactly correct (case-sensitive)
+- ✅ Check if tag is program-scoped: use `"Program:ProgramName.TagName"`
+- ✅ Verify tag has External Access enabled in RSLogix/Studio 5000
+- ✅ Ensure tag is downloaded to PLC (not just saved)
+- ✅ For ControlLogix, check CPU slot routing
+
+**2. Tag Not Found**
+- Use `discover_tags()` to find available tags
+- Check tag scope (Controller vs Program)
+- Verify tag spelling (case-sensitive)
+
+**3. ControlLogix Routing Issues**
+- If CPU is in slot other than 0, specify route path:
+  ```rust
+  let route = RoutePath::new().add_slot(3); // CPU in slot 3
+  let mut client = EipClient::with_route_path("192.168.1.100:44818", route).await?;
+  ```
+
+**4. Connection Timeout**
+- Verify IP address and port (default: 44818)
+- Check network connectivity (ping the PLC)
+- Ensure firewall allows port 44818
+- Verify PLC is in RUN mode
+
+For detailed troubleshooting steps, code examples, and debugging procedures, see the [Complete Troubleshooting Guide](docs/TROUBLESHOOTING.md).
+
 ## 🤝 **Community & Support**
 
 - **[Discord Server](https://discord.gg/uzaM3tua)** - Community discussions, support, and development updates

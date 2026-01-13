@@ -730,12 +730,126 @@ namespace WinFormsExample
             testTypeCombo.SelectedIndex = 0;
             panel.Controls.Add(testTypeCombo);
 
+            // Tag selection section
+            var tagSelectionLabel = new Label
+            {
+                Text = "Tags to Test:",
+                Location = new Point(10, 95),
+                AutoSize = true,
+                Font = new Font(this.Font, FontStyle.Bold)
+            };
+            panel.Controls.Add(tagSelectionLabel);
+
+            var tagSelectionModeLabel = new Label
+            {
+                Text = "Mode:",
+                Location = new Point(10, 120),
+                AutoSize = true
+            };
+            panel.Controls.Add(tagSelectionModeLabel);
+
+            var tagSelectionModeCombo = new ComboBox
+            {
+                Name = "tagSelectionModeCombo",
+                Location = new Point(60, 117),
+                Size = new Size(120, 23),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            tagSelectionModeCombo.Items.AddRange(new[] { "Auto-generate", "Manual entry" });
+            tagSelectionModeCombo.SelectedIndex = 0;
+            tagSelectionModeCombo.SelectedIndexChanged += (s, e) =>
+            {
+                var modeCombo = s as ComboBox;
+                var tagTextBox = panel.Controls.Find("tagSelectionTextBox", true).FirstOrDefault() as TextBox;
+                var loadTagsButton = panel.Controls.Find("loadTagsFromDiscoveryButton", true).FirstOrDefault() as Button;
+                var clearTagsButton = panel.Controls.Find("clearTagsButton", true).FirstOrDefault() as Button;
+                
+                if (modeCombo?.SelectedIndex == 0) // Auto-generate
+                {
+                    if (tagTextBox != null) tagTextBox.Enabled = false;
+                    if (loadTagsButton != null) loadTagsButton.Enabled = false;
+                    if (clearTagsButton != null) clearTagsButton.Enabled = false;
+                }
+                else // Manual entry
+                {
+                    if (tagTextBox != null) tagTextBox.Enabled = true;
+                    if (loadTagsButton != null) loadTagsButton.Enabled = true;
+                    if (clearTagsButton != null) clearTagsButton.Enabled = true;
+                }
+            };
+            panel.Controls.Add(tagSelectionModeCombo);
+
+            var tagSelectionTextBox = new TextBox
+            {
+                Name = "tagSelectionTextBox",
+                Location = new Point(10, 150),
+                Size = new Size(600, 80),
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                Enabled = false,
+                Text = "Enter tag names (one per line)\r\nExample:\r\nTag1\r\nTag2\r\nProgram:MainProgram.Tag3"
+            };
+            tagSelectionTextBox.Enter += (s, e) =>
+            {
+                var tb = s as TextBox;
+                if (tb != null && tb.Text.Contains("Enter tag names"))
+                {
+                    tb.Text = "";
+                    tb.ForeColor = SystemColors.WindowText;
+                }
+            };
+            tagSelectionTextBox.Leave += (s, e) =>
+            {
+                var tb = s as TextBox;
+                if (tb != null && string.IsNullOrWhiteSpace(tb.Text))
+                {
+                    tb.Text = "Enter tag names (one per line)\r\nExample:\r\nTag1\r\nTag2\r\nProgram:MainProgram.Tag3";
+                    tb.ForeColor = SystemColors.GrayText;
+                }
+            };
+            tagSelectionTextBox.ForeColor = SystemColors.GrayText;
+            panel.Controls.Add(tagSelectionTextBox);
+
+            var loadTagsButton = new Button
+            {
+                Name = "loadTagsFromDiscoveryButton",
+                Text = "📋 Load from Discovery",
+                Location = new Point(620, 150),
+                Size = new Size(150, 30),
+                BackColor = Color.FromArgb(34, 197, 94),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            loadTagsButton.Click += (s, e) => LoadTagsFromDiscoveryForPerformance(panel);
+            panel.Controls.Add(loadTagsButton);
+
+            var clearTagsButton = new Button
+            {
+                Name = "clearTagsButton",
+                Text = "🗑️ Clear",
+                Location = new Point(620, 185),
+                Size = new Size(150, 30),
+                BackColor = Color.FromArgb(239, 68, 68),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            clearTagsButton.Click += (s, e) =>
+            {
+                var tagTextBox = panel.Controls.Find("tagSelectionTextBox", true).FirstOrDefault() as TextBox;
+                if (tagTextBox != null)
+                {
+                    tagTextBox.Text = "Enter tag names (one per line)\r\nExample:\r\nTag1\r\nTag2\r\nProgram:MainProgram.Tag3";
+                    tagTextBox.ForeColor = SystemColors.GrayText;
+                }
+            };
+            panel.Controls.Add(clearTagsButton);
+
             // Run benchmark button
             var benchmarkButton = new Button
             {
                 Name = "benchmarkButton",
                 Text = "🚀 Run Performance Test",
-                Location = new Point(10, 95),
+                Location = new Point(10, 240),
                 Size = new Size(150, 30),
                 BackColor = Color.FromArgb(59, 130, 246),
                 ForeColor = Color.White,
@@ -748,7 +862,7 @@ namespace WinFormsExample
             var resultsGroupBox = new GroupBox
             {
                 Text = "📊 Performance Results",
-                Location = new Point(10, 140),
+                Location = new Point(10, 280),
                 Size = new Size(800, 250)
             };
 
@@ -1556,6 +1670,8 @@ namespace WinFormsExample
 
             var tagCountNumeric = Controls.Find("tagCountNumeric", true).FirstOrDefault() as NumericUpDown;
             var testTypeCombo = Controls.Find("testTypeCombo", true).FirstOrDefault() as ComboBox;
+            var tagSelectionModeCombo = Controls.Find("tagSelectionModeCombo", true).FirstOrDefault() as ComboBox;
+            var tagSelectionTextBox = Controls.Find("tagSelectionTextBox", true).FirstOrDefault() as TextBox;
             var individualLabel = Controls.Find("individualPerformanceLabel", true).FirstOrDefault() as Label;
             var batchLabel = Controls.Find("batchPerformanceLabel", true).FirstOrDefault() as Label;
             var improvementLabel = Controls.Find("improvementLabel", true).FirstOrDefault() as Label;
@@ -1564,17 +1680,54 @@ namespace WinFormsExample
 
             if (tagCountNumeric == null || testTypeCombo == null) return;
 
-            var tagCount = (int)tagCountNumeric.Value;
             var testType = testTypeCombo.SelectedItem?.ToString() ?? "Read Only";
+            var useManualTags = tagSelectionModeCombo?.SelectedIndex == 1; // Manual entry mode
+
+            string[] testTags;
+
+            if (useManualTags && tagSelectionTextBox != null)
+            {
+                // Use manually entered tags
+                var tagText = tagSelectionTextBox.Text.Trim();
+                if (string.IsNullOrEmpty(tagText))
+                {
+                    Log("❌ Please enter tag names in the 'Tags to Test' field");
+                    MessageBox.Show("Please enter tag names (one per line) in the 'Tags to Test' field.", 
+                        "No Tags Specified", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                testTags = tagText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(t => t.Trim())
+                    .Where(t => !string.IsNullOrEmpty(t))
+                    .ToArray();
+
+                if (testTags.Length == 0)
+                {
+                    Log("❌ No valid tag names found in the 'Tags to Test' field");
+                    MessageBox.Show("No valid tag names found. Please enter tag names (one per line).", 
+                        "Invalid Tags", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Update tag count to match actual tags
+                tagCountNumeric.Value = testTags.Length;
+                Log($"📋 Using {testTags.Length} manually specified tags");
+            }
+            else
+            {
+                // Auto-generate tags
+                var autoTagCount = (int)tagCountNumeric.Value;
+                testTags = Enumerable.Range(1, autoTagCount)
+                    .Select(i => $"TestTag_{i}")
+                    .ToArray();
+            }
+
+            var tagCount = testTags.Length;
 
             try
             {
                 Log($"📊 Starting performance benchmark: {tagCount} tags, {testType}");
-
-                // Generate test tag names
-                var testTags = Enumerable.Range(1, tagCount)
-                    .Select(i => $"TestTag_{i}")
-                    .ToArray();
 
                 // Ensure test tags exist for read tests
                 if (testType != "Write Only")
@@ -1784,6 +1937,147 @@ namespace WinFormsExample
                 if (batchLabel != null) batchLabel.Text = "🚀 Batch Operations: Error occurred";
                 if (improvementLabel != null) improvementLabel.Text = "📈 Performance Improvement: Test failed";
                 if (chartTextBox != null) chartTextBox.Text = $"Benchmark failed: {ex.Message}";
+            }
+        }
+
+        private void LoadTagsFromDiscoveryForPerformance(Panel performancePanel)
+        {
+            if (!_isConnected || _plcClient == null)
+            {
+                MessageBox.Show("Please connect to the PLC first.", "Not Connected", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                Log("📋 Discovering tags from PLC...");
+                
+                // Show a dialog to let user select tags or enter them
+                using (var dialog = new Form())
+                {
+                    dialog.Text = "Select Tags for Performance Test";
+                    dialog.Size = new Size(600, 500);
+                    dialog.StartPosition = FormStartPosition.CenterParent;
+
+                    var label = new Label
+                    {
+                        Text = "Enter tag names (one per line) or click 'Discover Common Tags':",
+                        Location = new Point(10, 10),
+                        Size = new Size(560, 30),
+                        AutoSize = false
+                    };
+                    dialog.Controls.Add(label);
+
+                    var textBox = new TextBox
+                    {
+                        Location = new Point(10, 45),
+                        Size = new Size(560, 300),
+                        Multiline = true,
+                        ScrollBars = ScrollBars.Vertical,
+                        Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+                    };
+                    dialog.Controls.Add(textBox);
+
+                    var discoverCommonButton = new Button
+                    {
+                        Text = "🔍 Discover Common Tags",
+                        Location = new Point(10, 355),
+                        Size = new Size(150, 30),
+                        BackColor = Color.FromArgb(59, 130, 246),
+                        ForeColor = Color.White
+                    };
+                    discoverCommonButton.Click += (s, e) =>
+                    {
+                        try
+                        {
+                            Log("🔍 Discovering common tags...");
+                            _plcClient.DiscoverTags();
+                            
+                            // Try to get metadata for common tag patterns
+                            var commonTags = new List<string>();
+                            var patterns = new[] { "g", "Test", "Tag", "Data", "Status", "Control" };
+                            
+                            foreach (var pattern in patterns)
+                            {
+                                for (int i = 0; i < 10; i++)
+                                {
+                                    var tagName = $"{pattern}Tag_{i}";
+                                    try
+                                    {
+                                        var metadata = _plcClient.GetTagMetadata(tagName);
+                                        commonTags.Add(tagName);
+                                    }
+                                    catch { }
+                                    
+                                    tagName = $"{pattern}_{i}";
+                                    try
+                                    {
+                                        var metadata = _plcClient.GetTagMetadata(tagName);
+                                        commonTags.Add(tagName);
+                                    }
+                                    catch { }
+                                }
+                            }
+                            
+                            if (commonTags.Count > 0)
+                            {
+                                textBox.Text = string.Join("\r\n", commonTags);
+                                Log($"✅ Found {commonTags.Count} common tags");
+                            }
+                            else
+                            {
+                                MessageBox.Show("No common tags found. Please enter tag names manually.", 
+                                    "No Tags Found", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log($"❌ Error discovering tags: {ex.Message}");
+                            MessageBox.Show($"Error discovering tags: {ex.Message}", 
+                                "Discovery Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    };
+                    dialog.Controls.Add(discoverCommonButton);
+
+                    var okButton = new Button
+                    {
+                        Text = "OK",
+                        DialogResult = DialogResult.OK,
+                        Location = new Point(420, 420),
+                        Size = new Size(75, 30)
+                    };
+                    dialog.Controls.Add(okButton);
+
+                    var cancelButton = new Button
+                    {
+                        Text = "Cancel",
+                        DialogResult = DialogResult.Cancel,
+                        Location = new Point(505, 420),
+                        Size = new Size(75, 30)
+                    };
+                    dialog.Controls.Add(cancelButton);
+
+                    dialog.AcceptButton = okButton;
+                    dialog.CancelButton = cancelButton;
+
+                    if (dialog.ShowDialog() == DialogResult.OK)
+                    {
+                        var tagSelectionTextBox = performancePanel.Controls.Find("tagSelectionTextBox", true).FirstOrDefault() as TextBox;
+                        if (tagSelectionTextBox != null)
+                        {
+                            tagSelectionTextBox.Text = textBox.Text;
+                            tagSelectionTextBox.ForeColor = SystemColors.WindowText;
+                            Log($"✅ Loaded {textBox.Lines.Length} tags for performance test");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"❌ Error loading tags: {ex.Message}");
+                MessageBox.Show($"Error loading tags: {ex.Message}", 
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -3231,7 +3525,7 @@ namespace WinFormsExample
                 var value = await Task.Run(() => _plcClient.ReadUdt(tagName));
                 
                 // Update UI on UI thread
-                if (value.IsUdtDataFormat)
+                if (value.IsUdtDataFormat && value.UdtData != null)
                 {
                     var udtData = value.UdtData;
                     resultLabel.Text = $"✅ Success!\nTag: {tagName}\nSymbol ID: {udtData.SymbolId}\nData Length: {udtData.Data.Length} bytes\n\n" +
@@ -3427,7 +3721,7 @@ namespace WinFormsExample
                             // Try to parse _raw_data as hex string or byte array
                             if (rawDataValue != null)
                             {
-                                byte[] rawBytes = null;
+                                byte[]? rawBytes = null;
                                 
                                 if (rawDataValue.Type == PlcValueType.String)
                                 {
@@ -4478,6 +4772,9 @@ namespace WinFormsExample
         }
 
         private TagGroup? _tagGroup;
+        private DateTime _lastTagGroupUpdate = DateTime.MinValue;
+        private const int TAG_GROUP_UPDATE_THROTTLE_MS = 100; // Minimum 100ms between UI updates
+        
         private void TagGroupStartButton_Click(object? sender, EventArgs e)
         {
             if (_plcClient == null || !_isConnected) return;
@@ -4583,32 +4880,82 @@ namespace WinFormsExample
         {
             if (InvokeRequired)
             {
-                Invoke(new Action(() => TagGroup_DataChanged(sender, e)));
+                // Use BeginInvoke instead of Invoke to avoid blocking
+                BeginInvoke(new Action(() => TagGroup_DataChanged(sender, e)));
                 return;
             }
 
-            var resultsListView = (ListView)Controls.Find("tagGroupResultsListView", true)[0];
-            resultsListView.Items.Clear();
-
-            foreach (var kvp in e.AllValues)
+            try
             {
-                var item = new ListViewItem(kvp.Key);
-                item.SubItems.Add(kvp.Value?.ToString() ?? "N/A");
-                item.SubItems.Add(kvp.Value?.Type.ToString() ?? "N/A");
-                item.SubItems.Add(DateTime.Now.ToString("HH:mm:ss.fff"));
-                item.SubItems.Add("Good");
-                resultsListView.Items.Add(item);
+                // Throttle UI updates to prevent freezing (check after InvokeRequired)
+                var now = DateTime.Now;
+                if ((now - _lastTagGroupUpdate).TotalMilliseconds < TAG_GROUP_UPDATE_THROTTLE_MS)
+                {
+                    return; // Skip this update if too soon
+                }
+                _lastTagGroupUpdate = now;
+
+                var resultsListView = (ListView)Controls.Find("tagGroupResultsListView", true)[0];
+                if (resultsListView == null)
+                {
+                    System.Diagnostics.Debug.WriteLine("TagGroup_DataChanged: resultsListView not found");
+                    return;
+                }
+
+                // Use BeginUpdate/EndUpdate to prevent flickering and improve performance
+                resultsListView.BeginUpdate();
+                try
+                {
+                    resultsListView.Items.Clear();
+
+                    if (e.AllValues == null || e.AllValues.Count == 0)
+                    {
+                        // Show a message if no values
+                        var item = new ListViewItem("No tags read yet...");
+                        item.SubItems.Add("Waiting for first scan");
+                        item.SubItems.Add("N/A");
+                        item.SubItems.Add("N/A");
+                        item.SubItems.Add("N/A");
+                        resultsListView.Items.Add(item);
+                        System.Diagnostics.Debug.WriteLine("TagGroup_DataChanged: AllValues is null or empty");
+                    }
+                    else
+                    {
+                        foreach (var kvp in e.AllValues)
+                        {
+                            var item = new ListViewItem(kvp.Key);
+                            item.SubItems.Add(kvp.Value?.ToString() ?? "N/A");
+                            item.SubItems.Add(kvp.Value?.Type.ToString() ?? "N/A");
+                            item.SubItems.Add(DateTime.Now.ToString("HH:mm:ss.fff"));
+                            item.SubItems.Add("Good");
+                            resultsListView.Items.Add(item);
+                        }
+                        System.Diagnostics.Debug.WriteLine($"TagGroup_DataChanged: Updated {e.AllValues.Count} tags in table");
+                    }
+                }
+                finally
+                {
+                    resultsListView.EndUpdate();
+                }
+
+                var lastScanLabel = (Label)Controls.Find("tagGroupLastScanLabel", true)[0];
+                if (lastScanLabel != null && _tagGroup != null)
+                {
+                    lastScanLabel.Text = $"Last Scan Time: {_tagGroup.LastScanTime.TotalMilliseconds:F2} ms";
+                }
+
+                // Log changes if any, otherwise just update silently
+                if (e.ChangedTags != null && e.ChangedTags.Length > 0)
+                {
+                    Log($"🔄 TagGroup: {e.ChangedTags.Length} tag(s) changed: {string.Join(", ", e.ChangedTags)}");
+                }
+                // Note: Table is updated on every scan to show current values, even if unchanged
             }
-
-            var lastScanLabel = (Label)Controls.Find("tagGroupLastScanLabel", true)[0];
-            if (_tagGroup != null)
+            catch (Exception ex)
             {
-                lastScanLabel.Text = $"Last Scan Time: {_tagGroup.LastScanTime.TotalMilliseconds:F2} ms";
-            }
-
-            if (e.ChangedTags.Length > 0)
-            {
-                Log($"🔄 TagGroup: {e.ChangedTags.Length} tag(s) changed: {string.Join(", ", e.ChangedTags)}");
+                // Log but don't crash the UI
+                System.Diagnostics.Debug.WriteLine($"TagGroup_DataChanged error: {ex.Message}");
+                Log($"❌ TagGroup UI update error: {ex.Message}");
             }
         }
 

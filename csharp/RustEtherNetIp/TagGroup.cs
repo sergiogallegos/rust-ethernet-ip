@@ -63,6 +63,7 @@ namespace RustEtherNetIp
         private bool _isActive = false;
         private bool _isSuspended = false;
         private bool _isDisposed = false;
+        private bool _isScanning = false; // Prevent overlapping scans
 
         /// <summary>
         /// Gets or sets the array of tag names to poll.
@@ -159,6 +160,14 @@ namespace RustEtherNetIp
             if (_isDisposed || _isSuspended || TagNames == null || TagNames.Length == 0)
                 return;
 
+            // Prevent overlapping scans - if a scan is still running, skip this one
+            if (_isScanning)
+            {
+                System.Diagnostics.Debug.WriteLine("TagGroup: Skipping scan - previous scan still in progress");
+                return;
+            }
+
+            _isScanning = true;
             var startTime = DateTime.Now;
             try
             {
@@ -177,13 +186,19 @@ namespace RustEtherNetIp
                 }
 
                 if (activeTagNames.Count == 0)
+                {
+                    System.Diagnostics.Debug.WriteLine("TagGroup: No active tags to read");
+                    _isScanning = false;
                     return;
+                }
 
                 // Read only active tags in batch
+                System.Diagnostics.Debug.WriteLine($"TagGroup: Reading {activeTagNames.Count} tags: {string.Join(", ", activeTagNames)}");
                 var values = _client.ReadTags(activeTagNames.ToArray());
+                System.Diagnostics.Debug.WriteLine($"TagGroup: Read {values.Length} values successfully");
                 var changedTags = new List<string>();
 
-                // Compare with last values
+                // Compare with last values and update
                 for (int i = 0; i < activeTagNames.Count; i++)
                 {
                     var tagName = activeTagNames[i];
@@ -195,26 +210,46 @@ namespace RustEtherNetIp
                         _lastValues[tagName] = newValue;
                         changedTags.Add(tagName);
                     }
+                    else
+                    {
+                        // Update the value even if it hasn't changed (for timestamp updates)
+                        _lastValues[tagName] = newValue;
+                    }
                 }
 
-                // Fire event if any tags changed
-                if (changedTags.Count > 0)
+                // Always fire event with all current values (not just when changed)
+                // This ensures the UI table is always populated and updated
+                var allValues = new Dictionary<string, PlcValue>(_lastValues);
+                DataChanged?.Invoke(this, new GroupDataChangedEventArgs
                 {
-                    var allValues = new Dictionary<string, PlcValue>(_lastValues);
-                    DataChanged?.Invoke(this, new GroupDataChangedEventArgs
-                    {
-                        ChangedTags = changedTags.ToArray(),
-                        AllValues = allValues
-                    });
-                }
+                    ChangedTags = changedTags.ToArray(),
+                    AllValues = allValues
+                });
 
                 LastScanTime = DateTime.Now - startTime;
             }
             catch (Exception ex)
             {
-                // Log error but don't break the polling loop
-                // Could fire an error event here if needed
+                // Log error but still fire event with current values (if any) so UI doesn't freeze
                 System.Diagnostics.Debug.WriteLine($"TagGroup polling error: {ex.Message}");
+                
+                // Fire event with existing values even on error, so UI shows something
+                // This prevents the table from being empty when there's a read error
+                if (_lastValues.Count > 0)
+                {
+                    var allValues = new Dictionary<string, PlcValue>(_lastValues);
+                    DataChanged?.Invoke(this, new GroupDataChangedEventArgs
+                    {
+                        ChangedTags = Array.Empty<string>(), // No changes on error
+                        AllValues = allValues
+                    });
+                }
+                
+                LastScanTime = DateTime.Now - startTime;
+            }
+            finally
+            {
+                _isScanning = false;
             }
         }
 

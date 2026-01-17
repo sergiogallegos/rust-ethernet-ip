@@ -140,11 +140,24 @@ async fn test_array_operations() -> Result<(), Box<dyn Error>> {
 
 #[tokio::test]
 async fn test_udt_operations() -> Result<(), Box<dyn Error>> {
+    use rust_ethernet_ip::UdtData;
+
     let mut client = MockEipClient::new();
 
-    // Read existing UDT first to get symbol_id
+    // Create a test UDT and write it first
+    let test_udt = UdtData {
+        symbol_id: 123,
+        data: vec![0x01, 0x00, 0x00, 0x00, 0x2A, 0x00, 0x00, 0x00], // Sample UDT data
+    };
+
+    // Write the UDT first
+    client
+        .write_tag("TestUDT", PlcValue::Udt(test_udt.clone()))
+        .await?;
+
+    // Read existing UDT
     let udt_value = client.read_tag("TestUDT").await?;
-    if let PlcValue::Udt(mut udt_data) = udt_value {
+    if let PlcValue::Udt(udt_data) = udt_value {
         // Write back the same UDT data (proper modification would require UDT definition)
         client
             .write_tag("TestUDT", PlcValue::Udt(udt_data.clone()))
@@ -159,8 +172,7 @@ async fn test_udt_operations() -> Result<(), Box<dyn Error>> {
             panic!("Expected UDT value");
         }
     } else {
-        // If UDT doesn't exist, skip this test
-        println!("TestUDT not found, skipping UDT write test");
+        panic!("Expected UDT value after write");
     }
 
     Ok(())
@@ -227,6 +239,8 @@ async fn test_multiple_plc_operations() -> Result<(), Box<dyn Error>> {
 
 #[tokio::test]
 async fn test_large_data_operations() -> Result<(), Box<dyn Error>> {
+    use rust_ethernet_ip::UdtData;
+
     let mut client = MockEipClient::new();
 
     // Set maximum packet size
@@ -239,9 +253,20 @@ async fn test_large_data_operations() -> Result<(), Box<dyn Error>> {
         .await;
     assert!(result.is_err(), "Expected error for string > 82 chars");
 
-    // Test large UDT - read existing UDT first to get symbol_id
+    // Test large UDT - create and write it first
+    let large_udt = UdtData {
+        symbol_id: 456,
+        data: vec![0x00; 1000], // Large UDT with 1000 bytes
+    };
+
+    // Write the large UDT first
+    client
+        .write_tag("LargeUDT", PlcValue::Udt(large_udt.clone()))
+        .await?;
+
+    // Read it back
     let udt_value = client.read_tag("LargeUDT").await?;
-    if let PlcValue::Udt(mut udt_data) = udt_value {
+    if let PlcValue::Udt(udt_data) = udt_value {
         // Write back the same UDT data
         client
             .write_tag("LargeUDT", PlcValue::Udt(udt_data.clone()))
@@ -254,8 +279,7 @@ async fn test_large_data_operations() -> Result<(), Box<dyn Error>> {
             panic!("Expected UDT value");
         }
     } else {
-        // If UDT doesn't exist, skip this test
-        println!("LargeUDT not found, skipping large UDT test");
+        panic!("Expected UDT value after write");
     }
 
     Ok(())

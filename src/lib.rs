@@ -1437,9 +1437,21 @@ impl EipClient {
         let response = self
             .send_cip_request(&self.build_list_tags_request())
             .await?;
+
+        // Extract CIP data from response and check for errors
+        let cip_data = self.extract_cip_from_response(&response)?;
+
+        // Check for CIP errors before parsing
+        if let Err(e) = self.check_cip_error(&cip_data) {
+            return Err(crate::error::EtherNetIpError::Protocol(format!(
+                "Tag discovery failed: {}. Some PLCs may not support tag discovery. Try reading tags directly by name.",
+                e
+            )));
+        }
+
         let tags = {
             let tag_manager = self.tag_manager.lock().await;
-            tag_manager.parse_tag_list(&response)?
+            tag_manager.parse_tag_list(&cip_data)?
         };
 
         println!("[DEBUG] Initial tag discovery found {} tags", tags.len());
@@ -1538,8 +1550,19 @@ impl EipClient {
         let request = self.build_tag_list_request()?;
         let response = self.send_cip_request(&request).await?;
 
+        // Extract CIP data from response and check for errors
+        let cip_data = self.extract_cip_from_response(&response)?;
+
+        // Check for CIP errors before parsing
+        if let Err(e) = self.check_cip_error(&cip_data) {
+            return Err(crate::error::EtherNetIpError::Protocol(format!(
+                "Tag discovery failed: {}. Some PLCs may not support tag discovery. Try reading tags directly by name.",
+                e
+            )));
+        }
+
         // Parse response with all attributes
-        self.parse_tag_list_response(&response)
+        self.parse_tag_list_response(&cip_data)
     }
 
     /// Discovers program-scoped tags
@@ -1552,8 +1575,19 @@ impl EipClient {
         let request = self.build_program_tag_list_request(program_name)?;
         let response = self.send_cip_request(&request).await?;
 
+        // Extract CIP data from response and check for errors
+        let cip_data = self.extract_cip_from_response(&response)?;
+
+        // Check for CIP errors before parsing
+        if let Err(e) = self.check_cip_error(&cip_data) {
+            return Err(crate::error::EtherNetIpError::Protocol(format!(
+                "Program tag discovery failed for '{}': {}. Some PLCs may not support tag discovery. Try reading tags directly by name.",
+                program_name, e
+            )));
+        }
+
         // Parse response
-        self.parse_tag_list_response(&response)
+        self.parse_tag_list_response(&cip_data)
     }
 
     /// Lists all cached tag attributes
@@ -2373,7 +2407,8 @@ impl EipClient {
     ///     "MyArray", 10, 1, 0x00C4, &data
     /// )?;
     /// ```
-    pub(crate) fn build_write_array_request_with_index(
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn build_write_array_request_with_index(
         &self,
         base_array_name: &str,
         start_index: u32,
@@ -4719,7 +4754,8 @@ impl EipClient {
     /// - 0-255: 8-bit Element ID (0x28 + 1 byte value)
     /// - 256-65535: 16-bit Element ID (0x29 0x00 + 2 bytes low, high)
     /// - 65536+: 32-bit Element ID (0x2A 0x00 + 4 bytes lowest to highest)
-    pub(crate) fn build_element_id_segment(&self, index: u32) -> Vec<u8> {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn build_element_id_segment(&self, index: u32) -> Vec<u8> {
         let mut segment = Vec::new();
 
         if index <= 255 {
@@ -4748,7 +4784,8 @@ impl EipClient {
     ///
     /// Extracts the base tag name from array notation (e.g., "MyArray[5]" -> "MyArray")
     /// Reference: 1756-PM020, Page 894-909 (ANSI Extended Symbol Segment Construction)
-    pub(crate) fn build_base_tag_path(&self, tag_name: &str) -> Vec<u8> {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn build_base_tag_path(&self, tag_name: &str) -> Vec<u8> {
         // Parse tag path but strip array indices
         match TagPath::parse(tag_name) {
             Ok(path) => {
@@ -4811,7 +4848,8 @@ impl EipClient {
     /// This generates:
     /// - Request Path: [0x91] "MyArray" [0x28] [0x0A] (element 10)
     /// - Request Data: [0x05 0x00] (5 elements)
-    pub(crate) fn build_read_array_request(
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn build_read_array_request(
         &self,
         base_array_name: &str,
         start_index: u32,

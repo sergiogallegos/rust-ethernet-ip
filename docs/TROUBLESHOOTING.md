@@ -4,13 +4,124 @@ This guide helps you diagnose and resolve common issues when using the Rust Ethe
 
 ## Table of Contents
 
-1. [CIP Error 0x01: Connection Failure](#cip-error-0x01-connection-failure)
-2. [CIP Error 0x04: Path Segment Error](#cip-error-0x04-path-segment-error)
-3. [CIP Error 0x05: Path Destination Unknown](#cip-error-0x05-path-destination-unknown)
-4. [CIP Error 0x16: Object Does Not Exist](#cip-error-0x16-object-does-not-exist)
-5. [Connection Issues](#connection-issues)
-6. [Tag Reading/Writing Issues](#tag-readingwriting-issues)
-7. [Performance Issues](#performance-issues)
+1. [Tag Discovery Issues](#tag-discovery-issues)
+2. [CIP Error 0x01: Connection Failure](#cip-error-0x01-connection-failure)
+3. [CIP Error 0x04: Path Segment Error](#cip-error-0x04-path-segment-error)
+4. [CIP Error 0x05: Path Destination Unknown](#cip-error-0x05-path-destination-unknown)
+5. [CIP Error 0x16: Object Does Not Exist](#cip-error-0x16-object-does-not-exist)
+6. [Connection Issues](#connection-issues)
+7. [Tag Reading/Writing Issues](#tag-readingwriting-issues)
+8. [Performance Issues](#performance-issues)
+
+---
+
+## Tag Discovery Issues
+
+### Tag Discovery Returns 0 Tags or Fails with CIP Error 0x01
+
+**Symptoms:**
+- `discover_tags()` returns 0 tags
+- `discover_tags()` fails with "CIP Error 0x01: Connection failure"
+- Debug output shows error response instead of tag list
+
+**Common Causes:**
+
+#### 1. PLC Doesn't Support Tag Discovery
+
+**Not all Allen-Bradley PLCs support tag discovery.** Some older or specific models may not implement the Get Instance Attribute List service for the Symbol Object.
+
+**Solutions:**
+
+```rust
+// Try tag discovery first
+match client.discover_tags().await {
+    Ok(_) => {
+        println!("✅ Tag discovery successful");
+        // Use discovered tags
+    }
+    Err(e) => {
+        println!("⚠️ Tag discovery failed: {}", e);
+        println!("ℹ️ This PLC may not support tag discovery. You can still read tags directly by name.");
+        
+        // Read tags directly by name instead
+        match client.read_tag("YourTagName").await {
+            Ok(value) => println!("✅ Tag readable: {:?}", value),
+            Err(e) => println!("❌ Tag read failed: {}", e),
+        }
+    }
+}
+```
+
+**Workaround:** If tag discovery doesn't work, you can still read/write tags directly by name. You just won't be able to enumerate all available tags programmatically.
+
+#### 2. Incorrect Tag Path Format
+
+**Symptoms:**
+- Tag path parsing fails with "Unexpected character at position X"
+- Error occurs when using colon syntax like `"MainProgram:TagName"`
+
+**Problem:** The library expects the full format: `"Program:ProgramName.TagName"` (with "Program:" prefix and dot separator), not the shorthand `"ProgramName:TagName"`.
+
+**Solutions:**
+
+```rust
+// ❌ WRONG - This will fail
+client.read_tag("MainProgram:HMI_LogsPerMinute").await?;
+
+// ✅ CORRECT - Use full format with "Program:" prefix and dot separator
+client.read_tag("Program:MainProgram.HMI_LogsPerMinute").await?;
+
+// ✅ CORRECT - Controller-scoped tag (no prefix needed)
+client.read_tag("HMI_LogsPerMinute").await?;
+```
+
+**Tag Path Format Reference:**
+
+| Tag Type | Format | Example |
+|----------|--------|---------|
+| Controller-scoped | `TagName` | `"MyTag"` |
+| Program-scoped | `Program:ProgramName.TagName` | `"Program:MainProgram.MyTag"` |
+| Array element | `TagName[0]` | `"MyArray[5]"` |
+| UDT member | `TagName.MemberName` | `"MyUDT.Speed"` |
+| Program-scoped UDT member | `Program:ProgramName.TagName.MemberName` | `"Program:MainProgram.MotorData.Speed"` |
+
+**How to Find the Correct Tag Path:**
+
+1. **In RSLogix/Studio 5000:**
+   - Open the tag browser
+   - Check the "Scope" column:
+     - If it shows "Controller" → Use just the tag name: `"TagName"`
+     - If it shows a program name → Use: `"Program:ProgramName.TagName"`
+
+2. **Try Both Formats:**
+   ```rust
+   let variations = vec![
+       "HMI_LogsPerMinute",                           // Controller-scoped
+       "Program:MainProgram.HMI_LogsPerMinute",       // Program-scoped
+       "Program:HMI_LogsPerMinute",                   // If program name matches tag (unlikely)
+   ];
+   
+   for tag_path in variations {
+       match client.read_tag(tag_path).await {
+           Ok(value) => {
+               println!("✅ '{}' works: {:?}", tag_path, value);
+               break; // Found the correct format
+           }
+           Err(e) => println!("❌ '{}' failed: {}", tag_path, e),
+       }
+   }
+   ```
+
+#### 3. Tag Discovery Response Parsing Error
+
+**Symptoms:**
+- Debug shows "Detected item count: 131077" (clearly wrong)
+- "Not enough bytes for tag name" warnings
+- Parsed 0 tags from response
+
+**Cause:** The PLC returned an error response, but the parser tried to interpret it as a tag list.
+
+**Solution:** The library now detects error responses and provides a clear error message. If you see this, the PLC likely doesn't support tag discovery - use direct tag reads instead.
 
 ---
 
@@ -57,11 +168,12 @@ match client.discover_tags().await {
 
 // Step 3: Try different tag name variations
 let variations = vec![
-    "YourTag",
-    "yourTag",
-    "YOURTAG",
-    "Program:MainProgram.YourTag",
-    "Program:Main.YourTag",
+    "YourTag",                              // Controller-scoped
+    "yourTag",                              // Case variation
+    "YOURTAG",                              // Uppercase
+    "Program:MainProgram.YourTag",          // Program-scoped (correct format)
+    "Program:Main.YourTag",                 // Alternative program name
+    // ❌ Don't use: "MainProgram:YourTag" (wrong format - missing "Program:" prefix)
 ];
 
 for tag_name in variations {

@@ -8,10 +8,8 @@
 // - UDT writing functionality
 // - Error recovery and retry logic
 
-use rust_ethernet_ip::udt::{UdtDefinition, UdtMember, UserDefinedType};
-use rust_ethernet_ip::EipClient;
-use rust_ethernet_ip::PlcValue;
-use std::collections::HashMap;
+use rust_ethernet_ip::udt::{UdtMember, UserDefinedType};
+use rust_ethernet_ip::{PlcValue, UdtData};
 
 /// Mock EipClient for testing UDT functionality
 struct MockEipClient {
@@ -53,7 +51,8 @@ impl MockEipClient {
             // Parse UDT data
             let udt = create_test_udt_definition();
             let result = udt.to_hash_map(&self.udt_data)?;
-            Ok(PlcValue::Udt(result))
+            let udt_data_value = UdtData::from_hash_map(&result, &udt, 0)?;
+            Ok(PlcValue::Udt(udt_data_value))
         } else {
             Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -89,7 +88,8 @@ impl MockEipClient {
 
             let udt = create_test_udt_definition();
             let result = udt.to_hash_map(&all_data)?;
-            Ok(PlcValue::Udt(result))
+            let udt_data_value = UdtData::from_hash_map(&result, &udt, 0)?;
+            Ok(PlcValue::Udt(udt_data_value))
         } else {
             Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::NotFound,

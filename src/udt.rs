@@ -704,7 +704,7 @@ impl UserDefinedType {
     ) -> crate::error::Result<Vec<u8>> {
         match member.data_type {
             0x00C1 => match value {
-                PlcValue::Bool(b) => Ok(vec![if *b { 1 } else { 0 }]),
+                PlcValue::Bool(b) => Ok(vec![if *b { 0xFF } else { 0x00 }]),
                 _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
                     expected: "BOOL".to_string(),
                     actual: format!("{:?}", value),

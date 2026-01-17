@@ -511,10 +511,40 @@ impl TagManager {
             response
         );
 
+        // Check if this is a CIP error response
+        if response.len() >= 3 {
+            let service_reply = response[0];
+            let general_status = response[2];
+
+            // Check for error responses
+            if general_status != 0x00 {
+                // This is an error response, not a tag list
+                let error_msg = match general_status {
+                    0x01 => "Connection failure - Tag discovery may not be supported on this PLC",
+                    0x04 => "Path segment error",
+                    0x05 => "Path destination unknown",
+                    0x16 => "Object does not exist",
+                    _ => "Unknown CIP error",
+                };
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "CIP Error 0x{:02X} during tag discovery: {}. Some PLCs do not support tag discovery. Try reading tags directly by name.",
+                    general_status, error_msg
+                )));
+            }
+
+            // Verify this is a Get Instance Attribute List response (0xD5 = 0x55 + 0x80)
+            if service_reply != 0xD5 && service_reply != 0x55 {
+                // Might be a different service code, but if status is 0x00, try to parse anyway
+                if general_status == 0x00 {
+                    println!("[WARN] Unexpected service reply 0x{:02X}, but status is 0x00, attempting to parse", service_reply);
+                }
+            }
+        }
+
         let mut tags = Vec::new();
 
         // Allen-Bradley tag list response format:
-        // [Status(4)][ItemCount(4)][Items...]
+        // [ServiceReply(1)][Reserved(1)][Status(1)][AdditionalStatusSize(1)][ItemCount(4)][Items...]
         // Each item: [InstanceID(4)][NameLength(2)][Name][Type(2)][AdditionalData...]
 
         if response.len() < 8 {
@@ -523,11 +553,20 @@ impl TagManager {
             ));
         }
 
-        // Skip status (4 bytes) and get item count
+        // Skip service reply (1), reserved (1), status (1), additional status size (1)
+        // Then get item count (4 bytes)
         let item_count = u32::from_le_bytes([response[4], response[5], response[6], response[7]]);
         println!("[DEBUG] Detected item count: {}", item_count);
 
-        let mut offset = 8; // Skip status and item count
+        // Calculate offset: ServiceReply(1) + Reserved(1) + Status(1) + AdditionalStatusSize(1) + ItemCount(4) = 8
+        // Then add any additional status data if present
+        let mut offset = 8;
+        if response.len() > 4 {
+            let additional_status_size = response[3] as usize;
+            if additional_status_size > 0 {
+                offset += additional_status_size * 2; // Additional status is in words (2 bytes each)
+            }
+        }
 
         // Parse each tag entry
         while offset < response.len() {

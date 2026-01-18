@@ -330,7 +330,7 @@ async fn test_array_operations(
     println!("╚════════════════════════════════════════════════════════════════╝");
     println!();
 
-    print!("Enter array tag name (e.g., 'gArrayTest_DINT'): ");
+    print!("Enter array tag name (e.g., 'gTestArray_DINT'): ");
     io::stdout().flush()?;
     let mut array_input = String::new();
     io::stdin().read_line(&mut array_input)?;
@@ -577,7 +577,13 @@ async fn test_batch_operations(
 
     // Batch read
     println!("📖 Batch Read Test");
-    let test_tags = vec!["TestTag", "TestBool", "TestInt", "TestReal"];
+    let test_tags = vec![
+        "gTestArray_DINT[0]",
+        "gTestArray_DINT[5]",
+        "gTestArray_REAL[0]",
+        "gTestArray_BOOL[0]",
+        "gTestArray_INT[0]",
+    ];
     println!("  Reading {} tags...", test_tags.len());
 
     let start = Instant::now();
@@ -602,9 +608,10 @@ async fn test_batch_operations(
     // Batch write
     println!("\n✍️ Batch Write Test");
     let write_tags = vec![
-        ("TestTag", PlcValue::Bool(true)),
-        ("TestInt", PlcValue::Dint(12345)),
-        ("TestReal", PlcValue::Real(99.99)),
+        ("gTestArray_DINT[5]", PlcValue::Dint(999)),
+        ("gTestArray_REAL[0]", PlcValue::Real(88.8)),
+        ("gTestArray_BOOL[0]", PlcValue::Bool(true)),
+        ("gTestArray_INT[0]", PlcValue::Int(777)),
     ];
     println!("  Writing {} tags...", write_tags.len());
 
@@ -631,14 +638,17 @@ async fn test_batch_operations(
     println!("\n🔄 Mixed Batch Operations Test");
     let operations = vec![
         BatchOperation::Read {
-            tag_name: "TestTag".to_string(),
+            tag_name: "gTestArray_DINT[0]".to_string(),
         },
         BatchOperation::Read {
-            tag_name: "TestBool".to_string(),
+            tag_name: "gTestArray_BOOL[0]".to_string(),
         },
         BatchOperation::Write {
-            tag_name: "TestInt".to_string(),
+            tag_name: "gTestArray_DINT[5]".to_string(),
             value: PlcValue::Dint(999),
+        },
+        BatchOperation::Read {
+            tag_name: "gTestArray_DINT[5]".to_string(),
         },
     ];
 
@@ -735,7 +745,7 @@ async fn test_advanced_addressing(
     }
 
     // Complex nested path
-    print!("\nTest complex path? (Enter path like 'Program:Main.Array[5].Member.Status.15' or 'skip'): ");
+    print!("\nTest complex path? (Enter path like 'Program:TestProgram.gTestArray_DINT[5]' or 'gTestUDT.Array_DINT[5]' or 'skip'): ");
     io::stdout().flush()?;
     let mut complex_input = String::new();
     io::stdin().read_line(&mut complex_input)?;
@@ -760,7 +770,7 @@ async fn test_program_tags(
     println!("╚════════════════════════════════════════════════════════════════╝");
     println!();
 
-    print!("Enter program name (e.g., 'MainProgram'): ");
+    print!("Enter program name (e.g., 'TestProgram'): ");
     io::stdout().flush()?;
     let mut program_input = String::new();
     io::stdin().read_line(&mut program_input)?;
@@ -857,12 +867,12 @@ async fn test_performance(
     println!("╚════════════════════════════════════════════════════════════════╝");
     println!();
 
-    print!("Enter test tag name (default='TestTag'): ");
+    print!("Enter test tag name (default='gTestArray_DINT[0]'): ");
     io::stdout().flush()?;
     let mut tag_input = String::new();
     io::stdin().read_line(&mut tag_input)?;
     let test_tag = if tag_input.trim().is_empty() {
-        "TestTag"
+        "gTestArray_DINT[0]"
     } else {
         tag_input.trim()
     };
@@ -893,7 +903,10 @@ async fn test_performance(
 
     // Batch operations comparison
     println!("\n⏱️ Batch Operations Test ({} tags)...", num_ops);
-    let batch_tags: Vec<String> = (0..num_ops).map(|i| format!("{}", test_tag)).collect();
+    // Use different array indices for batch test
+    let batch_tags: Vec<String> = (0..num_ops)
+        .map(|i| format!("gTestArray_DINT[{}]", i))
+        .collect();
     let start = Instant::now();
     let batch_tags_str: Vec<&str> = batch_tags.iter().map(|s| s.as_str()).collect();
     match client.read_tags_batch(&batch_tags_str).await {

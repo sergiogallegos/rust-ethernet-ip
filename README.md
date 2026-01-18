@@ -1,12 +1,11 @@
 # 🦀 Rust EtherNet/IP Driver
 
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
+[![Version](https://img.shields.io/badge/version-0.6.1-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Performance](https://img.shields.io/badge/performance-3000%2B%20ops%2Fsec-green.svg)]()
 [![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)]()
 [![C# Wrapper](https://img.shields.io/badge/C%23%20wrapper-available-blue.svg)]()
-[![Python Wrapper](https://img.shields.io/badge/Python%20wrapper-available-blue.svg)]()
 [![Crates.io](https://img.shields.io/crates/v/rust-ethernet-ip.svg)](https://crates.io/crates/rust-ethernet-ip)
 [![Documentation](https://docs.rs/rust-ethernet-ip/badge.svg)](https://docs.rs/rust-ethernet-ip)
 [![Downloads](https://img.shields.io/crates/d/rust-ethernet-ip.svg)](https://crates.io/crates/rust-ethernet-ip)
@@ -18,7 +17,7 @@ A high-performance, production-ready EtherNet/IP communication library specifica
 
 ## 🎯 **Current Development Focus**
 
-**We are currently focusing on polishing the .NET stack (C# wrappers and examples) to production quality.**
+**We are focused on the .NET stack (C# wrappers and examples) for production-quality industrial automation applications.**
 
 - 🎯 **Active Development**: 
   - C# wrapper library (`RustEtherNetIp.dll`)
@@ -26,11 +25,9 @@ A high-performance, production-ready EtherNet/IP communication library specifica
   - WPF example application  
   - ASP.NET example application
   - Advanced features: TagGroup, Statistics, Batch Operations, STRING support, UDT arrays
-- ⏸️ **On Hold**: 
-  - Go wrapper and applications (will resume after .NET stack is complete)
-  - Python wrapper and applications (will resume after .NET stack is complete)
+  - Rust native examples and library improvements
 
-This focused approach ensures we deliver a robust, well-tested, production-ready .NET integration before expanding to other language ecosystems. The .NET stack serves as the reference implementation for future language bindings.
+This focused approach ensures we deliver a robust, well-tested, production-ready .NET integration for industrial automation systems.
 
 ## 🎯 **Project Focus**
 
@@ -41,7 +38,12 @@ This library is specifically designed for:
 - **Industrial Automation** software and SCADA systems
 - **High-performance** data acquisition and control
 
-### ✅ **v0.6.0 New Features**
+### ✅ **v0.6.1 New Features**
+- **🧹 Repository Cleanup**: Removed Go and Python wrappers to focus on Rust library and C# integration
+- **📦 Streamlined Examples**: Focused on Microsoft stack (WinForms, WPF, ASP.NET) and Rust native examples
+- **🔧 Improved Documentation**: Updated all documentation to reflect current focus
+
+### ✅ **v0.6.0 Features**
 - **🔧 Generic UDT Format**: New `UdtData` struct with `symbol_id` and raw bytes
   - Works with any UDT without requiring prior knowledge of member structure
   - Supports reading and writing UDTs generically
@@ -101,7 +103,7 @@ This library is specifically designed for:
 - **Intelligent Multi-Member Parsing**: Automatically detects and parses multiple UDT members (DINT, DINT, REAL)
 - **Byte Alignment Detection**: Smart alignment detection with reasonableness checks
 - **Advanced Chunked Reading**: Multiple strategies for large UDTs with intelligent error recovery
-- **Cross-Language Support**: All improvements work seamlessly across Rust, Go, and C# wrappers
+- **Cross-Language Support**: All improvements work seamlessly across Rust and C# wrappers
 - **Performance Optimized**: Sub-5ms response times for complex UDT operations
 
 ### 🔧 **Connection Robustness**
@@ -232,22 +234,6 @@ All Allen-Bradley native data types with proper CIP encoding:
 - **Advanced features**: TagGroup, Statistics, Batch Operations, STRING support
 - **Status**: Actively being polished to production quality
 
-#### **Go Integration** ⏸️ **ON HOLD**
-- **CGO wrapper** with comprehensive API coverage
-- **Type-safe Go bindings** for all PLC data types
-- **Connection management** and health monitoring
-- **Error handling** with Go-idiomatic patterns
-- **Full-stack example** with Go backend + Next.js frontend ([see example](examples/gonextjs/README.md))
-- **Status**: Development paused until .NET stack is complete
-
-#### **Python Integration** ⏸️ **ON HOLD**
-- **PyO3-based Python wrapper** with full API coverage
-- **Type-safe Python bindings** for all PLC data types
-- **Synchronous and asynchronous APIs** for flexible usage
-- **Comprehensive error handling** with Python exceptions
-- **Easy installation** via pip or maturin
-- **Cross-platform support** (Windows, Linux, macOS)
-- **Status**: Development paused until .NET stack is complete
 
 ### ⚠️ **Comprehensive Error Handling** ✅ **COMPLETED**
 - **Detailed CIP error mapping** with 40+ error codes
@@ -298,15 +284,13 @@ This demo showcases:
 - **Modern web technologies** for cross-platform deployment
 
 ### 🏷️ **Required PLC Tags**
-The demo reads 13 industrial tags including machine status, production metrics, process parameters, and OEE data. See the [Go + Next.js example](examples/gonextjs/README.md) for complete tag specifications and setup instructions.
-
-**Try it now:** Navigate to the "HMI Demo" tab in the [Go + Next.js fullstack example](examples/gonextjs/README.md)!
+The demo reads 13 industrial tags including machine status, production metrics, process parameters, and OEE data. See the ASP.NET example for complete tag specifications and setup instructions.
 
 ## 🚀 **Performance Characteristics**
 
 Optimized for PC applications with excellent performance:
 
-> **🆕 Latest Performance Improvements (v0.6.0)**
+> **🆕 Latest Performance Improvements (v0.6.1)**
 > 
 > Recent optimizations and improvements:
 > - **Generic UDT Format**: New `UdtData` struct enables universal UDT handling
@@ -376,15 +360,9 @@ The easiest way to get started is by adding the crate to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "0.5.3"
-tokio = { version = "1.0", features = ["full"] }
-
-### Rust Library
-Add to your `Cargo.toml`:
-
 ```toml
 [dependencies]
-rust-ethernet-ip = "0.6.0"
+rust-ethernet-ip = "0.6.1"
 tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -392,24 +370,12 @@ tokio = { version = "1.0", features = ["full"] }
 Install via NuGet:
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="0.6.0" />
+<PackageReference Include="RustEtherNetIp" Version="0.6.1" />
 ```
 
 Or via Package Manager Console:
 ```powershell
 Install-Package RustEtherNetIp
-```
-
-### Python Wrapper
-Install via pip:
-```bash
-pip install rust-ethernet-ip
-```
-
-Or build from source using maturin:
-```bash
-cd pywrapper
-maturin develop
 ```
 
 ## 📖 **Quick Start**
@@ -519,33 +485,6 @@ if (client.Connect("192.168.1.100:44818"))
 }
 ```
 
-### Python Usage
-
-```python
-from rust_ethernet_ip import PyEipClient
-
-def main():
-    # Create a client and connect to the PLC
-    client = PyEipClient(addr="192.168.0.1")
-    if not client.connect():
-        print("Failed to connect to PLC")
-        return
-
-    try:
-        # Read a DINT value
-        value = client.read_dint("TestDINT")
-        print("Read TestDINT:", value)
-        
-        # Write a new value
-        client.write_dint("TestDINT", 42)
-        print("Wrote 42 to TestDINT")
-        
-    except Exception as e:
-        print("Error:", e)
-
-if __name__ == "__main__":
-    main()
-```
 
 ### Advanced Tag Addressing
 
@@ -830,33 +769,12 @@ cargo run --example data_types_showcase
 
 ## 🎯 **Examples**
 
-Explore comprehensive examples demonstrating all library capabilities across different platforms:
+Explore comprehensive examples demonstrating all library capabilities:
 
-### **🌐 TypeScript + React Dashboard** *(Recommended)*
-Modern web-based PLC dashboard with real-time monitoring and advanced features.
-
-```bash
-# Start backend API
-cd examples/AspNetExample
-dotnet run
-
-# Start frontend (new terminal)
-cd examples/TypeScriptExample/frontend
-npm install && npm run dev
-```
-
-**Features:**
-- ✅ **Modern UI/UX** with glassmorphism design and responsive layout
-- ✅ **Real-time monitoring** with live tag updates and performance metrics
-- ✅ **Complete data type support** for all 13 Allen-Bradley types
-- ✅ **Advanced tag addressing** with interactive examples
-- ✅ **Type-safe API** with comprehensive TypeScript interfaces
-- ✅ **Professional features** including benchmarking and activity logging
-
-**Perfect for:** Web applications, dashboards, remote monitoring, modern industrial HMIs
-
-### **🖥️ WPF Desktop Application**
+### **🖥️ WPF Desktop Application** *(Recommended)*
 Rich desktop application with MVVM architecture and modern UI.
+
+![WPF Example Application](examples/screenshots/WPFExample.png)
 
 ```bash
 cd examples/WpfExample
@@ -875,6 +793,8 @@ dotnet run
 ### **🪟 WinForms Application**
 Traditional Windows Forms application with familiar UI patterns.
 
+![WinForms Example Application](examples/screenshots/WinFormsExample.png)
+
 ```bash
 cd examples/WinFormsExample
 dotnet run
@@ -891,6 +811,8 @@ dotnet run
 
 ### **🌐 ASP.NET Core Web API**
 RESTful API backend providing HTTP access to PLC functionality.
+
+![ASP.NET Example Application](examples/screenshots/ASPExample.png)
 
 ```bash
 cd examples/AspNetExample
@@ -929,61 +851,10 @@ cargo run --example batch_operations_demo
 
 **Perfect for:** Rust applications, embedded systems, high-performance scenarios
 
-### **🐹 Go + Next.js Fullstack Example** *(NEW in v0.4.0!)*
-Modern fullstack demo with a Go backend (using the Rust Go wrapper) and a Next.js (TypeScript) frontend for real-time, batch, and performance operations.
-
-```bash
-# Start backend
-cd examples/gonextjs/backend
-go run .
-
-# Start frontend (new terminal)
-cd ../frontend
-npm install && npm run dev
-```
-
-**Features:**
-- ✅ **Go backend** using the Rust EtherNet/IP Go wrapper (FFI)
-- ✅ **Next.js frontend** (TypeScript, Tailwind, App Router)
-- ✅ **Batch read/write** and individual tag operations
-- ✅ **Performance benchmarking** (ops/sec, latency)
-- ✅ **Real-time tag updates** via WebSocket
-- ✅ **Comprehensive PLC data type support**
-- ✅ **Modern, responsive UI**
-- ✅ **🏭 Professional HMI/SCADA Demo** - Production-ready dashboard with OEE analysis, process monitoring, and industrial data visualization
-
-**Perfect for:** Modern web dashboards, Go/TypeScript fullstack apps, real-time industrial monitoring, HMI/SCADA systems
-
-### **⚡ Vue.js 3 + TypeScript Frontend** *(NEW in v0.4.0!)*
-Modern Vue.js 3 frontend with TypeScript, Tailwind CSS, and Pinia state management, designed to integrate with ASP.NET Core backends.
-
-```bash
-# Start backend API
-cd examples/AspNetExample
-dotnet run
-
-# Start Vue.js frontend (new terminal)
-cd examples/VueExample
-npm install && npm run dev
-```
-
-**Features:**
-- ✅ **Vue.js 3** with Composition API and TypeScript
-- ✅ **Tailwind CSS** for modern, responsive design
-- ✅ **Pinia state management** for application state
-- ✅ **Backend detection system** for automatic ASP.NET Core port discovery
-- ✅ **Component-based architecture** with reusable UI components
-- ✅ **Real-time connection monitoring** with PLC status display
-- ✅ **Tag operations interface** for read/write operations
-- ✅ **Professional dashboard** with metrics and activity logging
-- ✅ **Development tools** including BackendDetector for debugging
-
-**Perfect for:** Modern web applications, Vue.js-based HMIs, industrial dashboards, ASP.NET Core integration
 
 ### **🚀 Quick Start Guide**
 
 1. **Choose your platform:**
-   - **Web/Modern UI** → TypeScript + React Dashboard or Vue.js 3 + TypeScript
    - **Desktop/Windows** → WPF or WinForms Application  
    - **Web API/Services** → ASP.NET Core Web API
    - **Native/Performance** → Rust Examples
@@ -1005,22 +876,14 @@ npm install && npm run dev
 ### **📁 Example Structure**
 ```
 examples/
-├── TypeScriptExample/          # React + TypeScript dashboard
-│   ├── frontend/              # Modern web UI
-│   ├── start-backend.bat      # Backend startup script
-│   └── start-frontend.bat     # Frontend startup script
-├── VueExample/                 # Vue.js 3 + TypeScript frontend
-│   ├── src/                   # Vue.js source code
-│   ├── start-frontend.bat     # Frontend startup script
-│   └── README.md              # Comprehensive documentation
 ├── WpfExample/                # WPF desktop application
 ├── WinFormsExample/           # WinForms desktop application
 ├── AspNetExample/             # ASP.NET Core Web API
-├── gonextjs/                  # Go + Next.js fullstack example
-└── rust-examples/             # Native Rust examples
-    ├── advanced_tag_addressing.rs
-    ├── data_types_showcase.rs
-    └── batch_operations_demo.rs
+├── rust_examples/             # Native Rust examples
+│   ├── advanced_tag_addressing.rs
+│   ├── data_types_showcase.rs
+│   └── batch_operations_demo.rs
+└── csharp_examples/           # Additional C# examples
 ```
 
 Each example includes comprehensive documentation, setup instructions, and demonstrates different aspects of the library's capabilities.
@@ -1202,17 +1065,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built for the industrial automation community**
 
-## 📦 Examples
-
-- **C# + React**: Modern web and desktop examples using the C# wrapper
-- **Go + Next.js**: [Fullstack Go backend + Next.js frontend example](examples/gonextjs/README.md) (**NEW in v0.4.0!**)
-- **Vue.js 3 + TypeScript**: [Modern Vue.js frontend with ASP.NET Core integration](examples/VueExample/README.md) (**NEW in v0.4.0!**)
-- **TypeScript + ASP.NET**: Classic React + ASP.NET example
-- ...and more in the `examples/` directory
-
 ## 🏗️ Build All
 
-To build all wrappers, libraries, and examples (including Go + Next.js and Vue.js):
+To build all libraries and examples:
 
 ```bash
 ./build-all.bat
@@ -1221,18 +1076,22 @@ To build all wrappers, libraries, and examples (including Go + Next.js and Vue.j
 This script builds:
 - Rust library (DLL/SO/DYLIB)
 - C# wrapper and tests
-- Go wrapper and tests
-- All example backends and frontends (C#, Go, TypeScript, Next.js, Vue.js)
+- All example applications (WinForms, WPF, ASP.NET)
 
 See [BUILD.md](BUILD.md) for details.
 
 ## 🆕 Version
 
-**Current Release:** v0.6.0 ([CHANGELOG.md](CHANGELOG.md))
+**Current Release:** v0.6.1 ([CHANGELOG.md](CHANGELOG.md))
 
 ## 📝 Changelog
 
-### v0.6.0 (January 2026) - **CURRENT** 🎉
+### v0.6.1 (January 2026) - **CURRENT** 🎉
+- **🧹 Repository Cleanup**: Removed Go and Python wrappers to focus on Rust library and C# integration
+- **📦 Streamlined Examples**: Focused on Microsoft stack (WinForms, WPF, ASP.NET) and Rust native examples
+- **🔧 Improved Documentation**: Updated all documentation to reflect current focus
+
+### v0.6.0 (January 2026)
 - **🔧 Generic UDT Format**: New `UdtData` struct with `symbol_id` and raw bytes
 - **✅ Library Health**: All 31 unit tests passing, production-ready core
 - **📊 Array Element Access**: Full read/write support for array elements
@@ -1261,8 +1120,3 @@ See [CHANGELOG.md](CHANGELOG.md) for a full list of changes.
 ## 🚀 Release Notes
 
 See [RELEASE_NOTES_v0.5.0.md](RELEASE_NOTES_v0.5.0.md) for detailed release notes and migration info.
-
-## 🚀 Quick Start: Go + Next.js Fullstack Example
-
-- See [examples/gonextjs/README.md](examples/gonextjs/README.md) for step-by-step instructions.
-- Features: Go backend (using Rust FFI), Next.js frontend, batch ops, real-time, performance, and more.

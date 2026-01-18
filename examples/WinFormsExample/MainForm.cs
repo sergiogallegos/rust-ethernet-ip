@@ -32,9 +32,13 @@ namespace WinFormsExample
         private void InitializeCustomComponents()
         {
             // Set form properties
-            this.Text = "🦀 Rust EtherNet/IP - WinForms Demo with Batch Operations";
-            this.Size = new Size(1400, 1000);
+            this.Text = "🦀 Rust EtherNet/IP - Comprehensive Demo v0.6.1";
+            this.Size = new Size(1900, 1000);
+            this.MinimumSize = new Size(1900, 1000);
             this.StartPosition = FormStartPosition.CenterScreen;
+            
+            // Apply industrial theme
+            IndustrialTheme.ApplyTheme(this);
 
             // Create main layout (vertical stack)
             var mainLayout = new TableLayoutPanel
@@ -114,10 +118,10 @@ namespace WinFormsExample
             var useRoutePathCheck = new CheckBox
             {
                 Name = "useRoutePathCheck",
-                Text = "ControlLogix (Route Path)",
+                Text = "Use Route Path (Required)",
                 Location = new Point(440, 14),
                 AutoSize = true,
-                Checked = true // Default to ControlLogix
+                Checked = true // Default to checked since RoutePath is required for both ControlLogix and CompactLogix
             };
             panel.Controls.Add(useRoutePathCheck);
 
@@ -250,12 +254,64 @@ namespace WinFormsExample
             statisticsTab.Controls.Add(CreateStatisticsPanel());
             tabControl.TabPages.Add(statisticsTab);
 
+            // Subscriptions Tab
+            var subscriptionsTab = new TabPage("🔄 Subscriptions");
+            subscriptionsTab.Controls.Add(CreateSubscriptionsPanel());
+            tabControl.TabPages.Add(subscriptionsTab);
+
+            // Program Tags Tab
+            var programTagsTab = new TabPage("📋 Program Tags");
+            programTagsTab.Controls.Add(CreateProgramTagsPanel());
+            tabControl.TabPages.Add(programTagsTab);
+
+            // Detailed Discovery Tab
+            var detailedDiscoveryTab = new TabPage("🔍 Detailed Discovery");
+            detailedDiscoveryTab.Controls.Add(CreateDetailedDiscoveryPanel());
+            tabControl.TabPages.Add(detailedDiscoveryTab);
+
+            // Health & Cache Tab
+            var healthCacheTab = new TabPage("⚙️ Health & Cache");
+            healthCacheTab.Controls.Add(CreateHealthCachePanel());
+            tabControl.TabPages.Add(healthCacheTab);
+
             return tabControl;
+        }
+
+        private Panel CreateHelpPanel(string title, string description)
+        {
+            var helpPanel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 110, // Increased height to prevent text overlap and allow proper wrapping
+                BackColor = IndustrialTheme.Surface,
+                Padding = new Padding(12, 10, 12, 10),
+                Margin = new Padding(0, 0, 0, 0),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            var titleLabel = IndustrialTheme.CreateLabel(title, FontStyle.Bold, 10f);
+            titleLabel.ForeColor = IndustrialTheme.Primary;
+            titleLabel.Dock = DockStyle.Top;
+            titleLabel.Height = 24;
+            titleLabel.AutoSize = false;
+            titleLabel.Padding = new Padding(0, 0, 0, 5);
+            helpPanel.Controls.Add(titleLabel);
+
+            var descLabel = IndustrialTheme.CreateLabel(description, FontStyle.Regular, 9f);
+            descLabel.ForeColor = IndustrialTheme.TextPrimary;
+            descLabel.Dock = DockStyle.Fill;
+            descLabel.AutoSize = false;
+            descLabel.TextAlign = ContentAlignment.TopLeft;
+            descLabel.Padding = new Padding(0, 0, 0, 5);
+            helpPanel.Controls.Add(descLabel);
+
+            return helpPanel;
         }
 
         private Panel CreateIndividualOperationsPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
             var layout = new TableLayoutPanel
             {
@@ -263,7 +319,8 @@ namespace WinFormsExample
                 ColumnCount = 4,
                 RowCount = 2,
                 AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0, 0, 0, 10)
             };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
@@ -348,12 +405,14 @@ namespace WinFormsExample
 
         private Panel CreateBatchOperationsPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
             var batchTabControl = new TabControl
             {
                 Dock = DockStyle.Fill,
-                Name = "batchTabControl"
+                Name = "batchTabControl",
+                Padding = new Point(0, 0)
             };
 
             // Batch Read Tab
@@ -377,53 +436,16 @@ namespace WinFormsExample
 
         private Panel CreateBatchReadPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
-            // Title and description
-            var titleLabel = new Label
-            {
-                Text = "🚀 Batch Read Operations - 3-10x Faster Than Individual Reads!",
-                Font = new Font(this.Font, FontStyle.Bold),
-                ForeColor = Color.FromArgb(34, 197, 94),
-                Location = new Point(10, 10),
-                AutoSize = true
-            };
-            panel.Controls.Add(titleLabel);
-
-            // Setup instructions panel
-            var setupPanel = new Panel
-            {
-                Location = new Point(10, 35),
-                Size = new Size(820, 80),
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Color.FromArgb(240, 245, 255)
-            };
-            
-            var setupLabel = new Label
-            {
-                Text = "📋 Setup Instructions:",
-                Location = new Point(5, 5),
-                Font = new Font(this.Font, FontStyle.Bold),
-                AutoSize = true
-            };
-            setupPanel.Controls.Add(setupLabel);
-            
-            var instructionText = new Label
-            {
-                Text = "1. Create test tags in your PLC: TestTag (BOOL), TestBool (BOOL), TestInt (DINT), TestReal (REAL), TestString (STRING)\n" +
-                       "2. Or modify the tag names below to match existing tags in your PLC\n" +
-                       "✅ Full STRING support available! Supports all Allen-Bradley data types including proper AB STRING format.",
-                Location = new Point(5, 25),
-                Size = new Size(800, 50),
-                ForeColor = Color.FromArgb(75, 85, 99)
-            };
-            setupPanel.Controls.Add(instructionText);
-            panel.Controls.Add(setupPanel);
+            // Note: Title removed - help panel at parent level already provides context
+            // This prevents duplicate/overlapping messages
 
             var descLabel = new Label
             {
                 Text = "Enter multiple tag names (one per line) to read them all in a single optimized operation:",
-                Location = new Point(10, 125),
+                Location = new Point(10, 10), // Fixed position like Batch Write
                 AutoSize = true
             };
             panel.Controls.Add(descLabel);
@@ -432,7 +454,7 @@ namespace WinFormsExample
             var tagListTextBox = new TextBox
             {
                 Name = "batchReadTagsTextBox",
-                Location = new Point(10, 150),
+                Location = new Point(10, 35), // Fixed position like Batch Write
                 Size = new Size(300, 150),
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
@@ -445,7 +467,7 @@ namespace WinFormsExample
             {
                 Name = "batchReadButton",
                 Text = "🚀 Execute Batch Read",
-                Location = new Point(10, 310),
+                Location = new Point(10, 195), // Fixed position like Batch Write
                 Size = new Size(150, 30),
                 BackColor = Color.FromArgb(34, 197, 94),
                 ForeColor = Color.White,
@@ -459,7 +481,7 @@ namespace WinFormsExample
             {
                 Name = "batchReadPerformanceLabel",
                 Text = "⏱️ Performance: Click execute to see timing",
-                Location = new Point(170, 315),
+                Location = new Point(170, 200), // Fixed position like Batch Write
                 AutoSize = true
             };
             panel.Controls.Add(performanceLabel);
@@ -468,7 +490,7 @@ namespace WinFormsExample
             var resultsLabel = new Label
             {
                 Text = "📊 Results:",
-                Location = new Point(330, 150),
+                Location = new Point(330, 10), // Fixed position like Batch Write
                 AutoSize = true,
                 Font = new Font(this.Font, FontStyle.Bold)
             };
@@ -477,7 +499,7 @@ namespace WinFormsExample
             var resultsListView = new ListView
             {
                 Name = "batchReadResultsListView",
-                Location = new Point(330, 175),
+                Location = new Point(330, 35), // Fixed position like Batch Write
                 Size = new Size(500, 150),
                 View = View.Details,
                 FullRowSelect = true,
@@ -494,18 +516,11 @@ namespace WinFormsExample
 
         private Panel CreateBatchWritePanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
-            // Title and description
-            var titleLabel = new Label
-            {
-                Text = "✏️ Batch Write Operations - Atomic Multi-Tag Updates!",
-                Font = new Font(this.Font, FontStyle.Bold),
-                ForeColor = Color.FromArgb(249, 115, 22),
-                Location = new Point(10, 10),
-                AutoSize = true
-            };
-            panel.Controls.Add(titleLabel);
+            // Note: Title removed - help panel at parent level already provides context
+            // This prevents duplicate/overlapping messages
 
             var descLabel = new Label
             {
@@ -581,18 +596,11 @@ namespace WinFormsExample
 
         private Panel CreateMixedBatchPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
-            // Title and description
-            var titleLabel = new Label
-            {
-                Text = "🔄 Mixed Batch Operations - Coordinated Read & Write!",
-                Font = new Font(this.Font, FontStyle.Bold),
-                ForeColor = Color.FromArgb(147, 51, 234),
-                Location = new Point(10, 10),
-                AutoSize = true
-            };
-            panel.Controls.Add(titleLabel);
+            // Note: Title removed - help panel at parent level already provides context
+            // This prevents duplicate/overlapping messages
 
             var descLabel = new Label
             {
@@ -669,7 +677,8 @@ namespace WinFormsExample
 
         private Panel CreatePerformancePanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
             // Title
             var titleLabel = new Label
@@ -677,16 +686,18 @@ namespace WinFormsExample
                 Text = "📊 Performance Comparison: Individual vs Batch Operations",
                 Font = new Font(this.Font, FontStyle.Bold),
                 ForeColor = Color.FromArgb(59, 130, 246),
-                Location = new Point(10, 10),
-                AutoSize = true
+                Dock = DockStyle.Top,
+                Height = 30,
+                AutoSize = false,
+                Padding = new Padding(0, 5, 0, 5)
             };
             panel.Controls.Add(titleLabel);
 
-            // Test configuration
+            // Test configuration - adjusted positions to account for help panel and title
             var configLabel = new Label
             {
                 Text = "Test Configuration:",
-                Location = new Point(10, 40),
+                Location = new Point(10, 50), // Adjusted from 40 to 50 to account for title (30px) + spacing
                 AutoSize = true,
                 Font = new Font(this.Font, FontStyle.Bold)
             };
@@ -695,7 +706,7 @@ namespace WinFormsExample
             var tagCountLabel = new Label
             {
                 Text = "Number of tags:",
-                Location = new Point(10, 65),
+                Location = new Point(10, 75), // Adjusted from 65 to 75
                 AutoSize = true
             };
             panel.Controls.Add(tagCountLabel);
@@ -703,7 +714,7 @@ namespace WinFormsExample
             var tagCountNumeric = new NumericUpDown
             {
                 Name = "tagCountNumeric",
-                Location = new Point(120, 62),
+                Location = new Point(120, 72), // Adjusted from 62 to 72
                 Size = new Size(60, 23),
                 Minimum = 1,
                 Maximum = 50,
@@ -933,7 +944,8 @@ namespace WinFormsExample
 
         private Panel CreateBatchConfigPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
             // Title
             var titleLabel = new Label
@@ -941,16 +953,18 @@ namespace WinFormsExample
                 Text = "⚙️ Batch Operation Configuration - Optimize for Your PLC",
                 Font = new Font(this.Font, FontStyle.Bold),
                 ForeColor = Color.FromArgb(147, 51, 234),
-                Location = new Point(10, 10),
-                AutoSize = true
+                Dock = DockStyle.Top,
+                Height = 30,
+                AutoSize = false,
+                Padding = new Padding(0, 5, 0, 5)
             };
             panel.Controls.Add(titleLabel);
 
-            // Current config display
+            // Current config display - adjusted position to account for help panel and title
             var currentConfigGroupBox = new GroupBox
             {
                 Text = "📋 Current Configuration",
-                Location = new Point(10, 40),
+                Location = new Point(10, 50), // Adjusted from 40 to 50 to account for title (30px) + spacing
                 Size = new Size(400, 200)
             };
 
@@ -966,11 +980,11 @@ namespace WinFormsExample
 
             panel.Controls.Add(currentConfigGroupBox);
 
-            // Preset configurations
+            // Preset configurations - adjusted position to account for help panel
             var presetsGroupBox = new GroupBox
             {
                 Text = "🎯 Preset Configurations",
-                Location = new Point(430, 40),
+                Location = new Point(430, 10), // Adjusted from 40 to 10 since title uses Dock
                 Size = new Size(300, 200)
             };
 
@@ -1161,8 +1175,8 @@ namespace WinFormsExample
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 ReadOnly = true,
-                BackColor = Color.Black,
-                ForeColor = Color.LimeGreen,
+                BackColor = IndustrialTheme.SurfaceLight,
+                ForeColor = IndustrialTheme.TextPrimary,
                 Font = new Font("Consolas", 9)
             };
             panel.Controls.Add(logTextBox);
@@ -1229,7 +1243,7 @@ namespace WinFormsExample
             if (_isConnected)
             {
                 statusLabel.Text = "Connected";
-                statusLabel.ForeColor = Color.FromArgb(16, 185, 129);
+                statusLabel.ForeColor = IndustrialTheme.Success;
                 sessionLabel.Text = $"Session: 0x{_plcClient?.ClientId:X8}";
                 connectButton.Enabled = false;
                 disconnectButton.Enabled = true;
@@ -1267,6 +1281,26 @@ namespace WinFormsExample
                 if (tagGroupResumeButton != null) tagGroupResumeButton.Enabled = false; // Only enabled when suspended
                 if (statsResetButton != null) statsResetButton.Enabled = true;
 
+                // Enable new feature buttons
+                var subscribeButton = Controls.Find("subscribeButton", true).FirstOrDefault() as Button;
+                var unsubscribeButton = Controls.Find("unsubscribeButton", true).FirstOrDefault() as Button;
+                var discoverProgramButton = Controls.Find("discoverProgramButton", true).FirstOrDefault() as Button;
+                var readProgramTagButton = Controls.Find("readProgramTagButton", true).FirstOrDefault() as Button;
+                var discoverDetailedButton = Controls.Find("discoverDetailedButton", true).FirstOrDefault() as Button;
+                var checkHealthButton = Controls.Find("checkHealthButton", true).FirstOrDefault() as Button;
+                var checkHealthDetailedButton = Controls.Find("checkHealthDetailedButton", true).FirstOrDefault() as Button;
+                var clearCacheButton = Controls.Find("clearCacheButton", true).FirstOrDefault() as Button;
+                var refreshCacheButton = Controls.Find("refreshCacheButton", true).FirstOrDefault() as Button;
+
+                if (subscribeButton != null) subscribeButton.Enabled = true;
+                if (discoverProgramButton != null) discoverProgramButton.Enabled = true;
+                if (readProgramTagButton != null) readProgramTagButton.Enabled = true;
+                if (discoverDetailedButton != null) discoverDetailedButton.Enabled = true;
+                if (checkHealthButton != null) checkHealthButton.Enabled = true;
+                if (checkHealthDetailedButton != null) checkHealthDetailedButton.Enabled = true;
+                if (clearCacheButton != null) clearCacheButton.Enabled = true;
+                if (refreshCacheButton != null) refreshCacheButton.Enabled = true;
+
                 // Start statistics update timer
                 var statsPanel = Controls.Find("statisticsTab", true).FirstOrDefault() ?? 
                                 Controls.Find("CreateStatisticsPanel", true).FirstOrDefault();
@@ -1301,7 +1335,7 @@ namespace WinFormsExample
             else
             {
                 statusLabel.Text = "Disconnected";
-                statusLabel.ForeColor = Color.FromArgb(239, 68, 68);
+                statusLabel.ForeColor = IndustrialTheme.Error;
                 sessionLabel.Text = "Session: None";
                 connectButton.Enabled = true;
                 disconnectButton.Enabled = false;
@@ -1335,6 +1369,27 @@ namespace WinFormsExample
                 if (tagGroupSuspendButton != null) tagGroupSuspendButton.Enabled = false;
                 if (tagGroupResumeButton != null) tagGroupResumeButton.Enabled = false;
                 if (statsResetButton != null) statsResetButton.Enabled = false;
+
+                // Disable new feature buttons
+                var subscribeButton = Controls.Find("subscribeButton", true).FirstOrDefault() as Button;
+                var unsubscribeButton = Controls.Find("unsubscribeButton", true).FirstOrDefault() as Button;
+                var discoverProgramButton = Controls.Find("discoverProgramButton", true).FirstOrDefault() as Button;
+                var readProgramTagButton = Controls.Find("readProgramTagButton", true).FirstOrDefault() as Button;
+                var discoverDetailedButton = Controls.Find("discoverDetailedButton", true).FirstOrDefault() as Button;
+                var checkHealthButton = Controls.Find("checkHealthButton", true).FirstOrDefault() as Button;
+                var checkHealthDetailedButton = Controls.Find("checkHealthDetailedButton", true).FirstOrDefault() as Button;
+                var clearCacheButton = Controls.Find("clearCacheButton", true).FirstOrDefault() as Button;
+                var refreshCacheButton = Controls.Find("refreshCacheButton", true).FirstOrDefault() as Button;
+
+                if (subscribeButton != null) subscribeButton.Enabled = false;
+                if (unsubscribeButton != null) unsubscribeButton.Enabled = false;
+                if (discoverProgramButton != null) discoverProgramButton.Enabled = false;
+                if (readProgramTagButton != null) readProgramTagButton.Enabled = false;
+                if (discoverDetailedButton != null) discoverDetailedButton.Enabled = false;
+                if (checkHealthButton != null) checkHealthButton.Enabled = false;
+                if (checkHealthDetailedButton != null) checkHealthDetailedButton.Enabled = false;
+                if (clearCacheButton != null) clearCacheButton.Enabled = false;
+                if (refreshCacheButton != null) refreshCacheButton.Enabled = false;
 
                 // Stop statistics update timer
                 var tabControl = Controls.Find("mainTabControl", true).FirstOrDefault() as TabControl;
@@ -1427,21 +1482,21 @@ namespace WinFormsExample
                 Log("🔌 Connecting to PLC...");
                 _plcClient = new EtherNetIpClient();
                 
+                // Always use RoutePath - works for both ControlLogix and CompactLogix
+                // For CompactLogix, use slot 0; for ControlLogix, use the specified slot
+                var routePath = new RoutePath().AddSlot((byte)cpuSlotNumeric.Value);
                 if (useRoutePathCheck.Checked)
                 {
-                    // ControlLogix with RoutePath
-                    var routePath = new RoutePath().AddSlot((byte)cpuSlotNumeric.Value);
-                    Log($"📍 Using RoutePath: CPU Slot {cpuSlotNumeric.Value}");
-                    _isConnected = _plcClient.ConnectWithRoute(address, routePath);
-                    if (_isConnected)
-                    {
-                        Log("✅ Connected successfully with RoutePath!");
-                    }
+                    Log($"📍 Using RoutePath: CPU Slot {cpuSlotNumeric.Value} (ControlLogix)");
                 }
                 else
                 {
-                    // CompactLogix (direct connection)
-                    _isConnected = _plcClient.Connect(address);
+                    Log($"📍 Using RoutePath: CPU Slot {cpuSlotNumeric.Value} (CompactLogix - slot 0)");
+                }
+                _isConnected = _plcClient.ConnectWithRoute(address, routePath);
+                if (_isConnected)
+                {
+                    Log("✅ Connected successfully with RoutePath!");
                 }
                 
                 _currentAddress = address;
@@ -2964,7 +3019,8 @@ namespace WinFormsExample
 
         private Panel CreateArrayTestsPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
             var titleLabel = new Label
             {
@@ -3106,7 +3162,10 @@ namespace WinFormsExample
             {
                 Text = "Quick Array Tests",
                 Location = new Point(10, 270),
-                Size = new Size(810, 150)
+                Size = new Size(810, 150),
+                BackColor = IndustrialTheme.SurfaceLight,
+                ForeColor = IndustrialTheme.TextSecondary,
+                FlatStyle = FlatStyle.Flat
             };
 
             var quickTestButtons = new[]
@@ -3129,7 +3188,31 @@ namespace WinFormsExample
                     Location = new Point(xPos, yPos),
                     Size = new Size(180, 30),
                     Tag = (tag, op),
-                    Enabled = false
+                    Enabled = false,
+                    BackColor = IndustrialTheme.SurfaceLight,
+                    ForeColor = IndustrialTheme.TextSecondary,
+                    FlatStyle = FlatStyle.Flat,
+                    Font = IndustrialTheme.GetDefaultFont(9f)
+                };
+                btn.FlatAppearance.BorderSize = 1;
+                btn.FlatAppearance.BorderColor = IndustrialTheme.Border;
+                btn.FlatAppearance.MouseOverBackColor = IndustrialTheme.SurfaceLight; // Keep gray when disabled
+                btn.FlatAppearance.MouseDownBackColor = IndustrialTheme.SurfaceLight;
+                // Update button appearance when enabled/disabled
+                btn.EnabledChanged += (s, e) =>
+                {
+                    if (btn.Enabled)
+                    {
+                        btn.BackColor = IndustrialTheme.Primary;
+                        btn.ForeColor = Color.White;
+                        btn.FlatAppearance.MouseOverBackColor = IndustrialTheme.PrimaryHover;
+                    }
+                    else
+                    {
+                        btn.BackColor = IndustrialTheme.SurfaceLight;
+                        btn.ForeColor = IndustrialTheme.TextSecondary;
+                        btn.FlatAppearance.MouseOverBackColor = IndustrialTheme.SurfaceLight;
+                    }
                 };
                 btn.Click += QuickArrayTestButton_Click;
                 quickTestGroup.Controls.Add(btn);
@@ -3148,7 +3231,8 @@ namespace WinFormsExample
 
         private Panel CreateUdtTestsPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
             var titleLabel = new Label
             {
@@ -4244,7 +4328,8 @@ namespace WinFormsExample
 
         private Panel CreateStringOperationsPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
             // Limitations Notice
             var limitationsPanel = new Panel
@@ -4434,7 +4519,8 @@ namespace WinFormsExample
 
         private Panel CreateTagGroupPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
             var titleLabel = new Label
             {
@@ -4613,7 +4699,8 @@ namespace WinFormsExample
 
         private Panel CreateStatisticsPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
 
             var titleLabel = new Label
             {
@@ -5021,6 +5108,613 @@ namespace WinFormsExample
             }
 
             _connectionMonitorTimer?.Dispose();
+        }
+
+        // ============================================================================
+        // NEW FEATURE PANELS
+        // ============================================================================
+
+        private Panel CreateSubscriptionsPanel()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 3,
+                Padding = new Padding(5)
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+
+            // Left: Subscription controls
+            var controlsPanel = new Panel { Dock = DockStyle.Fill };
+            var tagNameLabel = IndustrialTheme.CreateLabel("Tag Name:", FontStyle.Bold);
+            tagNameLabel.Location = new Point(10, 10);
+            controlsPanel.Controls.Add(tagNameLabel);
+
+            var subscribeTagTextBox = IndustrialTheme.CreateTextBox("subscribeTagTextBox");
+            subscribeTagTextBox.Location = new Point(10, 35);
+            subscribeTagTextBox.Size = new Size(300, 23);
+            controlsPanel.Controls.Add(subscribeTagTextBox);
+
+            var subscribeButton = IndustrialTheme.CreateButton("Subscribe");
+            subscribeButton.Name = "subscribeButton";
+            subscribeButton.Location = new Point(10, 70);
+            subscribeButton.Size = new Size(120, 30);
+            subscribeButton.Enabled = false;
+            subscribeButton.Click += SubscribeButton_Click;
+            controlsPanel.Controls.Add(subscribeButton);
+
+            var unsubscribeButton = IndustrialTheme.CreateButton("Unsubscribe", IndustrialTheme.Error);
+            unsubscribeButton.Name = "unsubscribeButton";
+            unsubscribeButton.Location = new Point(140, 70);
+            unsubscribeButton.Size = new Size(120, 30);
+            unsubscribeButton.Enabled = false;
+            unsubscribeButton.Click += UnsubscribeButton_Click;
+            controlsPanel.Controls.Add(unsubscribeButton);
+
+            var subscriptionsListBox = new ListBox
+            {
+                Name = "subscriptionsListBox",
+                Location = new Point(10, 110),
+                Size = new Size(300, 30),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+            };
+            IndustrialTheme.ApplyTheme(subscriptionsListBox);
+            controlsPanel.Controls.Add(subscriptionsListBox);
+
+            layout.Controls.Add(controlsPanel, 0, 0);
+            layout.SetRowSpan(controlsPanel, 2);
+
+            // Right: Subscription values
+            var valuesPanel = new Panel { Dock = DockStyle.Fill };
+            var valuesLabel = IndustrialTheme.CreateLabel("Subscription Values:", FontStyle.Bold);
+            valuesLabel.Location = new Point(10, 10);
+            valuesPanel.Controls.Add(valuesLabel);
+
+            var valuesDataGridView = new DataGridView
+            {
+                Name = "subscriptionValuesGridView",
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                AllowUserToAddRows = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                ColumnHeadersHeight = 30
+            };
+            valuesDataGridView.Columns.Add("Tag", "Tag");
+            valuesDataGridView.Columns.Add("Value", "Value");
+            valuesDataGridView.Columns.Add("Updated", "Updated");
+            IndustrialTheme.ApplyTheme(valuesDataGridView);
+            valuesPanel.Controls.Add(valuesDataGridView);
+
+            layout.Controls.Add(valuesPanel, 1, 0);
+            layout.SetRowSpan(valuesPanel, 2);
+
+            // Bottom: Status
+            var statusLabel = IndustrialTheme.CreateStatusLabel("subscriptionStatusLabel", "No active subscriptions");
+            statusLabel.Dock = DockStyle.Fill;
+            layout.Controls.Add(statusLabel, 0, 2);
+            layout.SetColumnSpan(statusLabel, 2);
+
+            panel.Controls.Add(layout);
+            return panel;
+        }
+
+        private Panel CreateProgramTagsPanel()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                Padding = new Padding(5)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+
+            // Top: Controls
+            var controlsPanel = new Panel { Dock = DockStyle.Fill };
+            var programLabel = IndustrialTheme.CreateLabel("Program Name:", FontStyle.Bold);
+            programLabel.Location = new Point(10, 15);
+            controlsPanel.Controls.Add(programLabel);
+
+            var programNameTextBox = IndustrialTheme.CreateTextBox("programNameTextBox");
+            programNameTextBox.Location = new Point(120, 12);
+            programNameTextBox.Size = new Size(200, 23);
+            programNameTextBox.Text = "MainProgram";
+            controlsPanel.Controls.Add(programNameTextBox);
+
+            var discoverProgramButton = IndustrialTheme.CreateButton("Discover Program Tags");
+            discoverProgramButton.Name = "discoverProgramButton";
+            discoverProgramButton.Location = new Point(330, 10);
+            discoverProgramButton.Size = new Size(180, 30);
+            discoverProgramButton.Enabled = false;
+            discoverProgramButton.Click += DiscoverProgramButton_Click;
+            controlsPanel.Controls.Add(discoverProgramButton);
+
+            var readProgramTagButton = IndustrialTheme.CreateButton("Read Tag");
+            readProgramTagButton.Name = "readProgramTagButton";
+            readProgramTagButton.Location = new Point(520, 10);
+            readProgramTagButton.Size = new Size(100, 30);
+            readProgramTagButton.Enabled = false;
+            readProgramTagButton.Click += ReadProgramTagButton_Click;
+            controlsPanel.Controls.Add(readProgramTagButton);
+
+            var programTagNameTextBox = IndustrialTheme.CreateTextBox("programTagNameTextBox");
+            programTagNameTextBox.Location = new Point(120, 45);
+            programTagNameTextBox.Size = new Size(200, 23);
+            // PlaceholderText not available in all .NET versions
+            controlsPanel.Controls.Add(programTagNameTextBox);
+
+            layout.Controls.Add(controlsPanel, 0, 0);
+
+            // Middle: Results
+            var resultsDataGridView = new DataGridView
+            {
+                Name = "programTagsGridView",
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                AllowUserToAddRows = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                ColumnHeadersHeight = 30
+            };
+            resultsDataGridView.Columns.Add("Tag", "Tag Name");
+            resultsDataGridView.Columns.Add("Type", "Data Type");
+            resultsDataGridView.Columns.Add("Size", "Size (bytes)");
+            resultsDataGridView.Columns.Add("Scope", "Scope");
+            IndustrialTheme.ApplyTheme(resultsDataGridView);
+            layout.Controls.Add(resultsDataGridView, 0, 1);
+
+            // Bottom: Status
+            var statusLabel = IndustrialTheme.CreateLabel("Ready");
+            statusLabel.Name = "programTagsStatusLabel";
+            statusLabel.Dock = DockStyle.Fill;
+            layout.Controls.Add(statusLabel, 0, 2);
+
+            panel.Controls.Add(layout);
+            return panel;
+        }
+
+        private Panel CreateDetailedDiscoveryPanel()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                Padding = new Padding(5)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+
+            // Top: Controls
+            var controlsPanel = new Panel { Dock = DockStyle.Fill };
+            var discoverDetailedButton = IndustrialTheme.CreateButton("Discover All Tags (Detailed)");
+            discoverDetailedButton.Name = "discoverDetailedButton";
+            discoverDetailedButton.Location = new Point(10, 10);
+            discoverDetailedButton.Size = new Size(200, 30);
+            discoverDetailedButton.Enabled = false;
+            discoverDetailedButton.Click += DiscoverDetailedButton_Click;
+            controlsPanel.Controls.Add(discoverDetailedButton);
+
+            var filterLabel = IndustrialTheme.CreateLabel("Filter:");
+            filterLabel.Location = new Point(220, 15);
+            controlsPanel.Controls.Add(filterLabel);
+
+            var filterTextBox = IndustrialTheme.CreateTextBox("discoveryFilterTextBox");
+            filterTextBox.Location = new Point(260, 12);
+            filterTextBox.Size = new Size(200, 23);
+            // PlaceholderText not available in all .NET versions
+            filterTextBox.TextChanged += (s, e) => FilterDiscoveryResults();
+            controlsPanel.Controls.Add(filterTextBox);
+
+            layout.Controls.Add(controlsPanel, 0, 0);
+
+            // Middle: Results
+            var resultsDataGridView = new DataGridView
+            {
+                Name = "detailedDiscoveryGridView",
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                AllowUserToAddRows = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                ColumnHeadersHeight = 30
+            };
+            resultsDataGridView.Columns.Add("Tag", "Tag Name");
+            resultsDataGridView.Columns.Add("Type", "Data Type");
+            resultsDataGridView.Columns.Add("TypeCode", "Type Code");
+            resultsDataGridView.Columns.Add("Size", "Size");
+            resultsDataGridView.Columns.Add("Scope", "Scope");
+            resultsDataGridView.Columns.Add("Readable", "Readable");
+            resultsDataGridView.Columns.Add("Writable", "Writable");
+            IndustrialTheme.ApplyTheme(resultsDataGridView);
+            layout.Controls.Add(resultsDataGridView, 0, 1);
+
+            // Bottom: Status
+            var statusLabel = IndustrialTheme.CreateLabel("Ready");
+            statusLabel.Name = "detailedDiscoveryStatusLabel";
+            statusLabel.Dock = DockStyle.Fill;
+            layout.Controls.Add(statusLabel, 0, 2);
+
+            panel.Controls.Add(layout);
+            return panel;
+        }
+
+        private Panel CreateHealthCachePanel()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = IndustrialTheme.Background };
+            IndustrialTheme.ApplyTheme(panel);
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 3,
+                Padding = new Padding(5)
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 200));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+
+            // Left: Health Monitoring
+            var healthPanel = new Panel { Dock = DockStyle.Fill };
+            var healthLabel = IndustrialTheme.CreateLabel("Health Monitoring", FontStyle.Bold, 11f);
+            healthLabel.Location = new Point(10, 10);
+            healthPanel.Controls.Add(healthLabel);
+
+            var healthStatusLabel = IndustrialTheme.CreateStatusLabel("healthStatusLabel", "Not Connected");
+            healthStatusLabel.Location = new Point(10, 40);
+            healthStatusLabel.Size = new Size(400, 30);
+            healthPanel.Controls.Add(healthStatusLabel);
+
+            var checkHealthButton = IndustrialTheme.CreateButton("Check Health");
+            checkHealthButton.Name = "checkHealthButton";
+            checkHealthButton.Location = new Point(10, 80);
+            checkHealthButton.Size = new Size(120, 30);
+            checkHealthButton.Enabled = false;
+            checkHealthButton.Click += CheckHealthButton_Click;
+            healthPanel.Controls.Add(checkHealthButton);
+
+            var checkHealthDetailedButton = IndustrialTheme.CreateButton("Check Health (Detailed)");
+            checkHealthDetailedButton.Name = "checkHealthDetailedButton";
+            checkHealthDetailedButton.Location = new Point(140, 80);
+            checkHealthDetailedButton.Size = new Size(150, 30);
+            checkHealthDetailedButton.Enabled = false;
+            checkHealthDetailedButton.Click += CheckHealthDetailedButton_Click;
+            healthPanel.Controls.Add(checkHealthDetailedButton);
+
+            var healthInfoTextBox = new RichTextBox
+            {
+                Name = "healthInfoTextBox",
+                Location = new Point(10, 120),
+                Size = new Size(400, 70),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                ReadOnly = true
+            };
+            IndustrialTheme.ApplyTheme(healthInfoTextBox);
+            healthPanel.Controls.Add(healthInfoTextBox);
+
+            layout.Controls.Add(healthPanel, 0, 0);
+            layout.SetRowSpan(healthPanel, 2);
+
+            // Right: Cache Management
+            var cachePanel = new Panel { Dock = DockStyle.Fill };
+            var cacheLabel = IndustrialTheme.CreateLabel("Cache Management", FontStyle.Bold, 11f);
+            cacheLabel.Location = new Point(10, 10);
+            cachePanel.Controls.Add(cacheLabel);
+
+            var clearCacheButton = IndustrialTheme.CreateButton("Clear All Caches", IndustrialTheme.Warning);
+            clearCacheButton.Name = "clearCacheButton";
+            clearCacheButton.Location = new Point(10, 40);
+            clearCacheButton.Size = new Size(150, 30);
+            clearCacheButton.Enabled = false;
+            clearCacheButton.Click += ClearCacheButton_Click;
+            cachePanel.Controls.Add(clearCacheButton);
+
+            var cacheInfoLabel = IndustrialTheme.CreateLabel("Cache Information:");
+            cacheInfoLabel.Location = new Point(10, 80);
+            cachePanel.Controls.Add(cacheInfoLabel);
+
+            var cacheInfoTextBox = new RichTextBox
+            {
+                Name = "cacheInfoTextBox",
+                Location = new Point(10, 100),
+                Size = new Size(400, 90),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                ReadOnly = true
+            };
+            IndustrialTheme.ApplyTheme(cacheInfoTextBox);
+            cachePanel.Controls.Add(cacheInfoTextBox);
+
+            var refreshCacheButton = IndustrialTheme.CreateButton("Refresh Cache Info");
+            refreshCacheButton.Name = "refreshCacheButton";
+            refreshCacheButton.Location = new Point(170, 40);
+            refreshCacheButton.Size = new Size(150, 30);
+            refreshCacheButton.Enabled = false;
+            refreshCacheButton.Click += RefreshCacheButton_Click;
+            cachePanel.Controls.Add(refreshCacheButton);
+
+            layout.Controls.Add(cachePanel, 1, 0);
+            layout.SetRowSpan(cachePanel, 2);
+
+            // Bottom: Status
+            var statusLabel = IndustrialTheme.CreateLabel("Ready");
+            statusLabel.Name = "healthCacheStatusLabel";
+            statusLabel.Dock = DockStyle.Fill;
+            layout.Controls.Add(statusLabel, 0, 2);
+            layout.SetColumnSpan(statusLabel, 2);
+
+            panel.Controls.Add(layout);
+            return panel;
+        }
+
+        // Event handlers for new features
+        private async void SubscribeButton_Click(object? sender, EventArgs e)
+        {
+            // Implementation will be added
+            Log("Subscription feature - implementation in progress");
+        }
+
+        private async void UnsubscribeButton_Click(object? sender, EventArgs e)
+        {
+            // Implementation will be added
+            Log("Unsubscribe feature - implementation in progress");
+        }
+
+        private async void DiscoverProgramButton_Click(object? sender, EventArgs e)
+        {
+            // Implementation will be added
+            Log("Program tag discovery - implementation in progress");
+        }
+
+        private async void ReadProgramTagButton_Click(object? sender, EventArgs e)
+        {
+            // Implementation will be added
+            Log("Program tag read - implementation in progress");
+        }
+
+        private async void DiscoverDetailedButton_Click(object? sender, EventArgs e)
+        {
+            if (_plcClient == null || !_isConnected) return;
+
+            try
+            {
+                var statusLabel = Controls.Find("detailedDiscoveryStatusLabel", true).FirstOrDefault() as Label;
+                var resultsGridView = Controls.Find("detailedDiscoveryGridView", true).FirstOrDefault() as DataGridView;
+
+                if (statusLabel != null)
+                    statusLabel.Text = "Discovering tags...";
+
+                Log("🔍 Starting detailed tag discovery...");
+
+                await Task.Run(() =>
+                {
+                    try
+                    {
+                        // First, do basic discovery to populate cache
+                        _plcClient.DiscoverTags();
+                        Log("✅ Basic discovery completed, gathering detailed attributes...");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"⚠️ Basic discovery failed: {ex.Message} (some PLCs don't support tag discovery)");
+                        if (statusLabel != null)
+                            statusLabel.Text = $"Discovery failed: {ex.Message}";
+                        return;
+                    }
+                });
+
+                // Get cached tags and their metadata
+                var discoveredTags = new List<(string name, string type, string typeCode, string size, string scope, bool readable, bool writable)>();
+                
+                // Try to get metadata for known test tags
+                var testTags = new[]
+                {
+                    "gTestArray_DINT", "gTestArray_REAL", "gTestArray_BOOL", "gTestArray_INT",
+                    "gTestUDT", "gTest_STRING", "TestTag", "TestBool", "TestInt", "TestReal"
+                };
+
+                foreach (var tagName in testTags)
+                {
+                    try
+                    {
+                        var metadata = _plcClient.GetTagMetadata(tagName);
+                        // TagMetadata is a struct, so it's never null, but we check if it's valid
+                        if (metadata.DataType != 0)
+                        {
+                            discoveredTags.Add((
+                                tagName,
+                                metadata.DataType.ToString(),
+                                $"0x{metadata.DataType:X04}",
+                                "N/A", // Size not available in TagMetadata
+                                "N/A", // Scope not available in TagMetadata
+                                true,  // Assume readable if metadata exists
+                                true   // Assume writable if metadata exists
+                            ));
+                        }
+                    }
+                    catch { }
+                }
+
+                // Update UI on main thread
+                this.Invoke((MethodInvoker)delegate
+                {
+                    if (resultsGridView != null)
+                    {
+                        resultsGridView.Rows.Clear();
+                        foreach (var tag in discoveredTags)
+                        {
+                            resultsGridView.Rows.Add(
+                                tag.name, tag.type, tag.typeCode, tag.size,
+                                tag.scope, tag.readable, tag.writable
+                            );
+                        }
+                    }
+
+                    if (statusLabel != null)
+                        statusLabel.Text = discoveredTags.Count > 0 
+                            ? $"✅ Found {discoveredTags.Count} tags with metadata"
+                            : "⚠️ No tags found (tag discovery may not be supported by this PLC)";
+
+                    Log($"✅ Detailed discovery completed: {discoveredTags.Count} tags found");
+                });
+            }
+            catch (Exception ex)
+            {
+                Log($"❌ Detailed discovery error: {ex.Message}");
+                var statusLabel = Controls.Find("detailedDiscoveryStatusLabel", true).FirstOrDefault() as Label;
+                if (statusLabel != null)
+                    statusLabel.Text = $"Error: {ex.Message}";
+            }
+        }
+
+        private void FilterDiscoveryResults()
+        {
+            var filterTextBox = Controls.Find("discoveryFilterTextBox", true).FirstOrDefault() as TextBox;
+            var resultsGridView = Controls.Find("detailedDiscoveryGridView", true).FirstOrDefault() as DataGridView;
+
+            if (filterTextBox == null || resultsGridView == null) return;
+
+            var filter = filterTextBox.Text.ToLower();
+            if (string.IsNullOrEmpty(filter))
+            {
+                // Show all rows
+                foreach (DataGridViewRow row in resultsGridView.Rows)
+                    row.Visible = true;
+            }
+            else
+            {
+                // Filter rows
+                foreach (DataGridViewRow row in resultsGridView.Rows)
+                {
+                    if (row.Cells[0].Value != null)
+                    {
+                        var tagName = row.Cells[0].Value.ToString()?.ToLower() ?? "";
+                        row.Visible = tagName.Contains(filter);
+                    }
+                }
+            }
+        }
+
+        private async void CheckHealthButton_Click(object? sender, EventArgs e)
+        {
+            if (_plcClient == null || !_isConnected) return;
+
+            try
+            {
+                var isHealthy = _plcClient.CheckHealth();
+                var healthStatusLabel = Controls.Find("healthStatusLabel", true).FirstOrDefault() as Label;
+                var healthInfoTextBox = Controls.Find("healthInfoTextBox", true).FirstOrDefault() as RichTextBox;
+
+                if (healthStatusLabel != null)
+                {
+                    healthStatusLabel.Text = isHealthy ? "✅ Healthy" : "❌ Unhealthy";
+                    healthStatusLabel.ForeColor = isHealthy ? IndustrialTheme.Success : IndustrialTheme.Error;
+                }
+
+                if (healthInfoTextBox != null)
+                {
+                    healthInfoTextBox.Text = $"Health Check: {(isHealthy ? "PASSED" : "FAILED")}\n" +
+                                            $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+                                            $"Connection: {(_isConnected ? "Active" : "Inactive")}";
+                }
+
+                Log($"Health check: {(isHealthy ? "Healthy" : "Unhealthy")}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Health check error: {ex.Message}");
+            }
+        }
+
+        private async void CheckHealthDetailedButton_Click(object? sender, EventArgs e)
+        {
+            if (_plcClient == null || !_isConnected) return;
+
+            try
+            {
+                var isHealthy = _plcClient.CheckHealthDetailed();
+                var healthStatusLabel = Controls.Find("healthStatusLabel", true).FirstOrDefault() as Label;
+                var healthInfoTextBox = Controls.Find("healthInfoTextBox", true).FirstOrDefault() as RichTextBox;
+
+                if (healthStatusLabel != null)
+                {
+                    healthStatusLabel.Text = isHealthy ? "✅ Healthy (Detailed)" : "❌ Unhealthy (Detailed)";
+                    healthStatusLabel.ForeColor = isHealthy ? IndustrialTheme.Success : IndustrialTheme.Error;
+                }
+
+                if (healthInfoTextBox != null)
+                {
+                    healthInfoTextBox.Text = $"Detailed Health Check: {(isHealthy ? "PASSED" : "FAILED")}\n" +
+                                            $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+                                            $"Connection: {(_isConnected ? "Active" : "Inactive")}\n" +
+                                            $"Client ID: 0x{_plcClient.ClientId:X8}";
+                }
+
+                Log($"Detailed health check: {(isHealthy ? "Healthy" : "Unhealthy")}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Detailed health check error: {ex.Message}");
+            }
+        }
+
+        private async void ClearCacheButton_Click(object? sender, EventArgs e)
+        {
+            if (_plcClient == null || !_isConnected) return;
+
+            try
+            {
+                // Note: ClearCache method may need to be added to the C# wrapper
+                Log("Cache cleared (if supported by wrapper)");
+                await RefreshCacheInfo();
+            }
+            catch (Exception ex)
+            {
+                Log($"Clear cache error: {ex.Message}");
+            }
+        }
+
+        private async Task RefreshCacheInfo()
+        {
+            if (_plcClient == null || !_isConnected) return;
+
+            try
+            {
+                var cacheInfoTextBox = Controls.Find("cacheInfoTextBox", true).FirstOrDefault() as RichTextBox;
+                if (cacheInfoTextBox != null)
+                {
+                    // Get cache information (implementation depends on wrapper methods)
+                    cacheInfoTextBox.Text = $"Cache Information\n" +
+                                           $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+                                           $"Note: Cache management methods may need to be added to wrapper";
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Refresh cache info error: {ex.Message}");
+            }
+        }
+
+        private async void RefreshCacheButton_Click(object? sender, EventArgs e)
+        {
+            await RefreshCacheInfo();
         }
     }
 

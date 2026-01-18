@@ -195,9 +195,10 @@ fn test_route_path_cip_bytes() {
 
     let cip_bytes = route.to_cip_bytes();
 
-    // Should contain backplane slot (0x00, 0x00) and IP address
+    // Should contain backplane slot (0x01, 0x00) and IP address
+    // Format: [0x01, slot] where 0x01 = Port Segment (8-bit link) for Port 1 (backplane)
     assert!(cip_bytes.len() >= 6); // 2 bytes for slot + 4 bytes for IP
-    assert_eq!(cip_bytes[0], 0x00); // Backplane port
+    assert_eq!(cip_bytes[0], 0x01); // Port Segment for Port 1 (backplane)
     assert_eq!(cip_bytes[1], 0x00); // Slot 0
 }
 

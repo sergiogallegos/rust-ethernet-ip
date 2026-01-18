@@ -6,39 +6,75 @@
     <Application.Resources>
         <!-- Add the converters with correct namespace -->
         <converters:BoolToColorConverter x:Key="BoolToColorConverter"/>
-        <!-- Modern Color Scheme -->
-        <SolidColorBrush x:Key="PrimaryBrush" Color="#2196F3"/>
-        <SolidColorBrush x:Key="PrimaryDarkBrush" Color="#1976D2"/>
-        <SolidColorBrush x:Key="AccentBrush" Color="#FF4081"/>
-        <SolidColorBrush x:Key="SuccessBrush" Color="#4CAF50"/>
-        <SolidColorBrush x:Key="WarningBrush" Color="#FF9800"/>
-        <SolidColorBrush x:Key="ErrorBrush" Color="#F44336"/>
-        <SolidColorBrush x:Key="BackgroundBrush" Color="#FAFAFA"/>
+        <!-- Industrial HMI Light Theme Color Scheme -->
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#0078D4"/>
+        <SolidColorBrush x:Key="PrimaryDarkBrush" Color="#0067B8"/>
+        <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#005A9E"/>
+        <SolidColorBrush x:Key="PrimaryLightBrush" Color="#E6F0FF"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#0078D4"/>
+        <SolidColorBrush x:Key="SuccessBrush" Color="#107C10"/>
+        <SolidColorBrush x:Key="SuccessLightBrush" Color="#E6F5E6"/>
+        <SolidColorBrush x:Key="WarningBrush" Color="#FFB900"/>
+        <SolidColorBrush x:Key="WarningLightBrush" Color="#FFF9E6"/>
+        <SolidColorBrush x:Key="ErrorBrush" Color="#E81123"/>
+        <SolidColorBrush x:Key="ErrorLightBrush" Color="#FFF0F0"/>
+        <SolidColorBrush x:Key="BackgroundBrush" Color="#F0F2F5"/>
         <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="SurfaceLightBrush" Color="#FAFBFC"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#212121"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#767676"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="#E1E1E6"/>
+        <SolidColorBrush x:Key="BorderLightBrush" Color="#F0F0F5"/>
+        <SolidColorBrush x:Key="DisabledBrush" Color="#C8C8C8"/>
         
-        <!-- Modern Button Style -->
+        <!-- Industrial HMI Button Style -->
         <Style x:Key="ModernButton" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Padding" Value="20,10"/>
             <Setter Property="Margin" Value="4"/>
-            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="10"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}" 
-                                CornerRadius="4">
+                                CornerRadius="4"
+                                BorderThickness="0">
                             <ContentPresenter HorizontalAlignment="Center" 
-                                            VerticalAlignment="Center"/>
+                                            VerticalAlignment="Center"
+                                            Margin="{TemplateBinding Padding}"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="{StaticResource PrimaryDarkBrush}"/>
+                                <Setter Property="Background" Value="{StaticResource PrimaryHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#005A9E"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="{StaticResource DisabledBrush}"/>
+                                <Setter Property="Foreground" Value="#999999"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <!-- Card Panel Style -->
+        <Style x:Key="CardPanel" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="8"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#1A000000" Direction="270" ShadowDepth="2" BlurRadius="4" Opacity="0.1"/>
                 </Setter.Value>
             </Setter>
         </Style>

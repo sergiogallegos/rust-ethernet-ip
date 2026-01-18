@@ -4,8 +4,9 @@
         xmlns:vm="clr-namespace:WpfExample.ViewModels"
         xmlns:local="clr-namespace:WpfExample"
         xmlns:converters="clr-namespace:WpfExample.Converters"
-        Title="🦀 Rust EtherNet/IP - WPF Demo" 
-        Height="700" Width="1000"
+        Title="🦀 Rust EtherNet/IP - Comprehensive Demo v0.6.1" 
+        Height="1000" Width="1900"
+        MinHeight="1000" MinWidth="1900"
         Background="{StaticResource BackgroundBrush}"
         WindowStartupLocation="CenterScreen">
     
@@ -30,7 +31,11 @@
         
         <!-- Header -->
         <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
-                CornerRadius="8" Padding="16" Margin="0,0,0,16">
+                CornerRadius="6" Padding="20" Margin="0,0,0,12"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect Color="#1A000000" Direction="270" ShadowDepth="2" BlurRadius="4" Opacity="0.08"/>
+            </Border.Effect>
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -56,7 +61,7 @@
                                 <Binding Path="IsConnected" Converter="{StaticResource InvertedBoolConverter}"/>
                             </TextBox.IsEnabled>
                         </TextBox>
-                        <CheckBox Content="ControlLogix (Route Path)" IsChecked="{Binding UseRoutePath}" 
+                        <CheckBox Content="Use Route Path (Required)" IsChecked="{Binding UseRoutePath}" 
                                   VerticalAlignment="Center" Margin="16,0,8,0">
                             <CheckBox.IsEnabled>
                                 <Binding Path="IsConnected" Converter="{StaticResource InvertedBoolConverter}"/>
@@ -112,7 +117,11 @@
         
         <!-- Performance Info -->
         <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" 
-                CornerRadius="8" Padding="16" Margin="0,0,0,16">
+                CornerRadius="6" Padding="20" Margin="0,0,0,12"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect Color="#1A000000" Direction="270" ShadowDepth="2" BlurRadius="4" Opacity="0.08"/>
+            </Border.Effect>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -152,7 +161,11 @@
                         
                         <!-- Left Panel: Tag Monitoring -->
                         <Border Grid.Column="0" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,8,0">
+                                CornerRadius="6" Padding="20" Margin="0,0,8,0"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#1A000000" Direction="270" ShadowDepth="2" BlurRadius="4" Opacity="0.08"/>
+                            </Border.Effect>
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -239,7 +252,11 @@
                         
                         <!-- Right Panel: Activity Log -->
                         <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="8,0,0,0">
+                                CornerRadius="6" Padding="20" Margin="8,0,0,0"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#1A000000" Direction="270" ShadowDepth="2" BlurRadius="4" Opacity="0.08"/>
+                            </Border.Effect>
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -252,7 +269,8 @@
                                 
                                 <!-- Log ListBox -->
                                 <ListBox Grid.Row="1" ItemsSource="{Binding LogMessages}"
-                                         Background="#1E1E1E" Foreground="#00FF00" 
+                                         Background="{StaticResource SurfaceLightBrush}" 
+                                         Foreground="{StaticResource TextPrimaryBrush}" 
                                          FontFamily="Consolas" FontSize="12"
                                          BorderThickness="0" Padding="8">
                                     <ListBox.ItemContainerStyle>
@@ -279,7 +297,7 @@
                         
                         <!-- Array Read Section -->
                         <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -306,7 +324,7 @@
                         
                         <!-- Array Write Section -->
                         <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -330,7 +348,7 @@
                         
                         <!-- Results -->
                         <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16">
+                                CornerRadius="6" Padding="16">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -344,7 +362,8 @@
                                     <TextBlock Text="{Binding ArrayResult}" 
                                                FontFamily="Consolas" FontSize="12" 
                                                TextWrapping="Wrap"
-                                               Background="#1E1E1E" Foreground="#00FF00" Padding="8"/>
+                                               Background="{StaticResource SurfaceLightBrush}" 
+                                               Foreground="{StaticResource TextPrimaryBrush}" Padding="8"/>
                                 </ScrollViewer>
                             </Grid>
                         </Border>
@@ -363,7 +382,7 @@
                         
                         <!-- UDT Read Section -->
                         <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -385,7 +404,7 @@
                         
                         <!-- UDT Member Read Section -->
                         <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -412,7 +431,7 @@
                         
                         <!-- UDT Member Write Section -->
                         <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -436,7 +455,7 @@
                         
                         <!-- Results -->
                         <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16">
+                                CornerRadius="6" Padding="16">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -450,7 +469,8 @@
                                     <TextBlock Text="{Binding UdtResult}" 
                                                FontFamily="Consolas" FontSize="12" 
                                                TextWrapping="Wrap"
-                                               Background="#1E1E1E" Foreground="#00FF00" Padding="8"/>
+                                               Background="{StaticResource SurfaceLightBrush}" 
+                                               Foreground="{StaticResource TextPrimaryBrush}" Padding="8"/>
                                 </ScrollViewer>
                             </Grid>
                         </Border>
@@ -476,7 +496,7 @@
                         
                         <!-- STRING Read Section -->
                         <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -503,7 +523,7 @@
                         
                         <!-- STRING Write Section -->
                         <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -532,7 +552,7 @@
                         
                         <!-- LogixString Helper Section -->
                         <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16">
+                                CornerRadius="6" Padding="16">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -545,7 +565,8 @@
                                 <TextBlock Grid.Row="1" Text="{Binding LogixStringExample}" 
                                            FontFamily="Consolas" FontSize="12" 
                                            TextWrapping="Wrap"
-                                           Background="#1E1E1E" Foreground="#00FF00" Padding="8"/>
+                                           Background="{StaticResource SurfaceLightBrush}" 
+                                           Foreground="{StaticResource TextPrimaryBrush}" Padding="8"/>
                             </Grid>
                         </Border>
                     </Grid>
@@ -562,7 +583,7 @@
                         
                         <!-- Tag Group Configuration -->
                         <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -604,7 +625,7 @@
                         
                         <!-- Tag Group Values -->
                         <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16">
+                                CornerRadius="6" Padding="16">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -639,7 +660,7 @@
                         </Grid.RowDefinitions>
                         
                         <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,0,16">
+                                CornerRadius="6" Padding="16" Margin="0,0,0,16">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -697,7 +718,7 @@
                         
                         <!-- Batch Read Section -->
                         <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,0,8,8">
+                                CornerRadius="6" Padding="16" Margin="0,0,8,8">
                             <StackPanel>
                                 <TextBlock Text="🚀 Batch Read Operations" FontSize="16" FontWeight="Bold" 
                                            Foreground="{StaticResource SuccessBrush}" Margin="0,0,0,8"/>
@@ -712,7 +733,7 @@
                         
                         <!-- Batch Write Section -->
                         <Border Grid.Row="0" Grid.Column="1" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="8,0,0,8">
+                                CornerRadius="6" Padding="16" Margin="8,0,0,8">
                             <StackPanel>
                                 <TextBlock Text="✏️ Batch Write Operations" FontSize="16" FontWeight="Bold" 
                                            Foreground="{StaticResource WarningBrush}" Margin="0,0,0,8"/>
@@ -727,14 +748,14 @@
                         
                         <!-- Performance Info -->
                         <Border Grid.Row="2" Grid.ColumnSpan="2" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,8">
+                                CornerRadius="6" Padding="16" Margin="0,8">
                             <TextBlock Text="{Binding BatchPerformance}" FontWeight="Bold" 
                                        FontSize="14" HorizontalAlignment="Center"/>
                         </Border>
                         
                         <!-- Results Section -->
                         <Border Grid.Row="3" Grid.ColumnSpan="2" Background="{StaticResource SurfaceBrush}" 
-                                CornerRadius="8" Padding="16" Margin="0,8,0,0">
+                                CornerRadius="6" Padding="16" Margin="0,8,0,0">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -744,9 +765,187 @@
                                 <TextBlock Grid.Row="0" Text="📊 Batch Results" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                                     <TextBlock Text="{Binding BatchResults}" FontFamily="Consolas" FontSize="12" 
-                                               Background="#1E1E1E" Foreground="#00FF00" Padding="8"/>
+                                               Background="{StaticResource SurfaceLightBrush}" 
+                                               Foreground="{StaticResource TextPrimaryBrush}" Padding="8"/>
                                 </ScrollViewer>
                             </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                
+                <!-- Subscriptions Tab -->
+                <TabItem Header="🔄 Subscriptions">
+                    <Grid Margin="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <!-- Left: Subscription Controls -->
+                        <Border Grid.Column="0" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="6" Padding="16" Margin="0,0,8,0">
+                            <StackPanel>
+                                <TextBlock Text="🔄 Real-Time Subscriptions" FontSize="16" FontWeight="Bold" Margin="0,0,0,16"/>
+                                <TextBlock Text="Tag Name:" Margin="0,0,0,4"/>
+                                <TextBox Text="{Binding SubscribeTagName}" Margin="0,0,0,8"/>
+                                <Button Content="Subscribe" Command="{Binding SubscribeCommand}"
+                                        Style="{StaticResource ModernButton}" Margin="0,0,0,8"
+                                        IsEnabled="{Binding IsConnected}"/>
+                                <Button Content="Unsubscribe" Command="{Binding UnsubscribeCommand}"
+                                        Style="{StaticResource ErrorButton}" Margin="0,0,0,16"
+                                        IsEnabled="{Binding IsConnected}"/>
+                                <TextBlock Text="Active Subscriptions:" FontWeight="Bold" Margin="0,0,0,8"/>
+                                <ListBox ItemsSource="{Binding Subscriptions}" Height="200"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Right: Subscription Values -->
+                        <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="6" Padding="16" Margin="8,0,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="📊 Subscription Values" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                                <DataGrid Grid.Row="1" ItemsSource="{Binding SubscriptionValues}" 
+                                          AutoGenerateColumns="False" CanUserAddRows="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Tag" Binding="{Binding TagName}" Width="*"/>
+                                        <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*"/>
+                                        <DataGridTextColumn Header="Updated" Binding="{Binding Updated, StringFormat='HH:mm:ss'}" Width="Auto"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                
+                <!-- Program Tags Tab -->
+                <TabItem Header="📋 Program Tags">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Controls -->
+                        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="📋 Program-Scoped Tags" FontSize="16" FontWeight="Bold" Margin="0,0,0,16"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Program Name:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Text="{Binding ProgramName}" Width="200" Margin="0,0,8,0"/>
+                                    <Button Content="Discover Program Tags" Command="{Binding DiscoverProgramTagsCommand}"
+                                            Style="{StaticResource ModernButton}" Margin="0,0,8,0"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                    <TextBlock Text="Tag Name:" VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                    <TextBox Text="{Binding ProgramTagName}" Width="200" Margin="0,0,8,0"/>
+                                    <Button Content="Read Tag" Command="{Binding ReadProgramTagCommand}"
+                                            Style="{StaticResource ModernButton}"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Results -->
+                        <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="6" Padding="16">
+                            <DataGrid ItemsSource="{Binding ProgramTags}" 
+                                      AutoGenerateColumns="False" CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Tag Name" Binding="{Binding Name}" Width="*"/>
+                                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Scope" Binding="{Binding Scope}" Width="Auto"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                
+                <!-- Detailed Discovery Tab -->
+                <TabItem Header="🔍 Detailed Discovery">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Controls -->
+                        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="6" Padding="16" Margin="0,0,0,8">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Discover All Tags (Detailed)" Command="{Binding DiscoverDetailedCommand}"
+                                        Style="{StaticResource ModernButton}" Margin="0,0,16,0"
+                                        IsEnabled="{Binding IsConnected}"/>
+                                <TextBlock Text="Filter:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBox Text="{Binding DiscoveryFilter}" Width="200"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Results -->
+                        <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="6" Padding="16">
+                            <DataGrid ItemsSource="{Binding DetailedTags}" 
+                                      AutoGenerateColumns="False" CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Tag" Binding="{Binding Name}" Width="*"/>
+                                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Type Code" Binding="{Binding TypeCode}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Scope" Binding="{Binding Scope}" Width="Auto"/>
+                                    <DataGridCheckBoxColumn Header="Readable" Binding="{Binding Readable}" Width="Auto"/>
+                                    <DataGridCheckBoxColumn Header="Writable" Binding="{Binding Writable}" Width="Auto"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                
+                <!-- Health & Cache Tab -->
+                <TabItem Header="⚙️ Health &amp; Cache">
+                    <Grid Margin="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <!-- Health Monitoring -->
+                        <Border Grid.Column="0" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="6" Padding="16" Margin="0,0,8,0">
+                            <StackPanel>
+                                <TextBlock Text="⚙️ Health Monitoring" FontSize="16" FontWeight="Bold" Margin="0,0,0,16"/>
+                                <TextBlock Text="{Binding HealthStatus}" FontSize="14" FontWeight="Bold" 
+                                           Foreground="{Binding HealthStatusColor}" Margin="0,0,0,16"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                    <Button Content="Check Health" Command="{Binding CheckHealthCommand}"
+                                            Style="{StaticResource ModernButton}" Margin="0,0,8,0"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                    <Button Content="Check Health (Detailed)" Command="{Binding CheckHealthDetailedCommand}"
+                                            Style="{StaticResource ModernButton}"
+                                            IsEnabled="{Binding IsConnected}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding HealthInfo}" TextWrapping="Wrap" 
+                                           FontFamily="Consolas" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Cache Management -->
+                        <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" 
+                                CornerRadius="6" Padding="16" Margin="8,0,0,0">
+                            <StackPanel>
+                                <TextBlock Text="🗑️ Cache Management" FontSize="16" FontWeight="Bold" Margin="0,0,0,16"/>
+                                <Button Content="Clear All Caches" Command="{Binding ClearCacheCommand}"
+                                        Style="{StaticResource WarningButton}" Margin="0,0,0,16"
+                                        IsEnabled="{Binding IsConnected}"/>
+                                <Button Content="Refresh Cache Info" Command="{Binding RefreshCacheCommand}"
+                                        Style="{StaticResource ModernButton}" Margin="0,0,0,16"
+                                        IsEnabled="{Binding IsConnected}"/>
+                                <TextBlock Text="{Binding CacheInfo}" TextWrapping="Wrap" 
+                                           FontFamily="Consolas" FontSize="11"/>
+                            </StackPanel>
                         </Border>
                     </Grid>
                 </TabItem>

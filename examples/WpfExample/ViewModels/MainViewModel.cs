@@ -28,7 +28,7 @@ namespace WpfExample.ViewModels
         private string plcAddress = "192.168.0.1:44818";
 
         [ObservableProperty]
-        private bool useRoutePath = false;
+        private bool useRoutePath = true; // Default to true since RoutePath is required for both ControlLogix and CompactLogix
 
         [ObservableProperty]
         private int cpuSlot = 0;
@@ -122,6 +122,46 @@ namespace WpfExample.ViewModels
         public ObservableCollection<PlcTag> Tags { get; } = new();
         public ObservableCollection<string> LogMessages { get; } = new();
 
+        // Detailed Discovery Properties
+        [ObservableProperty]
+        private ObservableCollection<DetailedTagInfo> detailedTags = new();
+
+        [ObservableProperty]
+        private string discoveryFilter = "";
+
+        // Program Tags Properties
+        [ObservableProperty]
+        private string programName = "TestProgram";
+
+        [ObservableProperty]
+        private string programTagName = "";
+
+        [ObservableProperty]
+        private ObservableCollection<ProgramTagInfo> programTags = new();
+
+        // Subscriptions Properties
+        [ObservableProperty]
+        private string subscribeTagName = "";
+
+        [ObservableProperty]
+        private ObservableCollection<string> subscriptions = new();
+
+        [ObservableProperty]
+        private ObservableCollection<SubscriptionValue> subscriptionValues = new();
+
+        // Health & Cache Properties
+        [ObservableProperty]
+        private string healthStatus = "Not Connected";
+
+        [ObservableProperty]
+        private string healthStatusColor = "#E81123";
+
+        [ObservableProperty]
+        private string healthInfo = "";
+
+        [ObservableProperty]
+        private string cacheInfo = "";
+
         public MainViewModel()
         {
             InitializeTags();
@@ -131,35 +171,33 @@ namespace WpfExample.ViewModels
 
         private void InitializeTags()
         {
-            // Updated test tags to match TypeScript frontend (remove STRING examples)
-            // Focus on supported data types only
+            // Test tags from PLC_TEST_TAG_DEFINITIONS.md - actual tags used in testing
+            // Array tags
+            Tags.Add(new PlcTag("gTestArray_DINT[0]", "DINT"));
+            Tags.Add(new PlcTag("gTestArray_DINT[5]", "DINT"));
+            Tags.Add(new PlcTag("gTestArray_REAL[0]", "REAL"));
+            Tags.Add(new PlcTag("gTestArray_BOOL[0]", "BOOL"));
+            Tags.Add(new PlcTag("gTestArray_INT[0]", "INT"));
+            Tags.Add(new PlcTag("gTestArray_Large[300]", "DINT"));
+            
+            // UDT tags
+            Tags.Add(new PlcTag("gTestUDT", "UDT"));
+            Tags.Add(new PlcTag("gTestUDT.Member1_DINT", "DINT"));
+            Tags.Add(new PlcTag("gTestUDT.Member2_REAL", "REAL"));
+            Tags.Add(new PlcTag("gTestUDT.Member3_BOOL", "BOOL"));
+            Tags.Add(new PlcTag("gTestUDT.Array_DINT[5]", "DINT"));
+            
+            // STRING tags
+            Tags.Add(new PlcTag("gTest_STRING", "STRING"));
+            
+            // Program-scoped tags
+            Tags.Add(new PlcTag("Program:TestProgram.gTestArray_DINT[5]", "DINT"));
+            
+            // Basic test tags (if they exist)
             Tags.Add(new PlcTag("TestTag", "BOOL"));
             Tags.Add(new PlcTag("TestBool", "BOOL"));
             Tags.Add(new PlcTag("TestInt", "DINT"));
             Tags.Add(new PlcTag("TestReal", "REAL"));
-            
-            // Additional supported integer types for advanced users
-            Tags.Add(new PlcTag("TestSint", "SINT"));
-            Tags.Add(new PlcTag("TestInt16", "INT"));
-            Tags.Add(new PlcTag("TestLint", "LINT"));
-            Tags.Add(new PlcTag("TestUsint", "USINT"));
-            Tags.Add(new PlcTag("TestUint", "UINT"));
-            Tags.Add(new PlcTag("TestUdint", "UDINT"));
-            Tags.Add(new PlcTag("TestUlint", "ULINT"));
-            Tags.Add(new PlcTag("TestLreal", "LREAL"));
-            
-            // STRING tags ✅ NEW in v0.4.0 - fully supported
-            Tags.Add(new PlcTag("TestString", "STRING"));
-            Tags.Add(new PlcTag("ProductName", "STRING"));
-            Tags.Add(new PlcTag("RecipeName", "STRING"));
-            
-            // Advanced tag addressing examples (for reference)
-            Tags.Add(new PlcTag("Program:MainProgram.Motor.Status", "BOOL"));
-            Tags.Add(new PlcTag("DataArray[5]", "DINT"));
-            Tags.Add(new PlcTag("StatusWord.15", "BOOL"));
-            Tags.Add(new PlcTag("MotorData.Speed", "REAL"));
-            
-            // v0.4.0: All Allen-Bradley data types including STRING and UDT now fully supported
         }
 
         private void SetupTimer()
@@ -183,23 +221,23 @@ namespace WpfExample.ViewModels
                 {
                     _plcClient = new EtherNetIpClient();
                     
+                    // Always use RoutePath - works for both ControlLogix and CompactLogix
+                    // For CompactLogix, use slot 0; for ControlLogix, use the specified slot
+                    var routePath = new RoutePath().AddSlot((byte)CpuSlot);
                     if (UseRoutePath)
                     {
-                        // ControlLogix with RoutePath
-                        var routePath = new RoutePath().AddSlot((byte)CpuSlot);
-                        LogMessage($"📍 Using RoutePath: CPU Slot {CpuSlot}");
-                        var connected = _plcClient.ConnectWithRoute(PlcAddress, routePath);
-                        if (connected)
-                        {
-                            LogMessage("✅ Connected successfully with RoutePath!");
-                        }
-                        return connected;
+                        LogMessage($"📍 Using RoutePath: CPU Slot {CpuSlot} (ControlLogix)");
                     }
                     else
                     {
-                        // CompactLogix (direct connection)
-                        return _plcClient.Connect(PlcAddress);
+                        LogMessage($"📍 Using RoutePath: CPU Slot {CpuSlot} (CompactLogix - slot 0)");
                     }
+                    var connected = _plcClient.ConnectWithRoute(PlcAddress, routePath);
+                    if (connected)
+                    {
+                        LogMessage("✅ Connected successfully with RoutePath!");
+                    }
+                    return connected;
                 }).ContinueWith(t =>
                 {
                     if (t.Result)
@@ -1623,6 +1661,156 @@ namespace WpfExample.ViewModels
                 TagGroupStatus = "Status: Not Started";
             }
         }
+
+        [RelayCommand]
+        private async Task DiscoverDetailed()
+        {
+            if (!IsConnected || _plcClient == null) return;
+
+            try
+            {
+                LogMessage("🔍 Starting detailed tag discovery...");
+                DetailedTags.Clear();
+
+                await Task.Run(() =>
+                {
+                    try
+                    {
+                        _plcClient.DiscoverTags();
+                        LogMessage("✅ Basic discovery completed, gathering metadata...");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"⚠️ Basic discovery failed: {ex.Message}");
+                        return;
+                    }
+                });
+
+                // Get metadata for known test tags
+                var testTags = new[]
+                {
+                    "gTestArray_DINT", "gTestArray_REAL", "gTestArray_BOOL", "gTestArray_INT",
+                    "gTestUDT", "gTest_STRING", "TestTag", "TestBool", "TestInt", "TestReal"
+                };
+
+                var discovered = new List<DetailedTagInfo>();
+                foreach (var tagName in testTags)
+                {
+                    try
+                    {
+                        var metadata = _plcClient.GetTagMetadata(tagName);
+                        // TagMetadata is a struct, check if it's valid
+                        if (metadata.DataType != 0)
+                        {
+                            discovered.Add(new DetailedTagInfo
+                            {
+                                Name = tagName,
+                                Type = metadata.DataType.ToString(),
+                                TypeCode = $"0x{metadata.DataType:X04}",
+                                Size = metadata.ArraySize > 0 ? metadata.ArraySize.ToString() : "N/A",
+                                Scope = metadata.Scope.ToString(),
+                                Readable = true,  // Assume readable if metadata exists
+                                Writable = true  // Assume writable if metadata exists
+                            });
+                        }
+                    }
+                    catch { }
+                }
+
+                DetailedTags = new ObservableCollection<DetailedTagInfo>(discovered);
+                LogMessage($"✅ Detailed discovery completed: {discovered.Count} tags found");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"❌ Detailed discovery error: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private async Task DiscoverProgramTags()
+        {
+            if (!IsConnected || _plcClient == null) return;
+            LogMessage($"⚠️ Program tag discovery - implementation needed in service layer");
+        }
+
+        [RelayCommand]
+        private async Task ReadProgramTag()
+        {
+            if (!IsConnected || _plcClient == null || string.IsNullOrEmpty(ProgramTagName)) return;
+            LogMessage($"⚠️ Program tag read - implementation needed");
+        }
+
+        [RelayCommand]
+        private async Task Subscribe()
+        {
+            if (!IsConnected || _plcClient == null || string.IsNullOrEmpty(SubscribeTagName)) return;
+            LogMessage($"⚠️ Subscription - implementation needed");
+        }
+
+        [RelayCommand]
+        private async Task Unsubscribe()
+        {
+            if (!IsConnected || _plcClient == null) return;
+            LogMessage($"⚠️ Unsubscribe - implementation needed");
+        }
+
+        [RelayCommand]
+        private async Task CheckHealth()
+        {
+            if (!IsConnected || _plcClient == null) return;
+            try
+            {
+                var isHealthy = _plcClient.CheckHealth();
+                HealthStatus = isHealthy ? "✅ Healthy" : "❌ Unhealthy";
+                HealthStatusColor = isHealthy ? "#107C10" : "#E81123";
+                HealthInfo = $"Health Check: {(isHealthy ? "PASSED" : "FAILED")}\n" +
+                            $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+                            $"Connection: Active";
+                LogMessage($"Health check: {(isHealthy ? "Healthy" : "Unhealthy")}");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"❌ Health check error: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private async Task CheckHealthDetailed()
+        {
+            if (!IsConnected || _plcClient == null) return;
+            try
+            {
+                var isHealthy = _plcClient.CheckHealthDetailed();
+                HealthStatus = isHealthy ? "✅ Healthy (Detailed)" : "❌ Unhealthy (Detailed)";
+                HealthStatusColor = isHealthy ? "#107C10" : "#E81123";
+                HealthInfo = $"Detailed Health Check: {(isHealthy ? "PASSED" : "FAILED")}\n" +
+                            $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+                            $"Connection: Active\n" +
+                            $"Client ID: 0x{_plcClient.ClientId:X8}";
+                LogMessage($"Detailed health check: {(isHealthy ? "Healthy" : "Unhealthy")}");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"❌ Detailed health check error: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private async Task ClearCache()
+        {
+            if (!IsConnected || _plcClient == null) return;
+            LogMessage("⚠️ Clear cache - implementation needed in service layer");
+            await RefreshCache();
+        }
+
+        [RelayCommand]
+        private async Task RefreshCache()
+        {
+            if (!IsConnected || _plcClient == null) return;
+            CacheInfo = $"Cache Information\n" +
+                       $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+                       $"Note: Cache management methods may need to be added to wrapper";
+        }
     }
 
     public class TagGroupValue
@@ -1631,5 +1819,31 @@ namespace WpfExample.ViewModels
         public string Value { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public DateTime LastUpdated { get; set; }
+    }
+
+    public class DetailedTagInfo
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string TypeCode { get; set; } = string.Empty;
+        public string Size { get; set; } = string.Empty;
+        public string Scope { get; set; } = string.Empty;
+        public bool Readable { get; set; }
+        public bool Writable { get; set; }
+    }
+
+    public class ProgramTagInfo
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string Size { get; set; } = string.Empty;
+        public string Scope { get; set; } = string.Empty;
+    }
+
+    public class SubscriptionValue
+    {
+        public string TagName { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+        public DateTime Updated { get; set; }
     }
 }

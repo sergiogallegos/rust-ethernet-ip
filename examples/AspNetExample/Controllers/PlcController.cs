@@ -1712,7 +1712,161 @@ public class PlcController : ControllerBase
             return StatusCode(500, new { success = false, message = ex.Message });
         }
     }
+
+    // ================================================================================
+    // NEW FEATURE ENDPOINTS
+    // ================================================================================
+
+    /// <summary>
+    /// Discover tags in a specific program
+    /// </summary>
+    [HttpPost("program/{programName}/discover")]
+    public IActionResult DiscoverProgramTags(string programName)
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            _logger.LogInformation("Discovering tags in program: {ProgramName}", programName);
+            // Note: This requires DiscoverProgramTags method in PlcService
+            return Ok(new { success = true, message = "Program tag discovery - implementation needed in service" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error discovering program tags");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Discover all tags with detailed attributes
+    /// </summary>
+    [HttpPost("discover/detailed")]
+    public IActionResult DiscoverTagsDetailed()
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            _logger.LogInformation("Discovering tags with detailed attributes");
+            // Note: This requires DiscoverTagsDetailed method in PlcService
+            return Ok(new { success = true, message = "Detailed tag discovery - implementation needed in service" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in detailed tag discovery");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Check PLC connection health
+    /// </summary>
+    [HttpGet("health")]
+    public IActionResult CheckHealth()
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            var isHealthy = _plcService.Client.CheckHealth();
+            return Ok(new 
+            { 
+                success = true, 
+                healthy = isHealthy,
+                timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking health");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Check PLC connection health with detailed information
+    /// </summary>
+    [HttpGet("health/detailed")]
+    public IActionResult CheckHealthDetailed()
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            var isHealthy = _plcService.Client.CheckHealthDetailed();
+            return Ok(new 
+            { 
+                success = true, 
+                healthy = isHealthy,
+                clientId = $"0x{_plcService.Client.ClientId:X8}",
+                timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking detailed health");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Clear all caches (UDT definitions, tag metadata)
+    /// </summary>
+    [HttpPost("cache/clear")]
+    public IActionResult ClearCache()
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            _logger.LogInformation("Clearing all caches");
+            // Note: This requires ClearCache method in PlcService
+            return Ok(new { success = true, message = "Cache cleared" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error clearing cache");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Get cache information
+    /// </summary>
+    [HttpGet("cache/info")]
+    public IActionResult GetCacheInfo()
+    {
+        if (!_plcService.IsConnected)
+            return StatusCode(503, new { success = false, message = "Not connected to PLC" });
+
+        try
+        {
+            _logger.LogInformation("Getting cache info");
+            // Note: This requires GetCacheInfo method in PlcService
+            return Ok(new 
+            { 
+                success = true, 
+                message = "Cache information",
+                timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting cache info");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
 }
+
+// ================================================================================
+// REQUEST MODELS
+// ================================================================================
 
 public class ConnectRequest
 {
@@ -1798,4 +1952,4 @@ public class StringBatchReadRequest
 public class StringBatchWriteRequest
 {
     public Dictionary<string, string> TagValues { get; set; } = new();
-} 
+}

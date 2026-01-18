@@ -162,7 +162,7 @@ fn create_test_udt_data() -> Vec<u8> {
     let mut data = vec![0u8; 96]; // Total size for test UDT
 
     // BOOL member (offset 0)
-    data[0] = 1; // bool1 = true
+    data[0] = 0xFF; // bool1 = true (PLC standard: 0xFF = true, 0x00 = false)
 
     // INT member (offset 2)
     data[2..4].copy_from_slice(&1234i16.to_le_bytes()); // int1 = 1234
@@ -277,7 +277,7 @@ async fn test_udt_data_type_serialization() {
     let bool_data = udt
         .serialize_member_value(&bool_member, &PlcValue::Bool(true))
         .unwrap();
-    assert_eq!(bool_data, vec![1]);
+    assert_eq!(bool_data, vec![0xFF]); // PLC standard: 0xFF = true, 0x00 = false
 
     // Test REAL serialization
     let real_member = UdtMember {

@@ -1,6 +1,6 @@
-# 🚀 Rust EtherNet/IP ASP.NET Core Example with Batch Operations (v0.6.0)
+# 🚀 Rust EtherNet/IP ASP.NET Core Example with Batch Operations (v0.6.1)
 
-A comprehensive ASP.NET Core Web API demonstrating the power of **batch operations** and **STRING support** in the Rust EtherNet/IP library (v0.6.0). This example showcases how batch operations can provide **3-10x performance improvements** over individual tag operations through optimized REST API endpoints.
+A comprehensive ASP.NET Core Web API demonstrating the power of **batch operations** and **STRING support** in the Rust EtherNet/IP library (v0.6.1). This example showcases how batch operations can provide **3-10x performance improvements** over individual tag operations through optimized REST API endpoints.
 
 ## 🎯 Features
 

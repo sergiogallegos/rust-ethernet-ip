@@ -1,6 +1,6 @@
-# 🦀 Rust EtherNet/IP WinForms Example with Batch Operations (v0.6.0)
+# 🦀 Rust EtherNet/IP WinForms Example with Batch Operations (v0.6.1)
 
-A comprehensive Windows Forms application demonstrating the power of **batch operations** in the Rust EtherNet/IP library (v0.6.0). This example showcases how batch operations can provide **3-10x performance improvements** over individual tag operations.
+A comprehensive Windows Forms application demonstrating the power of **batch operations** in the Rust EtherNet/IP library (v0.6.1). This example showcases how batch operations can provide **3-10x performance improvements** over individual tag operations.
 
 ## 🚀 Features
 

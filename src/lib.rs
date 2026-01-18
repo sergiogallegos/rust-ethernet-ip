@@ -1,11 +1,11 @@
 // lib.rs - Rust EtherNet/IP Driver Library with Comprehensive Documentation
 // =========================================================================
 //
-// # Rust EtherNet/IP Driver Library v0.6.0
+// # Rust EtherNet/IP Driver Library v0.6.1
 //
 // A high-performance, production-ready EtherNet/IP communication library for
 // Allen-Bradley CompactLogix and ControlLogix PLCs, written in pure Rust with
-// comprehensive language bindings (C#, Python, Go, JavaScript/TypeScript).
+// comprehensive C# language bindings.
 //
 // ## Overview
 //
@@ -32,35 +32,18 @@
 // │  │             │  │                                    │  (HTTP/REST)    │  │  │
 // │  │             │  │                                    └─────────────────┘  │  │
 // │  └─────────────┘  └─────────────────────────────────────────────────────────┘  │
-// │  ┌─────────────┐  ┌─────────────────────────────────────────────────────────┐  │
-// │  │   Python    │  │                    Go Ecosystem                         │  │
-// │  │  PyO3       │  │  ┌─────────────┐  ┌─────────────────────────────────┐  │  │
-// │  │  Bindings   │  │  │   CGO       │  │        Next.js Frontend         │  │  │
-// │  │             │  │  │  Backend    │  │  ┌─────────────┐  ┌─────────────┐  │  │
-// │  │             │  │  │             │  │  │ TypeScript  │  │   React     │  │  │
-// │  │             │  │  │             │  │  │ Components  │  │ Components  │  │  │
-// │  │             │  │  └─────────────┘  │  └─────────────┘  └─────────────┘  │  │
-// │  │             │  │                   └─────────────────────────────────┘  │  │
-// │  └─────────────┘  └─────────────────────────────────────────────────────────┘  │
-// │  ┌─────────────────────────────────────────────────────────────────────────┐  │
-// │  │                    Vue.js Ecosystem                                     │  │
-// │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────────────┐  │  │
-// │  │  │   Vue 3     │  │ TypeScript  │  │        Vite Build System        │  │  │
-// │  │  │ Components  │  │   Support   │  │     (Hot Module Replacement)     │  │  │
-// │  │  └─────────────┘  └─────────────┘  └─────────────────────────────────┘  │  │
-// │  └─────────────────────────────────────────────────────────────────────────┘  │
 // └─────────────────────┬─────────────────────────────────────────────────────────┘
 //                       │
 // ┌─────────────────────┴─────────────────────────────────────────────────────────┐
 // │                        Language Wrappers                                      │
-// │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-// │  │   C# FFI    │  │  Python     │  │    Go       │  │   JavaScript/TS     │  │
-// │  │  Wrapper    │  │  PyO3       │  │   CGO       │  │   FFI Bindings      │  │
-// │  │             │  │  Bindings   │  │  Bindings   │  │                     │  │
-// │  │ • 22 funcs  │  │ • Native    │  │ • Native    │  │ • Node.js Support   │  │
-// │  │ • Type-safe │  │ • Async     │  │ • Concurrent│  │ • Browser Support   │  │
-// │  │ • Cross-plat│  │ • Cross-plat│  │ • Cross-plat│  │ • TypeScript Types  │  │
-// │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+// │  ┌─────────────┐                                                              │
+// │  │   C# FFI    │                                                              │
+// │  │  Wrapper    │                                                              │
+// │  │             │                                                              │
+// │  │ • 22 funcs  │                                                              │
+// │  │ • Type-safe │                                                              │
+// │  │ • Cross-plat│                                                              │
+// │  └─────────────┘                                                              │
 // └─────────────────────┬─────────────────────────────────────────────────────────┘
 //                       │
 // ┌─────────────────────┴─────────────────────────────────────────────────────────┐
@@ -102,20 +85,8 @@
 // - **WinForms**: Traditional Windows applications with familiar UI patterns
 // - Uses C# FFI wrapper for seamless integration
 //
-// ### 🐍 **Python Applications**
-// - **Native Python Bindings**: Direct PyO3 integration with full async support
-// - **Cross-Platform**: Windows, Linux, macOS support
-// - **Easy Installation**: pip install or maturin development
-//
-// ### 🐹 **Go Applications**
-// - **CGO Bindings**: Native Go integration with C FFI
-// - **High Performance**: Zero-copy operations where possible
-// - **Concurrent**: Full goroutine support for concurrent operations
-//
 // ### 🌐 **Web Applications**
 // - **ASP.NET Core Web API**: RESTful backend service
-// - **TypeScript + React Frontend**: Modern web dashboard via HTTP/REST API
-// - **Vue.js Applications**: Modern reactive web interfaces
 // - **Scalable Architecture**: Backend handles PLC communication, frontend provides UI
 //
 // ### 🔧 **System Integration**
@@ -166,8 +137,6 @@
 // ### Integration Options
 // - **Native Rust**: Direct library usage with full async support
 // - **C# Desktop Applications**: WPF and WinForms via C# FFI wrapper
-// - **Python Applications**: Native PyO3 bindings with full async support
-// - **Go Applications**: CGO bindings with concurrent operations
 // - **Web Applications**: ASP.NET Core API + TypeScript/React/Vue frontend
 // - **C/C++ Integration**: Direct FFI functions for system integration
 // - **Cross-Platform**: Windows, Linux, macOS support
@@ -280,11 +249,15 @@
 // - Complete data type showcase
 // - Real-world industrial automation scenarios
 // - Professional HMI/SCADA dashboard
-// - Multi-language integration examples (C#, Python, Go, TypeScript, Vue)
+// - Multi-language integration examples (C#)
 //
 // ## Changelog
 //
-// ### v0.6.0 (January 2026) - **CURRENT**
+// ### v0.6.1 (January 2026) - **CURRENT**
+// - **Repository Cleanup**: Removed Go and Python wrappers to focus on Rust library and C# integration
+// - **Streamlined Examples**: Focused on Microsoft stack (WinForms, WPF, ASP.NET) and Rust native examples
+
+// ### v0.6.0 (January 2026)
 // - **NEW: Generic UDT Format** - `UdtData` struct with `symbol_id` and raw bytes
 //   - Works with any UDT without requiring prior knowledge of member structure
 //   - Enables parsing UDT members using UDT definitions when needed
@@ -314,7 +287,7 @@
 // - **NEW: Cache Management** - Clear and manage UDT/tag caches
 // - **NEW: Comprehensive Unit Tests** - 15+ new test cases for UDT discovery
 // - **NEW: UDT Discovery Demo** - Complete example showcasing new features
-// - **NEW: Enhanced FFI Functions** - 3 new C#/Python/Go wrapper functions
+// - **NEW: Enhanced FFI Functions** - 3 new C# wrapper functions
 // - Enhanced error handling for UDT operations
 // - Improved performance with packet size optimization
 // - Production-ready UDT support for industrial applications
@@ -323,7 +296,7 @@
 // - Enhanced safety documentation for all FFI functions
 // - Comprehensive clippy optimizations and code quality improvements
 // - Improved memory management and connection pool handling
-// - Enhanced Python, C#, and Go wrapper stability
+// - Enhanced C# wrapper stability
 // - Production-ready code quality with 0 warnings
 //
 // ### v0.5.0 (January 2025)
@@ -361,8 +334,6 @@ pub mod error;
 pub mod ffi;
 pub mod monitoring; // Enterprise-grade monitoring and health checks
 pub mod plc_manager;
-#[cfg(feature = "python")]
-pub mod python;
 pub mod subscription;
 pub mod tag_manager;
 pub mod tag_path;
@@ -930,11 +901,22 @@ pub enum PlcValue {
     /// # Example
     ///
     /// ```rust,no_run
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// # let mut client = rust_ethernet_ip::EipClient::connect("192.168.1.100:44818").await?;
+    /// use rust_ethernet_ip::PlcValue;
+    /// let value = client.read_tag("MyUDT").await?;
     /// if let PlcValue::Udt(udt_data) = value {
     ///     let udt_def = client.get_udt_definition("MyUDT").await?;
-    ///     let members = udt_data.parse(&udt_def)?;
+    ///     // Convert UdtDefinition to UserDefinedType
+    ///     let mut user_def = rust_ethernet_ip::udt::UserDefinedType::new(udt_def.name.clone());
+    ///     for member in &udt_def.members {
+    ///         user_def.add_member(member.clone());
+    ///     }
+    ///     let members = udt_data.parse(&user_def)?;
     ///     // Access members via HashMap
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     Udt(UdtData),
 }
@@ -959,15 +941,25 @@ impl UdtData {
     /// # Example
     ///
     /// ```rust,no_run
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// # let mut client = rust_ethernet_ip::EipClient::connect("192.168.1.100:44818").await?;
+    /// use rust_ethernet_ip::PlcValue;
     /// let udt_value = client.read_tag("MyUDT").await?;
     /// if let PlcValue::Udt(udt_data) = udt_value {
     ///     let udt_def = client.get_udt_definition("MyUDT").await?;
-    ///     let members = udt_data.parse(&udt_def)?;
+    ///     // Convert UdtDefinition to UserDefinedType
+    ///     let mut user_def = rust_ethernet_ip::udt::UserDefinedType::new(udt_def.name.clone());
+    ///     for member in &udt_def.members {
+    ///         user_def.add_member(member.clone());
+    ///     }
+    ///     let members = udt_data.parse(&user_def)?;
     ///     
     ///     if let Some(PlcValue::Dint(value)) = members.get("Member1") {
     ///         println!("Member1 value: {}", value);
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn parse(
         &self,
@@ -996,19 +988,29 @@ impl UdtData {
     /// # Example
     ///
     /// ```rust,no_run
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// # let mut client = rust_ethernet_ip::EipClient::connect("192.168.1.100:44818").await?;
+    /// use rust_ethernet_ip::{PlcValue, UdtData};
     /// // Read existing UDT to get symbol_id
     /// let udt_value = client.read_tag("MyUDT").await?;
     /// let udt_def = client.get_udt_definition("MyUDT").await?;
     ///
     /// if let PlcValue::Udt(mut udt_data) = udt_value {
+    ///     // Convert UdtDefinition to UserDefinedType
+    ///     let mut user_def = rust_ethernet_ip::udt::UserDefinedType::new(udt_def.name.clone());
+    ///     for member in &udt_def.members {
+    ///         user_def.add_member(member.clone());
+    ///     }
     ///     // Parse to modify members
-    ///     let mut members = udt_data.parse(&udt_def)?;
+    ///     let mut members = udt_data.parse(&user_def)?;
     ///     members.insert("Member1".to_string(), PlcValue::Dint(42));
     ///
     ///     // Serialize back to UdtData
-    ///     let modified_udt = UdtData::from_hash_map(&members, &udt_def, udt_data.symbol_id)?;
+    ///     let modified_udt = UdtData::from_hash_map(&members, &user_def, udt_data.symbol_id)?;
     ///     client.write_tag("MyUDT", PlcValue::Udt(modified_udt)).await?;
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn from_hash_map(
         members: &HashMap<String, PlcValue>,
@@ -1192,13 +1194,18 @@ impl PlcValue {
 /// let udt_value = client.read_tag("gTestUDT_Array[0]").await?;
 /// if let PlcValue::Udt(mut udt_data) = udt_value {
 ///     let udt_def = client.get_udt_definition("gTestUDT_Array").await?;
-///     let mut members = udt_data.parse(&udt_def)?;
+///     // Convert UdtDefinition to UserDefinedType
+///     let mut user_def = rust_ethernet_ip::udt::UserDefinedType::new(udt_def.name.clone());
+///     for member in &udt_def.members {
+///         user_def.add_member(member.clone());
+///     }
+///     let mut members = udt_data.parse(&user_def)?;
 ///     
 ///     // Modify the member
 ///     members.insert("Member1_DINT".to_string(), PlcValue::Dint(100));
 ///     
 ///     // Write the entire UDT array element back
-///     let modified_udt = UdtData::from_hash_map(&members, &udt_def, udt_data.symbol_id)?;
+///     let modified_udt = UdtData::from_hash_map(&members, &user_def, udt_data.symbol_id)?;
 ///     client.write_tag("gTestUDT_Array[0]", PlcValue::Udt(modified_udt)).await?;
 /// }
 /// # Ok(())
@@ -1664,7 +1671,12 @@ impl EipClient {
     ///     let udt_val = client.read_tag("MyUDT").await?;
     ///     if let PlcValue::Udt(udt_data) = udt_val {
     ///         let udt_def = client.get_udt_definition("MyUDT").await?;
-    ///         let members = udt_data.parse(&udt_def)?;
+    ///         // Convert UdtDefinition to UserDefinedType
+    ///         let mut user_def = rust_ethernet_ip::udt::UserDefinedType::new(udt_def.name.clone());
+    ///         for member in &udt_def.members {
+    ///             user_def.add_member(member.clone());
+    ///         }
+    ///         let members = udt_data.parse(&user_def)?;
     ///         println!("UDT has {} members", members.len());
     ///     }
     ///
@@ -2402,10 +2414,14 @@ impl EipClient {
     ///
     /// Writing value 0x12345678 to element 10 of array "MyArray":
     /// ```
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// # let mut client = rust_ethernet_ip::EipClient::connect("192.168.1.100:44818").await?;
     /// let data = 0x12345678u32.to_le_bytes();
     /// let request = client.build_write_array_request_with_index(
     ///     "MyArray", 10, 1, 0x00C4, &data
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn build_write_array_request_with_index(
@@ -2503,7 +2519,12 @@ impl EipClient {
     ///     println!("UDT symbol_id: {}, data size: {} bytes", udt_data.symbol_id, udt_data.data.len());
     ///     // Parse members if needed
     ///     let udt_def = client.get_udt_definition("Part_Data").await?;
-    ///     let members = udt_data.parse(&udt_def)?;
+    ///     // Convert UdtDefinition to UserDefinedType
+    ///     let mut user_def = rust_ethernet_ip::udt::UserDefinedType::new(udt_def.name.clone());
+    ///     for member in &udt_def.members {
+    ///         user_def.add_member(member.clone());
+    ///     }
+    ///     let members = udt_data.parse(&user_def)?;
     /// }
     /// # Ok(())
     /// # }
@@ -3505,9 +3526,14 @@ impl EipClient {
     /// let udt_value = client.read_tag("MyUDT").await?;
     /// if let PlcValue::Udt(mut udt_data) = udt_value {
     ///     let udt_def = client.get_udt_definition("MyUDT").await?;
-    ///     let mut members = udt_data.parse(&udt_def)?;
+    ///     // Convert UdtDefinition to UserDefinedType
+    ///     let mut user_def = rust_ethernet_ip::udt::UserDefinedType::new(udt_def.name.clone());
+    ///     for member in &udt_def.members {
+    ///         user_def.add_member(member.clone());
+    ///     }
+    ///     let mut members = udt_data.parse(&user_def)?;
     ///     members.insert("Member1".to_string(), PlcValue::Dint(100));
-    ///     let modified_udt = UdtData::from_hash_map(&members, &udt_def, udt_data.symbol_id)?;
+    ///     let modified_udt = UdtData::from_hash_map(&members, &user_def, udt_data.symbol_id)?;
     ///     client.write_tag("MyUDT", PlcValue::Udt(modified_udt)).await?;
     /// }
     /// # Ok(())
@@ -4842,7 +4868,11 @@ impl EipClient {
     ///
     /// Reading elements 10-14 of array "MyArray" (5 elements):
     /// ```
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// # let mut client = rust_ethernet_ip::EipClient::connect("192.168.1.100:44818").await?;
     /// let request = client.build_read_array_request("MyArray", 10, 5);
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// This generates:

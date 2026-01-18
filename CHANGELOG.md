@@ -5,6 +5,24 @@ All notable changes to the rust-ethernet-ip project will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-01-17
+
+### 🧹 Removed
+- **Go Wrapper**: Removed `gowrapper/` directory to focus on Rust library and C# integration
+- **Python Wrapper**: Removed `pywrapper/` directory to focus on Rust library and C# integration
+- **Go Examples**: Removed `GoWrapperTest` and `gonextjs` examples
+- **Python Examples**: Removed `PythonWrapperTest` and `PLC_Monitor_Dashboard` examples
+- **TypeScript/Vue Examples**: Removed `TypeScriptExample`, `VueExample` to streamline examples
+
+### ✨ Changed
+- **Repository Focus**: Streamlined to focus on Rust library, Rust native examples, C# wrapper, and C# examples (WinForms, WPF, ASP.NET)
+- **Documentation**: Updated all documentation to reflect current focus on Microsoft stack
+- **Cargo.toml**: Removed Python dependencies and workspace members
+
+### 📚 Documentation
+- **README.md**: Updated to remove Go/Python references and focus on Microsoft stack
+- **Version References**: Updated all version references from 0.6.0 to 0.6.1
+
 ## [0.6.0] - 2025-01-XX
 
 ### ✨ Added - C# Wrapper Enhancements
@@ -34,7 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🎯 Current Development Focus
 - **.NET Stack**: Actively polishing C# wrapper and example applications to production quality
-- **Go & Python Wrappers**: Development paused until .NET stack is complete
 
 ## [0.5.3] - 2025-01-15
 

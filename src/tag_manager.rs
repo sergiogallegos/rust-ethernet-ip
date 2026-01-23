@@ -4,6 +4,7 @@ use crate::EipClient;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
+use tracing;
 
 /// Represents the scope of a tag in the PLC
 #[derive(Debug, Clone, PartialEq)]
@@ -246,8 +247,8 @@ impl TagManager {
             }
         }
 
-        println!(
-            "[DEBUG] Discovered {} total tags (including hierarchical)",
+        tracing::debug!(
+            "Discovered {} total tags (including hierarchical)",
             all_tags.len()
         );
         Ok(all_tags)
@@ -259,7 +260,7 @@ impl TagManager {
         client: &mut EipClient,
         udt_name: &str,
     ) -> Result<Vec<(String, TagMetadata)>> {
-        println!("[DEBUG] Discovering UDT members for: {}", udt_name);
+        tracing::debug!("Discovering UDT members for: {}", udt_name);
 
         // First, try to get the UDT definition
         if let Ok(udt_definition) = self.get_udt_definition(client, udt_name).await {
@@ -287,16 +288,17 @@ impl TagManager {
 
                 if self.validate_tag_name(&full_name) {
                     members.push((full_name.clone(), metadata));
-                    println!(
-                        "[DEBUG] Found UDT member: {} (Type: 0x{:04X})",
-                        full_name, member.data_type
+                    tracing::trace!(
+                        "Found UDT member: {} (Type: 0x{:04X})",
+                        full_name,
+                        member.data_type
                     );
                 }
             }
 
             Ok(members)
         } else {
-            println!("[WARN] Could not get UDT definition for: {}", udt_name);
+            tracing::warn!("Could not get UDT definition for: {}", udt_name);
             Ok(Vec::new())
         }
     }
@@ -311,7 +313,7 @@ impl TagManager {
         {
             let definitions = self.udt_definitions.read().unwrap();
             if let Some(definition) = definitions.get(udt_name) {
-                println!("[DEBUG] Using cached UDT definition for: {}", udt_name);
+                tracing::debug!("Using cached UDT definition for: {}", udt_name);
                 return Ok(definition.clone());
             }
         }
@@ -368,8 +370,8 @@ impl TagManager {
         response: &[u8],
         udt_name: &str,
     ) -> Result<UdtDefinition> {
-        println!(
-            "[DEBUG] Parsing UDT definition response for {} ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Parsing UDT definition response for {} ({} bytes): {:02X?}",
             udt_name,
             response.len(),
             response
@@ -427,8 +429,8 @@ impl TagManager {
             });
         }
 
-        println!(
-            "[DEBUG] Parsed UDT definition with {} members",
+        tracing::debug!(
+            "Parsed UDT definition with {} members",
             definition.members.len()
         );
         Ok(definition)
@@ -505,8 +507,8 @@ impl TagManager {
     }
 
     pub fn parse_tag_list(&self, response: &[u8]) -> Result<Vec<(String, TagMetadata)>> {
-        println!(
-            "[DEBUG] Raw tag list response ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Raw tag list response ({} bytes): {:02X?}",
             response.len(),
             response
         );
@@ -536,7 +538,7 @@ impl TagManager {
             if service_reply != 0xD5 && service_reply != 0x55 {
                 // Might be a different service code, but if status is 0x00, try to parse anyway
                 if general_status == 0x00 {
-                    println!("[WARN] Unexpected service reply 0x{:02X}, but status is 0x00, attempting to parse", service_reply);
+                    tracing::warn!("Unexpected service reply 0x{:02X}, but status is 0x00, attempting to parse", service_reply);
                 }
             }
         }
@@ -556,7 +558,7 @@ impl TagManager {
         // Skip service reply (1), reserved (1), status (1), additional status size (1)
         // Then get item count (4 bytes)
         let item_count = u32::from_le_bytes([response[4], response[5], response[6], response[7]]);
-        println!("[DEBUG] Detected item count: {}", item_count);
+        tracing::debug!("Detected item count: {}", item_count);
 
         // Calculate offset: ServiceReply(1) + Reserved(1) + Status(1) + AdditionalStatusSize(1) + ItemCount(4) = 8
         // Then add any additional status data if present
@@ -572,7 +574,7 @@ impl TagManager {
         while offset < response.len() {
             // Check if we have enough bytes for instance ID
             if offset + 4 > response.len() {
-                println!("[WARN] Not enough bytes for instance ID at offset {offset}");
+                tracing::warn!("Not enough bytes for instance ID at offset {}", offset);
                 break;
             }
 
@@ -586,7 +588,7 @@ impl TagManager {
 
             // Check if we have enough bytes for name length
             if offset + 2 > response.len() {
-                println!("[WARN] Not enough bytes for name length at offset {offset}",);
+                tracing::warn!("Not enough bytes for name length at offset {}", offset);
                 break;
             }
 
@@ -595,8 +597,8 @@ impl TagManager {
 
             // Validate name length to prevent the parsing error
             if name_length > 1000 || name_length == 0 {
-                println!(
-                    "[WARN] Invalid name length {} at offset {}, skipping entry",
+                tracing::warn!(
+                    "Invalid name length {} at offset {}, skipping entry",
                     name_length,
                     offset - 2
                 );
@@ -623,8 +625,8 @@ impl TagManager {
 
             // Check if we have enough bytes for the tag name
             if offset + name_length > response.len() {
-                println!(
-                    "[WARN] Not enough bytes for tag name at offset {} (need {}, have {})",
+                tracing::warn!(
+                    "Not enough bytes for tag name at offset {} (need {}, have {})",
                     offset,
                     name_length,
                     response.len() - offset
@@ -637,7 +639,7 @@ impl TagManager {
 
             // Check if we have enough bytes for tag type
             if offset + 2 > response.len() {
-                println!("[WARN] Not enough bytes for tag type at offset {offset}");
+                tracing::warn!("Not enough bytes for tag type at offset {}", offset);
                 break;
             }
 
@@ -665,9 +667,10 @@ impl TagManager {
 
             // Filter tags by type (similar to TypeScript implementation)
             if !self.is_valid_tag_type(type_code) {
-                println!(
-                    "[DEBUG] Skipping tag {} - unsupported type 0x{:04X}",
-                    name, type_code
+                tracing::debug!(
+                    "Skipping tag {} - unsupported type 0x{:04X}",
+                    name,
+                    type_code
                 );
                 continue;
             }
@@ -687,15 +690,18 @@ impl TagManager {
                 last_updated: Instant::now(),
             };
 
-            println!(
-                "[DEBUG] Parsed tag: {} (ID: {}, Type: 0x{:04X}, Structure: {})",
-                name, instance_id, type_code, is_structure
+            tracing::trace!(
+                "Parsed tag: {} (ID: {}, Type: 0x{:04X}, Structure: {})",
+                name,
+                instance_id,
+                type_code,
+                is_structure
             );
 
             tags.push((name, metadata));
         }
 
-        println!("[DEBUG] Parsed {} tags from response", tags.len());
+        tracing::debug!("Parsed {} tags from response", tags.len());
         Ok(tags)
     }
 
@@ -746,8 +752,8 @@ impl TagManager {
             self.drill_down_recursive(&mut all_tags, &mut tag_names, tag_name, metadata, "")?;
         }
 
-        println!(
-            "[DEBUG] Drill down completed: {} total tags discovered",
+        tracing::debug!(
+            "Drill down completed: {} total tags discovered",
             all_tags.len()
         );
         Ok(all_tags)

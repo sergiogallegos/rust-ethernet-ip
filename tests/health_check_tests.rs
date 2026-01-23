@@ -27,18 +27,18 @@ mod tests {
         {
             Ok(Ok(client)) => client,
             Ok(Err(e)) => {
-                eprintln!("Failed to connect: {}", e);
+                tracing::error!("Failed to connect: {}", e);
                 return;
             }
             Err(_) => {
-                eprintln!("Connection timeout");
+                tracing::warn!("Connection timeout");
                 return;
             }
         };
 
         // Check health
         let is_healthy = client.check_health().await;
-        println!("✅ Health check result: {}", is_healthy);
+        tracing::info!("Health check result: {}", is_healthy);
         assert!(is_healthy, "Connected client should be healthy");
     }
 
@@ -51,11 +51,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -63,11 +63,11 @@ mod tests {
         // Check detailed health
         match client.check_health_detailed().await {
             Ok(is_healthy) => {
-                println!("✅ Detailed health check result: {}", is_healthy);
+                tracing::info!("Detailed health check result: {}", is_healthy);
                 assert!(is_healthy, "Connected client should be healthy");
             }
             Err(e) => {
-                eprintln!("❌ Detailed health check failed: {}", e);
+                tracing::error!("Detailed health check failed: {}", e);
             }
         }
     }
@@ -76,6 +76,6 @@ mod tests {
     async fn test_health_check_unconnected() {
         // This test verifies that health check works even when not connected to a real PLC
         // We can't actually create an unconnected client, but we can test the logic
-        println!("✅ Health check test structure validated");
+        tracing::info!("Health check test structure validated");
     }
 }

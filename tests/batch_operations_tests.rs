@@ -13,6 +13,7 @@ mod tests {
     use rust_ethernet_ip::{BatchConfig, BatchOperation, EipClient, PlcValue};
     use std::env;
     use tokio::time::{timeout, Duration};
+    use tracing;
 
     // Helper function to get test PLC address from environment or use default
     fn get_test_plc_address() -> String {
@@ -28,11 +29,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -49,22 +50,22 @@ mod tests {
             .await
         {
             Ok(results) => {
-                println!("✅ Batch read completed: {} tags", results.len());
+                tracing::info!("Batch read completed: {} tags", results.len());
                 assert_eq!(results.len(), tag_names.len());
                 for (i, (tag_name, result)) in results.iter().enumerate() {
                     match result {
                         Ok(value) => {
-                            println!("  ✅ {}: {:?}", tag_name, value);
+                            tracing::info!("{}: {:?}", tag_name, value);
                             assert!(matches!(value, PlcValue::Dint(_)));
                         }
                         Err(e) => {
-                            eprintln!("  ❌ {}: {}", tag_name, e);
+                            tracing::error!("{}: {}", tag_name, e);
                         }
                     }
                 }
             }
             Err(e) => {
-                eprintln!("❌ Batch read failed: {}", e);
+                tracing::error!("Batch read failed: {}", e);
             }
         }
     }
@@ -78,11 +79,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -96,15 +97,15 @@ mod tests {
 
         match client.write_tags_batch(&tag_values).await {
             Ok(results) => {
-                println!("✅ Batch write completed: {} tags", results.len());
+                tracing::info!("Batch write completed: {} tags", results.len());
                 assert_eq!(results.len(), tag_values.len());
                 for (tag_name, result) in results.iter() {
                     match result {
                         Ok(_) => {
-                            println!("  ✅ {}: Write successful", tag_name);
+                            tracing::info!("{}: Write successful", tag_name);
                         }
                         Err(e) => {
-                            eprintln!("  ❌ {}: {}", tag_name, e);
+                            tracing::error!("{}: {}", tag_name, e);
                         }
                     }
                 }
@@ -122,21 +123,21 @@ mod tests {
                                         "Read value should match written value for {}",
                                         tag_name
                                     );
-                                    println!("  ✅ Verified {}: {:?}", tag_name, value);
+                                    tracing::info!("Verified {}: {:?}", tag_name, value);
                                 }
                                 Err(e) => {
-                                    eprintln!("  ❌ Failed to read back {}: {}", tag_name, e);
+                                    tracing::error!("Failed to read back {}: {}", tag_name, e);
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("❌ Failed to read back batch: {}", e);
+                        tracing::error!("Failed to read back batch: {}", e);
                     }
                 }
             }
             Err(e) => {
-                eprintln!("❌ Batch write failed: {}", e);
+                tracing::error!("Batch write failed: {}", e);
             }
         }
     }
@@ -150,11 +151,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -178,21 +179,21 @@ mod tests {
 
         match client.execute_batch(&operations).await {
             Ok(results) => {
-                println!("✅ Mixed batch completed: {} operations", results.len());
+                tracing::info!("Mixed batch completed: {} operations", results.len());
                 assert_eq!(results.len(), operations.len());
                 for (i, batch_result) in results.iter().enumerate() {
                     match &batch_result.result {
                         Ok(value) => {
-                            println!("  ✅ Operation {}: {:?}", i, value);
+                            tracing::info!("Operation {}: {:?}", i, value);
                         }
                         Err(e) => {
-                            eprintln!("  ❌ Operation {}: {}", i, e);
+                            tracing::error!("Operation {}: {}", i, e);
                         }
                     }
                 }
             }
             Err(e) => {
-                eprintln!("❌ Mixed batch failed: {}", e);
+                tracing::error!("Mixed batch failed: {}", e);
             }
         }
     }
@@ -205,19 +206,19 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
 
         // Test default batch configuration
         let default_config = client.get_batch_config();
-        println!(
-            "✅ Default batch config: max_packet_size={}",
+        tracing::info!(
+            "Default batch config: max_packet_size={}",
             default_config.max_packet_size
         );
 
@@ -240,7 +241,7 @@ mod tests {
             updated_config.max_operations_per_packet,
             custom_config.max_operations_per_packet
         );
-        println!("✅ Batch configuration updated successfully");
+        tracing::info!("Batch configuration updated successfully");
     }
 
     #[tokio::test]
@@ -252,11 +253,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -277,10 +278,10 @@ mod tests {
         let _ = client.read_tags_batch(&tag_names_refs).await;
         let batch_duration = start_batch.elapsed();
 
-        println!("✅ Individual operations: {:?}", individual_duration);
-        println!("✅ Batch operation: {:?}", batch_duration);
-        println!(
-            "✅ Speedup: {:.2}x",
+        tracing::info!("Individual operations: {:?}", individual_duration);
+        tracing::info!("Batch operation: {:?}", batch_duration);
+        tracing::info!(
+            "Speedup: {:.2}x",
             individual_duration.as_secs_f64() / batch_duration.as_secs_f64()
         );
 
@@ -300,11 +301,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -322,23 +323,20 @@ mod tests {
             .await
         {
             Ok(results) => {
-                println!(
-                    "✅ Batch read with errors completed: {} tags",
-                    results.len()
-                );
+                tracing::info!("Batch read with errors completed: {} tags", results.len());
                 for (tag_name, result) in results.iter() {
                     match result {
                         Ok(value) => {
-                            println!("  ✅ {}: {:?}", tag_name, value);
+                            tracing::info!("{}: {:?}", tag_name, value);
                         }
                         Err(e) => {
-                            println!("  ⚠️ {}: {} (expected error)", tag_name, e);
+                            tracing::warn!("{}: {} (expected error)", tag_name, e);
                         }
                     }
                 }
             }
             Err(e) => {
-                eprintln!("❌ Batch read failed: {}", e);
+                tracing::error!("Batch read failed: {}", e);
             }
         }
     }

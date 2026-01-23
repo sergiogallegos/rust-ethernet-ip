@@ -9,6 +9,7 @@
 /// They are marked with #[ignore] and will only run when explicitly requested.
 /// To run: `cargo test -- --ignored`
 use rust_ethernet_ip::{EipClient, TagPath};
+use tracing;
 
 // ============================================================================
 // Tests that don't require a connection - using public TagPath API
@@ -157,7 +158,7 @@ async fn test_element_id_segment_8bit() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -199,7 +200,7 @@ async fn test_element_id_segment_16bit() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -242,7 +243,7 @@ async fn test_element_id_segment_32bit() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -288,7 +289,7 @@ async fn test_element_id_segment_boundaries() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -325,7 +326,7 @@ async fn test_build_read_array_request_single_element() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -362,7 +363,7 @@ async fn test_build_read_array_request_range() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -387,7 +388,7 @@ async fn test_build_read_array_request_16bit_index() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -428,7 +429,7 @@ async fn test_build_read_array_request_32bit_index() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -471,7 +472,7 @@ async fn test_build_base_tag_path() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -504,7 +505,7 @@ async fn test_build_write_array_request_with_index() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -552,7 +553,7 @@ async fn test_build_write_array_request_range() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -594,7 +595,7 @@ async fn test_path_word_alignment() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };
@@ -631,7 +632,7 @@ async fn test_element_id_segment_little_endian() {
     let client = match create_test_client().await {
         Some(c) => c,
         None => {
-            println!("Skipping test - no PLC connection available");
+            tracing::debug!("Skipping test - no PLC connection available");
             return;
         }
     };

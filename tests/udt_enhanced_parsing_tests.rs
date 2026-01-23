@@ -3,6 +3,7 @@ mod udt_enhanced_parsing_tests {
     use rust_ethernet_ip::{EipClient, PlcValue};
     use std::time::Duration;
     use tokio::time::timeout;
+    use tracing;
 
     const TEST_PLC_IP: &str = "192.168.0.1:44818";
 
@@ -12,11 +13,11 @@ mod udt_enhanced_parsing_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("⚠️ Skipping test - PLC not available: {}", e);
+                    tracing::warn!("Skipping test - PLC not available: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("⚠️ Skipping test - Connection timeout");
+                    tracing::warn!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -25,21 +26,21 @@ mod udt_enhanced_parsing_tests {
         let result = client.read_tag("TestTagUDT").await;
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
-                println!("✅ UDT read successfully");
-                println!("   Symbol ID: {}", udt_data.symbol_id);
-                println!("   Data Size: {} bytes", udt_data.data.len());
+                tracing::info!("UDT read successfully");
+                tracing::debug!("Symbol ID: {}", udt_data.symbol_id);
+                tracing::debug!("Data Size: {} bytes", udt_data.data.len());
 
                 // Verify we have data
                 assert!(!udt_data.data.is_empty(), "UDT should have data");
                 assert!(udt_data.symbol_id >= 0, "UDT should have valid symbol_id");
             }
             Ok(other) => {
-                println!("✅ UDT read successfully (different type): {:?}", other);
+                tracing::info!("UDT read successfully (different type): {:?}", other);
             }
             Err(e) => {
-                eprintln!("❌ UDT read failed: {}", e);
+                tracing::error!("UDT read failed: {}", e);
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 panic!("UDT read failed: {}", e);
@@ -53,11 +54,11 @@ mod udt_enhanced_parsing_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("⚠️ Skipping test - PLC not available: {}", e);
+                    tracing::warn!("Skipping test - PLC not available: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("⚠️ Skipping test - Connection timeout");
+                    tracing::warn!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -66,26 +67,26 @@ mod udt_enhanced_parsing_tests {
         let result = client.read_udt_chunked("Part_Data").await;
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
-                println!(
-                    "✅ Chunked UDT read successfully ({} bytes)",
+                tracing::info!(
+                    "Chunked UDT read successfully ({} bytes)",
                     udt_data.data.len()
                 );
                 // Part_Data might be empty due to parsing limitations, but should not fail
             }
             Ok(other) => {
-                println!(
-                    "✅ Chunked UDT read successfully (different type): {:?}",
+                tracing::info!(
+                    "Chunked UDT read successfully (different type): {:?}",
                     other
                 );
             }
             Err(e) => {
-                eprintln!("❌ Chunked UDT read failed: {}", e);
+                tracing::error!("Chunked UDT read failed: {}", e);
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 // Chunked reading might fail for various reasons, don't panic
-                println!("⚠️ Chunked reading failed (expected for some UDTs): {}", e);
+                tracing::warn!("Chunked reading failed (expected for some UDTs): {}", e);
             }
         }
     }
@@ -96,11 +97,11 @@ mod udt_enhanced_parsing_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("⚠️ Skipping test - PLC not available: {}", e);
+                    tracing::warn!("Skipping test - PLC not available: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("⚠️ Skipping test - Connection timeout");
+                    tracing::warn!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -109,26 +110,23 @@ mod udt_enhanced_parsing_tests {
         let result = client.read_tag("gTracking").await;
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
-                println!(
-                    "✅ gTracking UDT read successfully ({} bytes)",
+                tracing::info!(
+                    "gTracking UDT read successfully ({} bytes)",
                     udt_data.data.len()
                 );
                 // gTracking might have different structure
             }
             Ok(PlcValue::Dint(value)) => {
-                println!("✅ gTracking read as DINT: {}", value);
+                tracing::info!("gTracking read as DINT: {}", value);
                 assert!(value >= 0, "gTracking should be non-negative");
             }
             Ok(other) => {
-                println!(
-                    "✅ gTracking read successfully (different type): {:?}",
-                    other
-                );
+                tracing::info!("gTracking read successfully (different type): {:?}", other);
             }
             Err(e) => {
-                eprintln!("❌ gTracking read failed: {}", e);
+                tracing::error!("gTracking read failed: {}", e);
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 panic!("gTracking read failed: {}", e);
@@ -142,11 +140,11 @@ mod udt_enhanced_parsing_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -157,7 +155,7 @@ mod udt_enhanced_parsing_tests {
 
         match result {
             Ok(_) => {
-                println!("✅ UDT parsing completed in {:?}", duration);
+                tracing::info!("UDT parsing completed in {:?}", duration);
                 assert!(
                     duration < Duration::from_millis(100),
                     "UDT parsing should be fast"
@@ -165,7 +163,7 @@ mod udt_enhanced_parsing_tests {
             }
             Err(e) => {
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 panic!("UDT parsing performance test failed: {}", e);
@@ -179,11 +177,11 @@ mod udt_enhanced_parsing_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -192,20 +190,20 @@ mod udt_enhanced_parsing_tests {
         let result = client.read_tag("TestTagUDT").await;
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
-                println!("✅ UDT byte alignment detection successful");
-                println!("   Symbol ID: {}", udt_data.symbol_id);
-                println!("   Data Size: {} bytes", udt_data.data.len());
+                tracing::info!("UDT byte alignment detection successful");
+                tracing::debug!("Symbol ID: {}", udt_data.symbol_id);
+                tracing::debug!("Data Size: {} bytes", udt_data.data.len());
 
                 // UdtData now contains raw bytes, not parsed members
                 // To access members, you would need to parse using UDT definition
                 assert!(!udt_data.data.is_empty(), "UDT should have data");
             }
             Ok(_) => {
-                println!("✅ UDT read successful (non-UDT type)");
+                tracing::info!("UDT read successful (non-UDT type)");
             }
             Err(e) => {
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 panic!("UDT byte alignment test failed: {}", e);

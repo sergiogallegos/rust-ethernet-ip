@@ -757,7 +757,7 @@ mod tests {
         let path = TagPath::parse("Program:MainProgram.ArrayTest[0]").unwrap();
         let cip_path = path.to_cip_path().unwrap();
 
-        println!(
+        tracing::debug!(
             "Program array CIP path ({} bytes): {:02X?}",
             cip_path.len(),
             cip_path

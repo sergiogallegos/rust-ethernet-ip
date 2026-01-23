@@ -13,6 +13,7 @@ mod tests {
     use rust_ethernet_ip::{EipClient, PlcValue, SubscriptionOptions};
     use std::env;
     use tokio::time::{timeout, Duration};
+    use tracing;
 
     // Helper function to get test PLC address from environment or use default
     fn get_test_plc_address() -> String {
@@ -22,17 +23,18 @@ mod tests {
     #[tokio::test]
     #[ignore] // Ignore by default - requires real PLC
     async fn test_single_tag_subscription() {
+        let _ = rust_ethernet_ip::try_init_tracing();
         let plc_address = get_test_plc_address();
 
         let client = match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await
         {
             Ok(Ok(client)) => client,
             Ok(Err(e)) => {
-                eprintln!("Failed to connect: {}", e);
+                tracing::error!("Failed to connect: {}", e);
                 return;
             }
             Err(_) => {
-                eprintln!("Connection timeout");
+                tracing::warn!("Connection timeout");
                 return;
             }
         };
@@ -41,12 +43,12 @@ mod tests {
         let options = SubscriptionOptions::default();
         match client.subscribe_to_tag("gTestArray_DINT[0]", options).await {
             Ok(subscription) => {
-                println!("✅ Subscription created: {:?}", subscription);
+                tracing::info!("Subscription created: {:?}", subscription);
                 // Note: In a real test, you would wait for value changes
                 // and verify the callback is called
             }
             Err(e) => {
-                eprintln!("❌ Subscription failed: {}", e);
+                tracing::error!("Subscription failed: {}", e);
             }
         }
     }
@@ -60,11 +62,11 @@ mod tests {
         {
             Ok(Ok(client)) => client,
             Ok(Err(e)) => {
-                eprintln!("Failed to connect: {}", e);
+                tracing::error!("Failed to connect: {}", e);
                 return;
             }
             Err(_) => {
-                eprintln!("Connection timeout");
+                tracing::warn!("Connection timeout");
                 return;
             }
         };
@@ -78,10 +80,10 @@ mod tests {
 
         match client.subscribe_to_tags(&tags).await {
             Ok(_) => {
-                println!("✅ Multiple subscriptions created: {} tags", tags.len());
+                tracing::info!("Multiple subscriptions created: {} tags", tags.len());
             }
             Err(e) => {
-                eprintln!("❌ Multiple subscriptions failed: {}", e);
+                tracing::error!("Multiple subscriptions failed: {}", e);
             }
         }
     }
@@ -95,31 +97,31 @@ mod tests {
         {
             Ok(Ok(client)) => client,
             Ok(Err(e)) => {
-                eprintln!("Failed to connect: {}", e);
+                tracing::error!("Failed to connect: {}", e);
                 return;
             }
             Err(_) => {
-                eprintln!("Connection timeout");
+                tracing::warn!("Connection timeout");
                 return;
             }
         };
 
         // Subscribe with custom options
         let options = SubscriptionOptions {
-            update_rate: 100,           // milliseconds
-            change_threshold: 0.001,   // 0.1% change threshold
-            timeout: 5000,             // milliseconds
+            update_rate: 100,        // milliseconds
+            change_threshold: 0.001, // 0.1% change threshold
+            timeout: 5000,           // milliseconds
         };
 
         match client.subscribe_to_tag("gTestArray_DINT[0]", options).await {
             Ok(subscription) => {
-                println!(
-                    "✅ Subscription with custom options created: {:?}",
+                tracing::info!(
+                    "Subscription with custom options created: {:?}",
                     subscription
                 );
             }
             Err(e) => {
-                eprintln!("❌ Subscription with custom options failed: {}", e);
+                tracing::error!("Subscription with custom options failed: {}", e);
             }
         }
     }
@@ -133,11 +135,11 @@ mod tests {
         {
             Ok(Ok(client)) => client,
             Ok(Err(e)) => {
-                eprintln!("Failed to connect: {}", e);
+                tracing::error!("Failed to connect: {}", e);
                 return;
             }
             Err(_) => {
-                eprintln!("Connection timeout");
+                tracing::warn!("Connection timeout");
                 return;
             }
         };
@@ -146,13 +148,10 @@ mod tests {
         let options = SubscriptionOptions::default();
         match client.subscribe_to_tag("NonExistentTag", options).await {
             Ok(_) => {
-                println!("⚠️ Subscription to non-existent tag unexpectedly succeeded");
+                tracing::warn!("Subscription to non-existent tag unexpectedly succeeded");
             }
             Err(e) => {
-                println!(
-                    "✅ Subscription correctly failed for non-existent tag: {}",
-                    e
-                );
+                tracing::info!("Subscription correctly failed for non-existent tag: {}", e);
             }
         }
     }

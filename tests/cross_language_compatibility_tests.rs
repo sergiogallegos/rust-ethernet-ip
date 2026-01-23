@@ -12,11 +12,11 @@ mod cross_language_compatibility_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("⚠️ Skipping test - PLC not available: {}", e);
+                    tracing::warn!("Skipping test - PLC not available: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("⚠️ Skipping test - Connection timeout");
+                    tracing::warn!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -34,19 +34,21 @@ mod cross_language_compatibility_tests {
             let result = client.read_tag(tag_name).await;
             match result {
                 Ok(value) => {
-                    println!(
-                        "✅ {} ({}) read successfully: {:?}",
-                        tag_name, description, value
+                    tracing::info!(
+                        "{} ({}) read successfully: {:?}",
+                        tag_name,
+                        description,
+                        value
                     );
                 }
                 Err(e) => {
-                    eprintln!("❌ {} ({}) read failed: {}", tag_name, description, e);
+                    tracing::error!("{} ({}) read failed: {}", tag_name, description, e);
                     if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                        println!("⚠️ Skipping test - PLC not available");
+                        tracing::debug!("Skipping test - PLC not available");
                         return;
                     }
                     // Don't panic for individual tag failures - some might not exist
-                    println!("⚠️ {} failed (might not exist on PLC): {}", tag_name, e);
+                    tracing::warn!("{} failed (might not exist on PLC): {}", tag_name, e);
                 }
             }
         }
@@ -60,11 +62,11 @@ mod cross_language_compatibility_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -73,18 +75,18 @@ mod cross_language_compatibility_tests {
         let result = client.read_tag("TestTagController").await;
         match result {
             Ok(PlcValue::Dint(value)) => {
-                println!("✅ FFI compatibility test passed: {}", value);
+                tracing::info!("FFI compatibility test passed: {}", value);
                 assert!(value >= 0, "Controller tag should be non-negative");
             }
             Ok(other) => {
-                println!(
-                    "✅ FFI compatibility test passed (different type): {:?}",
+                tracing::info!(
+                    "FFI compatibility test passed (different type): {:?}",
                     other
                 );
             }
             Err(e) => {
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 panic!("FFI compatibility test failed: {}", e);
@@ -98,11 +100,11 @@ mod cross_language_compatibility_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -121,10 +123,7 @@ mod cross_language_compatibility_tests {
 
             match result {
                 Ok(_) => {
-                    println!(
-                        "✅ {} ({}) completed in {:?}",
-                        tag_name, description, duration
-                    );
+                    tracing::info!("{} ({}) completed in {:?}", tag_name, description, duration);
                     assert!(
                         duration < Duration::from_millis(500),
                         "{} should complete within 500ms",
@@ -133,10 +132,10 @@ mod cross_language_compatibility_tests {
                 }
                 Err(e) => {
                     if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                        println!("⚠️ Skipping test - PLC not available");
+                        tracing::debug!("Skipping test - PLC not available");
                         return;
                     }
-                    println!("⚠️ {} failed (might not exist): {}", tag_name, e);
+                    tracing::warn!("{} failed (might not exist): {}", tag_name, e);
                 }
             }
         }
@@ -148,11 +147,11 @@ mod cross_language_compatibility_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -168,13 +167,10 @@ mod cross_language_compatibility_tests {
             let result = client.read_tag(tag_name).await;
             match result {
                 Ok(_) => {
-                    println!(
-                        "⚠️ {} unexpectedly succeeded (might exist on PLC)",
-                        tag_name
-                    );
+                    tracing::warn!("{} unexpectedly succeeded (might exist on PLC)", tag_name);
                 }
                 Err(e) => {
-                    println!("✅ {} correctly failed: {}", tag_name, e);
+                    tracing::info!("{} correctly failed: {}", tag_name, e);
                     // Verify error message is informative
                     assert!(
                         !e.to_string().is_empty(),
@@ -192,11 +188,11 @@ mod cross_language_compatibility_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -206,11 +202,11 @@ mod cross_language_compatibility_tests {
             let result = client.read_tag("TestTagController").await;
             match result {
                 Ok(_) => {
-                    println!("✅ Memory safety test iteration {} passed", i);
+                    tracing::info!("Memory safety test iteration {} passed", i);
                 }
                 Err(e) => {
                     if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                        println!("⚠️ Skipping test - PLC not available");
+                        tracing::debug!("Skipping test - PLC not available");
                         return;
                     }
                     panic!("Memory safety test failed at iteration {}: {}", i, e);

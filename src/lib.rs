@@ -361,6 +361,71 @@ pub use tag_subscription::{
 };
 pub use udt::{TagAttributes, UdtDefinition, UdtMember, UdtTemplate};
 
+/// Initialize tracing subscriber with environment-based filtering
+///
+/// This function sets up the tracing subscriber to use the `RUST_LOG` environment variable
+/// for log level filtering. If not called, tracing events will be ignored.
+///
+/// # Examples
+///
+/// ```no_run
+/// use rust_ethernet_ip::init_tracing;
+///
+/// // Initialize with default settings (reads RUST_LOG env var)
+/// init_tracing();
+///
+/// // Or set RUST_LOG before calling:
+/// // RUST_LOG=debug cargo run
+/// ```
+///
+/// # Log Levels
+///
+/// Set the `RUST_LOG` environment variable to control logging:
+/// - `RUST_LOG=trace` - Most verbose (all events)
+/// - `RUST_LOG=debug` - Debug information
+/// - `RUST_LOG=info` - Informational messages (default)
+/// - `RUST_LOG=warn` - Warnings only
+/// - `RUST_LOG=error` - Errors only
+/// - `RUST_LOG=rust_ethernet_ip=debug` - Debug for this crate only
+///
+/// # Panics
+///
+/// This function will panic if called more than once. Use `try_init_tracing()` for
+/// non-panicking initialization.
+pub fn init_tracing() {
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::EnvFilter;
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let subscriber = fmt::Subscriber::builder()
+        .with_env_filter(filter)
+        .with_target(false) // Don't show module paths by default
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
+}
+
+/// Try to initialize tracing subscriber (non-panicking version)
+///
+/// Returns `Ok(())` if initialization was successful, or an error if a subscriber
+/// was already set.
+pub fn try_init_tracing() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::EnvFilter;
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let subscriber = fmt::Subscriber::builder()
+        .with_env_filter(filter)
+        .with_target(false)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    Ok(())
+}
+
 /// Route path for PLC communication
 #[derive(Debug, Clone)]
 pub struct RoutePath {
@@ -708,7 +773,7 @@ impl ConnectedSession {
                 session.t_to_o_params.size = 504;
                 session.o_to_t_params.priority = 0x00; // Low priority
                 session.t_to_o_params.priority = 0x00;
-                println!("🔧 [CONFIG 1] Conservative: 504 bytes, 200ms RPI, low priority");
+                tracing::debug!("CONFIG 1: Conservative: 504 bytes, 200ms RPI, low priority");
             }
             2 => {
                 // Config 2: Compact parameters
@@ -718,7 +783,7 @@ impl ConnectedSession {
                 session.t_to_o_params.size = 256;
                 session.o_to_t_params.priority = 0x02; // Scheduled priority
                 session.t_to_o_params.priority = 0x02;
-                println!("🔧 [CONFIG 2] Compact: 256 bytes, 50ms RPI, scheduled priority");
+                tracing::debug!("CONFIG 2: Compact: 256 bytes, 50ms RPI, scheduled priority");
             }
             3 => {
                 // Config 3: Minimal parameters
@@ -728,7 +793,7 @@ impl ConnectedSession {
                 session.t_to_o_params.size = 128;
                 session.o_to_t_params.priority = 0x03; // Urgent priority
                 session.t_to_o_params.priority = 0x03;
-                println!("🔧 [CONFIG 3] Minimal: 128 bytes, 1000ms RPI, urgent priority");
+                tracing::debug!("CONFIG 3: Minimal: 128 bytes, 1000ms RPI, urgent priority");
             }
             4 => {
                 // Config 4: Standard Rockwell parameters (from documentation)
@@ -739,7 +804,9 @@ impl ConnectedSession {
                 session.o_to_t_params.connection_type = 0x01; // Multicast
                 session.t_to_o_params.connection_type = 0x01;
                 session.originator_vendor_id = 0x001D; // Rockwell vendor ID
-                println!("🔧 [CONFIG 4] Rockwell standard: 500 bytes, 100ms RPI, multicast, Rockwell vendor");
+                tracing::debug!(
+                    "CONFIG 4: Rockwell standard: 500 bytes, 100ms RPI, multicast, Rockwell vendor"
+                );
             }
             5 => {
                 // Config 5: Large buffer parameters
@@ -749,11 +816,11 @@ impl ConnectedSession {
                 session.t_to_o_params.size = 1024;
                 session.o_to_t_params.variable_size = true; // Variable size
                 session.t_to_o_params.variable_size = true;
-                println!("🔧 [CONFIG 5] Large buffer: 1024 bytes, 500ms RPI, variable size");
+                tracing::debug!("CONFIG 5: Large buffer: 1024 bytes, 500ms RPI, variable size");
             }
             _ => {
                 // Default config
-                println!("🔧 [CONFIG 0] Default parameters");
+                tracing::debug!("CONFIG 0: Default parameters");
             }
         }
 
@@ -1365,7 +1432,7 @@ impl EipClient {
     /// - Invalid response format
     /// - PLC rejection (status code non-zero)
     async fn register_session(&mut self) -> crate::error::Result<()> {
-        println!("🔌 [DEBUG] Starting session registration...");
+        tracing::debug!("Starting session registration...");
         let packet: [u8; 28] = [
             0x65, 0x00, // Command: Register Session (0x0065)
             0x04, 0x00, // Length: 4 bytes
@@ -1377,19 +1444,19 @@ impl EipClient {
             0x00, 0x00, // Option Flags: 0
         ];
 
-        println!("📤 [DEBUG] Sending Register Session packet: {packet:02X?}");
+        tracing::trace!("Sending Register Session packet: {:02X?}", packet);
         self.stream
             .lock()
             .await
             .write_all(&packet)
             .await
             .map_err(|e| {
-                println!("❌ [DEBUG] Failed to send Register Session packet: {e}");
+                tracing::error!("Failed to send Register Session packet: {}", e);
                 EtherNetIpError::Io(e)
             })?;
 
         let mut buf = [0u8; 1024];
-        println!("⏳ [DEBUG] Waiting for Register Session response...");
+        tracing::debug!("Waiting for Register Session response...");
         let n = match timeout(
             Duration::from_secs(5),
             self.stream.lock().await.read(&mut buf),
@@ -1397,40 +1464,40 @@ impl EipClient {
         .await
         {
             Ok(Ok(n)) => {
-                println!("📥 [DEBUG] Received {n} bytes in response");
+                tracing::trace!("Received {} bytes in response", n);
                 n
             }
             Ok(Err(e)) => {
-                println!("❌ [DEBUG] Error reading response: {e}");
+                tracing::error!("Error reading response: {}", e);
                 return Err(EtherNetIpError::Io(e));
             }
             Err(_) => {
-                println!("⏰ [DEBUG] Timeout waiting for response");
+                tracing::warn!("Timeout waiting for response");
                 return Err(EtherNetIpError::Timeout(Duration::from_secs(5)));
             }
         };
 
         if n < 28 {
-            println!("❌ [DEBUG] Response too short: {n} bytes (expected 28)");
+            tracing::error!("Response too short: {} bytes (expected 28)", n);
             return Err(EtherNetIpError::Protocol("Response too short".to_string()));
         }
 
         // Extract session handle from response
         self.session_handle = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
-        println!("🔑 [DEBUG] Session handle: 0x{:08X}", self.session_handle);
+        tracing::debug!("Session handle: 0x{:08X}", self.session_handle);
 
         // Check status
         let status = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
-        println!("📊 [DEBUG] Status code: 0x{status:08X}");
+        tracing::trace!("Status code: 0x{:08X}", status);
 
         if status != 0 {
-            println!("❌ [DEBUG] Session registration failed with status: 0x{status:08X}");
+            tracing::error!("Session registration failed with status: 0x{:08X}", status);
             return Err(EtherNetIpError::Protocol(format!(
                 "Session registration failed with status: 0x{status:08X}"
             )));
         }
 
-        println!("✅ [DEBUG] Session registration successful");
+        tracing::info!("Session registration successful");
         Ok(())
     }
 
@@ -1461,7 +1528,7 @@ impl EipClient {
             tag_manager.parse_tag_list(&cip_data)?
         };
 
-        println!("[DEBUG] Initial tag discovery found {} tags", tags.len());
+        tracing::debug!("Initial tag discovery found {} tags", tags.len());
 
         // Perform recursive drill-down discovery (similar to TypeScript implementation)
         let hierarchical_tags = {
@@ -1469,8 +1536,8 @@ impl EipClient {
             tag_manager.drill_down_tags(&tags).await?
         };
 
-        println!(
-            "[DEBUG] After drill-down: {} total tags discovered",
+        tracing::debug!(
+            "After drill-down: {} total tags discovered",
             hierarchical_tags.len()
         );
 
@@ -1715,9 +1782,10 @@ impl EipClient {
                 let after_bracket = &tag_name[bracket_end + 1..];
                 // If there's a dot after the bracket, it's a member access - use TagPath::parse() instead
                 if !after_bracket.starts_with('.') {
-                    println!(
-                        "🔧 [DEBUG] Detected simple array element access: {}[{}], using workaround",
-                        base_name, index
+                    tracing::debug!(
+                        "Detected simple array element access: {}[{}], using workaround",
+                        base_name,
+                        index
                     );
                     return self.read_array_element_workaround(&base_name, index).await;
                 }
@@ -1771,9 +1839,10 @@ impl EipClient {
         base_array_name: &str,
         index: u32,
     ) -> crate::error::Result<PlcValue> {
-        println!(
-            "🔧 [DEBUG] Reading array element '{}[{}]' using element addressing",
-            base_array_name, index
+        tracing::debug!(
+            "Reading array element '{}[{}]' using element addressing",
+            base_array_name,
+            index
         );
 
         // First, detect if it's a BOOL array by reading with count=1 to check data type
@@ -1819,8 +1888,8 @@ impl EipClient {
         base_array_name: &str,
         index: u32,
     ) -> crate::error::Result<PlcValue> {
-        println!(
-            "🔧 [DEBUG] BOOL array detected - reading DWORD and extracting bit [{}]",
+        tracing::debug!(
+            "BOOL array detected - reading DWORD and extracting bit [{}]",
             index
         );
 
@@ -1942,9 +2011,11 @@ impl EipClient {
         let mut all_data = Vec::new();
         let mut next_chunk_start = 0u32;
 
-        println!(
-            "🔧 [DEBUG] Reading array '{}' in chunks: {} elements per chunk, target: {} elements",
-            base_array_name, elements_per_chunk, target_element_count
+        tracing::debug!(
+            "Reading array '{}' in chunks: {} elements per chunk, target: {} elements",
+            base_array_name,
+            elements_per_chunk,
+            target_element_count
         );
 
         while next_chunk_start < target_element_count {
@@ -1954,9 +2025,11 @@ impl EipClient {
                 (next_chunk_start + elements_per_chunk as u32).min(target_element_count);
             let chunk_size = (chunk_end - next_chunk_start) as u16;
 
-            println!(
-                "🔧 [DEBUG] Reading chunk: elements {} to {} ({} elements) using element addressing",
-                next_chunk_start, chunk_end - 1, chunk_size
+            tracing::trace!(
+                "Reading chunk: elements {} to {} ({} elements) using element addressing",
+                next_chunk_start,
+                chunk_end - 1,
+                chunk_size
             );
 
             // Use element addressing to read this specific range
@@ -2050,8 +2123,8 @@ impl EipClient {
                 let elements_received = chunk_data.len() / element_size;
                 next_chunk_start += elements_received as u32;
 
-                println!(
-                    "🔧 [DEBUG] Chunk read: {} elements ({} bytes) starting at index {}, total so far: {} elements",
+                tracing::trace!(
+                    "Chunk read: {} elements ({} bytes) starting at index {}, total so far: {} elements",
                     elements_received,
                     chunk_data.len(),
                     next_chunk_start - elements_received as u32,
@@ -2060,8 +2133,8 @@ impl EipClient {
 
                 // Continue reading if we haven't reached our target yet
                 if next_chunk_start >= target_element_count {
-                    println!(
-                        "🔧 [DEBUG] Reached target element count ({}), stopping chunked read",
+                    tracing::trace!(
+                        "Reached target element count ({}), stopping chunked read",
                         target_element_count
                     );
                     break;
@@ -2073,8 +2146,8 @@ impl EipClient {
         }
 
         let final_element_count = all_data.len() / element_size;
-        println!(
-            "🔧 [DEBUG] Chunked read complete: {} total elements ({} bytes), target was {} elements",
+        tracing::debug!(
+            "Chunked read complete: {} total elements ({} bytes), target was {} elements",
             final_element_count,
             all_data.len(),
             target_element_count
@@ -2086,8 +2159,8 @@ impl EipClient {
             && (target_element_count as usize - final_element_count) <= 2
             && final_element_count > 0
         {
-            println!(
-                "🔧 [DEBUG] Got {} elements but needed {}, trying to read remaining {} elements",
+            tracing::debug!(
+                "Got {} elements but needed {}, trying to read remaining {} elements",
                 final_element_count,
                 target_element_count,
                 target_element_count as usize - final_element_count
@@ -2133,36 +2206,36 @@ impl EipClient {
                                     let missing_elements =
                                         &final_data[missing_start_offset..end_offset];
                                     all_data.extend_from_slice(missing_elements);
-                                    println!(
-                                        "🔧 [DEBUG] Added {} more elements from final read, total now: {} elements",
+                                    tracing::debug!(
+                                        "Added {} more elements from final read, total now: {} elements",
                                         elements_to_add,
                                         all_data.len() / element_size
                                     );
                                 } else {
-                                    println!(
-                                        "🔧 [DEBUG] Final read did not provide additional elements (PLC may have a 49-element limit)"
+                                    tracing::warn!(
+                                        "Final read did not provide additional elements (PLC may have a 49-element limit)"
                                     );
                                 }
                             } else {
-                                println!(
-                                    "🔧 [DEBUG] Missing start offset {} is beyond final data length {} (PLC may have a 49-element limit)",
+                                tracing::warn!(
+                                    "Missing start offset {} is beyond final data length {} (PLC may have a 49-element limit)",
                                     missing_start_offset, final_data.len()
                                 );
                             }
                         }
                     } else {
-                        println!(
-                            "🔧 [DEBUG] Final read response too short or data type mismatch (PLC may have a 49-element limit)"
+                        tracing::warn!(
+                            "Final read response too short or data type mismatch (PLC may have a 49-element limit)"
                         );
                     }
                 } else {
-                    println!(
-                        "🔧 [DEBUG] Failed to extract CIP from final read response (PLC may have a 49-element limit)"
+                    tracing::warn!(
+                        "Failed to extract CIP from final read response (PLC may have a 49-element limit)"
                     );
                 }
             } else {
-                println!(
-                    "🔧 [DEBUG] Final read request failed (PLC may have a 49-element limit per response)"
+                tracing::warn!(
+                    "Final read request failed (PLC may have a 49-element limit per response)"
                 );
             }
         }
@@ -2170,8 +2243,8 @@ impl EipClient {
         // If we still don't have all elements, log a warning but return what we have
         let final_count = all_data.len() / element_size;
         if final_count < target_element_count as usize {
-            println!(
-                "⚠️ [DEBUG] Warning: Only got {} elements out of {} requested (PLC may have response size limits)",
+            tracing::warn!(
+                "Warning: Only got {} elements out of {} requested (PLC may have response size limits)",
                 final_count, target_element_count
             );
         }
@@ -2198,9 +2271,10 @@ impl EipClient {
         index: u32,
         value: PlcValue,
     ) -> crate::error::Result<()> {
-        println!(
-            "🔧 [DEBUG] Writing to array element '{}[{}]' using element addressing",
-            base_array_name, index
+        tracing::debug!(
+            "Writing to array element '{}[{}]' using element addressing",
+            base_array_name,
+            index
         );
 
         // First, detect if it's a BOOL array by reading with count=1
@@ -2260,7 +2334,7 @@ impl EipClient {
         // Check for errors (including extended errors)
         self.check_cip_error(&cip_data)?;
 
-        println!("✅ Array element write completed successfully");
+        tracing::info!("Array element write completed successfully");
         Ok(())
     }
 
@@ -2273,8 +2347,8 @@ impl EipClient {
         index: u32,
         value: PlcValue,
     ) -> crate::error::Result<()> {
-        println!(
-            "🔧 [DEBUG] BOOL array element write - reading DWORD, modifying bit [{}], writing back",
+        tracing::debug!(
+            "BOOL array element write - reading DWORD, modifying bit [{}], writing back",
             index
         );
 
@@ -2336,8 +2410,8 @@ impl EipClient {
             dword_value &= !(1u32 << bit_index);
         }
 
-        println!(
-            "🔧 [DEBUG] Modified BOOL[{}] in DWORD: 0x{:08X} -> 0x{:08X} (bit {} = {})",
+        tracing::trace!(
+            "Modified BOOL[{}] in DWORD: 0x{:08X} -> 0x{:08X} (bit {} = {})",
             index,
             u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]),
             dword_value,
@@ -2358,7 +2432,7 @@ impl EipClient {
         // Check for errors (including extended errors)
         self.check_cip_error(&write_cip_data)?;
 
-        println!("✅ BOOL array element write completed successfully");
+        tracing::info!("BOOL array element write completed successfully");
         Ok(())
     }
 
@@ -2532,24 +2606,21 @@ impl EipClient {
     pub async fn read_udt_chunked(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         self.validate_session().await?;
 
-        println!(
-            "🔧 [CHUNKED] Starting advanced UDT reading for: {}",
-            tag_name
-        );
+        tracing::debug!("[CHUNKED] Starting advanced UDT reading for: {}", tag_name);
 
         // Strategy 1: Try normal read first
         match self.read_tag(tag_name).await {
             Ok(value) => {
-                println!("🔧 [CHUNKED] Normal read successful");
+                tracing::debug!("[CHUNKED] Normal read successful");
                 return Ok(value);
             }
             Err(crate::error::EtherNetIpError::Protocol(msg))
                 if msg.contains("Partial transfer") =>
             {
-                println!("🔧 [CHUNKED] Partial transfer detected, using advanced chunking");
+                tracing::debug!("[CHUNKED] Partial transfer detected, using advanced chunking");
             }
             Err(e) => {
-                println!("🔧 [CHUNKED] Normal read failed: {}", e);
+                tracing::warn!("[CHUNKED] Normal read failed: {}", e);
                 return Err(e);
             }
         }
@@ -2563,52 +2634,52 @@ impl EipClient {
         &mut self,
         tag_name: &str,
     ) -> crate::error::Result<PlcValue> {
-        println!("🔧 [ADVANCED] Using multiple strategies for large UDT");
+        tracing::debug!("[ADVANCED] Using multiple strategies for large UDT");
 
         // Strategy A: Try different chunk sizes
         let chunk_sizes = vec![512, 256, 128, 64, 32, 16, 8, 4];
 
         for chunk_size in chunk_sizes {
-            println!("🔧 [ADVANCED] Trying chunk size: {}", chunk_size);
+            tracing::trace!("[ADVANCED] Trying chunk size: {}", chunk_size);
 
             match self.read_udt_with_chunk_size(tag_name, chunk_size).await {
                 Ok(udt_value) => {
-                    println!("🔧 [ADVANCED] Success with chunk size {}", chunk_size);
+                    tracing::debug!("[ADVANCED] Success with chunk size {}", chunk_size);
                     return Ok(udt_value);
                 }
                 Err(e) => {
-                    println!("🔧 [ADVANCED] Chunk size {} failed: {}", chunk_size, e);
+                    tracing::trace!("[ADVANCED] Chunk size {} failed: {}", chunk_size, e);
                     continue;
                 }
             }
         }
 
         // Strategy B: Try member-by-member discovery
-        println!("🔧 [ADVANCED] Trying member-by-member discovery");
+        tracing::debug!("[ADVANCED] Trying member-by-member discovery");
         match self.read_udt_member_discovery(tag_name).await {
             Ok(udt_value) => {
-                println!("🔧 [ADVANCED] Member discovery successful");
+                tracing::debug!("[ADVANCED] Member discovery successful");
                 return Ok(udt_value);
             }
             Err(e) => {
-                println!("🔧 [ADVANCED] Member discovery failed: {}", e);
+                tracing::warn!("[ADVANCED] Member discovery failed: {}", e);
             }
         }
 
         // Strategy C: Try progressive reading
-        println!("🔧 [ADVANCED] Trying progressive reading");
+        tracing::debug!("[ADVANCED] Trying progressive reading");
         match self.read_udt_progressive(tag_name).await {
             Ok(udt_value) => {
-                println!("🔧 [ADVANCED] Progressive reading successful");
+                tracing::debug!("[ADVANCED] Progressive reading successful");
                 return Ok(udt_value);
             }
             Err(e) => {
-                println!("🔧 [ADVANCED] Progressive reading failed: {}", e);
+                tracing::warn!("[ADVANCED] Progressive reading failed: {}", e);
             }
         }
 
         // Strategy D: Fallback - try to get at least the symbol_id
-        println!("🔧 [ADVANCED] All strategies failed, using fallback");
+        tracing::warn!("[ADVANCED] All strategies failed, using fallback");
         // Try to get tag attributes for symbol_id
         let symbol_id = self
             .get_tag_attributes(tag_name)
@@ -2649,8 +2720,8 @@ impl EipClient {
                     offset += chunk_data.len();
                     consecutive_failures = 0;
 
-                    println!(
-                        "🔧 [CHUNK] Read {} bytes at offset {}, total: {}",
+                    tracing::trace!(
+                        "[CHUNK] Read {} bytes at offset {}, total: {}",
                         chunk_data.len(),
                         offset - chunk_data.len(),
                         all_data.len()
@@ -2663,9 +2734,10 @@ impl EipClient {
                 }
                 Err(e) => {
                     consecutive_failures += 1;
-                    println!(
-                        "🔧 [CHUNK] Chunk read failed (attempt {}): {}",
-                        consecutive_failures, e
+                    tracing::warn!(
+                        "[CHUNK] Chunk read failed (attempt {}): {}",
+                        consecutive_failures,
+                        e
                     );
 
                     if consecutive_failures >= MAX_FAILURES {
@@ -2687,7 +2759,7 @@ impl EipClient {
             ));
         }
 
-        println!("🔧 [CHUNK] Total data collected: {} bytes", all_data.len());
+        tracing::debug!("[CHUNK] Total data collected: {} bytes", all_data.len());
 
         // Get symbol_id from tag attributes
         let symbol_id = self
@@ -2769,7 +2841,7 @@ impl EipClient {
         &mut self,
         tag_name: &str,
     ) -> crate::error::Result<PlcValue> {
-        println!("🔧 [DISCOVERY] Reading UDT as raw data for: {}", tag_name);
+        tracing::debug!("[DISCOVERY] Reading UDT as raw data for: {}", tag_name);
 
         // Get tag attributes to retrieve symbol_id (template_instance_id)
         let attributes = self.get_tag_attributes(tag_name).await?;
@@ -2783,8 +2855,8 @@ impl EipClient {
         // Read raw UDT data
         let raw_data = self.read_tag_raw(tag_name).await?;
 
-        println!(
-            "🔧 [DISCOVERY] Read {} bytes of UDT data with symbol_id: {}",
+        tracing::debug!(
+            "[DISCOVERY] Read {} bytes of UDT data with symbol_id: {}",
             raw_data.len(),
             symbol_id
         );
@@ -2797,7 +2869,7 @@ impl EipClient {
 
     /// Progressive reading - try to read UDT in progressively smaller chunks
     async fn read_udt_progressive(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
-        println!("🔧 [PROGRESSIVE] Starting progressive reading");
+        tracing::debug!("[PROGRESSIVE] Starting progressive reading");
 
         // Start with a small chunk and gradually increase
         let mut chunk_size = 4;
@@ -2817,8 +2889,8 @@ impl EipClient {
                     all_data.extend_from_slice(&chunk_data);
                     offset += chunk_data.len();
 
-                    println!(
-                        "🔧 [PROGRESSIVE] Read {} bytes with chunk size {}",
+                    tracing::trace!(
+                        "[PROGRESSIVE] Read {} bytes with chunk size {}",
                         chunk_data.len(),
                         chunk_size
                     );
@@ -2844,7 +2916,7 @@ impl EipClient {
             ));
         }
 
-        println!("🔧 [PROGRESSIVE] Collected {} bytes total", all_data.len());
+        tracing::debug!("[PROGRESSIVE] Collected {} bytes total", all_data.len());
 
         // Get symbol_id from tag attributes
         let symbol_id = self
@@ -3483,14 +3555,11 @@ impl EipClient {
             // Update client's max packet size (with reasonable limits)
             self.max_packet_size = max_packet_size.clamp(504, 4000);
 
-            println!("📦 Negotiated packet size: {} bytes", self.max_packet_size);
+            tracing::debug!("Negotiated packet size: {} bytes", self.max_packet_size);
         } else {
             // If negotiation fails, use default size
             self.max_packet_size = 4000;
-            println!(
-                "📦 Using default packet size: {} bytes",
-                self.max_packet_size
-            );
+            tracing::debug!("Using default packet size: {} bytes", self.max_packet_size);
         }
 
         Ok(())
@@ -3540,8 +3609,8 @@ impl EipClient {
     /// # }
     /// ```
     pub async fn write_tag(&mut self, tag_name: &str, value: PlcValue) -> crate::error::Result<()> {
-        println!(
-            "📝 Writing '{}' to tag '{}'",
+        tracing::debug!(
+            "Writing '{}' to tag '{}'",
             match &value {
                 PlcValue::String(s) => format!("\"{s}\""),
                 _ => format!("{value:?}"),
@@ -3553,7 +3622,7 @@ impl EipClient {
         // As noted by the contributor: "to write a UDT, you typically need to read it first to get the symbol_id"
         let value = if let PlcValue::Udt(udt_data) = &value {
             if udt_data.symbol_id == 0 {
-                println!("🔧 [UDT WRITE] symbol_id is 0, reading tag to get symbol_id");
+                tracing::debug!("[UDT WRITE] symbol_id is 0, reading tag to get symbol_id");
                 // Read tag attributes to get symbol_id
                 let attributes = self.get_tag_attributes(tag_name).await?;
                 let symbol_id = attributes.template_instance_id.ok_or_else(|| {
@@ -3577,9 +3646,10 @@ impl EipClient {
 
         // Check if this is array element access (e.g., "ArrayName[0]")
         if let Some((base_name, index)) = self.parse_array_element_access(tag_name) {
-            println!(
-                "🔧 [DEBUG] Detected array element write: {}[{}], using workaround",
-                base_name, index
+            tracing::debug!(
+                "Detected array element write: {}[{}], using workaround",
+                base_name,
+                index
             );
             return self
                 .write_array_element_workaround(&base_name, index, value)
@@ -3607,17 +3677,19 @@ impl EipClient {
         let service_reply = cip_response[0]; // Should be 0xCD (0x4D + 0x80) for Write Tag reply
         let general_status = cip_response[2]; // CIP status code
 
-        println!(
-            "🔧 [DEBUG] Write response - Service: 0x{service_reply:02X}, Status: 0x{general_status:02X}"
+        tracing::trace!(
+            "Write response - Service: 0x{:02X}, Status: 0x{:02X}",
+            service_reply,
+            general_status
         );
 
         // Check for errors (including extended errors)
         if let Err(e) = self.check_cip_error(&cip_response) {
-            println!("❌ [WRITE] CIP Error: {}", e);
+            tracing::error!("[WRITE] CIP Error: {}", e);
             return Err(e);
         }
 
-        println!("✅ Write operation completed successfully");
+        tracing::info!("Write operation completed successfully");
         Ok(())
     }
 
@@ -3628,9 +3700,9 @@ impl EipClient {
         value: &PlcValue,
     ) -> crate::error::Result<Vec<u8>> {
         if let PlcValue::String(string_value) = value {
-            println!(
-                "🔧 [DEBUG] Building correct Allen-Bradley string write request for tag: '{tag_name}'"
-
+            tracing::debug!(
+                "Building correct Allen-Bradley string write request for tag: '{}'",
+                tag_name
             );
 
             let mut cip_request = Vec::new();
@@ -3681,10 +3753,15 @@ impl EipClient {
                 .copy_from_slice(&string_bytes[..current_len as usize]);
             cip_request.extend_from_slice(&data_array);
 
-            println!("🔧 [DEBUG] Built correct AB string write request ({} bytes): len={}, maxlen={}, data_len={}",
-                     cip_request.len(), current_len, max_len, string_bytes.len());
-            println!(
-                "🔧 [DEBUG] First 32 bytes: {:02X?}",
+            tracing::trace!(
+                "Built correct AB string write request ({} bytes): len={}, maxlen={}, data_len={}",
+                cip_request.len(),
+                current_len,
+                max_len,
+                string_bytes.len()
+            );
+            tracing::trace!(
+                "First 32 bytes: {:02X?}",
                 &cip_request[..std::cmp::min(32, cip_request.len())]
             );
 
@@ -3710,7 +3787,7 @@ impl EipClient {
         tag_name: &str,
         value: &PlcValue,
     ) -> crate::error::Result<Vec<u8>> {
-        println!("🔧 [DEBUG] Building write request for tag: '{tag_name}'");
+        tracing::debug!("Building write request for tag: '{}'", tag_name);
 
         // Use Connected Explicit Messaging for consistency
         let mut cip_request = Vec::new();
@@ -3742,8 +3819,8 @@ impl EipClient {
         cip_request.extend_from_slice(&[0x01, 0x00]); // Element count: 1
         cip_request.extend_from_slice(&value_bytes); // Value data
 
-        println!(
-            "🔧 [DEBUG] Built CIP write request ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Built CIP write request ({} bytes): {:02X?}",
             cip_request.len(),
             cip_request
         );
@@ -3849,7 +3926,7 @@ impl EipClient {
     }
 
     pub fn build_list_tags_request(&self) -> Vec<u8> {
-        println!("🔧 [DEBUG] Building list tags request");
+        tracing::debug!("Building list tags request");
 
         // Build path array for Symbol Object Class (0x6B)
         let path_array = vec![
@@ -3879,8 +3956,8 @@ impl EipClient {
         // Request Data
         cip_request.extend_from_slice(&request_data);
 
-        println!(
-            "🔧 [DEBUG] Built CIP list tags request ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Built CIP list tags request ({} bytes): {:02X?}",
             cip_request.len(),
             cip_request
         );
@@ -4191,17 +4268,19 @@ impl EipClient {
         let service_reply = cip_response[0]; // Should be 0xCD (0x4D + 0x80) for Write Tag reply
         let general_status = cip_response[2]; // CIP status code
 
-        println!(
-            "🔧 [DEBUG] Write response - Service: 0x{service_reply:02X}, Status: 0x{general_status:02X}"
+        tracing::trace!(
+            "Write response - Service: 0x{:02X}, Status: 0x{:02X}",
+            service_reply,
+            general_status
         );
 
         // Check for errors (including extended errors)
         if let Err(e) = self.check_cip_error(&cip_response) {
-            println!("❌ [WRITE] CIP Error: {}", e);
+            tracing::error!("[WRITE] CIP Error: {}", e);
             return Err(e);
         }
 
-        println!("✅ Write completed successfully");
+        tracing::info!("Write completed successfully");
         Ok(())
     }
 
@@ -4268,8 +4347,8 @@ impl EipClient {
 
         // Route Path - THIS IS WHERE [0x01, slot] GOES
         if !route_path_bytes.is_empty() {
-            println!(
-                "🔧 [DEBUG] Adding route path to Unconnected Send: {:02X?} ({} bytes, {} words)",
+            tracing::trace!(
+                "Adding route path to Unconnected Send: {:02X?} ({} bytes, {} words)",
                 route_path_bytes,
                 route_path_bytes.len(),
                 route_path_words
@@ -4282,8 +4361,8 @@ impl EipClient {
 
     /// Sends a CIP request wrapped in EtherNet/IP SendRRData command
     pub async fn send_cip_request(&self, cip_request: &[u8]) -> Result<Vec<u8>> {
-        println!(
-            "🔧 [DEBUG] Sending CIP request ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Sending CIP request ({} bytes): {:02X?}",
             cip_request.len(),
             cip_request
         );
@@ -4292,8 +4371,8 @@ impl EipClient {
         // Route path goes at the END of Unconnected Send, NOT in the CIP request
         let ucmm_message = self.build_unconnected_send(cip_request);
 
-        println!(
-            "🔧 [DEBUG] Unconnected Send message ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Unconnected Send message ({} bytes): {:02X?}",
             ucmm_message.len(),
             &ucmm_message[..std::cmp::min(64, ucmm_message.len())]
         );
@@ -4328,8 +4407,8 @@ impl EipClient {
         // Add Unconnected Send message (which contains the CIP request + route path)
         packet.extend_from_slice(&ucmm_message);
 
-        println!(
-            "🔧 [DEBUG] Built packet ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Built packet ({} bytes): {:02X?}",
             packet.len(),
             &packet[..std::cmp::min(64, packet.len())]
         );
@@ -4379,8 +4458,8 @@ impl EipClient {
         // Update last activity time
         *self.last_activity.lock().await = Instant::now();
 
-        println!(
-            "🔧 [DEBUG] Received response ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Received response ({} bytes): {:02X?}",
             response_data.len(),
             &response_data[..std::cmp::min(32, response_data.len())]
         );
@@ -4390,8 +4469,8 @@ impl EipClient {
 
     /// Extracts CIP data from EtherNet/IP response packet
     fn extract_cip_from_response(&self, response: &[u8]) -> crate::error::Result<Vec<u8>> {
-        println!(
-            "🔧 [DEBUG] Extracting CIP from response ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Extracting CIP from response ({} bytes): {:02X?}",
             response.len(),
             &response[..std::cmp::min(32, response.len())]
         );
@@ -4411,7 +4490,7 @@ impl EipClient {
         // Read item count
         let item_count = u16::from_le_bytes([response[pos], response[pos + 1]]);
         pos += 2;
-        println!("🔧 [DEBUG] CPF item count: {item_count}");
+        tracing::trace!("CPF item count: {}", item_count);
 
         // Process items
         for i in 0..item_count {
@@ -4425,7 +4504,12 @@ impl EipClient {
             let item_length = u16::from_le_bytes([response[pos + 2], response[pos + 3]]) as usize;
             pos += 4; // Skip item header
 
-            println!("🔧 [DEBUG] Item {i}: type=0x{item_type:04X}, length={item_length}");
+            tracing::trace!(
+                "Item {}: type=0x{:04X}, length={}",
+                i,
+                item_type,
+                item_length
+            );
 
             if item_type == 0x00B2 {
                 // Unconnected Data Item
@@ -4434,12 +4518,12 @@ impl EipClient {
                 }
 
                 let cip_data = response[pos..pos + item_length].to_vec();
-                println!(
-                    "🔧 [DEBUG] Found Unconnected Data Item, extracted CIP data ({} bytes)",
+                tracing::trace!(
+                    "Found Unconnected Data Item, extracted CIP data ({} bytes)",
                     cip_data.len()
                 );
-                println!(
-                    "🔧 [DEBUG] CIP data bytes: {:02X?}",
+                tracing::trace!(
+                    "CIP data bytes: {:02X?}",
                     &cip_data[..std::cmp::min(16, cip_data.len())]
                 );
                 return Ok(cip_data);
@@ -4456,8 +4540,8 @@ impl EipClient {
 
     /// Parses CIP response and converts to `PlcValue`
     fn parse_cip_response(&self, cip_response: &[u8]) -> crate::error::Result<PlcValue> {
-        println!(
-            "🔧 [DEBUG] Parsing CIP response ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Parsing CIP response ({} bytes): {:02X?}",
             cip_response.len(),
             cip_response
         );
@@ -4471,11 +4555,15 @@ impl EipClient {
         let service_reply = cip_response[0]; // Should be 0xCC (0x4C + 0x80) for Read Tag reply
         let general_status = cip_response[2]; // CIP status code
 
-        println!("🔧 [DEBUG] Service reply: 0x{service_reply:02X}, Status: 0x{general_status:02X}");
+        tracing::trace!(
+            "Service reply: 0x{:02X}, Status: 0x{:02X}",
+            service_reply,
+            general_status
+        );
 
         // Check for CIP errors (including extended errors)
         if let Err(e) = self.check_cip_error(cip_response) {
-            println!("🔧 [DEBUG] CIP Error: {}", e);
+            tracing::error!("CIP Error: {}", e);
             return Err(e);
         }
 
@@ -4491,8 +4579,8 @@ impl EipClient {
             let data_type = u16::from_le_bytes([cip_response[4], cip_response[5]]);
             let value_data = &cip_response[6..];
 
-            println!(
-                "🔧 [DEBUG] Data type: 0x{:04X}, Value data ({} bytes): {:02X?}",
+            tracing::trace!(
+                "Data type: 0x{:04X}, Value data ({} bytes): {:02X?}",
                 data_type,
                 value_data.len(),
                 value_data
@@ -4508,7 +4596,7 @@ impl EipClient {
                         ));
                     }
                     let value = value_data[0] != 0;
-                    println!("🔧 [DEBUG] Parsed BOOL: {value}");
+                    tracing::trace!("Parsed BOOL: {}", value);
                     Ok(PlcValue::Bool(value))
                 }
                 0x00C2 => {
@@ -4519,7 +4607,7 @@ impl EipClient {
                         ));
                     }
                     let value = value_data[0] as i8;
-                    println!("🔧 [DEBUG] Parsed SINT: {value}");
+                    tracing::trace!("Parsed SINT: {}", value);
                     Ok(PlcValue::Sint(value))
                 }
                 0x00C3 => {
@@ -4530,7 +4618,7 @@ impl EipClient {
                         ));
                     }
                     let value = i16::from_le_bytes([value_data[0], value_data[1]]);
-                    println!("🔧 [DEBUG] Parsed INT: {value}");
+                    tracing::trace!("Parsed INT: {}", value);
                     Ok(PlcValue::Int(value))
                 }
                 0x00C4 => {
@@ -4546,7 +4634,7 @@ impl EipClient {
                         value_data[2],
                         value_data[3],
                     ]);
-                    println!("🔧 [DEBUG] Parsed DINT: {value}");
+                    tracing::trace!("Parsed DINT: {}", value);
                     Ok(PlcValue::Dint(value))
                 }
                 0x00CA => {
@@ -4562,7 +4650,7 @@ impl EipClient {
                         value_data[2],
                         value_data[3],
                     ]);
-                    println!("🔧 [DEBUG] Parsed REAL: {value}");
+                    tracing::trace!("Parsed REAL: {}", value);
                     Ok(PlcValue::Real(value))
                 }
                 0x00CE => {
@@ -4589,9 +4677,10 @@ impl EipClient {
                     }
                     let string_data = &value_data[4..4 + length];
                     let value = String::from_utf8_lossy(string_data).to_string();
-                    println!(
-                        "🔧 [DEBUG] Parsed STRING (0x00CE): length={}, value='{}'",
-                        length, value
+                    tracing::trace!(
+                        "Parsed STRING (0x00CE): length={}, value='{}'",
+                        length,
+                        value
                     );
                     Ok(PlcValue::String(value))
                 }
@@ -4608,15 +4697,15 @@ impl EipClient {
                     }
                     let string_data = &value_data[1..1 + length];
                     let value = String::from_utf8_lossy(string_data).to_string();
-                    println!("🔧 [DEBUG] Parsed STRING (0x00DA): '{value}'");
+                    tracing::trace!("Parsed STRING (0x00DA): '{}'", value);
                     Ok(PlcValue::String(value))
                 }
                 0x02A0 => {
                     // Allen-Bradley UDT type (0x02A0)
                     // Note: symbol_id not available in parse_cip_response context
                     // For proper UDT handling with symbol_id, use read_tag() which gets tag attributes
-                    println!(
-                        "🔧 [DEBUG] Detected UDT structure (0x02A0) with {} bytes",
+                    tracing::trace!(
+                        "Detected UDT structure (0x02A0) with {} bytes",
                         value_data.len()
                     );
                     Ok(PlcValue::Udt(UdtData {
@@ -4636,7 +4725,11 @@ impl EipClient {
                             value_data[2],
                             value_data[3],
                         ]);
-                        println!("🔧 [DEBUG] Parsed 0x00D3 as DWORD (BOOL array): {dword_value} (0x{:08X})", dword_value);
+                        tracing::trace!(
+                            "Parsed 0x00D3 as DWORD (BOOL array): {} (0x{:08X})",
+                            dword_value,
+                            dword_value
+                        );
                         // Return as UDINT (DWORD) - this represents the first 32 BOOLs
                         Ok(PlcValue::Udint(dword_value))
                     } else if value_data.len() >= 8 {
@@ -4651,7 +4744,7 @@ impl EipClient {
                             value_data[6],
                             value_data[7],
                         ]);
-                        println!("🔧 [DEBUG] Parsed ULINT: {value}");
+                        tracing::trace!("Parsed ULINT: {}", value);
                         Ok(PlcValue::Ulint(value))
                     } else {
                         Err(EtherNetIpError::Protocol(
@@ -4664,14 +4757,17 @@ impl EipClient {
                     // Note: symbol_id will be 0 here since we don't have tag context
                     // For proper UDT handling with symbol_id, use read_tag() which
                     // gets tag attributes first
-                    println!("🔧 [DEBUG] Parsed UDT ({} bytes) - note: symbol_id not available in this context", value_data.len());
+                    tracing::trace!(
+                        "Parsed UDT ({} bytes) - note: symbol_id not available in this context",
+                        value_data.len()
+                    );
                     Ok(PlcValue::Udt(UdtData {
                         symbol_id: 0, // Will need to be set by caller if available
                         data: value_data.to_vec(),
                     }))
                 }
                 _ => {
-                    println!("🔧 [DEBUG] Unknown data type: 0x{data_type:04X}");
+                    tracing::warn!("Unknown data type: 0x{:04X}", data_type);
                     Err(EtherNetIpError::Protocol(format!(
                         "Unsupported data type: 0x{data_type:04X}"
                     )))
@@ -4679,7 +4775,7 @@ impl EipClient {
             }
         } else if service_reply == 0xCD {
             // Write Tag reply - no data to parse
-            println!("🔧 [DEBUG] Write operation successful");
+            tracing::debug!("Write operation successful");
             Ok(PlcValue::Bool(true)) // Indicate success
         } else {
             Err(EtherNetIpError::Protocol(format!(
@@ -4690,7 +4786,7 @@ impl EipClient {
 
     /// Unregisters the EtherNet/IP session with the PLC
     pub async fn unregister_session(&mut self) -> crate::error::Result<()> {
-        println!("🔌 Unregistering session and cleaning up connections...");
+        tracing::info!("Unregistering session and cleaning up connections...");
 
         // Close all connected sessions first
         let _ = self.close_all_connected_sessions().await;
@@ -4715,7 +4811,7 @@ impl EipClient {
             .await
             .map_err(EtherNetIpError::Io)?;
 
-        println!("✅ Session unregistered and all connections closed");
+        tracing::info!("Session unregistered and all connections closed");
         Ok(())
     }
 
@@ -4728,8 +4824,9 @@ impl EipClient {
     ///
     /// Reference: 1756-PM020, Page 220-252 (Read Tag Service)
     fn build_read_request_with_count(&self, tag_name: &str, element_count: u16) -> Vec<u8> {
-        println!(
-            "🔧 [DEBUG] Building read request for tag: '{tag_name}' with count: {}",
+        tracing::debug!(
+            "Building read request for tag: '{}' with count: {}",
+            tag_name,
             element_count
         );
 
@@ -4744,8 +4841,8 @@ impl EipClient {
 
         // Request Path Size (in words)
         let path_size_words = (path.len() / 2) as u8;
-        println!(
-            "🔧 [DEBUG] Path size calculation: {} bytes / 2 = {} words",
+        tracing::trace!(
+            "Path size calculation: {} bytes / 2 = {} words",
             path.len(),
             path_size_words
         );
@@ -4758,16 +4855,12 @@ impl EipClient {
         // Reference: 1756-PM020, Page 241 (Request Data: Number of elements to read)
         cip_request.extend_from_slice(&element_count.to_le_bytes());
 
-        println!(
-            "🔧 [DEBUG] Built CIP read request ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Built CIP read request ({} bytes): {:02X?}",
             cip_request.len(),
             cip_request
         );
-        println!(
-            "🔧 [DEBUG] Path bytes ({} bytes): {:02X?}",
-            path.len(),
-            path
-        );
+        tracing::trace!("Path bytes ({} bytes): {:02X?}", path.len(), path);
 
         cip_request
     }
@@ -4897,8 +4990,8 @@ impl EipClient {
         // Reference: EtherNetIP_Connection_Paths_and_Routing.md
         let mut full_path = self.build_base_tag_path(base_array_name);
 
-        println!(
-            "🔧 [DEBUG] build_read_array_request: base_path for '{}' = {:02X?} ({} bytes)",
+        tracing::trace!(
+            "build_read_array_request: base_path for '{}' = {:02X?} ({} bytes)",
             base_array_name,
             full_path,
             full_path.len()
@@ -4907,9 +5000,11 @@ impl EipClient {
         // Add element addressing segment
         // Reference: 1756-PM020, Pages 603-611, 870-890
         let element_segment = self.build_element_id_segment(start_index);
-        println!(
-            "🔧 [DEBUG] build_read_array_request: element_segment for index {} = {:02X?} ({} bytes)",
-            start_index, element_segment, element_segment.len()
+        tracing::trace!(
+            "build_read_array_request: element_segment for index {} = {:02X?} ({} bytes)",
+            start_index,
+            element_segment,
+            element_segment.len()
         );
         full_path.extend_from_slice(&element_segment);
 
@@ -4927,8 +5022,8 @@ impl EipClient {
         // Reference: 1756-PM020, Page 840-851 (Reading Multiple Array Elements)
         cip_request.extend_from_slice(&element_count.to_le_bytes());
 
-        println!(
-            "🔧 [DEBUG] build_read_array_request: final request = {:02X?} ({} bytes), path_size = {} words ({} bytes)",
+        tracing::trace!(
+            "build_read_array_request: final request = {:02X?} ({} bytes), path_size = {} words ({} bytes)",
             cip_request, cip_request.len(), path_size, full_path.len()
         );
 
@@ -4949,8 +5044,8 @@ impl EipClient {
                 // Generate CIP path using the proper parser
                 match tag_path.to_cip_path() {
                     Ok(path) => {
-                        println!(
-                            "🔧 [DEBUG] TagPath generated {} bytes ({} words) for '{}'",
+                        tracing::trace!(
+                            "TagPath generated {} bytes ({} words) for '{}'",
                             path.len(),
                             path.len() / 2,
                             tag_name
@@ -4958,20 +5053,14 @@ impl EipClient {
                         path
                     }
                     Err(e) => {
-                        println!(
-                            "🔧 [DEBUG] TagPath.to_cip_path() failed for '{}': {}",
-                            tag_name, e
-                        );
+                        tracing::warn!("TagPath.to_cip_path() failed for '{}': {}", tag_name, e);
                         // Fallback to old method if parsing fails
                         self.build_simple_tag_path_legacy(tag_name)
                     }
                 }
             }
             Err(e) => {
-                println!(
-                    "🔧 [DEBUG] TagPath::parse() failed for '{}': {}",
-                    tag_name, e
-                );
+                tracing::warn!("TagPath::parse() failed for '{}': {}", tag_name, e);
                 // Fallback to old method if parsing fails
                 self.build_simple_tag_path_legacy(tag_name)
             }
@@ -5060,8 +5149,8 @@ impl EipClient {
         }
 
         let start_time = Instant::now();
-        println!(
-            "🚀 [BATCH] Starting batch execution with {} operations",
+        tracing::debug!(
+            "[BATCH] Starting batch execution with {} operations",
             operations.len()
         );
 
@@ -5076,8 +5165,8 @@ impl EipClient {
 
         // Execute each group
         for (group_index, group) in operation_groups.iter().enumerate() {
-            println!(
-                "🔧 [BATCH] Processing group {} with {} operations",
+            tracing::debug!(
+                "[BATCH] Processing group {} with {} operations",
                 group_index + 1,
                 group.len()
             );
@@ -5105,8 +5194,8 @@ impl EipClient {
         }
 
         let total_time = start_time.elapsed();
-        println!(
-            "✅ [BATCH] Completed batch execution in {:?} - {} operations processed",
+        tracing::info!(
+            "[BATCH] Completed batch execution in {:?} - {} operations processed",
             total_time,
             all_results.len()
         );
@@ -5295,8 +5384,8 @@ impl EipClient {
     /// ```
     pub fn configure_batch_operations(&mut self, config: BatchConfig) {
         self.batch_config = config;
-        println!(
-            "🔧 [BATCH] Updated batch configuration: max_ops={}, max_size={}, timeout={}ms",
+        tracing::debug!(
+            "[BATCH] Updated batch configuration: max_ops={}, max_size={}, timeout={}ms",
             self.batch_config.max_operations_per_packet,
             self.batch_config.max_packet_size,
             self.batch_config.packet_timeout_ms
@@ -5441,8 +5530,8 @@ impl EipClient {
             packet.extend_from_slice(&service_request);
         }
 
-        println!(
-            "🔧 [BATCH] Built Multiple Service Packet ({} bytes, {} services)",
+        tracing::trace!(
+            "[BATCH] Built Multiple Service Packet ({} bytes, {} services)",
             packet.len(),
             operations.len()
         );
@@ -5464,8 +5553,8 @@ impl EipClient {
 
         let mut results = Vec::new();
 
-        println!(
-            "🔧 [DEBUG] Raw Multiple Service Response ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Raw Multiple Service Response ({} bytes): {:02X?}",
             response.len(),
             response
         );
@@ -5474,14 +5563,15 @@ impl EipClient {
         let cip_data = match self.extract_cip_from_response(response) {
             Ok(data) => data,
             Err(e) => {
-                println!("🔧 [DEBUG] Failed to extract CIP data: {e}");
+                tracing::error!("Failed to extract CIP data: {}", e);
                 return Err(e);
             }
         };
 
-        println!(
-            "🔧 [DEBUG] Extracted CIP data ({} bytes): {cip_data:02X?}",
-            cip_data.len()
+        tracing::trace!(
+            "Extracted CIP data ({} bytes): {:02X?}",
+            cip_data.len(),
+            cip_data
         );
 
         if cip_data.len() < 6 {
@@ -5501,8 +5591,11 @@ impl EipClient {
         let general_status = cip_data[2];
         let num_replies = u16::from_le_bytes([cip_data[4], cip_data[5]]) as usize;
 
-        println!(
-            "🔧 [DEBUG] Multiple Service Response: service=0x{service_code:02X}, status=0x{general_status:02X}, replies={num_replies}"
+        tracing::debug!(
+            "Multiple Service Response: service=0x{:02X}, status=0x{:02X}, replies={}",
+            service_code,
+            general_status,
+            num_replies
         );
 
         if general_status != 0x00 {
@@ -5535,12 +5628,12 @@ impl EipClient {
             offset += 2;
         }
 
-        println!("🔧 [DEBUG] Reply offsets: {reply_offsets:?}");
+        tracing::trace!("Reply offsets: {:?}", reply_offsets);
 
         // The reply data starts after all the offsets
         let reply_base_offset = 6 + (num_replies * 2);
 
-        println!("🔧 [DEBUG] Reply base offset: {reply_base_offset}");
+        tracing::trace!("Reply base offset: {}", reply_base_offset);
 
         // Parse each reply
         for (i, &reply_offset) in reply_offsets.iter().enumerate() {
@@ -5572,15 +5665,15 @@ impl EipClient {
 
             let reply_data = &cip_data[reply_start..reply_end];
 
-            println!(
-                "🔧 [DEBUG] Reply {} at offset {}: start={}, end={}, len={}",
+            tracing::trace!(
+                "Reply {} at offset {}: start={}, end={}, len={}",
                 i,
                 reply_offset,
                 reply_start,
                 reply_end,
                 reply_data.len()
             );
-            println!("🔧 [DEBUG] Reply {i} data: {reply_data:02X?}");
+            tracing::trace!("Reply {} data: {:02X?}", i, reply_data);
 
             let result = self.parse_individual_reply(reply_data, &operations[i]);
             results.push(result);
@@ -5601,8 +5694,8 @@ impl EipClient {
             ));
         }
 
-        println!(
-            "🔧 [DEBUG] Parsing individual reply ({} bytes): {:02X?}",
+        tracing::trace!(
+            "Parsing individual reply ({} bytes): {:02X?}",
             reply_data.len(),
             reply_data
         );
@@ -5617,7 +5710,11 @@ impl EipClient {
         let service_code = reply_data[0];
         let general_status = reply_data[2];
 
-        println!("🔧 [DEBUG] Service code: 0x{service_code:02X}, Status: 0x{general_status:02X}");
+        tracing::trace!(
+            "Service code: 0x{:02X}, Status: 0x{:02X}",
+            service_code,
+            general_status
+        );
 
         if general_status != 0x00 {
             let error_msg = self.get_cip_error_message(general_status);
@@ -5643,11 +5740,7 @@ impl EipClient {
                 // Parse the data directly (skip the 4-byte header)
                 // Data format: [type_low, type_high, value_bytes...]
                 let data = &reply_data[4..];
-                println!(
-                    "🔧 [DEBUG] Parsing data ({} bytes): {:02X?}",
-                    data.len(),
-                    data
-                );
+                tracing::trace!("Parsing data ({} bytes): {:02X?}", data.len(), data);
 
                 if data.len() < 2 {
                     return Err(BatchError::SerializationError(
@@ -5658,8 +5751,8 @@ impl EipClient {
                 let data_type = u16::from_le_bytes([data[0], data[1]]);
                 let value_data = &data[2..];
 
-                println!(
-                    "🔧 [DEBUG] Data type: 0x{:04X}, Value data ({} bytes): {:02X?}",
+                tracing::trace!(
+                    "Data type: 0x{:04X}, Value data ({} bytes): {:02X?}",
                     data_type,
                     value_data.len(),
                     value_data
@@ -5708,7 +5801,7 @@ impl EipClient {
                             value_data[2],
                             value_data[3],
                         ]);
-                        println!("🔧 [DEBUG] Parsed DINT: {value}");
+                        tracing::trace!("Parsed DINT: {}", value);
                         Ok(Some(PlcValue::Dint(value)))
                     }
                     0x00C5 => {
@@ -5792,7 +5885,7 @@ impl EipClient {
                         }
                         let bytes = [value_data[0], value_data[1], value_data[2], value_data[3]];
                         let value = f32::from_le_bytes(bytes);
-                        println!("🔧 [DEBUG] Parsed REAL: {value}");
+                        tracing::trace!("Parsed REAL: {}", value);
                         Ok(Some(PlcValue::Real(value)))
                     }
                     0x00CB => {
@@ -5828,14 +5921,14 @@ impl EipClient {
                         }
                         let string_data = &value_data[1..1 + length];
                         let value = String::from_utf8_lossy(string_data).to_string();
-                        println!("🔧 [DEBUG] Parsed STRING: '{value}'");
+                        tracing::trace!("Parsed STRING: '{}'", value);
                         Ok(Some(PlcValue::String(value)))
                     }
                     0x02A0 => {
                         // Allen-Bradley UDT type (0x02A0) for batch operations
                         // Note: symbol_id not available in batch read context
-                        println!(
-                            "🔧 [DEBUG] Detected UDT structure (0x02A0) with {} bytes",
+                        tracing::trace!(
+                            "Detected UDT structure (0x02A0) with {} bytes",
                             value_data.len()
                         );
                         Ok(Some(PlcValue::Udt(UdtData {
@@ -5858,8 +5951,10 @@ impl EipClient {
         tag_name: &str,
         value: &str,
     ) -> crate::error::Result<()> {
-        println!(
-            "🔧 [AB STRING] Writing string '{value}' to tag '{tag_name}' using component access"
+        tracing::debug!(
+            "[AB STRING] Writing string '{}' to tag '{}' using component access",
+            value,
+            tag_name
         );
 
         let string_bytes = value.as_bytes();
@@ -5867,18 +5962,18 @@ impl EipClient {
 
         // Step 1: Write the length to TestString.LEN
         let len_tag = format!("{tag_name}.LEN");
-        println!("   📝 Step 1: Writing length {string_len} to {len_tag}");
+        tracing::debug!("Step 1: Writing length {} to {}", string_len, len_tag);
 
         match self.write_tag(&len_tag, PlcValue::Dint(string_len)).await {
-            Ok(_) => println!("   ✅ Length written successfully"),
+            Ok(_) => tracing::debug!("Length written successfully"),
             Err(e) => {
-                println!("   ❌ Length write failed: {e}");
+                tracing::error!("Length write failed: {}", e);
                 return Err(e);
             }
         }
 
         // Step 2: Write the string data to TestString.DATA using array access
-        println!("   📝 Step 2: Writing string data to {tag_name}.DATA");
+        tracing::debug!("Step 2: Writing string data to {}.DATA", tag_name);
 
         // We need to write each character individually to the DATA array
         for (i, &byte) in string_bytes.iter().enumerate() {
@@ -5889,7 +5984,7 @@ impl EipClient {
             {
                 Ok(_) => print!("."),
                 Err(e) => {
-                    println!("\n   ❌ Failed to write byte {byte} to position {i}: {e}");
+                    tracing::error!("Failed to write byte {} to position {}: {}", byte, i, e);
                     return Err(e);
                 }
             }
@@ -5899,12 +5994,12 @@ impl EipClient {
         if string_bytes.len() < 82 {
             let null_element = format!("{}.DATA[{}]", tag_name, string_bytes.len());
             match self.write_tag(&null_element, PlcValue::Sint(0)).await {
-                Ok(_) => println!("\n   ✅ String null-terminated successfully"),
-                Err(e) => println!("\n   ⚠️ Could not null-terminate: {e}"),
+                Ok(_) => tracing::debug!("String null-terminated successfully"),
+                Err(e) => tracing::warn!("Could not null-terminate: {}", e),
             }
         }
 
-        println!("   🎉 AB STRING component write completed!");
+        tracing::info!("AB STRING component write completed!");
         Ok(())
     }
 
@@ -5914,7 +6009,11 @@ impl EipClient {
         tag_name: &str,
         value: &str,
     ) -> crate::error::Result<()> {
-        println!("🔧 [AB STRING UDT] Writing string '{value}' to tag '{tag_name}' as UDT");
+        tracing::debug!(
+            "[AB STRING UDT] Writing string '{}' to tag '{}' as UDT",
+            value,
+            tag_name
+        );
 
         let string_bytes = value.as_bytes();
         if string_bytes.len() > 82 {
@@ -5953,17 +6052,14 @@ impl EipClient {
         let padding_needed = 82 - string_bytes.len();
         cip_request.extend_from_slice(&vec![0u8; padding_needed]);
 
-        println!(
-            "   📦 Built UDT write request: {} bytes total",
-            cip_request.len()
-        );
+        tracing::trace!("Built UDT write request: {} bytes total", cip_request.len());
 
         let response = self.send_cip_request(&cip_request).await?;
 
         if response.len() >= 3 {
             let general_status = response[2];
             if general_status == 0x00 {
-                println!("   ✅ AB STRING UDT write successful!");
+                tracing::info!("AB STRING UDT write successful!");
                 Ok(())
             } else {
                 let error_msg = self.get_cip_error_message(general_status);
@@ -5987,8 +6083,11 @@ impl EipClient {
         &mut self,
         session_name: &str,
     ) -> crate::error::Result<ConnectedSession> {
-        println!("🔗 [CONNECTED] Establishing connected session: '{session_name}'");
-        println!("🔗 [CONNECTED] Will try multiple parameter configurations...");
+        tracing::debug!(
+            "[CONNECTED] Establishing connected session: '{}'",
+            session_name
+        );
+        tracing::debug!("[CONNECTED] Will try multiple parameter configurations...");
 
         // Generate unique connection parameters
         *self.connection_sequence.lock().await += 1;
@@ -5996,8 +6095,8 @@ impl EipClient {
 
         // Try different configurations until one works
         for config_id in 0..=5 {
-            println!(
-                "\n🔧 [ATTEMPT {}] Trying configuration {}:",
+            tracing::debug!(
+                "[ATTEMPT {}] Trying configuration {}:",
                 config_id + 1,
                 config_id
             );
@@ -6017,8 +6116,8 @@ impl EipClient {
             // Build Forward Open request with this configuration
             let forward_open_request = self.build_forward_open_request(&session)?;
 
-            println!(
-                "🔗 [ATTEMPT {}] Sending Forward Open request ({} bytes)",
+            tracing::debug!(
+                "[ATTEMPT {}] Sending Forward Open request ({} bytes)",
                 config_id + 1,
                 forward_open_request.len()
             );
@@ -6030,12 +6129,12 @@ impl EipClient {
                     match self.parse_forward_open_response(&mut session, &response) {
                         Ok(()) => {
                             // Success! Store the session and return
-                            println!("✅ [SUCCESS] Configuration {config_id} worked!");
-                            println!("   Connection ID: 0x{:08X}", session.connection_id);
-                            println!("   O->T ID: 0x{:08X}", session.o_to_t_connection_id);
-                            println!("   T->O ID: 0x{:08X}", session.t_to_o_connection_id);
-                            println!(
-                                "   Using Connection ID: 0x{:08X} for messaging",
+                            tracing::info!("[SUCCESS] Configuration {} worked!", config_id);
+                            tracing::debug!("Connection ID: 0x{:08X}", session.connection_id);
+                            tracing::debug!("O->T ID: 0x{:08X}", session.o_to_t_connection_id);
+                            tracing::debug!("T->O ID: 0x{:08X}", session.t_to_o_connection_id);
+                            tracing::debug!(
+                                "Using Connection ID: 0x{:08X} for messaging",
                                 session.connection_id
                             );
 
@@ -6045,8 +6144,8 @@ impl EipClient {
                             return Ok(session);
                         }
                         Err(e) => {
-                            println!(
-                                "❌ [ATTEMPT {}] Configuration {} failed: {}",
+                            tracing::warn!(
+                                "[ATTEMPT {}] Configuration {} failed: {}",
                                 config_id + 1,
                                 config_id,
                                 e
@@ -6054,14 +6153,14 @@ impl EipClient {
 
                             // If it's a specific status error, log it
                             if e.to_string().contains("status: 0x") {
-                                println!("   Status indicates: parameter incompatibility or resource conflict");
+                                tracing::debug!("Status indicates: parameter incompatibility or resource conflict");
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    println!(
-                        "❌ [ATTEMPT {}] Network error with config {}: {}",
+                    tracing::warn!(
+                        "[ATTEMPT {}] Network error with config {}: {}",
                         config_id + 1,
                         config_id,
                         e
@@ -6236,17 +6335,17 @@ impl EipClient {
         session.t_to_o_connection_id = actual_t_to_o_id;
         session.connection_id = actual_o_to_t_id; // Use O->T as the primary connection ID
 
-        println!("✅ [FORWARD OPEN] Success!");
-        println!(
-            "   O->T Connection ID: 0x{:08X} (PLC assigned)",
+        tracing::info!("[FORWARD OPEN] Success!");
+        tracing::debug!(
+            "O->T Connection ID: 0x{:08X} (PLC assigned)",
             session.o_to_t_connection_id
         );
-        println!(
-            "   T->O Connection ID: 0x{:08X} (PLC assigned)",
+        tracing::debug!(
+            "T->O Connection ID: 0x{:08X} (PLC assigned)",
             session.t_to_o_connection_id
         );
-        println!(
-            "   Using Connection ID: 0x{:08X} for messaging",
+        tracing::debug!(
+            "Using Connection ID: 0x{:08X} for messaging",
             session.connection_id
         );
 
@@ -6346,9 +6445,15 @@ impl EipClient {
         data_array[..current_len as usize].copy_from_slice(&string_bytes[..current_len as usize]);
         request.extend_from_slice(&data_array);
 
-        println!("🔧 [DEBUG] Built connected string write request ({} bytes) for '{tag_name}' = '{value}' (len={current_len}, maxlen={max_len})",
-                 request.len());
-        println!("🔧 [DEBUG] Request: {request:02X?}");
+        tracing::trace!(
+            "Built connected string write request ({} bytes) for '{}' = '{}' (len={}, maxlen={})",
+            request.len(),
+            tag_name,
+            value,
+            current_len,
+            max_len
+        );
+        tracing::trace!("Request: {:02X?}", request);
 
         Ok(request)
     }
@@ -6360,8 +6465,10 @@ impl EipClient {
         session: &ConnectedSession,
         session_name: &str,
     ) -> crate::error::Result<Vec<u8>> {
-        println!("🔗 [CONNECTED] Sending connected CIP request ({} bytes) using T->O connection ID 0x{:08X}",
-                 cip_request.len(), session.t_to_o_connection_id);
+        tracing::debug!(
+            "[CONNECTED] Sending connected CIP request ({} bytes) using T->O connection ID 0x{:08X}",
+            cip_request.len(), session.t_to_o_connection_id
+        );
 
         // Build EtherNet/IP header for connected data (Send RR Data)
         let mut packet = Vec::new();
@@ -6423,8 +6530,8 @@ impl EipClient {
         let cpf_length = packet.len() - cpf_start;
         packet[2..4].copy_from_slice(&(cpf_length as u16).to_le_bytes());
 
-        println!(
-            "🔗 [CONNECTED] Sending packet ({} bytes) with sequence {}",
+        tracing::trace!(
+            "[CONNECTED] Sending packet ({} bytes) with sequence {}",
             packet.len(),
             current_sequence
         );
@@ -6462,8 +6569,8 @@ impl EipClient {
         let mut last_activity = self.last_activity.lock().await;
         *last_activity = Instant::now();
 
-        println!(
-            "🔗 [CONNECTED] Received response ({} bytes)",
+        tracing::trace!(
+            "[CONNECTED] Received response ({} bytes)",
             response_data.len()
         );
 
@@ -6476,8 +6583,8 @@ impl EipClient {
         &self,
         response: &[u8],
     ) -> crate::error::Result<Vec<u8>> {
-        println!(
-            "🔗 [CONNECTED] Extracting CIP from connected response ({} bytes): {:02X?}",
+        tracing::trace!(
+            "[CONNECTED] Extracting CIP from connected response ({} bytes): {:02X?}",
             response.len(),
             response
         );
@@ -6493,7 +6600,7 @@ impl EipClient {
         // [4-5]: Timeout
         // [6-7]: Item count
         let item_count = u16::from_le_bytes([response[6], response[7]]) as usize;
-        println!("🔗 [CONNECTED] CPF item count: {item_count}");
+        tracing::trace!("[CONNECTED] CPF item count: {}", item_count);
 
         let mut pos = 8; // Start after CPF header
 
@@ -6509,7 +6616,11 @@ impl EipClient {
             let item_length = u16::from_le_bytes([response[pos + 2], response[pos + 3]]) as usize;
             pos += 4; // Skip item header
 
-            println!("🔗 [CONNECTED] Found item: type=0x{item_type:04X}, length={item_length}");
+            tracing::trace!(
+                "[CONNECTED] Found item: type=0x{:04X}, length={}",
+                item_type,
+                item_length
+            );
 
             if item_type == 0x00B1 {
                 // Connected Data Item
@@ -6527,12 +6638,12 @@ impl EipClient {
                 }
 
                 let sequence_count = u16::from_le_bytes([response[pos], response[pos + 1]]);
-                println!("🔗 [CONNECTED] Sequence count: {sequence_count}");
+                tracing::trace!("[CONNECTED] Sequence count: {}", sequence_count);
 
                 // Extract CIP data (skip 2-byte sequence count)
                 let cip_data = response[pos + 2..pos + item_length].to_vec();
-                println!(
-                    "🔗 [CONNECTED] Extracted CIP data ({} bytes): {:02X?}",
+                tracing::trace!(
+                    "[CONNECTED] Extracted CIP data ({} bytes): {:02X?}",
                     cip_data.len(),
                     cip_data
                 );
@@ -6560,7 +6671,7 @@ impl EipClient {
             // Send Forward Close request
             let _response = self.send_cip_request(&forward_close_request).await?;
 
-            println!("🔗 [CONNECTED] Session '{session_name}' closed successfully");
+            tracing::info!("[CONNECTED] Session '{}' closed successfully", session_name);
         }
 
         // Remove session from our tracking
@@ -6645,8 +6756,10 @@ impl EipClient {
         tag_name: &str,
         value: &str,
     ) -> crate::error::Result<()> {
-        println!(
-            "📝 [UNCONNECTED] Writing string '{value}' to tag '{tag_name}' using unconnected messaging"
+        tracing::debug!(
+            "[UNCONNECTED] Writing string '{}' to tag '{}' using unconnected messaging",
+            value,
+            tag_name
         );
 
         self.validate_session().await?;
@@ -6717,10 +6830,18 @@ impl EipClient {
         // Add padding if the total structure needs to be a specific size
         // Based on reads, it looks like there might be additional padding after the data
 
-        println!("🔧 [DEBUG] Built Allen-Bradley STRING write request ({} bytes) for '{}' = '{}' (len={})",
-                 cip_request.len(), tag_name, value, current_len);
-        println!("🔧 [DEBUG] Request structure: Service=0x4D, Path={} bytes, Header=0xCE0F, Len={} (4 bytes), Data",
-                 path_len * 2, current_len);
+        tracing::trace!(
+            "Built Allen-Bradley STRING write request ({} bytes) for '{}' = '{}' (len={})",
+            cip_request.len(),
+            tag_name,
+            value,
+            current_len
+        );
+        tracing::trace!(
+            "Request structure: Service=0x4D, Path={} bytes, Header=0xCE0F, Len={} (4 bytes), Data",
+            path_len * 2,
+            current_len
+        );
 
         // Send the request using standard unconnected messaging
         let response = self.send_cip_request(&cip_request).await?;
@@ -6734,16 +6855,22 @@ impl EipClient {
             let _additional_status_size = cip_response[1]; // Additional status size (usually 0)
             let status = cip_response[2]; // CIP status code at position 2
 
-            println!(
-                "🔧 [DEBUG] Write response - Service: 0x{service_reply:02X}, Status: 0x{status:02X}"
+            tracing::trace!(
+                "Write response - Service: 0x{:02X}, Status: 0x{:02X}",
+                service_reply,
+                status
             );
 
             if status == 0x00 {
-                println!("✅ [UNCONNECTED] String write completed successfully");
+                tracing::info!("[UNCONNECTED] String write completed successfully");
                 Ok(())
             } else {
                 let error_msg = self.get_cip_error_message(status);
-                println!("❌ [UNCONNECTED] String write failed: {error_msg} (0x{status:02X})");
+                tracing::error!(
+                    "[UNCONNECTED] String write failed: {} (0x{:02X})",
+                    error_msg,
+                    status
+                );
                 Err(EtherNetIpError::Protocol(format!(
                     "CIP Error 0x{status:02X}: {error_msg}"
                 )))
@@ -6862,12 +6989,12 @@ impl EipClient {
                 match client.read_tag(&tag_path).await {
                     Ok(value) => {
                         if let Err(e) = client.update_subscription(&tag_path, &value).await {
-                            eprintln!("Error updating subscription: {e}");
+                            tracing::error!("Error updating subscription: {}", e);
                             break;
                         }
                     }
                     Err(e) => {
-                        eprintln!("Error reading tag {tag_path}: {e}");
+                        tracing::error!("Error reading tag {}: {}", tag_path, e);
                         break;
                     }
                 }
@@ -6919,7 +7046,7 @@ impl EipClient {
     /// Enhanced UDT structure parser - tries multiple parsing strategies
     #[allow(dead_code)]
     fn parse_udt_structure(&self, data: &[u8]) -> crate::error::Result<PlcValue> {
-        println!("🔧 [DEBUG] Parsing UDT structure with {} bytes", data.len());
+        tracing::debug!("Parsing UDT structure with {} bytes", data.len());
 
         // Strategy 1: Try to parse as TestTagUDT structure (DINT, DINT, REAL)
         if data.len() >= 12 {
@@ -6960,9 +7087,12 @@ impl EipClient {
                                 ];
                                 let real_value = f32::from_le_bytes(real_bytes);
 
-                                println!(
-                                    "🔧 [DEBUG] Alignment {}: DINT1={}, DINT2={}, REAL={}",
-                                    alignment, dint1_value, dint2_value, real_value
+                                tracing::trace!(
+                                    "Alignment {}: DINT1={}, DINT2={}, REAL={}",
+                                    alignment,
+                                    dint1_value,
+                                    dint2_value,
+                                    real_value
                                 );
 
                                 // Check if this looks like reasonable values
@@ -6973,8 +7103,8 @@ impl EipClient {
                                 ) {
                                     // Legacy parsing - return raw data with symbol_id=0
                                     // Note: These methods are deprecated in favor of generic UdtData approach
-                                    println!(
-                                        "🔧 [DEBUG] Found reasonable UDT values at alignment {}",
+                                    tracing::debug!(
+                                        "Found reasonable UDT values at alignment {}",
                                         alignment
                                     );
                                     return Ok(PlcValue::Udt(UdtData {
@@ -7004,7 +7134,7 @@ impl EipClient {
                     if bytes.len() == 4 {
                         let dint_value =
                             i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                        println!("🔧 [DEBUG] {}: DINT = {}", name, dint_value);
+                        tracing::trace!("{}: DINT = {}", name, dint_value);
 
                         if self.is_reasonable_value(dint_value) {
                             // Legacy parsing - return raw data with symbol_id=0
@@ -7042,9 +7172,14 @@ impl EipClient {
         let dint2_reasonable = (-1000..=1000).contains(&dint2);
         let real_reasonable = (-1000.0..=1000.0).contains(&real) && real.is_finite();
 
-        println!(
-            "🔧 [DEBUG] Reasonableness check: DINT1={} ({}), DINT2={} ({}), REAL={} ({})",
-            dint1, dint1_reasonable, dint2, dint2_reasonable, real, real_reasonable
+        tracing::trace!(
+            "Reasonableness check: DINT1={} ({}), DINT2={} ({}), REAL={} ({})",
+            dint1,
+            dint1_reasonable,
+            dint2,
+            dint2_reasonable,
+            real,
+            real_reasonable
         );
 
         dint1_reasonable && dint2_reasonable && real_reasonable

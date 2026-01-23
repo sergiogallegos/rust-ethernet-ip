@@ -5,6 +5,7 @@
 
 use rust_ethernet_ip::{EipClient, PlcValue, UdtData};
 use std::collections::HashMap;
+use tracing;
 
 /// Helper function to check if a PLC is available for testing
 async fn is_plc_available(address: &str) -> bool {
@@ -19,7 +20,7 @@ async fn is_plc_available(address: &str) -> bool {
 async fn test_udt_read_returns_udt_data() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!("Skipping test: No PLC available at {}", address);
+        tracing::debug!("Skipping test: No PLC available at {}", address);
         return;
     }
 
@@ -30,11 +31,11 @@ async fn test_udt_read_returns_udt_data() {
 
     match result {
         Ok(PlcValue::Udt(udt_data)) => {
-            println!("✅ UDT read successfully");
-            println!("   Symbol ID: {}", udt_data.symbol_id);
-            println!("   Data size: {} bytes", udt_data.data.len());
-            println!(
-                "   Raw data (first 32 bytes): {:02X?}",
+            tracing::info!("UDT read successfully");
+            tracing::debug!("Symbol ID: {}", udt_data.symbol_id);
+            tracing::debug!("Data size: {} bytes", udt_data.data.len());
+            tracing::trace!(
+                "Raw data (first 32 bytes): {:02X?}",
                 &udt_data.data[..udt_data.data.len().min(32)]
             );
 
@@ -53,7 +54,7 @@ async fn test_udt_read_returns_udt_data() {
         Err(e) => {
             // If tag doesn't exist, that's okay for testing
             if e.to_string().contains("not found") || e.to_string().contains("does not exist") {
-                println!("⚠️ Tag 'Part_Data' not found - skipping test");
+                tracing::debug!("Tag 'Part_Data' not found - skipping test");
                 return;
             }
             panic!("UDT read failed: {}", e);
@@ -66,7 +67,7 @@ async fn test_udt_read_returns_udt_data() {
 async fn test_udt_write_with_symbol_id() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!("Skipping test: No PLC available at {}", address);
+        tracing::debug!("Skipping test: No PLC available at {}", address);
         return;
     }
 
@@ -77,12 +78,12 @@ async fn test_udt_write_with_symbol_id() {
 
     let udt_data = match read_result {
         Ok(PlcValue::Udt(data)) => {
-            println!("✅ Read UDT with symbol_id: {}", data.symbol_id);
+            tracing::info!("Read UDT with symbol_id: {}", data.symbol_id);
             data
         }
         Err(e) => {
             if e.to_string().contains("not found") {
-                println!("⚠️ Tag 'Part_Data' not found - skipping test");
+                tracing::debug!("Tag 'Part_Data' not found - skipping test");
                 return;
             }
             panic!("Failed to read UDT: {}", e);
@@ -113,14 +114,14 @@ async fn test_udt_write_with_symbol_id() {
         .await
     {
         Ok(_) => {
-            println!(
-                "✅ UDT written successfully with symbol_id: {}",
+            tracing::info!(
+                "UDT written successfully with symbol_id: {}",
                 modified_udt.symbol_id
             );
         }
         Err(e) => {
             // Writing might fail if tag is read-only, that's okay
-            println!("⚠️ UDT write failed (may be read-only): {}", e);
+            tracing::warn!("UDT write failed (may be read-only): {}", e);
         }
     }
 }
@@ -130,7 +131,7 @@ async fn test_udt_write_with_symbol_id() {
 async fn test_udt_write_auto_reads_symbol_id() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!("Skipping test: No PLC available at {}", address);
+        tracing::debug!("Skipping test: No PLC available at {}", address);
         return;
     }
 
@@ -145,7 +146,7 @@ async fn test_udt_write_auto_reads_symbol_id() {
     // Write should automatically read symbol_id if it's 0
     match client.write_tag("Part_Data", PlcValue::Udt(udt_data)).await {
         Ok(_) => {
-            println!("✅ UDT write with auto symbol_id read succeeded");
+            tracing::info!("UDT write with auto symbol_id read succeeded");
         }
         Err(e) => {
             // Check if error is about missing symbol_id (shouldn't happen with auto-read)
@@ -153,7 +154,7 @@ async fn test_udt_write_auto_reads_symbol_id() {
                 panic!("Auto-read of symbol_id failed: {}", e);
             }
             // Other errors (read-only, etc.) are acceptable
-            println!("⚠️ UDT write failed (may be expected): {}", e);
+            tracing::warn!("UDT write failed (may be expected): {}", e);
         }
     }
 }
@@ -190,7 +191,7 @@ async fn test_udt_data_parse_with_definition() {
     // Parse using the definition
     match udt_data.parse(&udt_def) {
         Ok(members) => {
-            println!("✅ Parsed UDT successfully");
+            tracing::info!("Parsed UDT successfully");
             assert_eq!(members.len(), 2);
             assert_eq!(members.get("Bool1"), Some(&PlcValue::Bool(true)));
             assert_eq!(members.get("Dint1"), Some(&PlcValue::Dint(42)));
@@ -228,7 +229,7 @@ async fn test_udt_data_from_hash_map() {
     // Convert to UdtData
     match UdtData::from_hash_map(&members, &udt_def, 123) {
         Ok(udt_data) => {
-            println!("✅ Created UdtData from HashMap");
+            tracing::info!("Created UdtData from HashMap");
             assert_eq!(udt_data.symbol_id, 123);
             assert!(!udt_data.data.is_empty());
 
@@ -282,7 +283,7 @@ async fn test_udt_data_round_trip() {
     assert_eq!(parsed_members.get("Bool1"), original_members.get("Bool1"));
     assert_eq!(parsed_members.get("Dint1"), original_members.get("Dint1"));
 
-    println!("✅ Round-trip conversion successful");
+    tracing::info!("Round-trip conversion successful");
 }
 
 #[tokio::test]
@@ -290,7 +291,7 @@ async fn test_udt_data_round_trip() {
 async fn test_udt_generic_any_udt() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!("Skipping test: No PLC available at {}", address);
+        tracing::debug!("Skipping test: No PLC available at {}", address);
         return;
     }
 
@@ -302,9 +303,9 @@ async fn test_udt_generic_any_udt() {
     for udt_name in udt_names {
         match client.read_tag(udt_name).await {
             Ok(PlcValue::Udt(udt_data)) => {
-                println!("✅ Successfully read generic UDT: {}", udt_name);
-                println!("   Symbol ID: {}", udt_data.symbol_id);
-                println!("   Data size: {} bytes", udt_data.data.len());
+                tracing::info!("Successfully read generic UDT: {}", udt_name);
+                tracing::debug!("Symbol ID: {}", udt_data.symbol_id);
+                tracing::debug!("Data size: {} bytes", udt_data.data.len());
 
                 // Verify it's valid
                 assert!(udt_data.symbol_id > 0, "symbol_id should be > 0");
@@ -313,14 +314,14 @@ async fn test_udt_generic_any_udt() {
             Err(e) => {
                 // Tag might not exist, that's okay
                 if e.to_string().contains("not found") {
-                    println!("⚠️ Tag '{}' not found (skipping)", udt_name);
+                    tracing::debug!("Tag '{}' not found (skipping)", udt_name);
                     continue;
                 }
                 // Other errors might indicate a problem
-                println!("⚠️ Error reading '{}': {}", udt_name, e);
+                tracing::warn!("Error reading '{}': {}", udt_name, e);
             }
             _ => {
-                println!("⚠️ '{}' is not a UDT", udt_name);
+                tracing::warn!("'{}' is not a UDT", udt_name);
             }
         }
     }

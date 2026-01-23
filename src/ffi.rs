@@ -10,6 +10,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_short};
 use std::ptr;
 use std::sync::Mutex;
+use tracing;
 
 // FFI-specific client manager using synchronous mutex
 lazy_static! {
@@ -443,16 +444,16 @@ pub unsafe extern "C" fn eip_read_dint(
                 0
             }
             Ok(other_value) => {
-                eprintln!("❌ [FFI] Expected DINT but got: {:?}", other_value);
+                tracing::error!("[FFI] Expected DINT but got: {:?}", other_value);
                 -1
             }
             Err(e) => {
-                eprintln!("❌ [FFI] Read tag '{}' failed: {}", tag_name_str, e);
+                tracing::error!("[FFI] Read tag '{}' failed: {}", tag_name_str, e);
                 -1
             }
         },
         None => {
-            eprintln!("❌ [FFI] Client ID {} not found", client_id);
+            tracing::error!("[FFI] Client ID {} not found", client_id);
             -1
         }
     }
@@ -918,16 +919,17 @@ pub unsafe extern "C" fn eip_read_string(
 
     let value = match RUNTIME.block_on(client.read_tag(tag_name_str)) {
         Ok(PlcValue::String(value)) => {
-            eprintln!(
-                "✅ [FFI] Read STRING tag '{}' succeeded: '{}'",
-                tag_name_str, value
+            tracing::info!(
+                "[FFI] Read STRING tag '{}' succeeded: '{}'",
+                tag_name_str,
+                value
             );
             value
         }
         Ok(PlcValue::Udt(udt_data)) => {
             // Allen-Bradley STRING tags are returned as UDT structures (0x02A0)
             // STRING UDT format: 4-byte length (DINT) followed by string data (up to 82 bytes)
-            eprintln!("⚠️ [FFI] STRING tag '{}' returned as UDT, attempting to extract string from UDT data ({} bytes): {:02X?}",
+            tracing::warn!("[FFI] STRING tag '{}' returned as UDT, attempting to extract string from UDT data ({} bytes): {:02X?}",
                 tag_name_str, udt_data.data.len(),
                 &udt_data.data[..std::cmp::min(20, udt_data.data.len())]);
 
@@ -938,8 +940,8 @@ pub unsafe extern "C" fn eip_read_string(
             // Format 2: UDT wrapper - might have type code (0x0FCE) + length (2 bytes) + data
             // Format 3: Just find the string data by looking for printable ASCII
 
-            eprintln!(
-                "🔧 [FFI] Attempting to parse STRING from UDT data ({} bytes)",
+            tracing::debug!(
+                "[FFI] Attempting to parse STRING from UDT data ({} bytes)",
                 udt_data.data.len()
             );
 
@@ -961,7 +963,7 @@ pub unsafe extern "C" fn eip_read_string(
                         .copied()
                         .collect();
                     if let Ok(s) = String::from_utf8(trimmed_data) {
-                        eprintln!("✅ [FFI] Extracted STRING (Format 1): '{}'", s);
+                        tracing::info!("[FFI] Extracted STRING (Format 1): '{}'", s);
                         unsafe {
                             let c_string = CString::new(s).unwrap();
                             let bytes = c_string.as_bytes_with_nul();
@@ -991,9 +993,10 @@ pub unsafe extern "C" fn eip_read_string(
                             .collect();
                         if let Ok(s) = String::from_utf8(trimmed_data) {
                             if !s.is_empty() {
-                                eprintln!(
-                                    "✅ [FFI] Extracted STRING (Format 2): '{}' (length={})",
-                                    s, length
+                                tracing::info!(
+                                    "[FFI] Extracted STRING (Format 2): '{}' (length={})",
+                                    s,
+                                    length
                                 );
                                 unsafe {
                                     let c_string = CString::new(s).unwrap();
@@ -1027,7 +1030,10 @@ pub unsafe extern "C" fn eip_read_string(
                         if end > start {
                             let string_data = &udt_data.data[start..end];
                             if let Ok(s) = String::from_utf8(string_data.to_vec()) {
-                                eprintln!("✅ [FFI] Extracted STRING (Format 3, scanned): '{}'", s);
+                                tracing::info!(
+                                    "[FFI] Extracted STRING (Format 3, scanned): '{}'",
+                                    s
+                                );
                                 unsafe {
                                     let c_string = CString::new(s).unwrap();
                                     let bytes = c_string.as_bytes_with_nul();
@@ -1047,26 +1053,22 @@ pub unsafe extern "C" fn eip_read_string(
                 }
             }
 
-            eprintln!(
-                "❌ [FFI] Could not extract STRING from UDT data for tag '{}'",
-                tag_name_str
-            );
-            eprintln!(
-                "❌ [FFI] Could not extract STRING from UDT data for tag '{}'",
+            tracing::error!(
+                "[FFI] Could not extract STRING from UDT data for tag '{}'",
                 tag_name_str
             );
             return -1;
         }
         Ok(other) => {
-            eprintln!(
-                "❌ [FFI] Expected STRING for tag '{}' but got: {:?}",
+            tracing::error!(
+                "[FFI] Expected STRING for tag '{}' but got: {:?}",
                 tag_name_str,
                 std::mem::discriminant(&other)
             );
             return -1; // Wrong data type
         }
         Err(e) => {
-            eprintln!("❌ [FFI] Read STRING tag '{}' failed: {}", tag_name_str, e);
+            tracing::error!("[FFI] Read STRING tag '{}' failed: {}", tag_name_str, e);
             return -1; // Error reading tag
         }
     };
@@ -1150,21 +1152,21 @@ pub unsafe extern "C" fn eip_read_tag(
 
     let mut clients = FFI_CLIENTS.lock().unwrap();
     let Some(client) = clients.get_mut(&client_id) else {
-        eprintln!("❌ [FFI] Client ID {} not found", client_id);
+        tracing::error!("[FFI] Client ID {} not found", client_id);
         return -1;
     };
 
     let value = match RUNTIME.block_on(client.read_tag(tag_name_str)) {
         Ok(value) => {
-            eprintln!(
-                "✅ [FFI] Read tag '{}' succeeded, type: {:?}",
+            tracing::info!(
+                "[FFI] Read tag '{}' succeeded, type: {:?}",
                 tag_name_str,
                 std::mem::discriminant(&value)
             );
             value
         }
         Err(e) => {
-            eprintln!("❌ [FFI] Read tag '{}' failed: {}", tag_name_str, e);
+            tracing::error!("[FFI] Read tag '{}' failed: {}", tag_name_str, e);
             return -1;
         }
     };
@@ -1173,26 +1175,24 @@ pub unsafe extern "C" fn eip_read_tag(
     let json_result = match serde_json::to_string(&value) {
         Ok(json) => json,
         Err(e) => {
-            eprintln!(
-                "❌ [FFI] Failed to serialize tag '{}' to JSON: {}",
-                tag_name_str, e
+            tracing::error!(
+                "[FFI] Failed to serialize tag '{}' to JSON: {}",
+                tag_name_str,
+                e
             );
             return -1;
         }
     };
 
     let Ok(c_string) = CString::new(json_result) else {
-        eprintln!(
-            "❌ [FFI] Failed to create C string for tag '{}'",
-            tag_name_str
-        );
+        tracing::error!("[FFI] Failed to create C string for tag '{}'", tag_name_str);
         return -1;
     };
 
     let bytes = c_string.as_bytes_with_nul();
     if bytes.len() > max_size as usize {
-        eprintln!(
-            "❌ [FFI] JSON result too long for tag '{}': {} bytes (max: {})",
+        tracing::error!(
+            "[FFI] JSON result too long for tag '{}': {} bytes (max: {})",
             tag_name_str,
             bytes.len(),
             max_size

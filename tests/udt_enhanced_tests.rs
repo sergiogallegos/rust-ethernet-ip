@@ -10,6 +10,7 @@
 
 use rust_ethernet_ip::udt::{UdtMember, UserDefinedType};
 use rust_ethernet_ip::{PlcValue, UdtData};
+use tracing;
 
 /// Mock EipClient for testing UDT functionality
 struct MockEipClient {

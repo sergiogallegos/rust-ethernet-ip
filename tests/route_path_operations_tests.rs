@@ -27,11 +27,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -54,7 +54,7 @@ mod tests {
             assert_eq!(r.slots[0], 0, "Slot should be 0");
         }
 
-        println!("✅ Route path set and retrieved successfully");
+        tracing::info!("Route path set and retrieved successfully");
     }
 
     #[tokio::test]
@@ -65,11 +65,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -89,7 +89,7 @@ mod tests {
             "Route path should be None after clearing"
         );
 
-        println!("✅ Route path cleared successfully");
+        tracing::info!("Route path cleared successfully");
     }
 
     #[tokio::test]
@@ -106,11 +106,11 @@ mod tests {
         {
             Ok(Ok(client)) => client,
             Ok(Err(_)) => {
-                println!("⚠️ Skipping test - PLC not available");
+                tracing::debug!("Skipping test - PLC not available");
                 return;
             }
             Err(_) => {
-                println!("⚠️ Skipping test - Connection timeout");
+                tracing::debug!("Skipping test - Connection timeout");
                 return;
             }
         };
@@ -123,7 +123,7 @@ mod tests {
             assert_eq!(r.slots[0], 0, "Slot should be 0");
         }
 
-        println!("✅ Client created with route path successfully");
+        tracing::info!("Client created with route path successfully");
     }
 
     #[tokio::test]
@@ -134,11 +134,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -160,7 +160,7 @@ mod tests {
             assert_eq!(r.slots[0], 1, "Slot should be updated to 1");
         }
 
-        println!("✅ Route path modified successfully");
+        tracing::info!("Route path modified successfully");
     }
 
     #[tokio::test]
@@ -171,11 +171,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -192,6 +192,6 @@ mod tests {
             assert_eq!(r.slots[1], 1, "Second slot should be 1");
         }
 
-        println!("✅ Route path with multiple slots set successfully");
+        tracing::info!("Route path with multiple slots set successfully");
     }
 }

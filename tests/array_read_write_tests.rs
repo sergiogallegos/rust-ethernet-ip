@@ -16,6 +16,7 @@ mod tests {
     use rust_ethernet_ip::{EipClient, PlcValue};
     use std::env;
     use tokio::time::{timeout, Duration};
+    use tracing;
 
     // Helper function to get test PLC address from environment or use default
     fn get_test_plc_address() -> String {
@@ -31,11 +32,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -45,11 +46,11 @@ mod tests {
             let tag_name = format!("gArrayTest[{}]", i);
             match client.read_tag(&tag_name).await {
                 Ok(value) => {
-                    println!("✅ Read {}: {:?}", tag_name, value);
+                    tracing::info!("Read {}: {:?}", tag_name, value);
                     assert!(matches!(value, PlcValue::Dint(_)));
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to read {}: {}", tag_name, e);
+                    tracing::error!("Failed to read {}: {}", tag_name, e);
                     // Don't fail the test - might not have PLC available
                 }
             }
@@ -65,11 +66,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -79,11 +80,11 @@ mod tests {
             let tag_name = format!("Program:MainProgram.ArrayTest[{}]", i);
             match client.read_tag(&tag_name).await {
                 Ok(value) => {
-                    println!("✅ Read {}: {:?}", tag_name, value);
+                    tracing::info!("Read {}: {:?}", tag_name, value);
                     assert!(matches!(value, PlcValue::Dint(_)));
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to read {}: {}", tag_name, e);
+                    tracing::error!("Failed to read {}: {}", tag_name, e);
                     // Don't fail the test - might not have PLC available
                 }
             }
@@ -99,11 +100,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -115,7 +116,7 @@ mod tests {
 
             match client.write_tag(&tag_name, test_value.clone()).await {
                 Ok(_) => {
-                    println!("✅ Wrote {}: {:?}", tag_name, test_value);
+                    tracing::info!("Wrote {}: {:?}", tag_name, test_value);
 
                     // Verify by reading back
                     match client.read_tag(&tag_name).await {
@@ -124,15 +125,15 @@ mod tests {
                                 read_value, test_value,
                                 "Read value should match written value"
                             );
-                            println!("✅ Verified {}: {:?}", tag_name, read_value);
+                            tracing::info!("Verified {}: {:?}", tag_name, read_value);
                         }
                         Err(e) => {
-                            eprintln!("❌ Failed to read back {}: {}", tag_name, e);
+                            tracing::error!("Failed to read back {}: {}", tag_name, e);
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to write {}: {}", tag_name, e);
+                    tracing::error!("Failed to write {}: {}", tag_name, e);
                     // Don't fail the test - might not have PLC available
                 }
             }
@@ -148,11 +149,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -162,11 +163,11 @@ mod tests {
             let tag_name = format!("gArrayBoolTest[{}]", i);
             match client.read_tag(&tag_name).await {
                 Ok(value) => {
-                    println!("✅ Read {}: {:?}", tag_name, value);
+                    tracing::info!("Read {}: {:?}", tag_name, value);
                     assert!(matches!(value, PlcValue::Bool(_)));
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to read {}: {}", tag_name, e);
+                    tracing::error!("Failed to read {}: {}", tag_name, e);
                     // Don't fail the test - might not have PLC available
                 }
             }
@@ -182,11 +183,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -198,7 +199,7 @@ mod tests {
 
             match client.write_tag(&tag_name, test_value.clone()).await {
                 Ok(_) => {
-                    println!("✅ Wrote {}: {:?}", tag_name, test_value);
+                    tracing::info!("Wrote {}: {:?}", tag_name, test_value);
 
                     // Verify by reading back
                     match client.read_tag(&tag_name).await {
@@ -207,15 +208,15 @@ mod tests {
                                 read_value, test_value,
                                 "Read value should match written value"
                             );
-                            println!("✅ Verified {}: {:?}", tag_name, read_value);
+                            tracing::info!("Verified {}: {:?}", tag_name, read_value);
                         }
                         Err(e) => {
-                            eprintln!("❌ Failed to read back {}: {}", tag_name, e);
+                            tracing::error!("Failed to read back {}: {}", tag_name, e);
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to write {}: {}", tag_name, e);
+                    tracing::error!("Failed to write {}: {}", tag_name, e);
                     // Don't fail the test - might not have PLC available
                 }
             }
@@ -238,11 +239,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -252,14 +253,15 @@ mod tests {
         let tag_name = "gArrayTest[10]";
         match client.read_tag(tag_name).await {
             Ok(value) => {
-                println!(
-                    "✅ Read {} using direct element addressing: {:?}",
-                    tag_name, value
+                tracing::info!(
+                    "Read {} using direct element addressing: {:?}",
+                    tag_name,
+                    value
                 );
                 assert!(matches!(value, PlcValue::Dint(_)));
             }
             Err(e) => {
-                eprintln!("❌ Failed to read {}: {}", tag_name, e);
+                tracing::error!("Failed to read {}: {}", tag_name, e);
             }
         }
     }
@@ -279,11 +281,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -294,11 +296,11 @@ mod tests {
             let tag_name = format!("gArrayTest[{}]", i);
             match client.read_tag(&tag_name).await {
                 Ok(value) => {
-                    println!("✅ Read {}: {:?}", tag_name, value);
+                    tracing::info!("Read {}: {:?}", tag_name, value);
                     assert!(matches!(value, PlcValue::Dint(_)));
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to read {}: {}", tag_name, e);
+                    tracing::error!("Failed to read {}: {}", tag_name, e);
                 }
             }
         }
@@ -319,11 +321,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -335,9 +337,10 @@ mod tests {
 
         match client.write_tag(tag_name, test_value.clone()).await {
             Ok(_) => {
-                println!(
-                    "✅ Wrote {} using direct element addressing: {:?}",
-                    tag_name, test_value
+                tracing::info!(
+                    "Wrote {} using direct element addressing: {:?}",
+                    tag_name,
+                    test_value
                 );
 
                 // Verify by reading back
@@ -347,15 +350,15 @@ mod tests {
                             read_value, test_value,
                             "Read value should match written value"
                         );
-                        println!("✅ Verified {}: {:?}", tag_name, read_value);
+                        tracing::info!("Verified {}: {:?}", tag_name, read_value);
                     }
                     Err(e) => {
-                        eprintln!("❌ Failed to read back {}: {}", tag_name, e);
+                        tracing::error!("Failed to read back {}: {}", tag_name, e);
                     }
                 }
             }
             Err(e) => {
-                eprintln!("❌ Failed to write {}: {}", tag_name, e);
+                tracing::error!("Failed to write {}: {}", tag_name, e);
             }
         }
     }
@@ -375,11 +378,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -388,14 +391,15 @@ mod tests {
         let tag_name = "gArrayTest[300]";
         match client.read_tag(tag_name).await {
             Ok(value) => {
-                println!(
-                    "✅ Read {} using 16-bit element addressing: {:?}",
-                    tag_name, value
+                tracing::info!(
+                    "Read {} using 16-bit element addressing: {:?}",
+                    tag_name,
+                    value
                 );
                 assert!(matches!(value, PlcValue::Dint(_)));
             }
             Err(e) => {
-                eprintln!("❌ Failed to read {}: {}", tag_name, e);
+                tracing::error!("Failed to read {}: {}", tag_name, e);
             }
         }
     }

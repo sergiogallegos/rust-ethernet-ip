@@ -3,6 +3,7 @@ mod program_tag_tests {
     use rust_ethernet_ip::{EipClient, PlcValue};
     use std::time::Duration;
     use tokio::time::timeout;
+    use tracing;
 
     const TEST_PLC_IP: &str = "192.168.0.1:44818";
     const TEST_PROGRAM: &str = "API_Web";
@@ -13,11 +14,11 @@ mod program_tag_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("⚠️ Skipping test - PLC not available: {}", e);
+                    tracing::warn!("Skipping test - PLC not available: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("⚠️ Skipping test - Connection timeout");
+                    tracing::warn!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -26,20 +27,20 @@ mod program_tag_tests {
         let result = client.read_tag("Program:API_Web.TestTagProgram").await;
         match result {
             Ok(PlcValue::Dint(value)) => {
-                println!("✅ Program tag read successfully: {}", value);
+                tracing::info!("Program tag read successfully: {}", value);
                 assert!(value >= 0, "Program tag value should be non-negative");
             }
             Ok(other) => {
-                println!(
-                    "✅ Program tag read successfully (different type): {:?}",
+                tracing::info!(
+                    "Program tag read successfully (different type): {:?}",
                     other
                 );
             }
             Err(e) => {
-                eprintln!("❌ Program tag read failed: {}", e);
+                tracing::error!("Program tag read failed: {}", e);
                 // Don't fail the test if PLC is not available
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 panic!("Program tag read failed: {}", e);
@@ -53,11 +54,11 @@ mod program_tag_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("⚠️ Skipping test - PLC not available: {}", e);
+                    tracing::warn!("Skipping test - PLC not available: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("⚠️ Skipping test - Connection timeout");
+                    tracing::warn!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -66,22 +67,22 @@ mod program_tag_tests {
         let result = client.read_tag("Program:API_Web.out_FusePartStatus").await;
         match result {
             Ok(PlcValue::Dint(value)) => {
-                println!("✅ out_FusePartStatus read successfully: {}", value);
+                tracing::info!("out_FusePartStatus read successfully: {}", value);
                 assert!(
                     value >= 0,
                     "out_FusePartStatus value should be non-negative"
                 );
             }
             Ok(other) => {
-                println!(
-                    "✅ out_FusePartStatus read successfully (different type): {:?}",
+                tracing::info!(
+                    "out_FusePartStatus read successfully (different type): {:?}",
                     other
                 );
             }
             Err(e) => {
-                eprintln!("❌ out_FusePartStatus read failed: {}", e);
+                tracing::error!("out_FusePartStatus read failed: {}", e);
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 panic!("out_FusePartStatus read failed: {}", e);
@@ -96,11 +97,11 @@ mod program_tag_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -109,12 +110,12 @@ mod program_tag_tests {
         let result = client.read_tag("TestTagProgram").await;
         match result {
             Ok(_) => {
-                println!(
-                    "⚠️ Old format unexpectedly succeeded - this might indicate PLC configuration"
+                tracing::warn!(
+                    "Old format unexpectedly succeeded - this might indicate PLC configuration"
                 );
             }
             Err(e) => {
-                println!("✅ Old format correctly failed as expected: {}", e);
+                tracing::info!("Old format correctly failed as expected: {}", e);
                 // This is expected behavior - old format should fail
             }
         }
@@ -126,11 +127,11 @@ mod program_tag_tests {
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(_)) => {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 Err(_) => {
-                    println!("⚠️ Skipping test - Connection timeout");
+                    tracing::debug!("Skipping test - Connection timeout");
                     return;
                 }
             };
@@ -141,7 +142,7 @@ mod program_tag_tests {
 
         match result {
             Ok(_) => {
-                println!("✅ Program tag read in {:?}", duration);
+                tracing::info!("Program tag read in {:?}", duration);
                 assert!(
                     duration < Duration::from_millis(100),
                     "Program tag read should be fast"
@@ -149,7 +150,7 @@ mod program_tag_tests {
             }
             Err(e) => {
                 if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    println!("⚠️ Skipping test - PLC not available");
+                    tracing::debug!("Skipping test - PLC not available");
                     return;
                 }
                 panic!("Program tag performance test failed: {}", e);

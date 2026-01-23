@@ -1,6 +1,7 @@
 use rust_ethernet_ip::udt::{TagPermissions, TagScope};
 use rust_ethernet_ip::{RoutePath, TagAttributes, UdtDefinition, UdtMember, UdtTemplate};
 use std::collections::HashMap;
+use tracing;
 
 /// Mock EipClient for testing UDT discovery functionality
 struct MockEipClient {

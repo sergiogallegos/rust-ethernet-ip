@@ -27,32 +27,32 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
 
         // Discover tags to populate cache
         if let Err(e) = client.discover_tags().await {
-            eprintln!("⚠️ Tag discovery failed: {}", e);
+            tracing::warn!("Tag discovery failed: {}", e);
             return;
         }
 
         // Get cached attributes before clearing
         let before_clear = client.list_cached_tag_attributes().await;
-        println!("✅ Cached attributes before clear: {}", before_clear.len());
+        tracing::info!("Cached attributes before clear: {}", before_clear.len());
 
         // Clear cache
         client.clear_caches().await;
-        println!("✅ Cache cleared");
+        tracing::info!("Cache cleared");
 
         // Get cached attributes after clearing
         let after_clear = client.list_cached_tag_attributes().await;
-        println!("✅ Cached attributes after clear: {}", after_clear.len());
+        tracing::info!("Cached attributes after clear: {}", after_clear.len());
 
         // Cache should be empty after clearing
         assert_eq!(after_clear.len(), 0, "Cache should be empty after clearing");
@@ -67,26 +67,26 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
 
         // Discover tags to populate cache
         if let Err(e) = client.discover_tags().await {
-            eprintln!("⚠️ Tag discovery failed: {}", e);
+            tracing::warn!("Tag discovery failed: {}", e);
             return;
         }
 
         // List cached attributes
         let cached_attributes = client.list_cached_tag_attributes().await;
-        println!("✅ Cached tag attributes: {}", cached_attributes.len());
+        tracing::info!("Cached tag attributes: {}", cached_attributes.len());
         for attr in &cached_attributes {
-            println!("  - {}", attr);
+            tracing::debug!("  - {}", attr);
         }
 
         // Should have some cached attributes after discovery
@@ -105,11 +105,11 @@ mod tests {
             match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
                 Ok(Ok(client)) => client,
                 Ok(Err(e)) => {
-                    eprintln!("Failed to connect: {}", e);
+                    tracing::error!("Failed to connect: {}", e);
                     return;
                 }
                 Err(_) => {
-                    eprintln!("Connection timeout");
+                    tracing::warn!("Connection timeout");
                     return;
                 }
             };
@@ -121,14 +121,14 @@ mod tests {
 
         // Repopulate cache by discovering tags
         if let Err(e) = client.discover_tags().await {
-            eprintln!("⚠️ Tag discovery failed: {}", e);
+            tracing::warn!("Tag discovery failed: {}", e);
             return;
         }
 
         // Cache should be repopulated
         let after_discovery = client.list_cached_tag_attributes().await;
-        println!(
-            "✅ Cached attributes after repopulation: {}",
+        tracing::info!(
+            "Cached attributes after repopulation: {}",
             after_discovery.len()
         );
         assert!(

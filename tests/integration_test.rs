@@ -1,6 +1,7 @@
 use rust_ethernet_ip::{EipClient, PlcConfig, PlcManager, PlcValue, TagScope};
 use std::collections::HashMap;
 use std::time::Duration;
+use tracing;
 
 /// Helper function to check if a PLC is available at the given address
 async fn is_plc_available(address: &str) -> bool {
@@ -11,8 +12,9 @@ async fn is_plc_available(address: &str) -> bool {
 #[ignore]
 async fn test_tag_discovery() {
     let address = "127.0.0.1:44818";
+    let _ = rust_ethernet_ip::try_init_tracing();
     if !is_plc_available(address).await {
-        println!(
+        tracing::debug!(
             "Skipping test_tag_discovery: No PLC available at {}",
             address
         );
@@ -39,7 +41,7 @@ async fn test_tag_discovery() {
 async fn test_udt_operations() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!(
+        tracing::debug!(
             "Skipping test_udt_operations: No PLC available at {}",
             address
         );
@@ -77,9 +79,10 @@ async fn test_multiple_plc_connections() {
     let address1 = "127.0.0.1:44818";
     let address2 = "127.0.0.1:44819";
     if !is_plc_available(address1).await || !is_plc_available(address2).await {
-        println!(
+        tracing::debug!(
             "Skipping test_multiple_plc_connections: PLCs not available at {} or {}",
-            address1, address2
+            address1,
+            address2
         );
         return;
     }
@@ -130,7 +133,7 @@ async fn test_multiple_plc_connections() {
 async fn test_connection_pooling() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!(
+        tracing::debug!(
             "Skipping test_connection_pooling: No PLC available at {}",
             address
         );
@@ -176,7 +179,7 @@ async fn test_connection_pooling() {
 async fn test_health_monitoring() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!(
+        tracing::debug!(
             "Skipping test_health_monitoring: No PLC available at {}",
             address
         );
@@ -210,7 +213,7 @@ async fn test_health_monitoring() {
 async fn test_large_packet_support() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!(
+        tracing::debug!(
             "Skipping test_large_packet_support: No PLC available at {}",
             address
         );
@@ -245,7 +248,7 @@ async fn test_large_packet_support() {
 async fn test_string_operations() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!(
+        tracing::debug!(
             "Skipping test_string_operations: No PLC available at {}",
             address
         );
@@ -314,7 +317,7 @@ async fn test_string_operations() {
 async fn test_string_error_handling() {
     let address = "127.0.0.1:44818";
     if !is_plc_available(address).await {
-        println!(
+        tracing::debug!(
             "Skipping test_string_error_handling: No PLC available at {}",
             address
         );

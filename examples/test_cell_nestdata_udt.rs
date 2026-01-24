@@ -33,12 +33,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("");
 
     // Get PLC connection details
-    print!("Enter PLC IP address (default: 192.168.1.101): ");
+    print!("Enter PLC IP address (default: 192.168.0.1): ");
     io::stdout().flush().map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     let mut ip = String::new();
     io::stdin().read_line(&mut ip).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     let ip = ip.trim();
-    let ip = if ip.is_empty() { "192.168.1.101" } else { ip };
+    let ip = if ip.is_empty() { "192.168.0.1" } else { ip };
 
     print!("Enter CPU slot (default: 0 for CompactLogix): ");
     io::stdout().flush().map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
@@ -222,16 +222,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Cell_NestData[90].PartData",
         "Cell_NestData[90].PartData.PlungerInsertion[0]",
         "Cell_NestData[90].PartData.Temp_PreHeatZone1",
+        "Cell_NestData[90].ModelNumber",
+        "Cell_NestData[90].SerialNumber",
+        "Cell_NestData[90].LotNo",
     ];
 
     for path_str in &test_paths {
         match TagPath::parse(path_str) {
             Ok(path) => {
-                tracing::info!("✅ Parsed: {} -> {}", path_str, path);
+                tracing::info!("✅ Parsed: {} -> {:?}", path_str, path);
                 match path.to_cip_path() {
                     Ok(cip_path) => {
-                        tracing::debug!("   CIP Path ({} bytes): {:02X?}", cip_path.len(), 
-                            &cip_path[..cip_path.len().min(32)]);
+                        tracing::info!("   CIP Path ({} bytes, {} words): {:02X?}", 
+                            cip_path.len(), 
+                            cip_path.len() / 2,
+                            cip_path);
                     }
                     Err(e) => {
                         tracing::error!("   ❌ Failed to generate CIP path: {}", e);

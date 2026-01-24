@@ -1777,31 +1777,34 @@ impl EipClient {
         // Complex paths like "gTestUDT_Array[0].Member1_DINT" should use TagPath::parse()
         if let Some((base_name, index)) = self.parse_array_element_access(tag_name) {
             // Only use workaround if there's no member access after the array brackets
-            // Check if there's a dot after the closing bracket
-            if let Some(bracket_end) = tag_name.rfind(']') {
-                let after_bracket = &tag_name[bracket_end + 1..];
-                tracing::trace!(
-                    "Array element detected for '{}': base='{}', index={}, after_bracket='{}'",
-                    tag_name,
-                    base_name,
-                    index,
-                    after_bracket
-                );
-                // If there's a dot after the bracket, it's a member access - use TagPath::parse() instead
-                if !after_bracket.starts_with('.') {
+            // Find the FIRST [ and ] pair to check for member access after it
+            if let Some(bracket_start) = tag_name.find('[') {
+                if let Some(bracket_end_rel) = tag_name[bracket_start..].find(']') {
+                    let bracket_end_abs = bracket_start + bracket_end_rel;
+                    let after_bracket = &tag_name[bracket_end_abs + 1..];
                     tracing::debug!(
-                        "Detected simple array element access: {}[{}], using workaround",
-                        base_name,
-                        index
-                    );
-                    return self.read_array_element_workaround(&base_name, index).await;
-                } else {
-                    tracing::debug!(
-                        "Array element '{}[{}]' has member access after bracket ('{}'), using TagPath::parse()",
+                        "Array element detected for '{}': base='{}', index={}, after_bracket='{}'",
+                        tag_name,
                         base_name,
                         index,
                         after_bracket
                     );
+                    // If there's a dot after the bracket, it's a member access - use TagPath::parse() instead
+                    if !after_bracket.starts_with('.') {
+                        tracing::debug!(
+                            "Detected simple array element access: {}[{}], using workaround",
+                            base_name,
+                            index
+                        );
+                        return self.read_array_element_workaround(&base_name, index).await;
+                    } else {
+                        tracing::debug!(
+                            "Array element '{}[{}]' has member access after bracket ('{}'), using TagPath::parse()",
+                            base_name,
+                            index,
+                            after_bracket
+                        );
+                    }
                 }
             }
         }
@@ -4855,10 +4858,11 @@ impl EipClient {
 
         // Request Path Size (in words)
         let path_size_words = (path.len() / 2) as u8;
-        tracing::trace!(
-            "Path size calculation: {} bytes / 2 = {} words",
+        tracing::debug!(
+            "Path size calculation: {} bytes / 2 = {} words for tag '{}'",
             path.len(),
-            path_size_words
+            path_size_words,
+            tag_name
         );
         cip_request.push(path_size_words);
 
@@ -4869,12 +4873,17 @@ impl EipClient {
         // Reference: 1756-PM020, Page 241 (Request Data: Number of elements to read)
         cip_request.extend_from_slice(&element_count.to_le_bytes());
 
-        tracing::trace!(
-            "Built CIP read request ({} bytes): {:02X?}",
+        tracing::debug!(
+            "Built CIP read request ({} bytes) for tag '{}': {:02X?}",
             cip_request.len(),
+            tag_name,
             cip_request
         );
-        tracing::trace!("Path bytes ({} bytes): {:02X?}", path.len(), path);
+        tracing::debug!("Path bytes ({} bytes, {} words) for tag '{}': {:02X?}", 
+            path.len(), 
+            path_size_words,
+            tag_name,
+            path);
 
         cip_request
     }
@@ -5055,14 +5064,20 @@ impl EipClient {
         // Reference: EtherNetIP_Connection_Paths_and_Routing.md
         let app_path = match TagPath::parse(tag_name) {
             Ok(tag_path) => {
+                tracing::debug!(
+                    "Parsed tag path for '{}': {:?}",
+                    tag_name,
+                    tag_path
+                );
                 // Generate CIP path using the proper parser
                 match tag_path.to_cip_path() {
                     Ok(path) => {
-                        tracing::trace!(
-                            "TagPath generated {} bytes ({} words) for '{}'",
+                        tracing::debug!(
+                            "TagPath generated {} bytes ({} words) for '{}': {:02X?}",
                             path.len(),
                             path.len() / 2,
-                            tag_name
+                            tag_name,
+                            path
                         );
                         path
                     }

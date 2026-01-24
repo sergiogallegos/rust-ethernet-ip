@@ -16,12 +16,12 @@ namespace TestCellNestDataUdt
     /// 
     /// Prerequisites:
     /// - Cell_NestData tag must exist in the PLC (array of 100 UDT elements)
-    /// - PLC must be accessible at 192.168.1.101:44818
+        /// - PLC must be accessible at 192.168.0.1:44818
     /// - CPU slot 0 (CompactLogix) or adjust CPU_SLOT constant
     /// </summary>
     class Program
     {
-        private const string PLC_ADDRESS = "192.168.1.101:44818";
+        private const string PLC_ADDRESS = "192.168.0.1:44818";
         private const byte CPU_SLOT = 0; // CompactLogix CPU in Slot 0
 
         static void Main(string[] args)
@@ -273,6 +273,20 @@ namespace TestCellNestDataUdt
                             {
                                 var stringValue = result.Value.As<string>();
                                 Console.WriteLine($"   ✅ Value: {stringValue}");
+                            }
+                            else if (result.Value.Type == PlcValueType.Udt)
+                            {
+                                // Sometimes the PLC returns the entire UDT instead of just the string member
+                                // Try to read the string directly using ReadString method
+                                try
+                                {
+                                    var stringValue = client.ReadString(memberName);
+                                    Console.WriteLine($"   ✅ Value: {stringValue}");
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"   ❌ Error: Expected String but got {result.Value.Type}. Tried ReadString: {ex.Message}");
+                                }
                             }
                             else
                             {

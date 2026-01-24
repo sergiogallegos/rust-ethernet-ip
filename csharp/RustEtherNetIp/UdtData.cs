@@ -64,6 +64,9 @@ namespace RustEtherNetIp
 
         /// <summary>
         /// Creates a UdtData instance from JSON
+        /// Handles both formats:
+        /// - Base64 string: {"symbol_id":0,"data":"base64string"}
+        /// - Array of integers: {"symbol_id":0,"data":[207,120,2,0,...]}
         /// </summary>
         public static UdtData FromJson(string json)
         {
@@ -71,10 +74,40 @@ namespace RustEtherNetIp
             var root = doc.RootElement;
 
             int symbolId = root.GetProperty("symbol_id").GetInt32();
-            string? dataBase64 = root.GetProperty("data").GetString();
-            if (string.IsNullOrEmpty(dataBase64))
-                throw new ArgumentException("UdtData JSON missing or empty 'data' field");
-            byte[] data = Convert.FromBase64String(dataBase64);
+            var dataElement = root.GetProperty("data");
+            
+            byte[] data;
+            
+            // Check if data is a string (base64) or an array (integers)
+            if (dataElement.ValueKind == JsonValueKind.String)
+            {
+                // Base64 string format
+                string? dataBase64 = dataElement.GetString();
+                if (string.IsNullOrEmpty(dataBase64))
+                    throw new ArgumentException("UdtData JSON missing or empty 'data' field");
+                data = Convert.FromBase64String(dataBase64);
+            }
+            else if (dataElement.ValueKind == JsonValueKind.Array)
+            {
+                // Array of integers format (from Rust library)
+                var dataList = new List<byte>();
+                foreach (var item in dataElement.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.Number)
+                    {
+                        dataList.Add((byte)item.GetUInt32());
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"UdtData JSON 'data' array contains non-numeric element");
+                    }
+                }
+                data = dataList.ToArray();
+            }
+            else
+            {
+                throw new ArgumentException($"UdtData JSON 'data' field must be either a string (base64) or an array of integers, got: {dataElement.ValueKind}");
+            }
 
             return new UdtData(symbolId, data);
         }

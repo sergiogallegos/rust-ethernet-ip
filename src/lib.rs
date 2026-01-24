@@ -1780,6 +1780,13 @@ impl EipClient {
             // Check if there's a dot after the closing bracket
             if let Some(bracket_end) = tag_name.rfind(']') {
                 let after_bracket = &tag_name[bracket_end + 1..];
+                tracing::trace!(
+                    "Array element detected for '{}': base='{}', index={}, after_bracket='{}'",
+                    tag_name,
+                    base_name,
+                    index,
+                    after_bracket
+                );
                 // If there's a dot after the bracket, it's a member access - use TagPath::parse() instead
                 if !after_bracket.starts_with('.') {
                     tracing::debug!(
@@ -1788,6 +1795,13 @@ impl EipClient {
                         index
                     );
                     return self.read_array_element_workaround(&base_name, index).await;
+                } else {
+                    tracing::debug!(
+                        "Array element '{}[{}]' has member access after bracket ('{}'), using TagPath::parse()",
+                        base_name,
+                        index,
+                        after_bracket
+                    );
                 }
             }
         }
@@ -2789,15 +2803,15 @@ impl EipClient {
         // Service: Read Tag (0x4C)
         request.push(0x4C);
 
-        // Path size calculation
-        let path_size = 2 + (tag_name.len() + 1) / 2;
-        request.push(path_size as u8);
-
-        // Path: tag name
-        request.extend_from_slice(tag_name.as_bytes());
-        if tag_name.len() % 2 != 0 {
-            request.push(0); // Pad to word boundary
-        }
+        // Use TagPath::parse() to correctly handle complex paths like Cell_NestData[90].PartData
+        let tag_path = self.build_tag_path(tag_name);
+        
+        // Path size (in words)
+        let path_size = (tag_path.len() / 2) as u8;
+        request.push(path_size);
+        
+        // Path: use properly parsed tag path
+        request.extend_from_slice(&tag_path);
 
         // For UDTs, we need to use a different approach than array indexing
         // Try to read as raw data with offset

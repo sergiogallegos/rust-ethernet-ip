@@ -289,8 +289,7 @@ namespace RustEtherNetIp
                 if (_clientId != -1)
                     throw new InvalidOperationException("Already connected to a PLC. Call Disconnect() first.");
 
-                if (routePath == null)
-                    throw new ArgumentNullException(nameof(routePath));
+                _ = routePath ?? throw new ArgumentNullException(nameof(routePath));
 
                 IntPtr addressPtr = Marshal.StringToHGlobalAnsi(address);
                 try
@@ -1228,8 +1227,7 @@ namespace RustEtherNetIp
         /// </remarks>
         public void WriteStringAsUdt(string tagName, LogixString logixString)
         {
-            if (logixString == null)
-                throw new ArgumentNullException(nameof(logixString));
+            _ = logixString ?? throw new ArgumentNullException(nameof(logixString));
 
             // Note: This method attempts to write a STRING tag as a UDT structure.
             // However, due to PLC firmware limitations (CIP Error 0x2107), STRING tag writes
@@ -1430,8 +1428,7 @@ namespace RustEtherNetIp
         /// <param name="value">PlcValue containing the UDT with nested structure support.</param>
         public void WriteUdt(string tagName, PlcValue value)
         {
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
+            _ = value ?? throw new ArgumentNullException(nameof(value));
             
             if (!value.IsUdt)
                 throw new ArgumentException("Value must be a UDT type", nameof(value));
@@ -1499,8 +1496,7 @@ namespace RustEtherNetIp
         /// <param name="value">Dictionary containing UDT member values.</param>
         public void WriteUdt(string tagName, Dictionary<string, object> value)
         {
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
+            _ = value ?? throw new ArgumentNullException(nameof(value));
 
             // Convert Dictionary<string, object> to Dictionary<string, PlcValue>
             var udtValue = new Dictionary<string, PlcValue>();
@@ -1562,7 +1558,7 @@ namespace RustEtherNetIp
         public void SetUdtMember(string tagName, string memberPath, PlcValue value)
         {
             var udtValue = ReadUdt(tagName);
-            if (udtValue == null || !udtValue.IsUdt)
+            if (udtValue?.IsUdt != true)
                 throw new Exception($"Tag '{tagName}' is not a UDT type or could not be read.");
 
             var members = udtValue.UdtMembers;
@@ -1680,8 +1676,7 @@ namespace RustEtherNetIp
         /// <param name="value">PlcValue containing the value to write.</param>
         public void WriteUdtMemberByOffset(string udtName, int memberOffset, int memberSize, short dataType, PlcValue value)
         {
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
+            _ = value ?? throw new ArgumentNullException(nameof(value));
 
             ExecuteWithLock(() =>
             {
@@ -1722,8 +1717,7 @@ namespace RustEtherNetIp
                 throw new ArgumentException("UDT name cannot be null or empty", nameof(udtName));
             if (string.IsNullOrEmpty(memberName))
                 throw new ArgumentException("Member name cannot be null or empty", nameof(memberName));
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
+            _ = value ?? throw new ArgumentNullException(nameof(value));
 
             ExecuteWithLock(() =>
             {
@@ -1841,7 +1835,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public Dictionary<string, TagReadResultBatch> ReadTagsBatch(string[] tagNames)
         {
-            if (tagNames == null || tagNames.Length == 0)
+            if (tagNames?.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
             // For now, return a simplified implementation that calls individual reads
@@ -1983,7 +1977,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public Dictionary<string, TagWriteResult> WriteTagsBatch(Dictionary<string, object> tagValues)
         {
-            if (tagValues == null || tagValues.Count == 0)
+            if (tagValues?.Count == 0)
                 throw new ArgumentException("Tag values dictionary cannot be null or empty", nameof(tagValues));
 
             // For now, return a simplified implementation that calls individual writes
@@ -2111,8 +2105,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public void ConfigureBatchOperations(BatchConfig config)
         {
-            if (config == null)
-                throw new ArgumentNullException(nameof(config));
+            _ = config ?? throw new ArgumentNullException(nameof(config));
 
             // For now, store configuration locally
             // TODO: Implement proper batch configuration FFI when Rust FFI is updated
@@ -2148,7 +2141,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public BatchOperationResult[] ExecuteBatch(BatchOperation[] operations)
         {
-            if (operations == null || operations.Length == 0)
+            if (operations?.Length == 0)
                 throw new ArgumentException("Operations array cannot be null or empty", nameof(operations));
 
             // For now, return a simplified implementation that executes operations sequentially
@@ -2512,7 +2505,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public PlcValue[] ReadTags(string[] tagNames)
         {
-            if (tagNames == null || tagNames.Length == 0)
+            if (tagNames?.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
             return ExecuteWithLock(() =>
@@ -2544,7 +2537,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public TagReadResult[] ReadTagsWithDetails(string[] tagNames)
         {
-            if (tagNames == null || tagNames.Length == 0)
+            if (tagNames?.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
             return ExecuteWithLock(() =>
@@ -2966,22 +2959,25 @@ namespace RustEtherNetIp
     /// <summary>
     /// Represents a batch operation (read or write) to be executed.
     /// </summary>
-    public class BatchOperation
+    public class BatchOperation(
+        string tagName = "",
+        bool isWrite = false,
+        object? value = null)
     {
         /// <summary>
         /// Name of the PLC tag to operate on.
         /// </summary>
-        public string TagName { get; set; } = string.Empty;
+        public string TagName { get; set; } = tagName;
         
         /// <summary>
         /// True for write operations, false for read operations.
         /// </summary>
-        public bool IsWrite { get; set; }
+        public bool IsWrite { get; set; } = isWrite;
         
         /// <summary>
         /// Value to write (only used for write operations).
         /// </summary>
-        public object? Value { get; set; }
+        public object? Value { get; set; } = value;
         
         /// <summary>
         /// Creates a read operation for the specified tag.
@@ -2990,12 +2986,7 @@ namespace RustEtherNetIp
         /// <returns>Read batch operation</returns>
         public static BatchOperation Read(string tagName)
         {
-            return new BatchOperation
-            {
-                TagName = tagName,
-                IsWrite = false,
-                Value = null
-            };
+            return new BatchOperation(tagName, false, null);
         }
         
         /// <summary>
@@ -3006,117 +2997,129 @@ namespace RustEtherNetIp
         /// <returns>Write batch operation</returns>
         public static BatchOperation Write(string tagName, object value)
         {
-            return new BatchOperation
-            {
-                TagName = tagName,
-                IsWrite = true,
-                Value = value
-            };
+            return new BatchOperation(tagName, true, value);
         }
     }
     
     /// <summary>
     /// Result of a batch operation execution.
     /// </summary>
-    public class BatchOperationResult
+    public class BatchOperationResult(
+        string tagName = "",
+        bool isWrite = false,
+        bool success = false,
+        object? value = null,
+        double executionTimeMs = 0.0,
+        int errorCode = 0,
+        string? errorMessage = null)
     {
         /// <summary>
         /// Name of the tag that was operated on.
         /// </summary>
-        public string TagName { get; set; } = string.Empty;
+        public string TagName { get; set; } = tagName;
         
         /// <summary>
         /// True if this was a write operation, false for read.
         /// </summary>
-        public bool IsWrite { get; set; }
+        public bool IsWrite { get; set; } = isWrite;
         
         /// <summary>
         /// True if the operation completed successfully.
         /// </summary>
-        public bool Success { get; set; }
+        public bool Success { get; set; } = success;
         
         /// <summary>
         /// Value read from the tag (only for successful read operations).
         /// </summary>
-        public object? Value { get; set; }
+        public object? Value { get; set; } = value;
         
         /// <summary>
         /// Execution time for this operation in milliseconds.
         /// </summary>
-        public double ExecutionTimeMs { get; set; }
+        public double ExecutionTimeMs { get; set; } = executionTimeMs;
         
         /// <summary>
         /// Error code (0 for success, negative for errors).
         /// </summary>
-        public int ErrorCode { get; set; }
+        public int ErrorCode { get; set; } = errorCode;
         
         /// <summary>
         /// Error message (null for successful operations).
         /// </summary>
-        public string? ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; } = errorMessage;
     }
     
     /// <summary>
     /// Result of a tag read operation in a batch (legacy format for batch operations).
     /// Note: For detailed read results with quality and timestamp, use the TagReadResult class from TagReadResult.cs
     /// </summary>
-    public class TagReadResultBatch
+    public class TagReadResultBatch(
+        string tagName = "",
+        bool success = false,
+        object? value = null,
+        string dataType = "",
+        int errorCode = 0,
+        string? errorMessage = null)
     {
         /// <summary>
         /// Name of the tag that was read.
         /// </summary>
-        public string TagName { get; set; } = string.Empty;
+        public string TagName { get; set; } = tagName;
         
         /// <summary>
         /// True if the read was successful.
         /// </summary>
-        public bool Success { get; set; }
+        public bool Success { get; set; } = success;
         
         /// <summary>
         /// Value read from the tag (null if read failed).
         /// </summary>
-        public object? Value { get; set; }
+        public object? Value { get; set; } = value;
         
         /// <summary>
         /// Data type of the tag (e.g., "DINT", "REAL", "BOOL").
         /// </summary>
-        public string DataType { get; set; } = string.Empty;
+        public string DataType { get; set; } = dataType;
         
         /// <summary>
         /// Error code (0 for success, negative for errors).
         /// </summary>
-        public int ErrorCode { get; set; }
+        public int ErrorCode { get; set; } = errorCode;
         
         /// <summary>
         /// Error message (null for successful reads).
         /// </summary>
-        public string? ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; } = errorMessage;
     }
     
     /// <summary>
     /// Result of a tag write operation in a batch.
     /// </summary>
-    public class TagWriteResult
+    public class TagWriteResult(
+        string tagName = "",
+        bool success = false,
+        int errorCode = 0,
+        string? errorMessage = null)
     {
         /// <summary>
         /// Name of the tag that was written.
         /// </summary>
-        public string TagName { get; set; } = string.Empty;
+        public string TagName { get; set; } = tagName;
         
         /// <summary>
         /// True if the write was successful.
         /// </summary>
-        public bool Success { get; set; }
+        public bool Success { get; set; } = success;
         
         /// <summary>
         /// Error code (0 for success, negative for errors).
         /// </summary>
-        public int ErrorCode { get; set; }
+        public int ErrorCode { get; set; } = errorCode;
         
         /// <summary>
         /// Error message (null for successful writes).
         /// </summary>
-        public string? ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; } = errorMessage;
     }
     
     /// <summary>

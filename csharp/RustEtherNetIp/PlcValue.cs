@@ -173,7 +173,7 @@ namespace RustEtherNetIp
                 if (!current.IsUdt) return null;
                 
                 var members = current.UdtMembers;
-                if (members == null || !members.ContainsKey(part)) return null;
+                if (members?.ContainsKey(part) != true) return null;
                 
                 current = members[part];
             }

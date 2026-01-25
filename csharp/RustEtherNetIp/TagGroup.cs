@@ -79,8 +79,7 @@ namespace RustEtherNetIp
             get => (int)_timer.Interval;
             set
             {
-                if (value <= 0)
-                    throw new ArgumentException("Update rate must be greater than zero", nameof(value));
+                field = value > 0 ? value : throw new ArgumentException("Update rate must be greater than zero", nameof(value));
                 _timer.Interval = value;
             }
         }
@@ -137,7 +136,7 @@ namespace RustEtherNetIp
         /// <param name="active">True to enable the tag in scans, false to disable</param>
         public void SetTagActive(string tagName, bool active)
         {
-            if (TagNames == null || !Array.Exists(TagNames, t => t == tagName))
+            if (TagNames?.Length == 0 || !Array.Exists(TagNames ?? Array.Empty<string>(), t => t == tagName))
                 throw new ArgumentException($"Tag '{tagName}' is not in this group", nameof(tagName));
             
             _tagActiveStates[tagName] = active;
@@ -157,7 +156,7 @@ namespace RustEtherNetIp
 
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
-            if (_isDisposed || _isSuspended || TagNames == null || TagNames.Length == 0)
+            if (_isDisposed || _isSuspended || TagNames?.Length == 0)
                 return;
 
             // Prevent overlapping scans - if a scan is still running, skip this one

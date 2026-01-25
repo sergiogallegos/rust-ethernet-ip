@@ -18,7 +18,7 @@ use std::collections::HashMap;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("╔════════════════════════════════════════════════════════════════╗");
-    println!("║  🦀 Rust EtherNet/IP - Comprehensive Terminal Demo v0.6.1      ║");
+    println!("║  🦀 Rust EtherNet/IP - Comprehensive Terminal Demo v0.6.2      ║");
     println!("║  Complete Feature Testing Interface                            ║");
     println!("╚════════════════════════════════════════════════════════════════╝");
     println!();

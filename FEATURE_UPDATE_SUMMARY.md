@@ -1,4 +1,4 @@
-# Feature Update Summary - v0.6.1
+# Feature Update Summary - v0.6.2
 
 ## ✅ Completed Tasks
 

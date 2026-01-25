@@ -1,7 +1,7 @@
 // lib.rs - Rust EtherNet/IP Driver Library with Comprehensive Documentation
 // =========================================================================
 //
-// # Rust EtherNet/IP Driver Library v0.6.1
+// # Rust EtherNet/IP Driver Library v0.6.2
 //
 // A high-performance, production-ready EtherNet/IP communication library for
 // Allen-Bradley CompactLogix and ControlLogix PLCs, written in pure Rust with
@@ -253,7 +253,22 @@
 //
 // ## Changelog
 //
-// ### v0.6.1 (January 2026) - **CURRENT**
+// ### v0.6.2 (January 2026) - **CURRENT**
+// - **NEW: Stream Injection API** - `connect_with_stream()` for custom TCP transport
+//   - Enables wrapping streams for metrics/observability (bytes in/out)
+//   - Supports custom socket options (keepalive, timeouts, bind local address)
+//   - Allows reusing pre-established tunnels/connections
+//   - Supports in-memory streams for deterministic testing
+// - **NEW: Test Configuration** - Environment variable support for PLC testing
+//   - `TEST_PLC_ADDRESS` - Set PLC IP address for tests
+//   - `TEST_PLC_SLOT` - Set CPU slot number
+//   - `SKIP_PLC_TESTS` - Skip PLC-dependent tests
+// - **FIXED: Nested UDT Member Access** - Fixed reading nested UDT members from array elements
+//   - Correctly handles paths like `Cell_NestData[90].PartData.Member`
+//   - Fixed array element detection to use TagPath::parse() for complex paths
+//   - Now correctly builds full CIP paths instead of using array workaround
+
+// ### v0.6.1 (January 2026)
 // - **Repository Cleanup**: Removed Go and Python wrappers to focus on Rust library and C# integration
 // - **Streamlined Examples**: Focused on Microsoft stack (WinForms, WPF, ASP.NET) and Rust native examples
 
@@ -323,8 +338,43 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
+
+/// Trait for streams that can be used with EipClient
+///
+/// This trait combines the requirements for streams used with EtherNet/IP:
+/// - `AsyncRead`: Read data from the stream
+/// - `AsyncWrite`: Write data to the stream
+/// - `Unpin`: Required for async operations
+/// - `Send`: Required for cross-thread safety
+///
+/// Most tokio streams (like `TcpStream`, `UnixStream`, etc.) automatically
+/// implement this trait. You can also implement it for custom stream wrappers
+/// to add metrics, logging, or other functionality.
+///
+/// # Example
+///
+/// ```no_run
+/// use rust_ethernet_ip::EtherNetIpStream;
+/// use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+///
+/// // Custom stream wrapper for metrics
+/// struct MetricsStream<S> {
+///     inner: S,
+///     bytes_read: u64,
+///     bytes_written: u64,
+/// }
+///
+/// // Most tokio streams automatically implement EtherNetIpStream
+/// // For example, TcpStream implements it:
+/// use tokio::net::TcpStream;
+/// // TcpStream: AsyncRead + AsyncWrite + Unpin + Send ✓
+/// // Therefore: TcpStream implements EtherNetIpStream ✓
+/// ```
+pub trait EtherNetIpStream: AsyncRead + AsyncWrite + Unpin + Send {}
+
+impl<S> EtherNetIpStream for S where S: AsyncRead + AsyncWrite + Unpin + Send {}
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration, Instant};
@@ -1346,10 +1396,10 @@ impl PlcValue {
 ///     Err(EtherNetIpError::Protocol("Max retries exceeded".to_string()))
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EipClient {
-    /// TCP stream for network communication
-    stream: Arc<Mutex<TcpStream>>,
+    /// Stream for network communication (supports any AsyncRead + AsyncWrite + Unpin stream)
+    stream: Arc<Mutex<Box<dyn EtherNetIpStream>>>,
     /// Session handle for the connection
     session_handle: u32,
     /// Connection ID for the session
@@ -1378,14 +1428,32 @@ pub struct EipClient {
     subscriptions: Arc<Mutex<Vec<TagSubscription>>>,
 }
 
+impl std::fmt::Debug for EipClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EipClient")
+            .field("session_handle", &self.session_handle)
+            .field("route_path", &self.route_path)
+            .field("max_packet_size", &self.max_packet_size)
+            .field("_session_timeout", &self._session_timeout)
+            .field("batch_config", &self.batch_config)
+            .field("stream", &"<stream>")
+            .field("tag_manager", &"<tag_manager>")
+            .field("udt_manager", &"<udt_manager>")
+            .field("connected_sessions", &"<connected_sessions>")
+            .field("subscriptions", &"<subscriptions>")
+            .finish()
+    }
+}
+
 impl EipClient {
-    pub async fn new(addr: &str) -> Result<Self> {
-        let addr = addr
-            .parse::<SocketAddr>()
-            .map_err(|e| EtherNetIpError::Protocol(format!("Invalid address format: {e}")))?;
-        let stream = TcpStream::connect(addr).await?;
+    /// Internal constructor that initializes an EipClient from any stream
+    /// that implements AsyncRead + AsyncWrite + Unpin + Send
+    async fn from_stream<S>(stream: S) -> Result<Self>
+    where
+        S: EtherNetIpStream + 'static,
+    {
         let mut client = Self {
-            stream: Arc::new(Mutex::new(stream)),
+            stream: Arc::new(Mutex::new(Box::new(stream))),
             session_handle: 0,
             _connection_id: 0,
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
@@ -1403,6 +1471,14 @@ impl EipClient {
         client.register_session().await?;
         client.negotiate_packet_size().await?;
         Ok(client)
+    }
+
+    pub async fn new(addr: &str) -> Result<Self> {
+        let addr = addr
+            .parse::<SocketAddr>()
+            .map_err(|e| EtherNetIpError::Protocol(format!("Invalid address format: {e}")))?;
+        let stream = TcpStream::connect(addr).await?;
+        Self::from_stream(stream).await
     }
 
     /// Public async connect function for `EipClient`
@@ -1678,6 +1754,47 @@ impl EipClient {
     pub async fn with_route_path(addr: &str, route: RoutePath) -> crate::error::Result<Self> {
         let mut client = Self::new(addr).await?;
         client.set_route_path(route);
+        Ok(client)
+    }
+
+    /// Connect to a PLC using a custom stream
+    ///
+    /// This method allows you to provide your own stream implementation, enabling:
+    /// - Wrapping streams for metrics/observability (bytes in/out)
+    /// - Applying custom socket options (keepalive, timeouts, bind local address)
+    /// - Reusing pre-established tunnels/connections
+    /// - Using in-memory streams for deterministic testing
+    ///
+    /// # Arguments
+    ///
+    /// * `stream` - Any stream that implements `AsyncRead + AsyncWrite + Unpin + Send`
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use rust_ethernet_ip::EipClient;
+    /// use std::net::SocketAddr;
+    /// use tokio::net::TcpStream;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// // Create a custom stream with socket options
+    /// let addr: SocketAddr = "192.168.1.100:44818".parse()?;
+    /// let stream = TcpStream::connect(addr).await?;
+    /// stream.set_nodelay(true)?;
+    ///
+    /// // Connect using the custom stream
+    /// let client = EipClient::connect_with_stream(stream, None).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn connect_with_stream<S>(stream: S, route: Option<RoutePath>) -> Result<Self>
+    where
+        S: EtherNetIpStream + 'static,
+    {
+        let mut client = Self::from_stream(stream).await?;
+        if let Some(route) = route {
+            client.set_route_path(route);
+        }
         Ok(client)
     }
 
@@ -2808,11 +2925,11 @@ impl EipClient {
 
         // Use TagPath::parse() to correctly handle complex paths like Cell_NestData[90].PartData
         let tag_path = self.build_tag_path(tag_name);
-        
+
         // Path size (in words)
         let path_size = (tag_path.len() / 2) as u8;
         request.push(path_size);
-        
+
         // Path: use properly parsed tag path
         request.extend_from_slice(&tag_path);
 
@@ -4879,11 +4996,13 @@ impl EipClient {
             tag_name,
             cip_request
         );
-        tracing::debug!("Path bytes ({} bytes, {} words) for tag '{}': {:02X?}", 
-            path.len(), 
+        tracing::debug!(
+            "Path bytes ({} bytes, {} words) for tag '{}': {:02X?}",
+            path.len(),
             path_size_words,
             tag_name,
-            path);
+            path
+        );
 
         cip_request
     }
@@ -5064,11 +5183,7 @@ impl EipClient {
         // Reference: EtherNetIP_Connection_Paths_and_Routing.md
         let app_path = match TagPath::parse(tag_name) {
             Ok(tag_path) => {
-                tracing::debug!(
-                    "Parsed tag path for '{}': {:?}",
-                    tag_name,
-                    tag_path
-                );
+                tracing::debug!("Parsed tag path for '{}': {:?}", tag_name, tag_path);
                 // Generate CIP path using the proper parser
                 match tag_path.to_cip_path() {
                     Ok(path) => {

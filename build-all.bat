@@ -1,5 +1,5 @@
 @echo off
-echo 🎉 Building Complete Rust EtherNet/IP Solution v0.6.1
+echo 🎉 Building Complete Rust EtherNet/IP Solution v0.6.2
 echo ====================================================
 echo.
 echo ✨ This build includes:
@@ -85,7 +85,7 @@ echo 🎉 COMPLETE BUILD SUCCESS!
 echo =========================
 echo.
 echo 📦 Built Components:
-echo   ✅ Rust Library (v0.6.1) - Production-ready core library
+echo   ✅ Rust Library (v0.6.2) - Production-ready core library
 echo   ✅ C# Wrapper - Complete .NET integration
 echo   ✅ WinForms Example - Desktop application
 echo   ✅ WPF Example - Modern desktop application

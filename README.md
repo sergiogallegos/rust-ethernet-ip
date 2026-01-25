@@ -1,7 +1,7 @@
 # 🦀 Rust EtherNet/IP Driver
 
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.6.1-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
+[![Version](https://img.shields.io/badge/version-0.6.2-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Performance](https://img.shields.io/badge/performance-3000%2B%20ops%2Fsec-green.svg)]()
 [![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)]()
@@ -38,7 +38,21 @@ This library is specifically designed for:
 - **Industrial Automation** software and SCADA systems
 - **High-performance** data acquisition and control
 
-### ✅ **v0.6.1 New Features**
+### ✅ **v0.6.2 New Features**
+- **🔌 Stream Injection API**: New `connect_with_stream()` for custom TCP transport
+  - Wrap streams for metrics/observability (bytes in/out)
+  - Apply custom socket options (keepalive, timeouts, bind local address)
+  - Reuse pre-established tunnels/connections
+  - Use in-memory streams for deterministic testing
+- **🧪 Test Configuration**: Environment variable support for PLC testing
+  - `TEST_PLC_ADDRESS` - Set PLC IP address for tests
+  - `TEST_PLC_SLOT` - Set CPU slot number
+  - `SKIP_PLC_TESTS` - Skip PLC-dependent tests
+- **🐛 Fixed Nested UDT Access**: Fixed reading nested UDT members from array elements
+  - Correctly handles `Cell_NestData[90].PartData.Member` paths
+  - Now returns specific member values instead of entire UDT
+
+### ✅ **v0.6.1 Features**
 - **🧹 Repository Cleanup**: Removed Go and Python wrappers to focus on Rust library and C# integration
 - **📦 Streamlined Examples**: Focused on Microsoft stack (WinForms, WPF, ASP.NET) and Rust native examples
 - **🔧 Improved Documentation**: Updated all documentation to reflect current focus
@@ -290,7 +304,7 @@ The demo reads 13 industrial tags including machine status, production metrics, 
 
 Optimized for PC applications with excellent performance:
 
-> **🆕 Latest Performance Improvements (v0.6.1)**
+> **🆕 Latest Performance Improvements (v0.6.2)**
 > 
 > Recent optimizations and improvements:
 > - **Generic UDT Format**: New `UdtData` struct enables universal UDT handling
@@ -362,7 +376,7 @@ The easiest way to get started is by adding the crate to your `Cargo.toml`:
 [dependencies]
 ```toml
 [dependencies]
-rust-ethernet-ip = "0.6.1"
+rust-ethernet-ip = "0.6.2"
 tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -370,7 +384,7 @@ tokio = { version = "1.0", features = ["full"] }
 Install via NuGet:
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="0.6.1" />
+<PackageReference Include="RustEtherNetIp" Version="0.6.2" />
 ```
 
 Or via Package Manager Console:
@@ -434,6 +448,37 @@ let mut client = EipClient::with_route_path("192.168.0.1:44818", route).await?;
 // Read tags through the route
 let value = client.read_tag("TestTag").await?;
 ```
+
+### Stream Injection (v0.6.2) - Custom TCP Transport
+```rust
+use rust_ethernet_ip::EipClient;
+use std::net::SocketAddr;
+use tokio::net::TcpStream;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create a custom stream with socket options
+    let addr: SocketAddr = "192.168.1.100:44818".parse()?;
+    let stream = TcpStream::connect(addr).await?;
+    stream.set_nodelay(true)?;
+    stream.set_keepalive(true)?;
+    
+    // Connect using the custom stream
+    let route = RoutePath::new().add_slot(0);
+    let mut client = EipClient::connect_with_stream(stream, Some(route)).await?;
+    
+    // Use client normally
+    let value = client.read_tag("TestTag").await?;
+    
+    Ok(())
+}
+```
+
+**Benefits:**
+- Wrap streams for metrics/observability (bytes in/out)
+- Apply custom socket options (keepalive, timeouts, bind local address)
+- Reuse pre-established tunnels/connections
+- Use in-memory streams for deterministic testing
 
 ### Basic Usage
 
@@ -840,6 +885,12 @@ cargo run --example data_types_showcase
 
 # Batch operations performance demo
 cargo run --example batch_operations_demo
+
+# Stream injection example (v0.6.2)
+cargo run --example stream_injection_example
+
+# Nested UDT array test
+cargo run --example test_cell_nestdata_udt
 ```
 
 **Features:**
@@ -848,6 +899,8 @@ cargo run --example batch_operations_demo
 - ✅ **Performance examples** with async/await patterns
 - ✅ **Error handling** with comprehensive error types
 - ✅ **Batch operations** with performance comparisons and configuration examples
+- ✅ **Stream injection** for custom TCP transport (v0.6.2)
+- ✅ **Nested UDT arrays** with complex path support (v0.6.2)
 
 **Perfect for:** Rust applications, embedded systems, high-performance scenarios
 
@@ -990,6 +1043,16 @@ Experiencing issues? Check out our comprehensive troubleshooting guide:
 - Ensure firewall allows port 44818
 - Verify PLC is in RUN mode
 
+**5. Nested UDT Array Members (v0.6.2)**
+- Complex paths like `Cell_NestData[90].PartData.Member` are now fully supported
+- The library automatically uses `TagPath::parse()` for paths with member access after array brackets
+- If you encounter issues, ensure the full path is correctly specified
+
+**6. Testing Without PLC**
+- Use `SKIP_PLC_TESTS=1` environment variable to skip PLC-dependent tests
+- Set `TEST_PLC_ADDRESS` to your PLC IP for integration tests
+- See `tests/README.md` for complete test configuration guide
+
 For detailed troubleshooting steps, code examples, and debugging procedures, see the [Complete Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 ## 🤝 **Community & Support**
@@ -1086,7 +1149,12 @@ See [BUILD.md](BUILD.md) for details.
 
 ## 📝 Changelog
 
-### v0.6.1 (January 2026) - **CURRENT** 🎉
+### v0.6.2 (January 2026) - **CURRENT** 🎉
+- **NEW: Stream Injection API** - `connect_with_stream()` for custom TCP transport
+- **NEW: Test Configuration** - Environment variable support for PLC testing
+- **FIXED: Nested UDT Member Access** - Fixed reading nested UDT members from array elements
+
+### v0.6.1 (January 2026)
 - **🧹 Repository Cleanup**: Removed Go and Python wrappers to focus on Rust library and C# integration
 - **📦 Streamlined Examples**: Focused on Microsoft stack (WinForms, WPF, ASP.NET) and Rust native examples
 - **🔧 Improved Documentation**: Updated all documentation to reflect current focus

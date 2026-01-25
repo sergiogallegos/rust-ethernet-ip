@@ -12,29 +12,64 @@
 mod tests {
     use rust_ethernet_ip::{EipClient, RoutePath};
     use std::env;
-    use tokio::time::{timeout, Duration};
+    use std::time::Duration;
+    use tokio::time::timeout;
 
-    // Helper function to get test PLC address from environment or use default
+    // Helper functions (inline for now, can be moved to shared module)
     fn get_test_plc_address() -> String {
         env::var("TEST_PLC_ADDRESS").unwrap_or_else(|_| "192.168.0.1:44818".to_string())
     }
 
+    fn get_test_plc_slot() -> u8 {
+        env::var("TEST_PLC_SLOT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0)
+    }
+
+    fn should_skip_plc_tests() -> bool {
+        env::var("SKIP_PLC_TESTS").is_ok()
+    }
+
+    async fn connect_to_plc(address: &str, timeout_secs: u64) -> Option<EipClient> {
+        match timeout(
+            Duration::from_secs(timeout_secs),
+            EipClient::connect(address),
+        )
+        .await
+        {
+            Ok(Ok(client)) => Some(client),
+            Ok(Err(e)) => {
+                tracing::debug!("Skipping test - PLC not available at {}: {}", address, e);
+                None
+            }
+            Err(_) => {
+                tracing::debug!("Skipping test - Connection timeout to {}", address);
+                None
+            }
+        }
+    }
+
+    fn get_test_config() -> (String, u8, bool) {
+        (
+            get_test_plc_address(),
+            get_test_plc_slot(),
+            should_skip_plc_tests(),
+        )
+    }
+
     #[tokio::test]
     async fn test_set_route_path() {
-        let plc_address = get_test_plc_address();
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
 
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(&plc_address)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(_)) => {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                Err(_) => {
-                    tracing::debug!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        let (plc_address, _, _) = get_test_config();
+        let mut client = match connect_to_plc(&plc_address, 10).await {
+            Some(client) => client,
+            None => return,
+        };
 
         // Initially, route path should be None
         assert!(

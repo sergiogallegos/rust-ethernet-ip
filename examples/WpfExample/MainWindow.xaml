@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:WpfExample.ViewModels"
         xmlns:local="clr-namespace:WpfExample"
         xmlns:converters="clr-namespace:WpfExample.Converters"
-        Title="🦀 Rust EtherNet/IP - Comprehensive Demo v0.6.1" 
+        Title="🦀 Rust EtherNet/IP - Comprehensive Demo v0.6.2" 
         Height="1000" Width="1900"
         MinHeight="1000" MinWidth="1900"
         Background="{StaticResource BackgroundBrush}"

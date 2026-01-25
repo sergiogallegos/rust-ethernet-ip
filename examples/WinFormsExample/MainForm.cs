@@ -32,7 +32,7 @@ namespace WinFormsExample
         private void InitializeCustomComponents()
         {
             // Set form properties
-            this.Text = "🦀 Rust EtherNet/IP - Comprehensive Demo v0.6.1";
+            this.Text = "🦀 Rust EtherNet/IP - Comprehensive Demo v0.6.2";
             this.Size = new Size(1900, 1000);
             this.MinimumSize = new Size(1900, 1000);
             this.StartPosition = FormStartPosition.CenterScreen;

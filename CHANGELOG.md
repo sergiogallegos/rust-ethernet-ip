@@ -5,6 +5,36 @@ All notable changes to the rust-ethernet-ip project will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-01-24
+
+### ✨ Added
+- **Stream Injection API**: New `connect_with_stream()` method for custom TCP transport
+  - Enables wrapping streams for metrics/observability (bytes in/out)
+  - Supports custom socket options (keepalive, timeouts, bind local address)
+  - Allows reusing pre-established tunnels/connections
+  - Supports in-memory streams for deterministic testing
+  - New `EtherNetIpStream` trait for stream type requirements
+- **Test Configuration**: Environment variable support for PLC testing
+  - `TEST_PLC_ADDRESS` - Set PLC IP address for tests (default: `192.168.0.1:44818`)
+  - `TEST_PLC_SLOT` - Set CPU slot number (default: `0`)
+  - `SKIP_PLC_TESTS` - Skip all PLC-dependent tests when set
+  - Comprehensive test helper functions in `tests/test_helpers.rs`
+  - Documentation in `tests/README.md` and `tests/TEST_CONFIG.md`
+
+### 🐛 Fixed
+- **Nested UDT Member Access**: Fixed reading nested UDT members from array elements
+  - Correctly handles complex paths like `Cell_NestData[90].PartData.Member`
+  - Fixed array element detection to use `TagPath::parse()` for paths with member access
+  - Changed from `rfind(']')` to `find('[')` + `find(']')` to use first bracket pair
+  - Now correctly builds full CIP paths instead of incorrectly using array workaround
+  - Fixes issue where PLC returned entire UDT instead of specific member value
+
+### 📚 Documentation
+- **Stream Injection**: Added comprehensive documentation and example for `connect_with_stream()`
+- **Test Configuration**: Added detailed guides for configuring tests with environment variables
+- **Updated Examples**: Added `stream_injection_example.rs` demonstrating custom stream usage
+- **CHANGELOG**: Updated with v0.6.2 changes
+
 ## [0.6.1] - 2026-01-17
 
 ### 🧹 Removed

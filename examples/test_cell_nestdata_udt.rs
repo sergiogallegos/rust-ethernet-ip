@@ -26,24 +26,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    tracing::info!("╔══════════════════════════════════════════════════════════════════════════════╗");
-    tracing::info!("║  Cell_NestData UDT Array Reading Test                                        ║");
-    tracing::info!("║  Tests reading: Cell_NestData[90] with nested PartData UDT                   ║");
-    tracing::info!("╚══════════════════════════════════════════════════════════════════════════════╝");
+    tracing::info!(
+        "╔══════════════════════════════════════════════════════════════════════════════╗"
+    );
+    tracing::info!(
+        "║  Cell_NestData UDT Array Reading Test                                        ║"
+    );
+    tracing::info!(
+        "║  Tests reading: Cell_NestData[90] with nested PartData UDT                   ║"
+    );
+    tracing::info!(
+        "╚══════════════════════════════════════════════════════════════════════════════╝"
+    );
     tracing::info!("");
 
     // Get PLC connection details
     print!("Enter PLC IP address (default: 192.168.0.1): ");
-    io::stdout().flush().map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    io::stdout()
+        .flush()
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     let mut ip = String::new();
-    io::stdin().read_line(&mut ip).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    io::stdin()
+        .read_line(&mut ip)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     let ip = ip.trim();
     let ip = if ip.is_empty() { "192.168.0.1" } else { ip };
 
     print!("Enter CPU slot (default: 0 for CompactLogix): ");
-    io::stdout().flush().map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    io::stdout()
+        .flush()
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     let mut slot = String::new();
-    io::stdin().read_line(&mut slot).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    io::stdin()
+        .read_line(&mut slot)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     let slot: u8 = slot.trim().parse().unwrap_or(0);
 
     // Create client and connect with route path
@@ -60,62 +76,72 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
     tracing::info!("TEST 1: Read entire Cell_NestData[90] UDT");
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
-    
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+
     let tag_path = "Cell_NestData[90]";
     tracing::info!("📖 Reading: {}", tag_path);
-    
+
     match client.read_tag(tag_path).await {
-        Ok(value) => {
-            match value {
-                PlcValue::Udt(udt_data) => {
-                    tracing::info!("✅ Successfully read UDT!");
-                    tracing::info!("   Symbol ID: {}", udt_data.symbol_id);
-                    tracing::info!("   Data size: {} bytes", udt_data.data.len());
-                    tracing::debug!("   Raw data (first 64 bytes): {:02X?}", 
-                        &udt_data.data[..udt_data.data.len().min(64)]);
-                }
-                other => {
-                    tracing::warn!("⚠️  Tag read but returned non-UDT type: {:?}", other);
-                }
+        Ok(value) => match value {
+            PlcValue::Udt(udt_data) => {
+                tracing::info!("✅ Successfully read UDT!");
+                tracing::info!("   Symbol ID: {}", udt_data.symbol_id);
+                tracing::info!("   Data size: {} bytes", udt_data.data.len());
+                tracing::debug!(
+                    "   Raw data (first 64 bytes): {:02X?}",
+                    &udt_data.data[..udt_data.data.len().min(64)]
+                );
             }
-        }
+            other => {
+                tracing::warn!("⚠️  Tag read but returned non-UDT type: {:?}", other);
+            }
+        },
         Err(e) => {
             tracing::error!("❌ Failed to read {}: {}", tag_path, e);
         }
     }
 
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
     tracing::info!("TEST 2: Read nested UDT member - Cell_NestData[90].PartData");
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
-    
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+
     let tag_path = "Cell_NestData[90].PartData";
     tracing::info!("📖 Reading: {}", tag_path);
-    
+
     match client.read_tag(tag_path).await {
-        Ok(value) => {
-            match value {
-                PlcValue::Udt(udt_data) => {
-                    tracing::info!("✅ Successfully read nested UDT PartData!");
-                    tracing::info!("   Symbol ID: {}", udt_data.symbol_id);
-                    tracing::info!("   Data size: {} bytes", udt_data.data.len());
-                }
-                other => {
-                    tracing::warn!("⚠️  Tag read but returned non-UDT type: {:?}", other);
-                }
+        Ok(value) => match value {
+            PlcValue::Udt(udt_data) => {
+                tracing::info!("✅ Successfully read nested UDT PartData!");
+                tracing::info!("   Symbol ID: {}", udt_data.symbol_id);
+                tracing::info!("   Data size: {} bytes", udt_data.data.len());
             }
-        }
+            other => {
+                tracing::warn!("⚠️  Tag read but returned non-UDT type: {:?}", other);
+            }
+        },
         Err(e) => {
             tracing::error!("❌ Failed to read {}: {}", tag_path, e);
         }
     }
 
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
     tracing::info!("TEST 3: Read individual PartData members");
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
-    
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+
     let members = vec![
         "Cell_NestData[90].PartData.Temp_PreHeatZone1",
         "Cell_NestData[90].PartData.Temp_PreHeatZone2",
@@ -138,10 +164,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
     tracing::info!("TEST 4: Read nested array member - PlungerInsertion[0-3]");
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
-    
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+
     for i in 0..4 {
         let tag_path = format!("Cell_NestData[90].PartData.PlungerInsertion[{}]", i);
         tracing::info!("📖 Reading: {}", tag_path);
@@ -155,10 +185,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
     tracing::info!("TEST 5: Read other PartData members");
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
-    
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+
     let other_members = vec![
         "Cell_NestData[90].PartData.Vision_AngleBody_1",
         "Cell_NestData[90].PartData.Vision_PlungerDist",
@@ -183,10 +217,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
     tracing::info!("TEST 6: Read top-level Cell_NestData[90] members");
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
-    
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+
     let top_level_members = vec![
         "Cell_NestData[90].ModelNumber",
         "Cell_NestData[90].SerialNumber",
@@ -211,12 +249,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
     tracing::info!("TEST 7: Verify TagPath parsing for complex paths");
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
-    
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+
     use rust_ethernet_ip::TagPath;
-    
+
     let test_paths = vec![
         "Cell_NestData[90]",
         "Cell_NestData[90].PartData",
@@ -233,10 +275,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tracing::info!("✅ Parsed: {} -> {:?}", path_str, path);
                 match path.to_cip_path() {
                     Ok(cip_path) => {
-                        tracing::info!("   CIP Path ({} bytes, {} words): {:02X?}", 
-                            cip_path.len(), 
+                        tracing::info!(
+                            "   CIP Path ({} bytes, {} words): {:02X?}",
+                            cip_path.len(),
                             cip_path.len() / 2,
-                            cip_path);
+                            cip_path
+                        );
                     }
                     Err(e) => {
                         tracing::error!("   ❌ Failed to generate CIP path: {}", e);
@@ -254,9 +298,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     drop(client);
     tracing::info!("✅ Disconnected");
 
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
     tracing::info!("Test completed!");
-    tracing::info!("═══════════════════════════════════════════════════════════════════════════════");
+    tracing::info!(
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
 
     Ok(())
 }

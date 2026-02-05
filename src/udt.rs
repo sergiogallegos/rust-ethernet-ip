@@ -227,21 +227,17 @@ impl UdtManager {
     fn get_data_type_size(&self, data_type: u16) -> u32 {
         match data_type {
             0x00C1 => 1,  // BOOL
-            0x00C2 => 2,  // INT
-            0x00C3 => 4,  // DINT
-            0x00C4 => 4,  // DINT
-            0x00C5 => 8,  // LINT
-            0x00C6 => 2,  // UINT
-            0x00C7 => 4,  // UDINT
-            0x00C8 => 8,  // ULINT
-            0x00CA => 4,  // REAL
-            0x00CB => 8,  // LREAL
+            0x00C2 => 1,  // SINT (8-bit signed)
+            0x00C3 => 2,  // INT (16-bit signed)
+            0x00C4 => 4,  // DINT (32-bit signed)
+            0x00C5 => 8,  // LINT (64-bit signed)
+            0x00C6 => 1,  // USINT (8-bit unsigned)
+            0x00C7 => 2,  // UINT (16-bit unsigned)
+            0x00C8 => 4,  // UDINT (32-bit unsigned)
+            0x00C9 => 8,  // ULINT (64-bit unsigned)
+            0x00CA => 4,  // REAL (32-bit float)
+            0x00CB => 8,  // LREAL (64-bit float)
             0x00CE => 84, // STRING (max 82 chars + 2 length bytes)
-            0x00CF => 1,  // SINT
-            0x00D0 => 1,  // USINT
-            0x00D1 => 2,  // UINT
-            0x00D2 => 4,  // UDINT
-            0x00D3 => 8,  // ULINT
             _ => 4,       // Default to 4 bytes for unknown types
         }
     }
@@ -331,21 +327,17 @@ impl UdtManager {
     fn get_data_type_name(&self, data_type: u16) -> String {
         match data_type {
             0x00C1 => "BOOL".to_string(),
-            0x00C2 => "INT".to_string(),
-            0x00C3 => "DINT".to_string(),
+            0x00C2 => "SINT".to_string(),
+            0x00C3 => "INT".to_string(),
             0x00C4 => "DINT".to_string(),
             0x00C5 => "LINT".to_string(),
-            0x00C6 => "UINT".to_string(),
-            0x00C7 => "UDINT".to_string(),
-            0x00C8 => "ULINT".to_string(),
+            0x00C6 => "USINT".to_string(),
+            0x00C7 => "UINT".to_string(),
+            0x00C8 => "UDINT".to_string(),
+            0x00C9 => "ULINT".to_string(),
             0x00CA => "REAL".to_string(),
             0x00CB => "LREAL".to_string(),
             0x00CE => "STRING".to_string(),
-            0x00CF => "SINT".to_string(),
-            0x00D0 => "USINT".to_string(),
-            0x00D1 => "UINT".to_string(),
-            0x00D2 => "UDINT".to_string(),
-            0x00D3 => "ULINT".to_string(),
             0x00A0 => "UDT".to_string(),
             _ => format!("UNKNOWN(0x{:04X})", data_type),
         }
@@ -562,6 +554,11 @@ impl UserDefinedType {
         match member.data_type {
             0x00C1 => Ok(PlcValue::Bool(data[0] != 0)),
             0x00C2 => {
+                // SINT (8-bit signed integer)
+                Ok(PlcValue::Sint(data[0] as i8))
+            }
+            0x00C3 => {
+                // INT (16-bit signed integer)
                 if data.len() < 2 {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "INT data too short".to_string(),
@@ -571,17 +568,8 @@ impl UserDefinedType {
                 bytes.copy_from_slice(&data[..2]);
                 Ok(PlcValue::Int(i16::from_le_bytes(bytes)))
             }
-            0x00C3 => {
-                if data.len() < 4 {
-                    return Err(crate::error::EtherNetIpError::Protocol(
-                        "DINT data too short".to_string(),
-                    ));
-                }
-                let mut bytes = [0u8; 4];
-                bytes.copy_from_slice(&data[..4]);
-                Ok(PlcValue::Dint(i32::from_le_bytes(bytes)))
-            }
             0x00C4 => {
+                // DINT (32-bit signed integer)
                 if data.len() < 4 {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "DINT data too short".to_string(),
@@ -592,6 +580,7 @@ impl UserDefinedType {
                 Ok(PlcValue::Dint(i32::from_le_bytes(bytes)))
             }
             0x00C5 => {
+                // LINT (64-bit signed integer)
                 if data.len() < 8 {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "LINT data too short".to_string(),
@@ -602,6 +591,11 @@ impl UserDefinedType {
                 Ok(PlcValue::Lint(i64::from_le_bytes(bytes)))
             }
             0x00C6 => {
+                // USINT (8-bit unsigned integer)
+                Ok(PlcValue::Usint(data[0]))
+            }
+            0x00C7 => {
+                // UINT (16-bit unsigned integer)
                 if data.len() < 2 {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "UINT data too short".to_string(),
@@ -611,7 +605,8 @@ impl UserDefinedType {
                 bytes.copy_from_slice(&data[..2]);
                 Ok(PlcValue::Uint(u16::from_le_bytes(bytes)))
             }
-            0x00C7 => {
+            0x00C8 => {
+                // UDINT (32-bit unsigned integer)
                 if data.len() < 4 {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "UDINT data too short".to_string(),
@@ -621,7 +616,8 @@ impl UserDefinedType {
                 bytes.copy_from_slice(&data[..4]);
                 Ok(PlcValue::Udint(u32::from_le_bytes(bytes)))
             }
-            0x00C8 => {
+            0x00C9 => {
+                // ULINT (64-bit unsigned integer)
                 if data.len() < 8 {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "ULINT data too short".to_string(),
@@ -632,6 +628,7 @@ impl UserDefinedType {
                 Ok(PlcValue::Ulint(u64::from_le_bytes(bytes)))
             }
             0x00CA => {
+                // REAL (32-bit float)
                 if data.len() < 4 {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "REAL data too short".to_string(),
@@ -642,6 +639,12 @@ impl UserDefinedType {
                 Ok(PlcValue::Real(f32::from_le_bytes(bytes)))
             }
             0x00CB => {
+                // LREAL (64-bit float)
+                if data.len() < 8 {
+                    return Err(crate::error::EtherNetIpError::Protocol(
+                        "LREAL data too short".to_string(),
+                    ));
+                }
                 let mut bytes = [0u8; 8];
                 bytes.copy_from_slice(&data[..8]);
                 Ok(PlcValue::Lreal(f64::from_le_bytes(bytes)))
@@ -662,32 +665,6 @@ impl UserDefinedType {
                 let string_data = &data[2..2 + length];
                 let string_value = String::from_utf8_lossy(string_data).to_string();
                 Ok(PlcValue::String(string_value))
-            }
-            0x00CF => {
-                // SINT (8-bit signed integer)
-                Ok(PlcValue::Sint(data[0] as i8))
-            }
-            0x00D0 => {
-                // USINT (8-bit unsigned integer)
-                Ok(PlcValue::Usint(data[0]))
-            }
-            0x00D1 => {
-                // UINT (16-bit unsigned integer)
-                let mut bytes = [0u8; 2];
-                bytes.copy_from_slice(&data[..2]);
-                Ok(PlcValue::Uint(u16::from_le_bytes(bytes)))
-            }
-            0x00D2 => {
-                // UDINT (32-bit unsigned integer)
-                let mut bytes = [0u8; 4];
-                bytes.copy_from_slice(&data[..4]);
-                Ok(PlcValue::Udint(u32::from_le_bytes(bytes)))
-            }
-            0x00D3 => {
-                // ULINT (64-bit unsigned integer)
-                let mut bytes = [0u8; 8];
-                bytes.copy_from_slice(&data[..8]);
-                Ok(PlcValue::Ulint(u64::from_le_bytes(bytes)))
             }
             _ => Err(crate::error::EtherNetIpError::Protocol(format!(
                 "Unsupported UDT data type: 0x{:04X}",
@@ -711,13 +688,20 @@ impl UserDefinedType {
                 }),
             },
             0x00C2 => match value {
+                PlcValue::Sint(s) => Ok(vec![*s as u8]),
+                _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
+                    expected: "SINT".to_string(),
+                    actual: format!("{:?}", value),
+                }),
+            },
+            0x00C3 => match value {
                 PlcValue::Int(i) => Ok(i.to_le_bytes().to_vec()),
                 _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
                     expected: "INT".to_string(),
                     actual: format!("{:?}", value),
                 }),
             },
-            0x00C3 | 0x00C4 => match value {
+            0x00C4 => match value {
                 PlcValue::Dint(d) => Ok(d.to_le_bytes().to_vec()),
                 _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
                     expected: "DINT".to_string(),
@@ -732,21 +716,28 @@ impl UserDefinedType {
                 }),
             },
             0x00C6 => match value {
-                PlcValue::Uint(w) => Ok(w.to_le_bytes().to_vec()),
+                PlcValue::Usint(u) => Ok(vec![*u]),
+                _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
+                    expected: "USINT".to_string(),
+                    actual: format!("{:?}", value),
+                }),
+            },
+            0x00C7 => match value {
+                PlcValue::Uint(u) => Ok(u.to_le_bytes().to_vec()),
                 _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
                     expected: "UINT".to_string(),
                     actual: format!("{:?}", value),
                 }),
             },
-            0x00C7 => match value {
-                PlcValue::Udint(d) => Ok(d.to_le_bytes().to_vec()),
+            0x00C8 => match value {
+                PlcValue::Udint(u) => Ok(u.to_le_bytes().to_vec()),
                 _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
                     expected: "UDINT".to_string(),
                     actual: format!("{:?}", value),
                 }),
             },
-            0x00C8 => match value {
-                PlcValue::Ulint(l) => Ok(l.to_le_bytes().to_vec()),
+            0x00C9 => match value {
+                PlcValue::Ulint(u) => Ok(u.to_le_bytes().to_vec()),
                 _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
                     expected: "ULINT".to_string(),
                     actual: format!("{:?}", value),
@@ -791,41 +782,6 @@ impl UserDefinedType {
                     }),
                 }
             }
-            0x00CF => match value {
-                PlcValue::Sint(s) => Ok(vec![*s as u8]),
-                _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
-                    expected: "SINT".to_string(),
-                    actual: format!("{:?}", value),
-                }),
-            },
-            0x00D0 => match value {
-                PlcValue::Usint(u) => Ok(vec![*u]),
-                _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
-                    expected: "USINT".to_string(),
-                    actual: format!("{:?}", value),
-                }),
-            },
-            0x00D1 => match value {
-                PlcValue::Uint(u) => Ok(u.to_le_bytes().to_vec()),
-                _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
-                    expected: "UINT".to_string(),
-                    actual: format!("{:?}", value),
-                }),
-            },
-            0x00D2 => match value {
-                PlcValue::Udint(u) => Ok(u.to_le_bytes().to_vec()),
-                _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
-                    expected: "UDINT".to_string(),
-                    actual: format!("{:?}", value),
-                }),
-            },
-            0x00D3 => match value {
-                PlcValue::Ulint(u) => Ok(u.to_le_bytes().to_vec()),
-                _ => Err(crate::error::EtherNetIpError::DataTypeMismatch {
-                    expected: "ULINT".to_string(),
-                    actual: format!("{:?}", value),
-                }),
-            },
             _ => Err(crate::error::EtherNetIpError::Protocol(format!(
                 "Unsupported UDT data type for serialization: 0x{:04X}",
                 member.data_type

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::RwLock;
 use tokio::time::interval;
@@ -81,7 +82,7 @@ pub enum HealthStatus {
 
 /// Production monitoring system for EtherNet/IP operations
 pub struct ProductionMonitor {
-    metrics: RwLock<MonitoringMetrics>,
+    metrics: Arc<RwLock<MonitoringMetrics>>,
     start_time: Instant,
     system_start_time: SystemTime,
 }
@@ -95,7 +96,7 @@ impl Default for ProductionMonitor {
 impl ProductionMonitor {
     pub fn new() -> Self {
         Self {
-            metrics: RwLock::new(MonitoringMetrics {
+            metrics: Arc::new(RwLock::new(MonitoringMetrics {
                 connections: ConnectionMetrics {
                     active_connections: 0,
                     total_connections: 0,
@@ -139,7 +140,7 @@ impl ProductionMonitor {
                     recovery_attempts: 0,
                     system_uptime: Duration::ZERO,
                 },
-            }),
+            })),
             start_time: Instant::now(),
             system_start_time: SystemTime::now(),
         }
@@ -324,51 +325,7 @@ impl ProductionMonitor {
 impl Clone for ProductionMonitor {
     fn clone(&self) -> Self {
         Self {
-            metrics: RwLock::new(MonitoringMetrics {
-                connections: ConnectionMetrics {
-                    active_connections: 0,
-                    total_connections: 0,
-                    failed_connections: 0,
-                    connection_uptime_avg: Duration::ZERO,
-                    last_connection_time: None,
-                },
-                operations: OperationMetrics {
-                    total_reads: 0,
-                    total_writes: 0,
-                    successful_reads: 0,
-                    successful_writes: 0,
-                    failed_reads: 0,
-                    failed_writes: 0,
-                    batch_operations: 0,
-                    subscription_updates: 0,
-                },
-                performance: PerformanceMetrics {
-                    avg_read_latency_ms: 0.0,
-                    avg_write_latency_ms: 0.0,
-                    max_read_latency_ms: 0.0,
-                    max_write_latency_ms: 0.0,
-                    reads_per_second: 0.0,
-                    writes_per_second: 0.0,
-                    memory_usage_mb: 0.0,
-                    cpu_usage_percent: 0.0,
-                },
-                errors: ErrorMetrics {
-                    network_errors: 0,
-                    protocol_errors: 0,
-                    timeout_errors: 0,
-                    tag_not_found_errors: 0,
-                    data_type_errors: 0,
-                    last_error_time: None,
-                    last_error_message: None,
-                },
-                health: HealthMetrics {
-                    overall_health: HealthStatus::Unknown,
-                    last_health_check: SystemTime::now(),
-                    consecutive_failures: 0,
-                    recovery_attempts: 0,
-                    system_uptime: Duration::ZERO,
-                },
-            }),
+            metrics: Arc::clone(&self.metrics),
             start_time: self.start_time,
             system_start_time: self.system_start_time,
         }

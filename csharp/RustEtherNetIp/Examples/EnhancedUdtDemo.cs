@@ -9,7 +9,7 @@ namespace RustEtherNetIp.Examples
     /// </summary>
     class EnhancedUdtDemo
     {
-        static void Main(string[] args)
+        public static void Run(string[] args)
         {
             Console.WriteLine("🔧 Enhanced UDT Demo for CompactLogix L320ERS2");
             Console.WriteLine("===============================================");
@@ -99,10 +99,18 @@ namespace RustEtherNetIp.Examples
                     
                     if (udtValue.IsUdt)
                     {
-                        Console.WriteLine($"  📊 UDT contains {udtValue.UdtMembers.Count} members:");
-                        foreach (var kvp in udtValue.UdtMembers)
+                        var members = udtValue.UdtMembers;
+                        if (members != null)
                         {
-                            Console.WriteLine($"    {kvp.Key} = {kvp.Value}");
+                            Console.WriteLine($"  📊 UDT contains {members.Count} members:");
+                            foreach (var kvp in members)
+                            {
+                                Console.WriteLine($"    {kvp.Key} = {kvp.Value}");
+                            }
+                        }
+                        else if (udtValue.UdtData != null)
+                        {
+                            Console.WriteLine($"  📦 UDT data length: {udtValue.UdtData.Data?.Length ?? 0} bytes");
                         }
                     }
                 }
@@ -122,7 +130,7 @@ namespace RustEtherNetIp.Examples
                 new { UdtName = "Part_Data", Offset = 4, Size = 4, DataType = (short)0x00CA, Description = "REAL at offset 4" },
                 new { UdtName = "Part_Data", Offset = 8, Size = 4, DataType = (short)0x00C4, Description = "DINT at offset 8" },
                 new { UdtName = "MyUDT", Offset = 0, Size = 1, DataType = (short)0x00C1, Description = "BOOL at offset 0" },
-                new { UdtName = "MyUDT", Offset = 2, Size = 2, DataType = (short)0x00C2, Description = "INT at offset 2" },
+                new { UdtName = "MyUDT", Offset = 2, Size = 2, DataType = (short)0x00C3, Description = "INT at offset 2" },
                 new { UdtName = "TestUDT", Offset = 0, Size = 84, DataType = (short)0x00CE, Description = "STRING at offset 0" },
             };
 
@@ -198,21 +206,17 @@ namespace RustEtherNetIp.Examples
             var dataTypes = new[]
             {
                 new { Code = (short)0x00C1, Name = "BOOL", Value = PlcValue.Bool(true) },
-                new { Code = (short)0x00C2, Name = "INT", Value = PlcValue.Int(1234) },
-                new { Code = (short)0x00C3, Name = "DINT", Value = PlcValue.Dint(123456) },
-                new { Code = (short)0x00C4, Name = "DINT", Value = PlcValue.Dint(789012) },
+                new { Code = (short)0x00C2, Name = "SINT", Value = PlcValue.Sint((sbyte)-100) },
+                new { Code = (short)0x00C3, Name = "INT", Value = PlcValue.Int(1234) },
+                new { Code = (short)0x00C4, Name = "DINT", Value = PlcValue.Dint(123456) },
                 new { Code = (short)0x00C5, Name = "LINT", Value = PlcValue.Lint(123456789012345) },
-                new { Code = (short)0x00C6, Name = "UINT", Value = PlcValue.Uint(0xABCD) },
-                new { Code = (short)0x00C7, Name = "UDINT", Value = PlcValue.Udint(0x12345678) },
-                new { Code = (short)0x00C8, Name = "ULINT", Value = PlcValue.Ulint(0x123456789ABCDEF0) },
+                new { Code = (short)0x00C6, Name = "USINT", Value = PlcValue.Usint((byte)200) },
+                new { Code = (short)0x00C7, Name = "UINT", Value = PlcValue.Uint((ushort)30000) },
+                new { Code = (short)0x00C8, Name = "UDINT", Value = PlcValue.Udint(4000000000U) },
+                new { Code = (short)0x00C9, Name = "ULINT", Value = PlcValue.Ulint(5000000000000000000UL) },
                 new { Code = (short)0x00CA, Name = "REAL", Value = PlcValue.Real(3.14159f) },
                 new { Code = (short)0x00CB, Name = "LREAL", Value = PlcValue.Lreal(2.718281828459045) },
                 new { Code = (short)0x00CE, Name = "STRING", Value = PlcValue.String("Hello UDT!") },
-                new { Code = (short)0x00CF, Name = "SINT", Value = PlcValue.Sint(-100) },
-                new { Code = (short)0x00D0, Name = "USINT", Value = PlcValue.Usint(200) },
-                new { Code = (short)0x00D1, Name = "UINT", Value = PlcValue.Uint(30000) },
-                new { Code = (short)0x00D2, Name = "UDINT", Value = PlcValue.Udint(4000000000) },
-                new { Code = (short)0x00D3, Name = "ULINT", Value = PlcValue.Ulint(5000000000000000000) },
             };
 
             foreach (var dataType in dataTypes)

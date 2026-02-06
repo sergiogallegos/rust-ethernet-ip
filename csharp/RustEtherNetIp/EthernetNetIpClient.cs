@@ -228,6 +228,25 @@ namespace RustEtherNetIp
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
         private static extern int eip_get_tag_metadata(int client_id, IntPtr tag_name, out TagMetadata metadata);
 
+        // Detailed tag/UDT metadata
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_get_udt_definition_by_id(int client_id, IntPtr udt_name, IntPtr result_ptr);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_get_tag_attributes_by_id(int client_id, IntPtr tag_name, IntPtr result_ptr);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_discover_tags_detailed_by_id(int client_id, IntPtr result_ptr);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void eip_free_udt_definition(IntPtr result_ptr);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void eip_free_tag_attributes_result(IntPtr result_ptr);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void eip_free_tag_discovery_result(IntPtr result_ptr);
+
         // Configuration
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
         private static extern int eip_set_max_packet_size(int client_id, int size);
@@ -1291,7 +1310,7 @@ namespace RustEtherNetIp
                     if (result == 0)
                     {
                         // Success - convert the JSON result to PlcValue
-                        string jsonResult = Marshal.PtrToStringAnsi(resultPtr);
+                        string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
                         if (!string.IsNullOrEmpty(jsonResult))
                         {
                             Console.WriteLine($"🔧 [DEBUG] UDT read successful, JSON length: {jsonResult.Length}");
@@ -1361,7 +1380,7 @@ namespace RustEtherNetIp
                 if (result == 0)
                 {
                     // Success - convert the JSON result to PlcValue
-                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr);
+                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
                     if (!string.IsNullOrEmpty(jsonResult))
                     {
                         Console.WriteLine($"🔧 [DEBUG] Chunked UDT read successful, JSON length: {jsonResult.Length}");
@@ -1400,7 +1419,7 @@ namespace RustEtherNetIp
             }
         }
 
-        private PlcValue ReadTagValue(string tagName)
+        private PlcValue? ReadTagValue(string tagName)
         {
             // Helper method to read a tag value safely
             try
@@ -1520,7 +1539,11 @@ namespace RustEtherNetIp
             if (!udtValue.IsUdt)
                 throw new Exception($"Tag '{tagName}' is not a UDT type.");
 
-            return ConvertUdtToDictionary(udtValue.UdtMembers);
+            var members = udtValue.UdtMembers;
+            if (members == null)
+                throw new Exception($"Tag '{tagName}' returned raw UDT data without member definitions.");
+            
+            return ConvertUdtToDictionary(members);
         }
 
         /// <summary>
@@ -1529,10 +1552,10 @@ namespace RustEtherNetIp
         /// <param name="tagName">Name of the UDT tag.</param>
         /// <param name="memberPath">Dot-separated path to the nested member (e.g., "Status.Running").</param>
         /// <returns>PlcValue of the nested member, or null if not found.</returns>
-        public PlcValue GetUdtMember(string tagName, string memberPath)
+        public PlcValue? GetUdtMember(string tagName, string memberPath)
         {
             var udtValue = ReadUdt(tagName);
-            return udtValue?.GetNestedValue(memberPath);
+            return udtValue.GetNestedValue(memberPath);
         }
 
         /// <summary>
@@ -1555,13 +1578,13 @@ namespace RustEtherNetIp
         /// </list>
         /// <para><strong>✅ What Works:</strong> Writing to non-STRING members of non-array UDTs (e.g., "gTestUDT.Member1_DINT").</para>
         /// </remarks>
-        public void SetUdtMember(string tagName, string memberPath, PlcValue value)
+        public virtual void SetUdtMember(string tagName, string memberPath, PlcValue value)
         {
             var udtValue = ReadUdt(tagName);
             if (udtValue?.IsUdt != true)
                 throw new Exception($"Tag '{tagName}' is not a UDT type or could not be read.");
 
-            var members = udtValue.UdtMembers;
+            var members = udtValue.UdtMembers ?? throw new Exception($"Tag '{tagName}' returned raw UDT data without member definitions.");
             var parts = memberPath.Split('.');
             
             // Navigate to the parent of the target member
@@ -1573,8 +1596,8 @@ namespace RustEtherNetIp
                 var nestedValue = members[parts[i]];
                 if (!nestedValue.IsUdt)
                     throw new Exception($"Member path '{memberPath}' is invalid. '{parts[i]}' is not a UDT.");
-                
-                members = nestedValue.UdtMembers;
+
+                members = nestedValue.UdtMembers ?? throw new Exception($"Member path '{memberPath}' is invalid. '{parts[i]}' has no member definitions.");
             }
 
             // Set the final member
@@ -1604,7 +1627,7 @@ namespace RustEtherNetIp
                         throw new Exception($"Failed to read UDT tag '{tagName}' with chunked reading. Check tag exists and is UDT type.");
                     
                     // Convert the JSON result to PlcValue
-                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr);
+                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
                     if (string.IsNullOrEmpty(jsonResult))
                         throw new Exception($"Empty response when reading UDT tag '{tagName}' with chunked reading.");
                     
@@ -1651,7 +1674,7 @@ namespace RustEtherNetIp
                         throw new Exception($"Failed to read UDT member at offset {memberOffset} from '{udtName}'. Check UDT exists and offset is valid.");
                     
                     // Convert the JSON result to PlcValue
-                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr);
+                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
                     if (string.IsNullOrEmpty(jsonResult))
                         throw new Exception($"Empty response when reading UDT member from '{udtName}' at offset {memberOffset}.");
                     
@@ -1706,6 +1729,188 @@ namespace RustEtherNetIp
         }
 
         /// <summary>
+        /// Retrieves the UDT definition (member layout) for a given UDT tag.
+        /// </summary>
+        /// <param name="udtName">Name of the UDT tag.</param>
+        /// <returns>UDT template describing members, types, and offsets.</returns>
+        public UdtTemplate GetUdtDefinition(string udtName)
+        {
+            if (string.IsNullOrWhiteSpace(udtName))
+                throw new ArgumentException("UDT name cannot be null or empty", nameof(udtName));
+
+            return ExecuteWithLock(() =>
+            {
+                CheckConnection();
+                IntPtr udtPtr = Marshal.StringToHGlobalAnsi(udtName);
+                IntPtr resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UdtDefinitionResultNative>());
+                try
+                {
+                    Marshal.StructureToPtr(new UdtDefinitionResultNative(), resultPtr, false);
+                    int result = eip_get_udt_definition_by_id(_clientId, udtPtr, resultPtr);
+                    var native = Marshal.PtrToStructure<UdtDefinitionResultNative>(resultPtr);
+
+                    if (result != 0 || !native.Success)
+                    {
+                        string error = PtrToStringAnsiSafe(native.ErrorMessage);
+                        if (string.IsNullOrWhiteSpace(error))
+                            error = "Unknown error";
+                        throw new Exception($"Failed to get UDT definition for '{udtName}': {error}");
+                    }
+
+                    var template = new UdtTemplate
+                    {
+                        Name = PtrToStringAnsiSafe(native.Name),
+                        Members = new List<UdtMemberTemplate>()
+                    };
+
+                    int totalSize = 0;
+                    if (native.Members != IntPtr.Zero && native.MemberCount > 0)
+                    {
+                        int memberSize = Marshal.SizeOf<UdtMemberNative>();
+                        for (int i = 0; i < native.MemberCount; i++)
+                        {
+                            IntPtr memberPtr = IntPtr.Add(native.Members, i * memberSize);
+                            var member = Marshal.PtrToStructure<UdtMemberNative>(memberPtr);
+
+                            int endOffset = member.Offset + member.Size;
+                            if (endOffset > totalSize)
+                                totalSize = endOffset;
+
+                            template.Members.Add(new UdtMemberTemplate
+                            {
+                                Name = PtrToStringAnsiSafe(member.Name),
+                                DataType = CipDataTypeName(member.DataType),
+                                Size = member.Size,
+                                Offset = member.Offset
+                            });
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(template.Name))
+                        template.Name = udtName;
+
+                    template.TotalSize = totalSize;
+                    return template;
+                }
+                finally
+                {
+                    eip_free_udt_definition(resultPtr);
+                    Marshal.FreeHGlobal(resultPtr);
+                    Marshal.FreeHGlobal(udtPtr);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Retrieves detailed attributes for a specific tag.
+        /// </summary>
+        /// <param name="tagName">Name of the tag.</param>
+        /// <returns>Tag attributes including type, size, and template instance ID.</returns>
+        public TagAttributes GetTagAttributes(string tagName)
+        {
+            if (string.IsNullOrWhiteSpace(tagName))
+                throw new ArgumentException("Tag name cannot be null or empty", nameof(tagName));
+
+            return ExecuteWithLock(() =>
+            {
+                CheckConnection();
+                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<TagAttributesResultNative>());
+                try
+                {
+                    Marshal.StructureToPtr(new TagAttributesResultNative(), resultPtr, false);
+                    int result = eip_get_tag_attributes_by_id(_clientId, tagPtr, resultPtr);
+                    var native = Marshal.PtrToStructure<TagAttributesResultNative>(resultPtr);
+
+                    if (result != 0 || !native.Success)
+                    {
+                        string error = PtrToStringAnsiSafe(native.ErrorMessage);
+                        if (string.IsNullOrWhiteSpace(error))
+                            error = "Unknown error";
+                        throw new Exception($"Failed to get tag attributes for '{tagName}': {error}");
+                    }
+
+                    string typeName = PtrToStringAnsiSafe(native.DataTypeName);
+                    if (string.IsNullOrWhiteSpace(typeName))
+                        typeName = CipDataTypeName(native.DataType);
+
+                    return new TagAttributes
+                    {
+                        Name = PtrToStringAnsiSafe(native.Name),
+                        DataTypeName = typeName,
+                        DataType = native.DataType,
+                        Size = native.Size,
+                        TemplateInstanceId = native.TemplateInstanceId
+                    };
+                }
+                finally
+                {
+                    eip_free_tag_attributes_result(resultPtr);
+                    Marshal.FreeHGlobal(resultPtr);
+                    Marshal.FreeHGlobal(tagPtr);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Discovers tags and returns detailed attributes for each tag.
+        /// </summary>
+        /// <returns>List of tag attributes discovered on the PLC.</returns>
+        public List<TagAttributes> DiscoverTagsDetailed()
+        {
+            return ExecuteWithLock(() =>
+            {
+                CheckConnection();
+                IntPtr resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<TagDiscoveryResultNative>());
+                try
+                {
+                    Marshal.StructureToPtr(new TagDiscoveryResultNative(), resultPtr, false);
+                    int result = eip_discover_tags_detailed_by_id(_clientId, resultPtr);
+                    var native = Marshal.PtrToStructure<TagDiscoveryResultNative>(resultPtr);
+
+                    if (result != 0 || !native.Success)
+                    {
+                        string error = PtrToStringAnsiSafe(native.ErrorMessage);
+                        if (string.IsNullOrWhiteSpace(error))
+                            error = "Unknown error";
+                        throw new Exception($"Failed to discover tags: {error}");
+                    }
+
+                    var tags = new List<TagAttributes>();
+                    if (native.Tags != IntPtr.Zero && native.TagCount > 0)
+                    {
+                        int tagSize = Marshal.SizeOf<TagAttributesNative>();
+                        for (int i = 0; i < native.TagCount; i++)
+                        {
+                            IntPtr tagPtr = IntPtr.Add(native.Tags, i * tagSize);
+                            var tag = Marshal.PtrToStructure<TagAttributesNative>(tagPtr);
+
+                            string typeName = PtrToStringAnsiSafe(tag.DataTypeName);
+                            if (string.IsNullOrWhiteSpace(typeName))
+                                typeName = CipDataTypeName(tag.DataType);
+
+                            tags.Add(new TagAttributes
+                            {
+                                Name = PtrToStringAnsiSafe(tag.Name),
+                                DataTypeName = typeName,
+                                DataType = tag.DataType,
+                                Size = tag.Size,
+                                TemplateInstanceId = tag.TemplateInstanceId
+                            });
+                        }
+                    }
+
+                    return tags;
+                }
+                finally
+                {
+                    eip_free_tag_discovery_result(resultPtr);
+                    Marshal.FreeHGlobal(resultPtr);
+                }
+            });
+        }
+
+        /// <summary>
         /// Writes a specific UDT member to the PLC.
         /// </summary>
         /// <param name="udtName">Name of the UDT (e.g., "Part_Data").</param>
@@ -1731,8 +1936,9 @@ namespace RustEtherNetIp
                     var udtValue = ReadUdt(udtName);
                     if (udtValue.IsUdt)
                     {
+                        var udtMembers = udtValue.UdtMembers ?? throw new InvalidOperationException($"UDT '{udtName}' returned raw data without member definitions.");
                         // Create a new UDT with the updated member
-                        var updatedMembers = new Dictionary<string, PlcValue>(udtValue.UdtMembers);
+                        var updatedMembers = new Dictionary<string, PlcValue>(udtMembers);
                         updatedMembers[memberName] = value;
                         updatedMembers["_last_modified"] = PlcValue.String(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                         updatedMembers["_modified_member"] = PlcValue.String(memberName);
@@ -1758,6 +1964,70 @@ namespace RustEtherNetIp
         #endregion
 
         #region Helper Methods
+
+        private static string PtrToStringAnsiSafe(IntPtr ptr)
+        {
+            return ptr == IntPtr.Zero ? string.Empty : Marshal.PtrToStringAnsi(ptr) ?? string.Empty;
+        }
+
+        private static string CipDataTypeName(short dataType)
+        {
+            return dataType switch
+            {
+                0x00C1 => "BOOL",
+                0x00C2 => "SINT",
+                0x00C3 => "INT",
+                0x00C4 => "DINT",
+                0x00C5 => "LINT",
+                0x00C6 => "USINT",
+                0x00C7 => "UINT",
+                0x00C8 => "UDINT",
+                0x00C9 => "ULINT",
+                0x00CA => "REAL",
+                0x00CB => "LREAL",
+                0x00CE => "STRING",
+                _ => "UNKNOWN"
+            };
+        }
+
+        private static bool TryParseUdtMemberPath(string tagName, out string baseTag, out string memberPath)
+        {
+            baseTag = string.Empty;
+            memberPath = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(tagName))
+                return false;
+
+            if (tagName.Contains(".LEN", StringComparison.OrdinalIgnoreCase) ||
+                tagName.Contains(".DATA[", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            int dotIndex = tagName.LastIndexOf('.');
+            if (dotIndex <= 0 || dotIndex >= tagName.Length - 1)
+                return false;
+
+            var lastSegment = tagName[(dotIndex + 1)..];
+            if (lastSegment.All(char.IsDigit))
+                return false;
+
+            baseTag = tagName[..dotIndex];
+            memberPath = lastSegment;
+            return true;
+        }
+
+        private static PlcValue ConvertJsonElementToPlcValue(System.Text.Json.JsonElement jsonElement)
+        {
+            return jsonElement.ValueKind switch
+            {
+                System.Text.Json.JsonValueKind.True => PlcValue.Bool(true),
+                System.Text.Json.JsonValueKind.False => PlcValue.Bool(false),
+                System.Text.Json.JsonValueKind.Number => jsonElement.TryGetInt32(out var intValue)
+                    ? PlcValue.Dint(intValue)
+                    : PlcValue.Real((float)jsonElement.GetDouble()),
+                System.Text.Json.JsonValueKind.String => PlcValue.String(jsonElement.GetString() ?? string.Empty),
+                _ => throw new ArgumentException($"Unsupported JSON value kind: {jsonElement.ValueKind}")
+            };
+        }
 
         /// <summary>
         /// Converts a .NET object to a PlcValue
@@ -1814,11 +2084,18 @@ namespace RustEtherNetIp
         /// </summary>
         private object ConvertPlcValueToObject(PlcValue value)
         {
-            return value.Type switch
+            if (value.Type == PlcValueType.Udt)
             {
-                PlcValueType.Udt => ConvertUdtToDictionary(value.UdtMembers),
-                _ => value.Value
-            };
+                var udtMembers = value.UdtMembers;
+                if (udtMembers != null)
+                    return ConvertUdtToDictionary(udtMembers);
+                
+                var udtData = value.UdtData;
+                if (udtData != null)
+                    return udtData;
+            }
+
+            return value.Value;
         }
 
         #endregion
@@ -1835,7 +2112,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public Dictionary<string, TagReadResultBatch> ReadTagsBatch(string[] tagNames)
         {
-            if (tagNames?.Length == 0)
+            if (tagNames == null || tagNames.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
             // For now, return a simplified implementation that calls individual reads
@@ -1847,10 +2124,10 @@ namespace RustEtherNetIp
                 try
                 {
                     // Try multiple data types to find the correct one
-                    object value = null;
+                    object? value = null;
                     string dataType = "UNKNOWN";
                     bool success = false;
-                    Exception lastException = null;
+                    Exception? lastException = null;
 
                     // Try BOOL first
                     try
@@ -1977,7 +2254,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public Dictionary<string, TagWriteResult> WriteTagsBatch(Dictionary<string, object> tagValues)
         {
-            if (tagValues?.Count == 0)
+            if (tagValues == null || tagValues.Count == 0)
                 throw new ArgumentException("Tag values dictionary cannot be null or empty", nameof(tagValues));
 
             // For now, return a simplified implementation that calls individual writes
@@ -1988,6 +2265,23 @@ namespace RustEtherNetIp
             {
                 try
                 {
+                    if (TryParseUdtMemberPath(kvp.Key, out var baseTag, out var memberPath))
+                    {
+                        var plcValue = kvp.Value is System.Text.Json.JsonElement jsonElement
+                            ? ConvertJsonElementToPlcValue(jsonElement)
+                            : ConvertObjectToPlcValue(kvp.Value);
+
+                        SetUdtMember(baseTag, memberPath, plcValue);
+                        results[kvp.Key] = new TagWriteResult
+                        {
+                            TagName = kvp.Key,
+                            Success = true,
+                            ErrorCode = 0,
+                            ErrorMessage = null
+                        };
+                        continue;
+                    }
+
                     // Determine type and call appropriate write method
                     switch (kvp.Value)
                     {
@@ -2141,7 +2435,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public BatchOperationResult[] ExecuteBatch(BatchOperation[] operations)
         {
-            if (operations?.Length == 0)
+            if (operations == null || operations.Length == 0)
                 throw new ArgumentException("Operations array cannot be null or empty", nameof(operations));
 
             // For now, return a simplified implementation that executes operations sequentially
@@ -2257,9 +2551,9 @@ namespace RustEtherNetIp
                     else
                     {
                         // Read operation - try multiple data types to find the correct one
-                        object value = null;
+                        object? value = null;
                         bool success = false;
-                        Exception lastException = null;
+                        Exception? lastException = null;
 
                         // Try BOOL first
                         try
@@ -2505,7 +2799,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public PlcValue[] ReadTags(string[] tagNames)
         {
-            if (tagNames?.Length == 0)
+            if (tagNames == null || tagNames.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
             return ExecuteWithLock(() =>
@@ -2537,7 +2831,7 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public TagReadResult[] ReadTagsWithDetails(string[] tagNames)
         {
-            if (tagNames?.Length == 0)
+            if (tagNames == null || tagNames.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
             return ExecuteWithLock(() =>
@@ -3205,6 +3499,59 @@ namespace RustEtherNetIp
     }
     
     // Native structures for FFI (placeholder for future implementation)
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct UdtMemberNative
+    {
+        public IntPtr Name;
+        public short DataType;
+        public int Offset;
+        public int Size;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct UdtDefinitionResultNative
+    {
+        [MarshalAs(UnmanagedType.I1)]
+        public bool Success;
+        public IntPtr ErrorMessage;
+        public IntPtr Name;
+        public IntPtr Members;
+        public int MemberCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct TagAttributesNative
+    {
+        public IntPtr Name;
+        public IntPtr DataTypeName;
+        public short DataType;
+        public int Size;
+        public int TemplateInstanceId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct TagAttributesResultNative
+    {
+        [MarshalAs(UnmanagedType.I1)]
+        public bool Success;
+        public IntPtr ErrorMessage;
+        public IntPtr Name;
+        public IntPtr DataTypeName;
+        public short DataType;
+        public int Size;
+        public int TemplateInstanceId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct TagDiscoveryResultNative
+    {
+        [MarshalAs(UnmanagedType.I1)]
+        public bool Success;
+        public IntPtr ErrorMessage;
+        public IntPtr Tags;
+        public int TagCount;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct BatchConfigNative
     {

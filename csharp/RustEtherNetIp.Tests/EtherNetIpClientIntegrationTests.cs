@@ -128,7 +128,14 @@ namespace RustEtherNetIp.Tests
         public void ReadWrite_Udt_Success()
         {
             // Arrange
-            var udtData = new Dictionary<string, object>
+            var udtDataPlc = new Dictionary<string, PlcValue>
+            {
+                { "Bool1", PlcValue.Bool(true) },
+                { "Dint1", PlcValue.Dint(42) },
+                { "Real1", PlcValue.Real(3.14f) },
+                { "String1", PlcValue.String("Test") }
+            };
+            var udtDataObject = new Dictionary<string, object>
             {
                 { "Bool1", true },
                 { "Dint1", 42 },
@@ -138,22 +145,31 @@ namespace RustEtherNetIp.Tests
 
             _mockClient.Setup(x => x.Connect(It.IsAny<string>())).Returns(true);
             _mockClient.Setup(x => x.IsConnected).Returns(true);
-            _mockClient.Setup(x => x.ReadUdt(It.IsAny<string>())).Returns(udtData);
+            _mockClient.Setup(x => x.ReadUdt(It.IsAny<string>())).Returns(PlcValue.Udt(udtDataPlc));
             _mockClient.Setup(x => x.WriteUdt(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>()));
 
             // Act & Assert
             _mockClient.Object.Connect(PLC_ADDRESS);
-            _mockClient.Object.WriteUdt("TestUDT", udtData);
+            _mockClient.Object.WriteUdt("TestUDT", udtDataObject);
             var readValue = _mockClient.Object.ReadUdt("TestUDT");
 
             Assert.NotNull(readValue);
-            Assert.Equal(4, readValue.Count);
-            Assert.True((bool)readValue["Bool1"]);
-            Assert.Equal(42, (int)readValue["Dint1"]);
-            Assert.Equal(3.14f, (float)readValue["Real1"], 2);
-            Assert.Equal("Test", (string)readValue["String1"]);
+            var members = readValue.UdtMembers;
+            Assert.NotNull(members);
+            Assert.Equal(4, members!.Count);
+            Assert.True(members["Bool1"].As<bool>());
+            Assert.Equal(42, members["Dint1"].As<int>());
+            Assert.Equal(3.14f, members["Real1"].As<float>(), 2);
+            Assert.Equal("Test", members["String1"].As<string>());
 
-            var newUdtData = new Dictionary<string, object>
+            var newUdtDataPlc = new Dictionary<string, PlcValue>
+            {
+                { "Bool1", PlcValue.Bool(false) },
+                { "Dint1", PlcValue.Dint(-123) },
+                { "Real1", PlcValue.Real(-123.45f) },
+                { "String1", PlcValue.String("New Test") }
+            };
+            var newUdtDataObject = new Dictionary<string, object>
             {
                 { "Bool1", false },
                 { "Dint1", -123 },
@@ -161,16 +177,18 @@ namespace RustEtherNetIp.Tests
                 { "String1", "New Test" }
             };
 
-            _mockClient.Setup(x => x.ReadUdt(It.IsAny<string>())).Returns(newUdtData);
-            _mockClient.Object.WriteUdt("TestUDT", newUdtData);
+            _mockClient.Setup(x => x.ReadUdt(It.IsAny<string>())).Returns(PlcValue.Udt(newUdtDataPlc));
+            _mockClient.Object.WriteUdt("TestUDT", newUdtDataObject);
             readValue = _mockClient.Object.ReadUdt("TestUDT");
 
             Assert.NotNull(readValue);
-            Assert.Equal(4, readValue.Count);
-            Assert.False((bool)readValue["Bool1"]);
-            Assert.Equal(-123, (int)readValue["Dint1"]);
-            Assert.Equal(-123.45f, (float)readValue["Real1"], 2);
-            Assert.Equal("New Test", (string)readValue["String1"]);
+            members = readValue.UdtMembers;
+            Assert.NotNull(members);
+            Assert.Equal(4, members!.Count);
+            Assert.False(members["Bool1"].As<bool>());
+            Assert.Equal(-123, members["Dint1"].As<int>());
+            Assert.Equal(-123.45f, members["Real1"].As<float>(), 2);
+            Assert.Equal("New Test", members["String1"].As<string>());
         }
 
         [Fact]

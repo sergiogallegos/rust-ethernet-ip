@@ -2108,6 +2108,31 @@ pub unsafe extern "C" fn eip_get_udt_definition(
     }
 }
 
+/// FFI function to get UDT definition from PLC using client ID
+///
+/// The caller must free the returned fields using `eip_free_udt_definition`.
+#[no_mangle]
+pub unsafe extern "C" fn eip_get_udt_definition_by_id(
+    client_id: c_int,
+    udt_name: *const c_char,
+    result_ptr: *mut UdtDefinitionResult,
+) -> c_int {
+    if udt_name.is_null() || result_ptr.is_null() {
+        return -1;
+    }
+
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
+    let Some(client) = clients.get_mut(&client_id) else {
+        return -1;
+    };
+
+    let client_ptr = client as *mut EipClient;
+    eip_get_udt_definition(client_ptr, udt_name, result_ptr)
+}
+
 /// FFI function to get tag attributes from PLC
 ///
 /// The caller must free the returned fields using `eip_free_tag_attributes_result`.
@@ -2186,6 +2211,31 @@ pub unsafe extern "C" fn eip_get_tag_attributes(
             -1
         }
     }
+}
+
+/// FFI function to get tag attributes from PLC using client ID
+///
+/// The caller must free the returned fields using `eip_free_tag_attributes_result`.
+#[no_mangle]
+pub unsafe extern "C" fn eip_get_tag_attributes_by_id(
+    client_id: c_int,
+    tag_name: *const c_char,
+    result_ptr: *mut TagAttributesResult,
+) -> c_int {
+    if tag_name.is_null() || result_ptr.is_null() {
+        return -1;
+    }
+
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
+    let Some(client) = clients.get_mut(&client_id) else {
+        return -1;
+    };
+
+    let client_ptr = client as *mut EipClient;
+    eip_get_tag_attributes(client_ptr, tag_name, result_ptr)
 }
 
 /// FFI function to discover tags with detailed attributes
@@ -2290,4 +2340,28 @@ pub unsafe extern "C" fn eip_discover_tags_detailed(
             -1
         }
     }
+}
+
+/// FFI function to discover tags with detailed attributes using client ID
+///
+/// The caller must free the returned fields using `eip_free_tag_discovery_result`.
+#[no_mangle]
+pub unsafe extern "C" fn eip_discover_tags_detailed_by_id(
+    client_id: c_int,
+    result_ptr: *mut TagDiscoveryResult,
+) -> c_int {
+    if result_ptr.is_null() {
+        return -1;
+    }
+
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
+    let Some(client) = clients.get_mut(&client_id) else {
+        return -1;
+    };
+
+    let client_ptr = client as *mut EipClient;
+    eip_discover_tags_detailed(client_ptr, result_ptr)
 }

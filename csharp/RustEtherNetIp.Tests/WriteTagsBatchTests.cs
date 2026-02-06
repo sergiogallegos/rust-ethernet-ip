@@ -7,19 +7,15 @@ namespace RustEtherNetIp.Tests
 {
     public class WriteTagsBatchTests
     {
-        private class TestClient : EthernetNetIpClient
+        private class TestClient : EtherNetIpClient
         {
             public bool WasCalled { get; private set; }
-            public string? TagNameArg { get; private set; }
-            public string? MemberPathArg { get; private set; }
-            public PlcValue? ValueArg { get; private set; }
+            public List<(string TagName, string MemberPath, PlcValue Value)> Calls { get; } = new();
 
             public override void SetUdtMember(string tagName, string memberPath, PlcValue value)
             {
                 WasCalled = true;
-                TagNameArg = tagName;
-                MemberPathArg = memberPath;
-                ValueArg = value;
+                Calls.Add((tagName, memberPath, value));
                 // Do NOT call base - avoid real PLC operations in unit tests
             }
         }
@@ -44,10 +40,11 @@ namespace RustEtherNetIp.Tests
 
             // Verify SetUdtMember was called at least once (for first member)
             Assert.True(client.WasCalled);
-            Assert.Equal("gTestUDT", client.TagNameArg);
-            Assert.Equal("Member1_DINT", client.MemberPathArg);
-            Assert.Equal(PlcValueType.Dint, client.ValueArg?.Type);
-            Assert.Equal(123, client.ValueArg?.As<int>());
+            Assert.Contains(client.Calls, call =>
+                call.TagName == "gTestUDT" &&
+                call.MemberPath == "Member1_DINT" &&
+                call.Value.Type == PlcValueType.Dint &&
+                call.Value.As<int>() == 123);
         }
 
         [Fact]
@@ -66,10 +63,11 @@ namespace RustEtherNetIp.Tests
             Assert.True(results["gTestUDT_Array[0].Member1_DINT"].Success);
 
             Assert.True(client.WasCalled);
-            Assert.Equal("gTestUDT_Array[0]", client.TagNameArg);
-            Assert.Equal("Member1_DINT", client.MemberPathArg);
-            Assert.Equal(PlcValueType.Dint, client.ValueArg?.Type);
-            Assert.Equal(500, client.ValueArg?.As<int>());
+            Assert.Contains(client.Calls, call =>
+                call.TagName == "gTestUDT_Array[0]" &&
+                call.MemberPath == "Member1_DINT" &&
+                call.Value.Type == PlcValueType.Dint &&
+                call.Value.As<int>() == 500);
         }
     }
 }

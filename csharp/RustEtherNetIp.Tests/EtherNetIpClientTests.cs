@@ -120,15 +120,15 @@ namespace RustEtherNetIp.Tests
         public void ReadUdt_Success()
         {
             // Arrange
-            var udtData = new Dictionary<string, object>
+            var udtData = new Dictionary<string, PlcValue>
             {
-                { "Bool1", true },
-                { "Dint1", 42 }
+                { "Bool1", PlcValue.Bool(true) },
+                { "Dint1", PlcValue.Dint(42) }
             };
 
             _mockClient.Setup(x => x.Connect(It.IsAny<string>())).Returns(true);
             _mockClient.Setup(x => x.IsConnected).Returns(true);
-            _mockClient.Setup(x => x.ReadUdt(It.IsAny<string>())).Returns(udtData);
+            _mockClient.Setup(x => x.ReadUdt(It.IsAny<string>())).Returns(PlcValue.Udt(udtData));
 
             // Act
             _mockClient.Object.Connect("192.168.1.100:44818");
@@ -136,9 +136,13 @@ namespace RustEtherNetIp.Tests
 
             // Assert
             Assert.NotNull(result);
-            Assert.Equal(2, result.Count);
-            Assert.True((bool)result["Bool1"]);
-            Assert.Equal(42, (int)result["Dint1"]);
+            var members = result.UdtMembers;
+            Assert.NotNull(members);
+            Assert.Equal(2, members!.Count);
+            Assert.Equal(PlcValueType.Bool, members["Bool1"].Type);
+            Assert.True(members["Bool1"].As<bool>());
+            Assert.Equal(PlcValueType.Dint, members["Dint1"].Type);
+            Assert.Equal(42, members["Dint1"].As<int>());
         }
 
         [Fact]

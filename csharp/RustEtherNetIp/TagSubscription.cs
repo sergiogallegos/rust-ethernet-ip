@@ -59,14 +59,14 @@ namespace RustEtherNetIp
         /// <summary>
         /// The previous value of the tag
         /// </summary>
-        public object OldValue { get; }
+        public object? OldValue { get; }
 
         /// <summary>
         /// The new value of the tag
         /// </summary>
-        public object NewValue { get; }
+        public object? NewValue { get; }
 
-        public TagValueChangedEventArgs(string tagName, object oldValue, object newValue)
+        public TagValueChangedEventArgs(string tagName, object? oldValue, object? newValue)
         {
             TagName = tagName;
             OldValue = oldValue;

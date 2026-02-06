@@ -86,7 +86,15 @@ namespace RustEtherNetIp.Examples
 
             // Read it back
             var readData = client.ReadUdt("MotorData");
-            Console.WriteLine($"📖 Read UDT with {readData.UdtMembers.Count} top-level members");
+            var members = readData.UdtMembers;
+            if (members != null)
+            {
+                Console.WriteLine($"📖 Read UDT with {members.Count} top-level members");
+            }
+            else
+            {
+                Console.WriteLine("📖 Read UDT in raw data format");
+            }
 
             // Access nested values
             var status = readData.GetNestedValue("Status");

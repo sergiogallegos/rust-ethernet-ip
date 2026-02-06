@@ -64,6 +64,7 @@ namespace RustEtherNetIp
         private bool _isSuspended = false;
         private bool _isDisposed = false;
         private bool _isScanning = false; // Prevent overlapping scans
+        private int _updateRateMs = 500;
 
         /// <summary>
         /// Gets or sets the array of tag names to poll.
@@ -76,10 +77,13 @@ namespace RustEtherNetIp
         /// </summary>
         public int UpdateRateMs
         {
-            get => (int)_timer.Interval;
+            get => _updateRateMs;
             set
             {
-                field = value > 0 ? value : throw new ArgumentException("Update rate must be greater than zero", nameof(value));
+                if (value <= 0)
+                    throw new ArgumentException("Update rate must be greater than zero", nameof(value));
+                
+                _updateRateMs = value;
                 _timer.Interval = value;
             }
         }
@@ -136,7 +140,8 @@ namespace RustEtherNetIp
         /// <param name="active">True to enable the tag in scans, false to disable</param>
         public void SetTagActive(string tagName, bool active)
         {
-            if (TagNames?.Length == 0 || !Array.Exists(TagNames ?? Array.Empty<string>(), t => t == tagName))
+            var tagNames = TagNames ?? Array.Empty<string>();
+            if (tagNames.Length == 0 || !Array.Exists(tagNames, t => t == tagName))
                 throw new ArgumentException($"Tag '{tagName}' is not in this group", nameof(tagName));
             
             _tagActiveStates[tagName] = active;
@@ -152,11 +157,13 @@ namespace RustEtherNetIp
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _timer = new System.Timers.Timer(500); // Default 500ms
             _timer.Elapsed += OnTimerElapsed;
+            _updateRateMs = (int)_timer.Interval;
         }
 
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
-            if (_isDisposed || _isSuspended || TagNames?.Length == 0)
+            var tagNames = TagNames ?? Array.Empty<string>();
+            if (_isDisposed || _isSuspended || tagNames.Length == 0)
                 return;
 
             // Prevent overlapping scans - if a scan is still running, skip this one
@@ -174,9 +181,9 @@ namespace RustEtherNetIp
                 var activeTagNames = new List<string>();
                 var activeIndices = new List<int>();
                 
-                for (int i = 0; i < TagNames.Length; i++)
+                for (int i = 0; i < tagNames.Length; i++)
                 {
-                    var tagName = TagNames[i];
+                    var tagName = tagNames[i];
                     if (IsTagActive(tagName))
                     {
                         activeTagNames.Add(tagName);

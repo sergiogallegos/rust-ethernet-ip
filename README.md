@@ -48,6 +48,10 @@ This library is specifically designed for:
   - `TEST_PLC_ADDRESS` - Set PLC IP address for tests
   - `TEST_PLC_SLOT` - Set CPU slot number
   - `SKIP_PLC_TESTS` - Skip PLC-dependent tests
+- **🧪 PLC Simulator**: Run tests without a physical PLC
+  - `cargo run --bin plc_sim` to start the simulator
+  - Rust integration tests use the in-process simulator in `tests/plc_sim_tests.rs`
+  - C# tests can target the simulator by setting `SIM_PLC_ADDRESS`
 - **🐛 Fixed Nested UDT Access**: Fixed reading nested UDT members from array elements
   - Correctly handles `Cell_NestData[90].PartData.Member` paths
   - Now returns specific member values instead of entire UDT

@@ -99,7 +99,7 @@ namespace RustEtherNetIp
         /// <summary>
         /// Gets the value as the specified type with a default if conversion fails
         /// </summary>
-        public T AsOrDefault<T>(T? defaultValue = default(T))
+        public T? AsOrDefault<T>(T? defaultValue = default)
         {
             try
             {

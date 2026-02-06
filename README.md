@@ -38,6 +38,13 @@ This library is specifically designed for:
 - **Industrial Automation** software
 - **High-performance** data acquisition and control
 
+### 🚧 **Unreleased (0.6.3)**
+- **PLC Simulator for testing without hardware**
+  - New `plc_sim` binary and in-process test simulator
+  - Expanded simulator-backed Rust and C# test coverage
+- **Broader automated test coverage**
+  - FFI safety checks, concurrency tests, bounds parsing, network failure tests
+
 ### ✅ **v0.6.2 New Features**
 - **🔌 Stream Injection API**: New `connect_with_stream()` for custom TCP transport
   - Wrap streams for metrics/observability (bytes in/out)

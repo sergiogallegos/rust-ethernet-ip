@@ -10,8 +10,7 @@
 /// - UDT: TEST_UDT with members as specified
 ///
 /// Run with: cargo run --example test_comprehensive_arrays_udt
-use rust_ethernet_ip::{EipClient, PlcValue, RoutePath, UdtData};
-use std::collections::HashMap;
+use rust_ethernet_ip::{EipClient, PlcValue, RoutePath};
 
 const PLC_ADDRESS: &str = "192.168.0.1:44818";
 const CPU_SLOT: u8 = 0; // ControlLogix CPU in Slot 0

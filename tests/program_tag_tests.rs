@@ -6,8 +6,6 @@ mod program_tag_tests {
     use tracing;
 
     const TEST_PLC_IP: &str = "192.168.0.1:44818";
-    const TEST_PROGRAM: &str = "API_Web";
-
     #[tokio::test]
     async fn test_program_tag_reading() {
         let mut client =

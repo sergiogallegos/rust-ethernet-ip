@@ -7,15 +7,33 @@ use lazy_static::lazy_static;
 use serde_json;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int, c_short};
+use std::os::raw::{c_char, c_int, c_short, c_void};
 use std::ptr;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use tracing;
 
 // FFI-specific client manager using synchronous mutex
 lazy_static! {
     static ref FFI_CLIENTS: Mutex<HashMap<i32, EipClient>> = Mutex::new(HashMap::new());
     static ref FFI_NEXT_ID: Mutex<i32> = Mutex::new(1);
+}
+
+fn to_c_string_owned(value: &str) -> Result<*mut c_char, ()> {
+    CString::new(value).map(|s| s.into_raw()).map_err(|_| ())
+}
+
+fn lock_clients() -> Result<MutexGuard<'static, HashMap<i32, EipClient>>, ()> {
+    FFI_CLIENTS.lock().map_err(|_| ())
+}
+
+fn lock_next_id() -> Result<MutexGuard<'static, i32>, ()> {
+    FFI_NEXT_ID.lock().map_err(|_| ())
+}
+
+unsafe fn free_c_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        let _ = CString::from_raw(ptr);
+    }
 }
 
 /// Connect to a PLC and return a client ID
@@ -41,14 +59,20 @@ pub unsafe extern "C" fn eip_connect(ip_address: *const c_char) -> c_int {
     };
 
     let client_id = {
-        let mut next_id = FFI_NEXT_ID.lock().unwrap();
+        let mut next_id = match lock_next_id() {
+            Ok(guard) => guard,
+            Err(_) => return -1,
+        };
         let id = *next_id;
         *next_id += 1;
         id
     };
 
     {
-        let mut clients = FFI_CLIENTS.lock().unwrap();
+        let mut clients = match lock_clients() {
+            Ok(guard) => guard,
+            Err(_) => return -1,
+        };
         clients.insert(client_id, client);
     }
 
@@ -118,14 +142,20 @@ pub unsafe extern "C" fn eip_connect_with_route(
     };
 
     let client_id = {
-        let mut next_id = FFI_NEXT_ID.lock().unwrap();
+        let mut next_id = match lock_next_id() {
+            Ok(guard) => guard,
+            Err(_) => return -1,
+        };
         let id = *next_id;
         *next_id += 1;
         id
     };
 
     {
-        let mut clients = FFI_CLIENTS.lock().unwrap();
+        let mut clients = match lock_clients() {
+            Ok(guard) => guard,
+            Err(_) => return -1,
+        };
         clients.insert(client_id, client);
     }
 
@@ -150,7 +180,10 @@ pub unsafe extern "C" fn eip_set_route_path(
     addresses: *mut *const c_char,
     address_count: c_int,
 ) -> c_int {
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let client = match clients.get_mut(&client_id) {
         Some(c) => c,
         None => return -1,
@@ -201,7 +234,10 @@ pub unsafe extern "C" fn eip_set_route_path(
 /// - The caller must not use the `client_id` after this call
 #[no_mangle]
 pub unsafe extern "C" fn eip_disconnect(client_id: c_int) -> c_int {
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.remove(&client_id) {
         Some(_) => 0,
         None => -1,
@@ -231,7 +267,10 @@ pub unsafe extern "C" fn eip_read_bool(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Bool(value)) => {
@@ -269,7 +308,10 @@ pub unsafe extern "C" fn eip_write_bool(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             let bool_value = value != 0;
@@ -310,7 +352,10 @@ pub unsafe extern "C" fn eip_read_sint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Sint(value)) => {
@@ -347,7 +392,10 @@ pub unsafe extern "C" fn eip_write_sint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             if RUNTIME
@@ -378,7 +426,10 @@ pub unsafe extern "C" fn eip_read_int(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Int(value)) => {
@@ -407,7 +458,10 @@ pub unsafe extern "C" fn eip_write_int(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Int(value))) {
@@ -434,7 +488,10 @@ pub unsafe extern "C" fn eip_read_dint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Dint(value)) => {
@@ -474,7 +531,10 @@ pub unsafe extern "C" fn eip_write_dint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Dint(value))) {
@@ -501,7 +561,10 @@ pub unsafe extern "C" fn eip_read_lint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Lint(value)) => {
@@ -530,7 +593,10 @@ pub unsafe extern "C" fn eip_write_lint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Lint(value))) {
@@ -557,7 +623,10 @@ pub unsafe extern "C" fn eip_read_usint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Usint(value)) => {
@@ -586,7 +655,10 @@ pub unsafe extern "C" fn eip_write_usint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Usint(value))) {
@@ -613,7 +685,10 @@ pub unsafe extern "C" fn eip_read_uint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Uint(value)) => {
@@ -642,7 +717,10 @@ pub unsafe extern "C" fn eip_write_uint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Uint(value))) {
@@ -669,7 +747,10 @@ pub unsafe extern "C" fn eip_read_udint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Udint(value)) => {
@@ -698,7 +779,10 @@ pub unsafe extern "C" fn eip_write_udint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Udint(value))) {
@@ -725,7 +809,10 @@ pub unsafe extern "C" fn eip_read_ulint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Ulint(value)) => {
@@ -754,7 +841,10 @@ pub unsafe extern "C" fn eip_write_ulint(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             if RUNTIME
@@ -785,7 +875,10 @@ pub unsafe extern "C" fn eip_read_real(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Real(value)) => {
@@ -815,7 +908,10 @@ pub unsafe extern "C" fn eip_write_real(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Real(value as f32))) {
@@ -842,7 +938,10 @@ pub unsafe extern "C" fn eip_read_lreal(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
             Ok(PlcValue::Lreal(value)) => {
@@ -871,7 +970,10 @@ pub unsafe extern "C" fn eip_write_lreal(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     match clients.get_mut(&client_id) {
         Some(client) => {
             if RUNTIME
@@ -912,7 +1014,10 @@ pub unsafe extern "C" fn eip_read_string(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match FFI_CLIENTS.lock() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -965,7 +1070,9 @@ pub unsafe extern "C" fn eip_read_string(
                     if let Ok(s) = String::from_utf8(trimmed_data) {
                         tracing::info!("[FFI] Extracted STRING (Format 1): '{}'", s);
                         unsafe {
-                            let c_string = CString::new(s).unwrap();
+                            let Ok(c_string) = CString::new(s) else {
+                                return -1;
+                            };
                             let bytes = c_string.as_bytes_with_nul();
                             if bytes.len() > max_length as usize {
                                 return -1;
@@ -999,7 +1106,9 @@ pub unsafe extern "C" fn eip_read_string(
                                     length
                                 );
                                 unsafe {
-                                    let c_string = CString::new(s).unwrap();
+                                    let Ok(c_string) = CString::new(s) else {
+                                        return -1;
+                                    };
                                     let bytes = c_string.as_bytes_with_nul();
                                     if bytes.len() > max_length as usize {
                                         return -1;
@@ -1035,7 +1144,9 @@ pub unsafe extern "C" fn eip_read_string(
                                     s
                                 );
                                 unsafe {
-                                    let c_string = CString::new(s).unwrap();
+                                    let Ok(c_string) = CString::new(s) else {
+                                        return -1;
+                                    };
                                     let bytes = c_string.as_bytes_with_nul();
                                     if bytes.len() > max_length as usize {
                                         return -1;
@@ -1107,7 +1218,10 @@ pub unsafe extern "C" fn eip_write_string(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match FFI_CLIENTS.lock() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -1150,7 +1264,10 @@ pub unsafe extern "C" fn eip_read_tag(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(client) = clients.get_mut(&client_id) else {
         tracing::error!("[FFI] Client ID {} not found", client_id);
         return -1;
@@ -1222,7 +1339,10 @@ pub unsafe extern "C" fn eip_read_udt(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match FFI_CLIENTS.lock() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -1279,7 +1399,10 @@ pub unsafe extern "C" fn eip_write_udt(
         Err(_) => return -1,
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match FFI_CLIENTS.lock() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -1361,7 +1484,10 @@ pub unsafe extern "C" fn eip_check_health(client_id: c_int, is_healthy: *mut c_i
         return -1;
     }
 
-    let clients = FFI_CLIENTS.lock().unwrap();
+    let clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     if clients.get(&client_id).is_some() {
         unsafe {
             *is_healthy = 1;
@@ -1393,11 +1519,14 @@ pub unsafe extern "C" fn eip_read_tags_batch(
     results: *mut c_char,
     results_capacity: c_int,
 ) -> c_int {
-    if tag_names.is_null() || results.is_null() || tag_count <= 0 {
+    if tag_names.is_null() || results.is_null() || tag_count <= 0 || results_capacity <= 0 {
         return -1;
     }
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -1466,11 +1595,14 @@ pub unsafe extern "C" fn eip_write_tags_batch(
     results: *mut c_char,
     results_capacity: c_int,
 ) -> c_int {
-    if tag_values.is_null() || results.is_null() || tag_count <= 0 {
+    if tag_values.is_null() || results.is_null() || tag_count <= 0 || results_capacity <= 0 {
         return -1;
     }
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(_client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -1512,11 +1644,14 @@ pub unsafe extern "C" fn eip_execute_batch(
     results: *mut c_char,
     results_capacity: c_int,
 ) -> c_int {
-    if operations.is_null() || results.is_null() || operation_count <= 0 {
+    if operations.is_null() || results.is_null() || operation_count <= 0 || results_capacity <= 0 {
         return -1;
     }
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(_client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -1579,7 +1714,10 @@ pub unsafe extern "C" fn eip_read_udt_chunked(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -1621,7 +1759,12 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
     result: *mut c_char,
     max_size: c_int,
 ) -> c_int {
-    if udt_name.is_null() || result.is_null() || max_size <= 0 {
+    if udt_name.is_null()
+        || result.is_null()
+        || max_size <= 0
+        || member_offset < 0
+        || member_size <= 0
+    {
         return -1;
     }
 
@@ -1629,7 +1772,10 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
         return -1;
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -1675,7 +1821,7 @@ pub unsafe extern "C" fn eip_write_udt_member_by_offset(
     value: *const c_char,
     size: c_int,
 ) -> c_int {
-    if udt_name.is_null() || value.is_null() || size <= 0 {
+    if udt_name.is_null() || value.is_null() || size <= 0 || member_offset < 0 || member_size <= 0 {
         return -1;
     }
 
@@ -1693,7 +1839,10 @@ pub unsafe extern "C" fn eip_write_udt_member_by_offset(
         Err(_) => return -1,
     };
 
-    let mut clients = FFI_CLIENTS.lock().unwrap();
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
     let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
@@ -1760,7 +1909,99 @@ pub struct TagDiscoveryResult {
     pub tag_count: c_int,
 }
 
+/// Free a C string allocated by this library
+#[no_mangle]
+pub unsafe extern "C" fn eip_free_string(ptr: *mut c_char) {
+    free_c_string(ptr);
+}
+
+/// Free a UDT definition result allocated by `eip_get_udt_definition`
+#[no_mangle]
+pub unsafe extern "C" fn eip_free_udt_definition(result_ptr: *mut UdtDefinitionResult) {
+    if result_ptr.is_null() {
+        return;
+    }
+
+    let result = unsafe { &mut *result_ptr };
+    unsafe {
+        free_c_string(result.error_message);
+        free_c_string(result.name);
+    }
+
+    if !result.members.is_null() {
+        if result.member_count > 0 {
+            for i in 0..result.member_count as usize {
+                unsafe {
+                    let member = result.members.add(i);
+                    free_c_string((*member).name);
+                }
+            }
+        }
+        unsafe {
+            libc::free(result.members as *mut c_void);
+        }
+    }
+
+    result.error_message = ptr::null_mut();
+    result.name = ptr::null_mut();
+    result.members = ptr::null_mut();
+    result.member_count = 0;
+}
+
+/// Free a tag attributes result allocated by `eip_get_tag_attributes`
+#[no_mangle]
+pub unsafe extern "C" fn eip_free_tag_attributes_result(result_ptr: *mut TagAttributesResult) {
+    if result_ptr.is_null() {
+        return;
+    }
+
+    let result = unsafe { &mut *result_ptr };
+    unsafe {
+        free_c_string(result.error_message);
+        free_c_string(result.name);
+        free_c_string(result.data_type_name);
+    }
+
+    result.error_message = ptr::null_mut();
+    result.name = ptr::null_mut();
+    result.data_type_name = ptr::null_mut();
+}
+
+/// Free a tag discovery result allocated by `eip_discover_tags_detailed`
+#[no_mangle]
+pub unsafe extern "C" fn eip_free_tag_discovery_result(result_ptr: *mut TagDiscoveryResult) {
+    if result_ptr.is_null() {
+        return;
+    }
+
+    let result = unsafe { &mut *result_ptr };
+    unsafe {
+        free_c_string(result.error_message);
+    }
+
+    if !result.tags.is_null() {
+        if result.tag_count > 0 {
+            for i in 0..result.tag_count as usize {
+                unsafe {
+                    let tag = result.tags.add(i);
+                    free_c_string((*tag).name);
+                    free_c_string((*tag).data_type_name);
+                }
+            }
+        }
+        unsafe {
+            libc::free(result.tags as *mut c_void);
+        }
+    }
+
+    result.error_message = ptr::null_mut();
+    result.tags = ptr::null_mut();
+    result.tag_count = 0;
+}
+
 /// FFI function to get UDT definition from PLC
+///
+/// The caller must free the returned fields using `eip_free_udt_definition`.
 #[no_mangle]
 pub unsafe extern "C" fn eip_get_udt_definition(
     client_ptr: *mut EipClient,
@@ -1785,11 +2026,21 @@ pub unsafe extern "C" fn eip_get_udt_definition(
             unsafe {
                 (*result_ptr).success = true;
                 (*result_ptr).error_message = std::ptr::null_mut();
+                (*result_ptr).name = std::ptr::null_mut();
+                (*result_ptr).members = std::ptr::null_mut();
+                (*result_ptr).member_count = 0;
 
-                // Convert UdtDefinition to C struct
-                let name_cstring = CString::new(definition.name).unwrap_or_default();
-                (*result_ptr).name = name_cstring.into_raw();
-                (*result_ptr).member_count = definition.members.len() as c_int;
+                let name_ptr = match to_c_string_owned(&definition.name) {
+                    Ok(ptr) => ptr,
+                    Err(_) => {
+                        (*result_ptr).success = false;
+                        (*result_ptr).error_message = to_c_string_owned(
+                            "Failed to allocate UDT name (string contains null byte)",
+                        )
+                        .unwrap_or(std::ptr::null_mut());
+                        return -1;
+                    }
+                };
 
                 // Allocate memory for members
                 let members_ptr =
@@ -1797,19 +2048,43 @@ pub unsafe extern "C" fn eip_get_udt_definition(
                         as *mut UdtMemberC;
 
                 if members_ptr.is_null() {
+                    free_c_string(name_ptr);
                     (*result_ptr).success = false;
-                    let error_msg =
-                        CString::new("Failed to allocate memory for UDT members").unwrap();
-                    (*result_ptr).error_message = error_msg.into_raw();
+                    (*result_ptr).error_message =
+                        to_c_string_owned("Failed to allocate memory for UDT members")
+                            .unwrap_or(std::ptr::null_mut());
                     return -1;
                 }
 
+                (*result_ptr).name = name_ptr;
                 (*result_ptr).members = members_ptr;
+                (*result_ptr).member_count = definition.members.len() as c_int;
 
                 // Copy members
                 for (i, member) in definition.members.iter().enumerate() {
+                    let member_name_ptr = match to_c_string_owned(&member.name) {
+                        Ok(ptr) => ptr,
+                        Err(_) => {
+                            for j in 0..i {
+                                let prev = members_ptr.add(j);
+                                free_c_string((*prev).name);
+                            }
+                            libc::free(members_ptr as *mut c_void);
+                            free_c_string(name_ptr);
+                            (*result_ptr).success = false;
+                            (*result_ptr).error_message = to_c_string_owned(
+                                "Failed to allocate UDT member name (string contains null byte)",
+                            )
+                            .unwrap_or(std::ptr::null_mut());
+                            (*result_ptr).name = std::ptr::null_mut();
+                            (*result_ptr).members = std::ptr::null_mut();
+                            (*result_ptr).member_count = 0;
+                            return -1;
+                        }
+                    };
+
                     let member_c = UdtMemberC {
-                        name: CString::new(member.name.clone()).unwrap().into_raw(),
+                        name: member_name_ptr,
                         data_type: member.data_type as c_short,
                         offset: member.offset as c_int,
                         size: member.size as c_int,
@@ -1822,8 +2097,8 @@ pub unsafe extern "C" fn eip_get_udt_definition(
         Err(e) => {
             unsafe {
                 (*result_ptr).success = false;
-                let error_msg = CString::new(format!("{}", e)).unwrap();
-                (*result_ptr).error_message = error_msg.into_raw();
+                (*result_ptr).error_message =
+                    to_c_string_owned(&format!("{}", e)).unwrap_or(std::ptr::null_mut());
                 (*result_ptr).name = std::ptr::null_mut();
                 (*result_ptr).members = std::ptr::null_mut();
                 (*result_ptr).member_count = 0;
@@ -1834,6 +2109,8 @@ pub unsafe extern "C" fn eip_get_udt_definition(
 }
 
 /// FFI function to get tag attributes from PLC
+///
+/// The caller must free the returned fields using `eip_free_tag_attributes_result`.
 #[no_mangle]
 pub unsafe extern "C" fn eip_get_tag_attributes(
     client_ptr: *mut EipClient,
@@ -1858,14 +2135,36 @@ pub unsafe extern "C" fn eip_get_tag_attributes(
             unsafe {
                 (*result_ptr).success = true;
                 (*result_ptr).error_message = std::ptr::null_mut();
+                (*result_ptr).name = std::ptr::null_mut();
+                (*result_ptr).data_type_name = std::ptr::null_mut();
 
-                let name_cstring = CString::new(attributes.name).unwrap_or_default();
-                (*result_ptr).name = name_cstring.into_raw();
+                let name_ptr = match to_c_string_owned(&attributes.name) {
+                    Ok(ptr) => ptr,
+                    Err(_) => {
+                        (*result_ptr).success = false;
+                        (*result_ptr).error_message = to_c_string_owned(
+                            "Failed to allocate tag name (string contains null byte)",
+                        )
+                        .unwrap_or(std::ptr::null_mut());
+                        return -1;
+                    }
+                };
 
-                let data_type_name_cstring =
-                    CString::new(attributes.data_type_name).unwrap_or_default();
-                (*result_ptr).data_type_name = data_type_name_cstring.into_raw();
+                let data_type_name_ptr = match to_c_string_owned(&attributes.data_type_name) {
+                    Ok(ptr) => ptr,
+                    Err(_) => {
+                        free_c_string(name_ptr);
+                        (*result_ptr).success = false;
+                        (*result_ptr).error_message = to_c_string_owned(
+                            "Failed to allocate data type name (string contains null byte)",
+                        )
+                        .unwrap_or(std::ptr::null_mut());
+                        return -1;
+                    }
+                };
 
+                (*result_ptr).name = name_ptr;
+                (*result_ptr).data_type_name = data_type_name_ptr;
                 (*result_ptr).data_type = attributes.data_type as c_short;
                 (*result_ptr).size = attributes.size as c_int;
                 (*result_ptr).template_instance_id =
@@ -1876,8 +2175,8 @@ pub unsafe extern "C" fn eip_get_tag_attributes(
         Err(e) => {
             unsafe {
                 (*result_ptr).success = false;
-                let error_msg = CString::new(format!("{}", e)).unwrap();
-                (*result_ptr).error_message = error_msg.into_raw();
+                (*result_ptr).error_message =
+                    to_c_string_owned(&format!("{}", e)).unwrap_or(std::ptr::null_mut());
                 (*result_ptr).name = std::ptr::null_mut();
                 (*result_ptr).data_type_name = std::ptr::null_mut();
                 (*result_ptr).data_type = 0;
@@ -1890,6 +2189,8 @@ pub unsafe extern "C" fn eip_get_tag_attributes(
 }
 
 /// FFI function to discover tags with detailed attributes
+///
+/// The caller must free the returned fields using `eip_free_tag_discovery_result`.
 #[no_mangle]
 pub unsafe extern "C" fn eip_discover_tags_detailed(
     client_ptr: *mut EipClient,
@@ -1915,9 +2216,9 @@ pub unsafe extern "C" fn eip_discover_tags_detailed(
 
                 if tags_ptr.is_null() {
                     (*result_ptr).success = false;
-                    let error_msg =
-                        CString::new("Failed to allocate memory for tag attributes").unwrap();
-                    (*result_ptr).error_message = error_msg.into_raw();
+                    (*result_ptr).error_message =
+                        to_c_string_owned("Failed to allocate memory for tag attributes")
+                            .unwrap_or(std::ptr::null_mut());
                     return -1;
                 }
 
@@ -1925,11 +2226,50 @@ pub unsafe extern "C" fn eip_discover_tags_detailed(
 
                 // Copy tag attributes
                 for (i, tag) in tags.iter().enumerate() {
+                    let name_ptr = match to_c_string_owned(&tag.name) {
+                        Ok(ptr) => ptr,
+                        Err(_) => {
+                            for j in 0..i {
+                                let prev = tags_ptr.add(j);
+                                free_c_string((*prev).name);
+                                free_c_string((*prev).data_type_name);
+                            }
+                            libc::free(tags_ptr as *mut c_void);
+                            (*result_ptr).success = false;
+                            (*result_ptr).error_message = to_c_string_owned(
+                                "Failed to allocate tag name (string contains null byte)",
+                            )
+                            .unwrap_or(std::ptr::null_mut());
+                            (*result_ptr).tags = std::ptr::null_mut();
+                            (*result_ptr).tag_count = 0;
+                            return -1;
+                        }
+                    };
+
+                    let data_type_name_ptr = match to_c_string_owned(&tag.data_type_name) {
+                        Ok(ptr) => ptr,
+                        Err(_) => {
+                            free_c_string(name_ptr);
+                            for j in 0..i {
+                                let prev = tags_ptr.add(j);
+                                free_c_string((*prev).name);
+                                free_c_string((*prev).data_type_name);
+                            }
+                            libc::free(tags_ptr as *mut c_void);
+                            (*result_ptr).success = false;
+                            (*result_ptr).error_message = to_c_string_owned(
+                                "Failed to allocate data type name (string contains null byte)",
+                            )
+                            .unwrap_or(std::ptr::null_mut());
+                            (*result_ptr).tags = std::ptr::null_mut();
+                            (*result_ptr).tag_count = 0;
+                            return -1;
+                        }
+                    };
+
                     let tag_c = TagAttributesC {
-                        name: CString::new(tag.name.clone()).unwrap().into_raw(),
-                        data_type_name: CString::new(tag.data_type_name.clone())
-                            .unwrap()
-                            .into_raw(),
+                        name: name_ptr,
+                        data_type_name: data_type_name_ptr,
                         data_type: tag.data_type as c_short,
                         size: tag.size as c_int,
                         template_instance_id: tag.template_instance_id.unwrap_or(0) as c_int,
@@ -1942,8 +2282,8 @@ pub unsafe extern "C" fn eip_discover_tags_detailed(
         Err(e) => {
             unsafe {
                 (*result_ptr).success = false;
-                let error_msg = CString::new(format!("{}", e)).unwrap();
-                (*result_ptr).error_message = error_msg.into_raw();
+                (*result_ptr).error_message =
+                    to_c_string_owned(&format!("{}", e)).unwrap_or(std::ptr::null_mut());
                 (*result_ptr).tags = std::ptr::null_mut();
                 (*result_ptr).tag_count = 0;
             }

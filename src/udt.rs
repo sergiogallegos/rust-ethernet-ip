@@ -657,7 +657,7 @@ impl UserDefinedType {
                     ));
                 }
                 let length = u16::from_le_bytes([data[0], data[1]]) as usize;
-                if data.len() < 2 + length {
+                if data.len() < 2 || data.len() - 2 < length {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "STRING data incomplete".to_string(),
                     ));

@@ -624,7 +624,10 @@ impl TagManager {
             }
 
             // Check if we have enough bytes for the tag name
-            if offset + name_length > response.len() {
+            if offset
+                .checked_add(name_length)
+                .map_or(true, |end| end > response.len())
+            {
                 tracing::warn!(
                     "Not enough bytes for tag name at offset {} (need {}, have {})",
                     offset,

@@ -1,8 +1,6 @@
 use rust_ethernet_ip::udt::{TagPermissions, TagScope};
 use rust_ethernet_ip::{RoutePath, TagAttributes, UdtDefinition, UdtMember, UdtTemplate};
 use std::collections::HashMap;
-use tracing;
-
 /// Mock EipClient for testing UDT discovery functionality
 struct MockEipClient {
     udt_definitions: HashMap<String, UdtDefinition>,
@@ -31,7 +29,7 @@ impl MockEipClient {
                 },
                 UdtMember {
                     name: "int_member".to_string(),
-                    data_type: 0x00C2, // INT
+                    data_type: 0x00C3, // INT
                     offset: 1,
                     size: 2,
                 },
@@ -83,7 +81,7 @@ impl MockEipClient {
                 },
                 UdtMember {
                     name: "int_member".to_string(),
-                    data_type: 0x00C2, // INT
+                    data_type: 0x00C3, // INT
                     offset: 1,
                     size: 2,
                 },
@@ -126,7 +124,7 @@ fn test_udt_definition_discovery() {
 
     let int_member = &definition.members[1];
     assert_eq!(int_member.name, "int_member");
-    assert_eq!(int_member.data_type, 0x00C2);
+    assert_eq!(int_member.data_type, 0x00C3);
     assert_eq!(int_member.offset, 1);
     assert_eq!(int_member.size, 2);
 
@@ -207,7 +205,8 @@ fn test_route_path_cip_bytes() {
 fn test_data_type_name_mapping() {
     let test_cases = vec![
         (0x00C1, "BOOL"),
-        (0x00C2, "INT"),
+        (0x00C2, "SINT"),
+        (0x00C3, "INT"),
         (0x00C4, "DINT"),
         (0x00CA, "REAL"),
         (0x00CE, "STRING"),
@@ -238,7 +237,7 @@ fn test_udt_member_offset_calculation() {
         },
         UdtMember {
             name: "int1".to_string(),
-            data_type: 0x00C2, // INT
+            data_type: 0x00C3, // INT
             offset: 2,
             size: 2,
         },
@@ -304,13 +303,13 @@ fn test_udt_template_parsing_with_various_types() {
             },
             UdtMember {
                 name: "sint_val".to_string(),
-                data_type: 0x00CF, // SINT
+                data_type: 0x00C2, // SINT
                 offset: 1,
                 size: 1,
             },
             UdtMember {
                 name: "int_val".to_string(),
-                data_type: 0x00C2, // INT
+                data_type: 0x00C3, // INT
                 offset: 2,
                 size: 2,
             },

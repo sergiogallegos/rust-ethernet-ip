@@ -14,7 +14,7 @@
 //
 // =========================================================================
 
-use rust_ethernet_ip::{EipClient, PlcValue};
+use rust_ethernet_ip::EipClient;
 use std::env;
 use tokio::time::{timeout, Duration};
 

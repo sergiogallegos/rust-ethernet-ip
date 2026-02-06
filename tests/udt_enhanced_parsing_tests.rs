@@ -92,7 +92,7 @@ mod udt_enhanced_parsing_tests {
     }
 
     #[tokio::test]
-    async fn test_udt_gTracking() {
+    async fn test_udt_g_tracking() {
         let mut client =
             match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
                 Ok(Ok(client)) => client,

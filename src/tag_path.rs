@@ -493,8 +493,8 @@ impl<'a> TagPathParser<'a> {
         let start = self.position;
 
         while self.position < self.input.len() {
-            let ch = self.input.chars().nth(self.position).unwrap();
-            if ch.is_alphanumeric() || ch == '_' {
+            let ch = self.input.as_bytes()[self.position];
+            if ch.is_ascii_alphanumeric() || ch == b'_' {
                 self.position += 1;
             } else {
                 break;
@@ -512,7 +512,7 @@ impl<'a> TagPathParser<'a> {
         let start = self.position;
 
         while self.position < self.input.len() {
-            let ch = self.input.chars().nth(self.position).unwrap();
+            let ch = self.input.as_bytes()[self.position];
             if ch.is_ascii_digit() {
                 self.position += 1;
             } else {
@@ -530,7 +530,10 @@ impl<'a> TagPathParser<'a> {
     }
 
     fn peek_char(&self) -> Option<char> {
-        self.input.chars().nth(self.position)
+        self.input
+            .as_bytes()
+            .get(self.position)
+            .map(|byte| *byte as char)
     }
 
     fn consume_char(&mut self, expected: char) -> bool {

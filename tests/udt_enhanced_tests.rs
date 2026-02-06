@@ -10,8 +10,6 @@
 
 use rust_ethernet_ip::udt::{UdtMember, UserDefinedType};
 use rust_ethernet_ip::{PlcValue, UdtData};
-use tracing;
-
 /// Mock EipClient for testing UDT functionality
 struct MockEipClient {
     udt_data: Vec<u8>,
@@ -28,6 +26,7 @@ impl MockEipClient {
         }
     }
 
+    #[allow(dead_code)]
     fn set_partial_transfer_failure(&mut self, fail: bool) {
         self.should_fail_partial_transfer = fail;
     }
@@ -196,7 +195,7 @@ fn create_test_udt_definition() -> UserDefinedType {
     });
     udt.add_member(UdtMember {
         name: "int1".to_string(),
-        data_type: 0x00C2,
+        data_type: 0x00C3,
         offset: 2,
         size: 2,
     });

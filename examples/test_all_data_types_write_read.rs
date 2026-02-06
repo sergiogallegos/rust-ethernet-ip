@@ -106,7 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📖 Step 1: Reading initial values");
     println!("----------------------------------");
     let mut initial_values = Vec::new();
-    for (tag_name, expected_value, data_type) in &test_tags {
+    for (tag_name, _expected_value, _data_type) in &test_tags {
         match timeout(Duration::from_secs(5), client.read_tag(tag_name)).await {
             Ok(Ok(value)) => {
                 println!("✅ {}: {:?}", tag_name, value);
@@ -127,7 +127,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 2: Write test values to all tags
     println!("✏️ Step 2: Writing test values to all tags");
     println!("--------------------------------------------");
-    let mut write_success_count = 0;
     for (tag_name, test_value, data_type) in &test_tags {
         println!(
             "📝 Writing '{:?}' to {} tag '{}'",
@@ -141,7 +140,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             Ok(Ok(())) => {
                 println!("✅ {}: Write successful", tag_name);
-                write_success_count += 1;
             }
             Ok(Err(e)) => {
                 eprintln!("❌ {}: Write failed - {}", tag_name, e);
@@ -164,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut dint_success_count = 0;
     let mut bool_success_count = 0;
 
-    for (tag_name, expected_value, data_type) in &test_tags {
+    for (tag_name, expected_value, _data_type) in &test_tags {
         match timeout(Duration::from_secs(5), client.read_tag(tag_name)).await {
             Ok(Ok(actual_value)) => {
                 let success = match (expected_value, &actual_value) {
@@ -204,9 +202,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         tag_name, actual_value, expected_value
                     );
                 }
-            }
-            Ok(Ok(other_value)) => {
-                eprintln!("❌ {}: Read unexpected type: {:?}", tag_name, other_value);
             }
             Ok(Err(e)) => {
                 eprintln!("❌ {}: Read failed - {}", tag_name, e);

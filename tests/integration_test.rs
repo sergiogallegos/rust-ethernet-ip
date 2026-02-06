@@ -1,5 +1,4 @@
 use rust_ethernet_ip::{EipClient, PlcConfig, PlcManager, PlcValue, TagScope};
-use std::collections::HashMap;
 use std::time::Duration;
 use tracing;
 
@@ -62,7 +61,7 @@ async fn test_udt_operations() {
 
     // Write a UDT - need to read first to get symbol_id, then modify and write back
     let udt_value = client.read_tag("MotorData").await.unwrap();
-    if let PlcValue::Udt(mut udt_data) = udt_value {
+    if let PlcValue::Udt(udt_data) = udt_value {
         // For now, just write back the same data (proper modification would require UDT definition)
         client
             .write_tag("MotorData", PlcValue::Udt(udt_data))

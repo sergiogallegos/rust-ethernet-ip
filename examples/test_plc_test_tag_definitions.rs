@@ -17,6 +17,7 @@ use std::collections::HashMap;
 const PLC_ADDRESS: &str = "192.168.0.1:44818";
 const CPU_SLOT: u8 = 0; // ControlLogix CPU in Slot 0
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct TestTag {
     name: String,

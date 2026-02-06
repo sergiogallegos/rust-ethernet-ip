@@ -3613,7 +3613,10 @@ impl EipClient {
             let name_length = u16::from_le_bytes([response[offset], response[offset + 1]]) as usize;
             offset += 2;
 
-            if offset + name_length > response.len() {
+            if offset
+                .checked_add(name_length)
+                .map_or(true, |end| end > response.len())
+            {
                 break; // Not enough data for tag name
             }
 
@@ -4641,12 +4644,15 @@ impl EipClient {
                 item_length
             );
 
+            if pos
+                .checked_add(item_length)
+                .map_or(true, |end| end > response.len())
+            {
+                return Err(EtherNetIpError::Protocol("Data item truncated".to_string()));
+            }
+
             if item_type == 0x00B2 {
                 // Unconnected Data Item
-                if pos + item_length > response.len() {
-                    return Err(EtherNetIpError::Protocol("Data item truncated".to_string()));
-                }
-
                 let cip_data = response[pos..pos + item_length].to_vec();
                 tracing::trace!(
                     "Found Unconnected Data Item, extracted CIP data ({} bytes)",
@@ -4798,7 +4804,7 @@ impl EipClient {
                         value_data[3],
                     ]) as usize;
 
-                    if value_data.len() < 4 + length {
+                    if value_data.len() < 4 || value_data.len() - 4 < length {
                         return Err(EtherNetIpError::Protocol(format!(
                             "Insufficient data for STRING value: need {} bytes, have {} bytes",
                             4 + length,
@@ -6762,14 +6768,17 @@ impl EipClient {
                 item_length
             );
 
+            if pos
+                .checked_add(item_length)
+                .map_or(true, |end| end > response.len())
+            {
+                return Err(EtherNetIpError::Protocol(
+                    "Connected data item truncated".to_string(),
+                ));
+            }
+
             if item_type == 0x00B1 {
                 // Connected Data Item
-                if pos + item_length > response.len() {
-                    return Err(EtherNetIpError::Protocol(
-                        "Connected data item truncated".to_string(),
-                    ));
-                }
-
                 // Connected Data Item contains [sequence_count(2)][cip_data]
                 if item_length < 2 {
                     return Err(EtherNetIpError::Protocol(

@@ -52,7 +52,7 @@ mod tests {
             Ok(results) => {
                 tracing::info!("Batch read completed: {} tags", results.len());
                 assert_eq!(results.len(), tag_names.len());
-                for (i, (tag_name, result)) in results.iter().enumerate() {
+                for (tag_name, result) in results.iter() {
                     match result {
                         Ok(value) => {
                             tracing::info!("{}: {:?}", tag_name, value);

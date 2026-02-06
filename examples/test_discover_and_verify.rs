@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "      Type: 0x{:04X}, Size: {}, Scope: {:?}",
                 metadata.data_type, metadata.size, metadata.scope
             );
-            found_tags.push(tag_name.clone());
+            found_tags.push((*tag_name).to_string());
         }
     }
 

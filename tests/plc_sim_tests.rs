@@ -1,6 +1,7 @@
 mod plc_sim;
 
 use plc_sim::SimulatedPlc;
+use rust_ethernet_ip::error::EtherNetIpError;
 use rust_ethernet_ip::{EipClient, PlcValue};
 
 #[tokio::test]
@@ -106,4 +107,44 @@ async fn simulated_plc_read_array_range_real() {
         .expect("read range");
 
     assert_eq!(values, vec![PlcValue::Real(1.5), PlcValue::Real(2.5)]);
+}
+
+#[tokio::test]
+async fn read_bit_invalid_index_returns_error() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let err = client.read_bit("DINT_TAG", 32).await.unwrap_err();
+    match &err {
+        EtherNetIpError::Protocol(msg) => assert!(
+            msg.contains("0..32"),
+            "expected bit index message, got: {}",
+            msg
+        ),
+        other => panic!("expected Protocol error for bit_index 32, got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn simulated_plc_read_bit_write_bit() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    // DINT_TAG is 1234; bit 0 is 0, bit 1 is 1, bit 2 is 0, etc.
+    let bit0 = client.read_bit("DINT_TAG", 0).await.expect("read bit 0");
+    assert!(!bit0);
+    let bit1 = client.read_bit("DINT_TAG", 1).await.expect("read bit 1");
+    assert!(bit1);
+
+    client
+        .write_bit("DINT_TAG", 0, true)
+        .await
+        .expect("write bit 0");
+    let bit0_after = client
+        .read_bit("DINT_TAG", 0)
+        .await
+        .expect("read bit 0 after write");
+    assert!(bit0_after);
 }

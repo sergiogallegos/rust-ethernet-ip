@@ -1936,6 +1936,61 @@ impl EipClient {
         self.parse_cip_response(&cip_data)
     }
 
+    /// Reads a single bit from a tag (e.g. a DINT used as a status word).
+    ///
+    /// Equivalent to `read_tag(&format!("{}.{}", tag_base, bit_index))` for bit paths.
+    /// `bit_index` must be in 0..32 (Allen-Bradley DINT bits).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let bit_5 = client.read_bit("StatusWord", 5).await?;
+    /// ```
+    pub async fn read_bit(&mut self, tag_base: &str, bit_index: u8) -> crate::error::Result<bool> {
+        if bit_index >= 32 {
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "bit_index must be 0..32 for DINT bit access".to_string(),
+            ));
+        }
+        let path = format!("{}.{}", tag_base, bit_index);
+        match self.read_tag(&path).await? {
+            PlcValue::Bool(b) => Ok(b),
+            PlcValue::Dint(n) => {
+                // Some PLCs/simulators return the full DINT for bit paths; extract the bit
+                Ok((n >> bit_index) & 1 != 0)
+            }
+            other => Err(crate::error::EtherNetIpError::DataTypeMismatch {
+                expected: "BOOL or DINT".to_string(),
+                actual: format!("{:?}", other),
+            }),
+        }
+    }
+
+    /// Writes a single bit to a tag (e.g. a DINT used as a control word).
+    ///
+    /// Equivalent to `write_tag(&format!("{}.{}", tag_base, bit_index), PlcValue::Bool(value))`.
+    /// `bit_index` must be in 0..32.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// client.write_bit("ControlWord", 3, true).await?;
+    /// ```
+    pub async fn write_bit(
+        &mut self,
+        tag_base: &str,
+        bit_index: u8,
+        value: bool,
+    ) -> crate::error::Result<()> {
+        if bit_index >= 32 {
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "bit_index must be 0..32 for DINT bit access".to_string(),
+            ));
+        }
+        let path = format!("{}.{}", tag_base, bit_index);
+        self.write_tag(&path, PlcValue::Bool(value)).await
+    }
+
     /// Parses array element access syntax (e.g., "ArrayName[0]") and returns (base_name, index)
     fn parse_array_element_access(&self, tag_name: &str) -> Option<(String, u32)> {
         // Look for array bracket notation
@@ -3397,7 +3452,22 @@ impl EipClient {
         Ok(definition)
     }
 
-    /// Gets tag attributes from the PLC
+    /// Gets tag attributes (type, size, dimensions, scope) from the PLC.
+    ///
+    /// Use this to introspect a tag before reading or writing: discover data type,
+    /// size in bytes, array dimensions, and scope (controller vs program). Results
+    /// are cached per tag for the lifetime of the client.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let attrs = client.get_tag_attributes("MyTag").await?;
+    /// println!("Type: {}, size: {} bytes", attrs.data_type_name, attrs.size);
+    /// if !attrs.dimensions.is_empty() {
+    ///     println!("Array dimensions: {:?}", attrs.dimensions);
+    /// }
+    /// ```
+    ///
     pub async fn get_tag_attributes(
         &mut self,
         tag_name: &str,
@@ -4388,14 +4458,21 @@ impl EipClient {
         Ok(())
     }
 
-    /// Checks the health of the connection
+    /// Quick connection health check (no I/O).
+    ///
+    /// Returns `true` if the session handle is valid and there has been activity
+    /// within the last 150 seconds. Use this for cheap periodic checks; for a
+    /// definitive check that the PLC is still responding, use [`check_health_detailed`](Self::check_health_detailed).
     pub async fn check_health(&self) -> bool {
-        // Check if we have a valid session handle and recent activity
         self.session_handle != 0
             && self.last_activity.lock().await.elapsed() < Duration::from_secs(150)
     }
 
-    /// Performs a more thorough health check by actually communicating with the PLC
+    /// Verifies the connection by sending a keep-alive (and re-registering if needed).
+    ///
+    /// Use this when you need to confirm the PLC is still reachable (e.g. after
+    /// a long idle or before a critical operation). On failure, consider
+    /// reconnecting; check [`EtherNetIpError::is_retriable`](crate::error::EtherNetIpError::is_retriable) on errors.
     pub async fn check_health_detailed(&mut self) -> crate::error::Result<bool> {
         if self.session_handle == 0 {
             return Ok(false);
@@ -7159,20 +7236,29 @@ impl EipClient {
         Ok(request)
     }
 
-    /// Subscribes to a tag for real-time updates
+    /// Subscribes to a tag for real-time updates.
+    ///
+    /// The returned [`TagSubscription`] can be used to:
+    /// - [`wait_for_update()`](TagSubscription::wait_for_update) for the next value
+    /// - [`get_last_value()`](TagSubscription::get_last_value) for the latest cached value
+    /// - [`into_stream()`](TagSubscription::into_stream) for an async `Stream` of updates
+    ///
+    /// The background poll loop uses [`SubscriptionOptions::update_rate`] (milliseconds) between reads.
     pub async fn subscribe_to_tag(
         &self,
         tag_path: &str,
         options: SubscriptionOptions,
-    ) -> Result<()> {
+    ) -> Result<TagSubscription> {
         let mut subscriptions = self.subscriptions.lock().await;
-        let subscription = TagSubscription::new(tag_path.to_string(), options);
-        subscriptions.push(subscription);
-        drop(subscriptions); // Release the lock before starting the monitoring thread
+        let subscription = TagSubscription::new(tag_path.to_string(), options.clone());
+        let update_rate_ms = options.update_rate;
+        subscriptions.push(subscription.clone());
+        drop(subscriptions);
 
         let tag_path = tag_path.to_string();
         let mut client = self.clone();
         tokio::spawn(async move {
+            let interval = std::time::Duration::from_millis(update_rate_ms as u64);
             loop {
                 match client.read_tag(&tag_path).await {
                     Ok(value) => {
@@ -7186,17 +7272,22 @@ impl EipClient {
                         break;
                     }
                 }
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(interval).await;
             }
         });
-        Ok(())
+        Ok(subscription)
     }
 
-    pub async fn subscribe_to_tags(&self, tags: &[(&str, SubscriptionOptions)]) -> Result<()> {
+    /// Subscribes to multiple tags. Returns one [`TagSubscription`] per tag in order.
+    pub async fn subscribe_to_tags(
+        &self,
+        tags: &[(&str, SubscriptionOptions)],
+    ) -> Result<Vec<TagSubscription>> {
+        let mut subs = Vec::with_capacity(tags.len());
         for (tag_name, options) in tags {
-            self.subscribe_to_tag(tag_name, options.clone()).await?;
+            subs.push(self.subscribe_to_tag(tag_name, options.clone()).await?);
         }
-        Ok(())
+        Ok(subs)
     }
 
     async fn update_subscription(&self, tag_name: &str, value: &PlcValue) -> Result<()> {

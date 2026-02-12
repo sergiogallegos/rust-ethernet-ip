@@ -4,6 +4,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
+use async_stream::stream;
+use futures::Stream;
+
 /// Configuration options for tag subscriptions
 #[derive(Debug, Clone)]
 pub struct SubscriptionOptions {
@@ -101,6 +104,37 @@ impl TagSubscription {
     /// Gets the last value received
     pub async fn get_last_value(&self) -> Option<PlcValue> {
         self.last_value.lock().await.clone()
+    }
+
+    /// Returns an async stream of value updates for this subscription.
+    ///
+    /// The stream yields each value as it is received from the background poll loop.
+    /// Use with `StreamExt` (e.g. `.next().await`) or `select!` for composition.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use futures_util::StreamExt;
+    ///
+    /// let subscription = client.subscribe_to_tag("MyTag", SubscriptionOptions::default()).await?;
+    /// let mut stream = subscription.into_stream();
+    /// while let Some(value) = stream.next().await {
+    ///     println!("Update: {:?}", value);
+    /// }
+    /// ```
+    pub fn into_stream(self: Arc<Self>) -> impl Stream<Item = PlcValue> + Send {
+        stream! {
+            loop {
+                let v = {
+                    let mut receiver = self.receiver.lock().await;
+                    receiver.recv().await
+                };
+                match v {
+                    Some(plc_value) => yield plc_value,
+                    None => break,
+                }
+            }
+        }
     }
 }
 

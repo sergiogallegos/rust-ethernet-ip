@@ -78,6 +78,7 @@ bytes = "1.0"
 thiserror = "1.0"
 async-trait = "0.1"
 futures = "0.3"
+async-stream = "0.3"
 log = "0.4"
 env_logger = "0.10"
 tracing = "0.1"
@@ -91,6 +92,7 @@ regex = "1.0"
 
 [dev-dependencies]
 tokio-test = "0.4"
+futures-util = "0.3"
 cargo-tarpaulin = "0.27"
 criterion = "0.5"
 

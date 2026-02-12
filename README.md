@@ -507,6 +507,7 @@ cargo run --example test_cell_nestdata_udt
 
 - **[API Documentation](https://docs.rs/rust-ethernet-ip)** - Complete API reference
 - **[C# Wrapper Guide](csharp/RustEtherNetIp/README.md)** - C# integration documentation
+- **[Tag introspection](docs/tag_introspection.md)** - Discover tag type, size, and scope with `get_tag_attributes`
 - **[Changelog](CHANGELOG.md)** - Version history
 - **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 

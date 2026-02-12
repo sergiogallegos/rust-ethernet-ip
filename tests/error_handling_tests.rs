@@ -51,6 +51,17 @@ fn error_display_messages_are_informative() {
             "Connection error",
         ),
         (
+            EtherNetIpError::ConnectionLost("network closed".to_string()),
+            "Connection lost",
+        ),
+        (
+            EtherNetIpError::CipError {
+                code: 0x07,
+                message: "connection lost".to_string(),
+            },
+            "CIP error",
+        ),
+        (
             EtherNetIpError::StringTooLong {
                 max_length: 82,
                 actual_length: 83,
@@ -131,4 +142,24 @@ async fn connect_refused_returns_io_error() {
         }
         other => panic!("expected Io error, got {other:?}"),
     }
+}
+
+#[test]
+fn is_retriable_identifies_retriable_errors() {
+    use std::time::Duration;
+
+    assert!(EtherNetIpError::Timeout(Duration::from_secs(1)).is_retriable());
+    assert!(EtherNetIpError::Connection("lost".to_string()).is_retriable());
+    assert!(EtherNetIpError::ConnectionLost("closed".to_string()).is_retriable());
+    assert!(
+        EtherNetIpError::Io(io::Error::new(io::ErrorKind::TimedOut, "timed out")).is_retriable()
+    );
+
+    assert!(!EtherNetIpError::TagNotFound("X".to_string()).is_retriable());
+    assert!(!EtherNetIpError::Protocol("bad".to_string()).is_retriable());
+    assert!(!EtherNetIpError::CipError {
+        code: 0x16,
+        message: "object does not exist".to_string(),
+    }
+    .is_retriable());
 }

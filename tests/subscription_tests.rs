@@ -10,8 +10,9 @@
 
 #[cfg(test)]
 mod tests {
-    use rust_ethernet_ip::{EipClient, SubscriptionOptions};
+    use rust_ethernet_ip::{EipClient, SubscriptionOptions, TagSubscription};
     use std::env;
+    use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::timeout;
     use tracing;
@@ -100,8 +101,9 @@ mod tests {
         ];
 
         match client.subscribe_to_tags(&tags).await {
-            Ok(_) => {
-                tracing::info!("Multiple subscriptions created: {} tags", tags.len());
+            Ok(subs) => {
+                tracing::info!("Multiple subscriptions created: {} tags", subs.len());
+                assert_eq!(subs.len(), tags.len(), "one subscription per tag");
             }
             Err(e) => {
                 tracing::error!("Multiple subscriptions failed: {}", e);
@@ -167,5 +169,31 @@ mod tests {
                 tracing::info!("Subscription correctly failed for non-existent tag: {}", e);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn subscription_respects_update_rate_option() {
+        let options = SubscriptionOptions {
+            update_rate: 250,
+            change_threshold: 0.01,
+            timeout: 3000,
+        };
+        let sub = TagSubscription::new("TestTag".to_string(), options);
+        assert_eq!(sub.options.update_rate, 250);
+    }
+
+    #[tokio::test]
+    async fn subscription_into_stream_produces_stream() {
+        use futures_util::StreamExt;
+
+        let options = SubscriptionOptions::default();
+        let sub = Arc::new(TagSubscription::new("TestTag".to_string(), options));
+        let mut stream = Box::pin(sub.clone().into_stream());
+        // Stream exists; first next() will hang (no updates). Just verify we can call next with a timeout.
+        let result = timeout(Duration::from_millis(50), stream.next()).await;
+        assert!(
+            result.is_err(),
+            "stream next should timeout (no updates yet)"
+        );
     }
 }

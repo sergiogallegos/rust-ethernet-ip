@@ -49,6 +49,14 @@ pub enum EtherNetIpError {
     #[error("Connection error: {0}")]
     Connection(String),
 
+    /// Connection lost (network closed, PLC unreachable)
+    #[error("Connection lost: {0}")]
+    ConnectionLost(String),
+
+    /// CIP protocol error with status code (from PLC)
+    #[error("CIP error 0x{code:02X}: {message}")]
+    CipError { code: u8, message: String },
+
     /// String is too long for the PLC's string type
     #[error("String too long: max length is {max_length}, but got {actual_length}")]
     StringTooLong {
@@ -91,4 +99,18 @@ pub enum EtherNetIpError {
     /// Subscription error
     #[error("Subscription error: {0}")]
     Subscription(String),
+}
+
+impl EtherNetIpError {
+    /// Returns true if the error is likely retriable (e.g. timeout, connection lost).
+    /// Use this to decide whether to retry an operation or reconnect.
+    pub fn is_retriable(&self) -> bool {
+        matches!(
+            self,
+            EtherNetIpError::Timeout(_)
+                | EtherNetIpError::Connection(_)
+                | EtherNetIpError::ConnectionLost(_)
+                | EtherNetIpError::Io(_)
+        )
+    }
 }

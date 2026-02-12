@@ -38,13 +38,19 @@ namespace RustEtherNetIp.Tests
             Assert.True(initialBool);
 
             var initialReal = client.ReadReal("REAL_TAG");
-            Assert.Equal(3.14f, initialReal, 2);
+            Assert.Equal(3.0f, initialReal, 2);
 
             var initialString = client.ReadString("STRING_TAG");
             Assert.Equal("Hello PLC", initialString);
 
             var initialArrayElement = client.ReadDint("DINT_ARRAY[1]");
             Assert.Equal(20, initialArrayElement);
+
+            var initialDintRange = client.ReadDintArrayRange("DINT_ARRAY", 0, 2);
+            Assert.Equal(new[] { 10, 20 }, initialDintRange);
+
+            var initialRealRange = client.ReadRealArrayRange("REAL_ARRAY", 0, 2);
+            Assert.Equal(new[] { 1.5f, 2.5f }, initialRealRange);
 
             client.WriteDint("DINT_TAG", 4321);
             client.WriteBool("BOOL_TAG", false);
@@ -66,6 +72,9 @@ namespace RustEtherNetIp.Tests
 
             var updatedArrayElement = client.ReadDint("DINT_ARRAY[1]");
             Assert.Equal(55, updatedArrayElement);
+
+            var updatedDintRange = client.ReadDintArrayRange("DINT_ARRAY", 0, 2);
+            Assert.Equal(new[] { 10, 55 }, updatedDintRange);
         }
     }
 }

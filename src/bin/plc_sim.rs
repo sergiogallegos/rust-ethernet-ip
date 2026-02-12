@@ -36,7 +36,7 @@ async fn main() {
     let tags = Arc::new(Mutex::new(HashMap::from([
         ("DINT_TAG".to_string(), TagValue::Dint(1234)),
         ("BOOL_TAG".to_string(), TagValue::Bool(true)),
-        ("REAL_TAG".to_string(), TagValue::Real(3.14)),
+        ("REAL_TAG".to_string(), TagValue::Real(3.0)),
         (
             "STRING_TAG".to_string(),
             TagValue::String("Hello PLC".to_string()),
@@ -44,6 +44,10 @@ async fn main() {
         (
             "DINT_ARRAY".to_string(),
             TagValue::Array(vec![TagValue::Dint(10), TagValue::Dint(20)]),
+        ),
+        (
+            "REAL_ARRAY".to_string(),
+            TagValue::Array(vec![TagValue::Real(1.5), TagValue::Real(2.5)]),
         ),
     ])));
 
@@ -144,9 +148,13 @@ fn build_read_response(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue
     let cip_request = extract_cip_request(payload);
     let (tag_name, element_index) =
         parse_tag_and_path(&cip_request).unwrap_or(("DINT_TAG".to_string(), None));
+    let requested_count = parse_read_element_count(&cip_request).unwrap_or(1) as usize;
     let tags_guard = tags.lock().expect("tag lock");
-    let value = tags_guard.get(&tag_name).cloned().unwrap_or(TagValue::Dint(0));
-    build_value_response(value, element_index)
+    let value = tags_guard
+        .get(&tag_name)
+        .cloned()
+        .unwrap_or(TagValue::Dint(0));
+    build_value_response(value, element_index, requested_count)
 }
 
 fn extract_cip_service(payload: &[u8]) -> Option<u8> {
@@ -294,15 +302,60 @@ fn extract_cip_request(payload: &[u8]) -> Vec<u8> {
     Vec::new()
 }
 
-fn build_value_response(value: TagValue, element_index: Option<usize>) -> Vec<u8> {
+fn build_value_response(
+    value: TagValue,
+    element_index: Option<usize>,
+    requested_count: usize,
+) -> Vec<u8> {
     match value {
         TagValue::Array(items) => {
-            if let Some(index) = element_index {
-                if let Some(item) = items.get(index) {
-                    return build_value_response(item.clone(), None);
+            let start = element_index.unwrap_or(0);
+            let count = requested_count.max(1);
+            let subset: Vec<TagValue> = items.iter().skip(start).take(count).cloned().collect();
+            if subset.is_empty() {
+                return build_value_response(TagValue::Dint(0), None, 1);
+            }
+
+            match &subset[0] {
+                TagValue::Bool(_) => {
+                    let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+                    response.extend_from_slice(&CIP_TYPE_BOOL.to_le_bytes());
+                    for item in subset {
+                        if let TagValue::Bool(v) = item {
+                            response.push(if v { 0xFF } else { 0x00 });
+                        }
+                    }
+                    response
+                }
+                TagValue::Dint(_) => {
+                    let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+                    response.extend_from_slice(&CIP_TYPE_DINT.to_le_bytes());
+                    for item in subset {
+                        if let TagValue::Dint(v) = item {
+                            response.extend_from_slice(&v.to_le_bytes());
+                        }
+                    }
+                    response
+                }
+                TagValue::Real(_) => {
+                    let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+                    response.extend_from_slice(&CIP_TYPE_REAL.to_le_bytes());
+                    for item in subset {
+                        if let TagValue::Real(v) = item {
+                            response.extend_from_slice(&v.to_le_bytes());
+                        }
+                    }
+                    response
+                }
+                TagValue::String(_) => {
+                    // Simulator keeps string arrays simple: return first requested string.
+                    build_value_response(subset[0].clone(), None, 1)
+                }
+                TagValue::Array(_) => {
+                    // Nested arrays are not modeled in the simulator; return a safe default.
+                    build_value_response(TagValue::Dint(0), None, 1)
                 }
             }
-            build_value_response(TagValue::Dint(0), None)
         }
         TagValue::Bool(v) => {
             let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
@@ -377,8 +430,7 @@ fn parse_tag_and_path(cip_request: &[u8]) -> Option<(String, Option<usize>)> {
                 if pos + 2 >= path.len() {
                     break;
                 }
-                element_index =
-                    Some(u16::from_le_bytes([path[pos + 1], path[pos + 2]]) as usize);
+                element_index = Some(u16::from_le_bytes([path[pos + 1], path[pos + 2]]) as usize);
                 pos += 3;
             }
             0x2A => {
@@ -400,4 +452,17 @@ fn parse_tag_and_path(cip_request: &[u8]) -> Option<(String, Option<usize>)> {
     }
 
     tag_name.map(|name| (name, element_index))
+}
+
+fn parse_read_element_count(cip_request: &[u8]) -> Option<u16> {
+    if cip_request.len() < 2 {
+        return None;
+    }
+    let path_words = cip_request[1] as usize;
+    let path_bytes = path_words * 2;
+    let pos = 2 + path_bytes;
+    if cip_request.len() < pos + 2 {
+        return None;
+    }
+    Some(u16::from_le_bytes([cip_request[pos], cip_request[pos + 1]]))
 }

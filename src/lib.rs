@@ -2104,11 +2104,11 @@ impl EipClient {
     /// allowing efficient reading of large arrays without reading from element 0 each time.
     ///
     /// Reference: 1756-PM020, Pages 276-315 (Read Tag Fragmented Service), 840-851 (Reading Multiple Array Elements)
-    #[allow(dead_code)]
     async fn read_array_in_chunks(
         &mut self,
         base_array_name: &str,
         data_type: u16,
+        start_index: u32,
         target_element_count: u32,
     ) -> crate::error::Result<Vec<u8>> {
         // Determine element size and safe chunk size
@@ -2142,8 +2142,12 @@ impl EipClient {
             _ => 8,
         };
 
+        let end_index = start_index
+            .checked_add(target_element_count)
+            .ok_or_else(|| EtherNetIpError::Protocol("Array range overflow".to_string()))?;
+
         let mut all_data = Vec::new();
-        let mut next_chunk_start = 0u32;
+        let mut next_chunk_start = start_index;
 
         tracing::debug!(
             "Reading array '{}' in chunks: {} elements per chunk, target: {} elements",
@@ -2152,11 +2156,10 @@ impl EipClient {
             target_element_count
         );
 
-        while next_chunk_start < target_element_count {
+        while next_chunk_start < end_index {
             // Use element addressing to read specific range starting from next_chunk_start
             // Reference: 1756-PM020, Pages 840-851 (Reading Multiple Array Elements)
-            let chunk_end =
-                (next_chunk_start + elements_per_chunk as u32).min(target_element_count);
+            let chunk_end = (next_chunk_start + elements_per_chunk as u32).min(end_index);
             let chunk_size = (chunk_end - next_chunk_start) as u16;
 
             tracing::trace!(
@@ -2266,7 +2269,7 @@ impl EipClient {
                 );
 
                 // Continue reading if we haven't reached our target yet
-                if next_chunk_start >= target_element_count {
+                if next_chunk_start >= end_index {
                     tracing::trace!(
                         "Reached target element count ({}), stopping chunked read",
                         target_element_count
@@ -2287,103 +2290,139 @@ impl EipClient {
             target_element_count
         );
 
-        // If we got fewer elements than requested, but we're close (within 2 elements),
-        // try one more read to get the remaining elements
-        if final_element_count < target_element_count as usize
-            && (target_element_count as usize - final_element_count) <= 2
-            && final_element_count > 0
-        {
-            tracing::debug!(
-                "Got {} elements but needed {}, trying to read remaining {} elements",
-                final_element_count,
-                target_element_count,
-                target_element_count as usize - final_element_count
-            );
-
-            // Try reading just the missing elements using element addressing
-            // Reference: 1756-PM020, Pages 840-851
-            let missing_count = (target_element_count - final_element_count as u32) as u16;
-            let missing_start = final_element_count as u32;
-
-            if let Ok(final_response) = self
-                .send_cip_request(&self.build_read_array_request(
-                    base_array_name,
-                    missing_start,
-                    missing_count,
-                ))
-                .await
-            {
-                if let Ok(final_cip_data) = self.extract_cip_from_response(&final_response) {
-                    if final_cip_data.len() >= 8 {
-                        let final_data_type =
-                            u16::from_le_bytes([final_cip_data[4], final_cip_data[5]]);
-                        if final_data_type == data_type {
-                            let final_value_data_start = 8;
-                            let final_value_data = &final_cip_data[final_value_data_start..];
-                            let final_complete_bytes =
-                                (final_value_data.len() / element_size) * element_size;
-                            let final_data = &final_value_data[..final_complete_bytes];
-
-                            // Extract only the missing elements
-                            let missing_start_offset = final_element_count * element_size;
-                            if missing_start_offset < final_data.len() {
-                                // Calculate how many elements we can actually extract
-                                let available_missing =
-                                    (final_data.len() - missing_start_offset) / element_size;
-                                let needed_missing =
-                                    target_element_count as usize - final_element_count;
-                                let elements_to_add = available_missing.min(needed_missing);
-
-                                if elements_to_add > 0 {
-                                    let end_offset =
-                                        missing_start_offset + (elements_to_add * element_size);
-                                    let missing_elements =
-                                        &final_data[missing_start_offset..end_offset];
-                                    all_data.extend_from_slice(missing_elements);
-                                    tracing::debug!(
-                                        "Added {} more elements from final read, total now: {} elements",
-                                        elements_to_add,
-                                        all_data.len() / element_size
-                                    );
-                                } else {
-                                    tracing::warn!(
-                                        "Final read did not provide additional elements (PLC may have a 49-element limit)"
-                                    );
-                                }
-                            } else {
-                                tracing::warn!(
-                                    "Missing start offset {} is beyond final data length {} (PLC may have a 49-element limit)",
-                                    missing_start_offset, final_data.len()
-                                );
-                            }
-                        }
-                    } else {
-                        tracing::warn!(
-                            "Final read response too short or data type mismatch (PLC may have a 49-element limit)"
-                        );
-                    }
-                } else {
-                    tracing::warn!(
-                        "Failed to extract CIP from final read response (PLC may have a 49-element limit)"
-                    );
-                }
-            } else {
-                tracing::warn!(
-                    "Final read request failed (PLC may have a 49-element limit per response)"
-                );
-            }
-        }
-
-        // If we still don't have all elements, log a warning but return what we have
-        let final_count = all_data.len() / element_size;
-        if final_count < target_element_count as usize {
-            tracing::warn!(
-                "Warning: Only got {} elements out of {} requested (PLC may have response size limits)",
-                final_count, target_element_count
-            );
+        if final_element_count < target_element_count as usize {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Incomplete array read: requested {} elements, received {}",
+                target_element_count, final_element_count
+            )));
         }
 
         Ok(all_data)
+    }
+
+    fn array_element_size(data_type: u16) -> Option<usize> {
+        match data_type {
+            0x00C1 => Some(1), // BOOL
+            0x00C2 => Some(1), // SINT
+            0x00C3 => Some(2), // INT
+            0x00C4 => Some(4), // DINT
+            0x00C5 => Some(8), // LINT
+            0x00C6 => Some(1), // USINT
+            0x00C7 => Some(2), // UINT
+            0x00C8 => Some(4), // UDINT
+            0x00C9 => Some(8), // ULINT
+            0x00CA => Some(4), // REAL
+            0x00CB => Some(8), // LREAL
+            _ => None,
+        }
+    }
+
+    fn decode_array_bytes(
+        &self,
+        data_type: u16,
+        bytes: &[u8],
+    ) -> crate::error::Result<Vec<PlcValue>> {
+        let Some(element_size) = Self::array_element_size(data_type) else {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unsupported data type for array decoding: 0x{:04X}",
+                data_type
+            )));
+        };
+
+        if bytes.len() % element_size != 0 {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Array payload length {} is not aligned to element size {}",
+                bytes.len(),
+                element_size
+            )));
+        }
+
+        let mut values = Vec::with_capacity(bytes.len() / element_size);
+        for chunk in bytes.chunks_exact(element_size) {
+            let value = match data_type {
+                0x00C1 => PlcValue::Bool(chunk[0] != 0),
+                0x00C2 => PlcValue::Sint(chunk[0] as i8),
+                0x00C3 => PlcValue::Int(i16::from_le_bytes([chunk[0], chunk[1]])),
+                0x00C4 => {
+                    PlcValue::Dint(i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                }
+                0x00C5 => PlcValue::Lint(i64::from_le_bytes([
+                    chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+                ])),
+                0x00C6 => PlcValue::Usint(chunk[0]),
+                0x00C7 => PlcValue::Uint(u16::from_le_bytes([chunk[0], chunk[1]])),
+                0x00C8 => {
+                    PlcValue::Udint(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                }
+                0x00C9 => PlcValue::Ulint(u64::from_le_bytes([
+                    chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+                ])),
+                0x00CA => {
+                    PlcValue::Real(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                }
+                0x00CB => PlcValue::Lreal(f64::from_le_bytes([
+                    chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+                ])),
+                _ => unreachable!("validated by array_element_size"),
+            };
+            values.push(value);
+        }
+
+        Ok(values)
+    }
+
+    /// Read a range of elements from a basic-type PLC array.
+    ///
+    /// This method reads arrays in chunks under the hood to avoid PLC packet-size limits.
+    /// It supports basic CIP scalar types:
+    /// BOOL, SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_array_name` - Base array tag name without index (e.g., `"MyDintArray"`)
+    /// * `start_index` - Starting element index
+    /// * `element_count` - Number of elements to read
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<PlcValue>` with one element per requested array entry.
+    pub async fn read_array_range(
+        &mut self,
+        base_array_name: &str,
+        start_index: u32,
+        element_count: u32,
+    ) -> crate::error::Result<Vec<PlcValue>> {
+        if element_count == 0 {
+            return Ok(Vec::new());
+        }
+
+        let probe_response = self
+            .send_cip_request(&self.build_read_array_request(base_array_name, start_index, 1))
+            .await?;
+        let probe_cip = self.extract_cip_from_response(&probe_response)?;
+        self.check_cip_error(&probe_cip)?;
+
+        if probe_cip.len() < 6 {
+            return Err(EtherNetIpError::Protocol(
+                "Array probe response too short".to_string(),
+            ));
+        }
+
+        let data_type = u16::from_le_bytes([probe_cip[4], probe_cip[5]]);
+        let raw = self
+            .read_array_in_chunks(base_array_name, data_type, start_index, element_count)
+            .await?;
+        let values = self.decode_array_bytes(data_type, &raw)?;
+
+        if values.len() != element_count as usize {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Array read count mismatch: requested {}, got {}",
+                element_count,
+                values.len()
+            )));
+        }
+
+        Ok(values)
     }
 
     /// Writes to a single array element using direct element addressing

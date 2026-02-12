@@ -206,6 +206,15 @@ namespace RustEtherNetIp
         private static extern int eip_read_tag(int client_id, IntPtr tag_name, IntPtr result, int max_size);
 
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_read_array_range(
+            int client_id,
+            IntPtr base_array_name,
+            int start_index,
+            int element_count,
+            IntPtr result,
+            int max_size);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
         private static extern int eip_read_udt(int client_id, IntPtr tag_name, IntPtr result, int max_size);
 
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
@@ -2870,6 +2879,78 @@ namespace RustEtherNetIp
                 
                 return results;
             });
+        }
+
+        /// <summary>
+        /// Reads a contiguous range of array elements from a basic-type PLC array.
+        /// </summary>
+        /// <param name="baseArrayName">Base array name without index (e.g., "MyArray").</param>
+        /// <param name="startIndex">Starting element index.</param>
+        /// <param name="elementCount">Number of elements to read.</param>
+        /// <returns>List of <see cref="PlcValue"/> values in index order.</returns>
+        public List<PlcValue> ReadArrayRange(string baseArrayName, int startIndex, int elementCount)
+        {
+            if (string.IsNullOrWhiteSpace(baseArrayName))
+                throw new ArgumentException("Base array name cannot be null or empty", nameof(baseArrayName));
+            if (startIndex < 0)
+                throw new ArgumentOutOfRangeException(nameof(startIndex), "Start index must be non-negative");
+            if (elementCount <= 0)
+                throw new ArgumentOutOfRangeException(nameof(elementCount), "Element count must be greater than zero");
+
+            return ExecuteWithLock(() =>
+            {
+                CheckConnection();
+                IntPtr namePtr = Marshal.StringToHGlobalAnsi(baseArrayName);
+                IntPtr resultPtr = Marshal.AllocHGlobal(65536);
+                try
+                {
+                    int result = eip_read_array_range(_clientId, namePtr, startIndex, elementCount, resultPtr, 65536);
+                    if (result != 0)
+                        throw new Exception($"Failed to read array range '{baseArrayName}[{startIndex}..{startIndex + elementCount - 1}]'.");
+
+                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(jsonResult))
+                        throw new Exception("Array range response was empty.");
+
+                    var values = new List<PlcValue>();
+                    using var doc = JsonDocument.Parse(jsonResult);
+                    if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                        throw new Exception("Array range response was not a JSON array.");
+
+                    foreach (var item in doc.RootElement.EnumerateArray())
+                    {
+                        values.Add(PlcValue.FromJson(item.GetRawText()));
+                    }
+
+                    if (values.Count != elementCount)
+                        throw new Exception($"Array range size mismatch. Requested {elementCount}, got {values.Count}.");
+
+                    return values;
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(resultPtr);
+                    Marshal.FreeHGlobal(namePtr);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Reads a DINT array range and converts values to <see cref="int"/>.
+        /// </summary>
+        public int[] ReadDintArrayRange(string baseArrayName, int startIndex, int elementCount)
+        {
+            var values = ReadArrayRange(baseArrayName, startIndex, elementCount);
+            return values.Select(v => v.As<int>()).ToArray();
+        }
+
+        /// <summary>
+        /// Reads a REAL array range and converts values to <see cref="float"/>.
+        /// </summary>
+        public float[] ReadRealArrayRange(string baseArrayName, int startIndex, int elementCount)
+        {
+            var values = ReadArrayRange(baseArrayName, startIndex, elementCount);
+            return values.Select(v => v.As<float>()).ToArray();
         }
 
         /// <summary>

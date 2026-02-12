@@ -1323,6 +1323,76 @@ pub unsafe extern "C" fn eip_read_tag(
     0
 }
 
+/// Read a range of array elements as JSON array of PlcValue.
+///
+/// The JSON output format is a Rust enum array, for example:
+/// `[{"Dint":10},{"Dint":20}]`
+///
+/// # Safety
+///
+/// This function is unsafe because:
+/// - `base_array_name` must be a valid null-terminated C string pointer
+/// - `result` must be a valid mutable pointer to a buffer of at least `max_size` bytes
+/// - The caller must ensure both pointers remain valid for the duration of the call
+#[no_mangle]
+pub unsafe extern "C" fn eip_read_array_range(
+    client_id: c_int,
+    base_array_name: *const c_char,
+    start_index: c_int,
+    element_count: c_int,
+    result: *mut c_char,
+    max_size: c_int,
+) -> c_int {
+    if base_array_name.is_null()
+        || result.is_null()
+        || max_size <= 0
+        || start_index < 0
+        || element_count <= 0
+    {
+        return -1;
+    }
+
+    let Ok(base_array_name_str) = unsafe { CStr::from_ptr(base_array_name) }.to_str() else {
+        return -1;
+    };
+
+    let mut clients = match lock_clients() {
+        Ok(guard) => guard,
+        Err(_) => return -1,
+    };
+    let Some(client) = clients.get_mut(&client_id) else {
+        return -1;
+    };
+
+    let values = match RUNTIME.block_on(client.read_array_range(
+        base_array_name_str,
+        start_index as u32,
+        element_count as u32,
+    )) {
+        Ok(values) => values,
+        Err(_) => return -1,
+    };
+
+    let json_result = match serde_json::to_string(&values) {
+        Ok(json) => json,
+        Err(_) => return -1,
+    };
+
+    let Ok(c_string) = CString::new(json_result) else {
+        return -1;
+    };
+
+    let bytes = c_string.as_bytes_with_nul();
+    if bytes.len() > max_size as usize {
+        return -1;
+    }
+
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
+    }
+    0
+}
+
 // UDT operations
 #[no_mangle]
 pub unsafe extern "C" fn eip_read_udt(

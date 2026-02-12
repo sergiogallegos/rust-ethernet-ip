@@ -30,6 +30,10 @@ fn ffi_null_inputs_return_error() {
             ffi::eip_read_string(-1, ptr::null(), ptr::null_mut(), 0),
             -1
         );
+        assert_eq!(
+            ffi::eip_read_array_range(-1, ptr::null(), 0, 1, ptr::null_mut(), 0),
+            -1
+        );
     }
 }
 

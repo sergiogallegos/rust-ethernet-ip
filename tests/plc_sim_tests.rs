@@ -33,7 +33,7 @@ async fn simulated_plc_read_write_bool_real_string() {
     assert_eq!(bool_val, PlcValue::Bool(true));
 
     let real_val = client.read_tag("REAL_TAG").await.expect("read");
-    assert_eq!(real_val, PlcValue::Real(3.14));
+    assert_eq!(real_val, PlcValue::Real(3.0));
 
     let string_val = client.read_tag("STRING_TAG").await.expect("read");
     assert_eq!(string_val, PlcValue::String("Hello PLC".to_string()));
@@ -78,4 +78,32 @@ async fn simulated_plc_read_write_dint_array_element() {
 
     let updated = client.read_tag("DINT_ARRAY[1]").await.expect("read");
     assert_eq!(updated, PlcValue::Dint(55));
+}
+
+#[tokio::test]
+async fn simulated_plc_read_array_range_dint() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let values = client
+        .read_array_range("DINT_ARRAY", 0, 2)
+        .await
+        .expect("read range");
+
+    assert_eq!(values, vec![PlcValue::Dint(10), PlcValue::Dint(20)]);
+}
+
+#[tokio::test]
+async fn simulated_plc_read_array_range_real() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let values = client
+        .read_array_range("REAL_ARRAY", 0, 2)
+        .await
+        .expect("read range");
+
+    assert_eq!(values, vec![PlcValue::Real(1.5), PlcValue::Real(2.5)]);
 }

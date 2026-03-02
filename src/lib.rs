@@ -2566,7 +2566,11 @@ impl EipClient {
         Ok(())
     }
 
-    /// Special workaround for BOOL arrays: reads DWORD, modifies bit, writes back
+    /// Special workaround for BOOL arrays: reads DWORD, modifies bit, writes back.
+    ///
+    /// Note: This is a read-modify-write operation. Callers must ensure exclusive
+    /// access to the client for the entire duration (the `&mut self` requirement
+    /// provides this guarantee in safe Rust; FFI callers are protected by the global mutex).
     ///
     /// Reference: 1756-PM020, Page 797-811 (BOOL Array Access)
     async fn write_bool_array_element_workaround(
@@ -5143,16 +5147,13 @@ impl EipClient {
 
         let mut packet = Vec::new();
 
-        // EtherNet/IP header
+        // EtherNet/IP encapsulation header (24 bytes, no command-specific data)
         packet.extend_from_slice(&[0x66, 0x00]); // Command: Unregister Session
-        packet.extend_from_slice(&[0x04, 0x00]); // Length: 4 bytes
+        packet.extend_from_slice(&[0x00, 0x00]); // Length: 0 (no data payload)
         packet.extend_from_slice(&self.session_handle.to_le_bytes()); // Session handle
         packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Status
-        packet.extend_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]); // Sender context
+        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // Sender context
         packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Options
-
-        // Protocol version for unregister session
-        packet.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]); // Protocol version 1
 
         self.stream
             .lock()

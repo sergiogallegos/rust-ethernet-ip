@@ -1,7 +1,7 @@
 # 🦀 Rust EtherNet/IP Driver
 
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.6.2-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
+[![Version](https://img.shields.io/badge/version-0.6.3-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Performance](https://img.shields.io/badge/performance-3000%2B%20ops%2Fsec-green.svg)]()
 [![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)]()
@@ -38,12 +38,15 @@ This library is specifically designed for:
 - **Industrial Automation** software
 - **High-performance** data acquisition and control
 
-### 🚧 **Unreleased (0.6.3)**
-- **PLC Simulator for testing without hardware**
-  - New `plc_sim` binary and in-process test simulator
-  - Expanded simulator-backed Rust and C# test coverage
-- **Broader automated test coverage**
-  - FFI safety checks, concurrency tests, bounds parsing, network failure tests
+### ✅ **v0.6.3 — Bug Fixes & Reliability** (Latest)
+- **Critical protocol fixes**: Added 6 missing CIP type handlers (LINT, USINT, UINT, UDINT, ULINT, LREAL), fixed CIP response bounds check, fixed UDT STRING 4-byte DINT length parsing
+- **Packet correctness**: Rewrote `negotiate_packet_size`, fixed keep-alive NOP, fixed `unregister_session` packet format
+- **C# wrapper**: Fixed `WriteTag` for 7 missing types, removed phantom UDT keys, fixed keep-alive route preservation, cleaned up debug output
+- **Subscription improvements**: Change detection now works for all data types (was REAL-only)
+- **PLC Simulator**: New `plc_sim` binary and in-process test simulator for testing without hardware
+- **Tag introspection**: `get_tag_attributes` for discovering tag type, size, and scope
+- **Subscriptions API**: Real-time tag monitoring with `subscribe_tag` / `unsubscribe_tag`
+- **Bit-level API**: Read/write individual bits within DINT tags
 
 ### ✅ **v0.6.2 New Features**
 - **🔌 Stream Injection API**: New `connect_with_stream()` for custom TCP transport
@@ -187,7 +190,7 @@ Optimized for PC applications with excellent performance:
 > - **Batch operations**: 3-10x faster than individual operations
 > - **Code quality**: Enhanced with idiomatic Rust patterns and clippy optimizations
 > - **Network efficiency**: Optimized packet building with pre-allocated buffers
-> - **Library Health**: All 31 unit tests passing, production-ready core
+> - **Library Health**: All 117+ unit tests passing, production-ready core
 
 | Operation | Throughput | Latency | Memory Usage |
 |-----------|------------|---------|--------------|
@@ -208,7 +211,7 @@ Optimized for PC applications with excellent performance:
 - ✅ Real-time subscriptions
 - ✅ C# wrapper with WinForms, WPF, and ASP.NET examples
 - ✅ Route path support for ControlLogix (slots 0-31)
-- ✅ All 31 unit tests passing
+- ✅ All 117+ unit tests passing
 
 **Note:** ControlLogix systems with CPUs in different slots can use the `RoutePath` API:
 ```rust
@@ -224,9 +227,7 @@ The easiest way to get started is by adding the crate to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-```toml
-[dependencies]
-rust-ethernet-ip = "0.6.2"
+rust-ethernet-ip = "0.6.3"
 tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -234,7 +235,7 @@ tokio = { version = "1.0", features = ["full"] }
 Install via NuGet:
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="0.6.2" />
+<PackageReference Include="RustEtherNetIp" Version="0.6.3" />
 ```
 
 Or via Package Manager Console:

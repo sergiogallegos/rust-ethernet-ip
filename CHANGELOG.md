@@ -5,6 +5,46 @@ All notable changes to the rust-ethernet-ip project will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-03-01
+
+### 🐛 Fixed — Critical
+- **Missing CIP type handlers**: Added LINT, USINT, UINT, UDINT, ULINT, and LREAL to `parse_cip_response` — these types were silently falling through to unknown-type error
+- **CIP response bounds check**: Fixed `parse_cip_response` guard from `< 2` to `< 4`, preventing index-out-of-bounds panic
+- **UDT STRING parsing**: Fixed `parse_member_value` to use 4-byte DINT length (was incorrectly using 2-byte), matching Allen-Bradley STRING format; updated `get_data_type_size` from 84 to 88
+
+### 🐛 Fixed — High
+- **Packet negotiation**: Rewrote `negotiate_packet_size` with correct CIP Get Attribute List format (proper path-size byte, 8-bit logical segments, correct attribute ID)
+- **Keep-alive packet**: Replaced malformed 4-byte SendRRData stub with proper 24-byte EtherNet/IP NOP command
+- **Unregister session**: Fixed packet length field (was 4, should be 0) and removed extraneous protocol-version payload
+- **PlcValue::String type code**: Fixed `get_data_type()` returning 0x02A0 (structure handle) instead of correct 0x00CE (STRING)
+- **TagPath "LEN" greedy match**: Fixed parser to check "LEN" is a complete segment (not prefix of e.g. "LENGTH")
+- **FFI client ID overflow**: Changed `next_id += 1` to `wrapping_add(1)` with reset to 1 when negative, preventing i32 overflow
+
+### 🐛 Fixed — Medium
+- **Subscription threshold for all types**: Extended change detection to LREAL (deadband), all integer types, BOOL, and STRING (equality); previously only REAL was checked
+- **UDT member bounds checks**: Added empty-data guards for BOOL, SINT, and USINT in `parse_member_value`
+
+### 🐛 Fixed — C# Wrapper
+- **WriteUdtMember phantom keys**: Removed injection of `_last_modified` and `_modified_member` keys that corrupted UDT data
+- **IEtherNetIpClient.ReadTagsBatch**: Fixed return type from `Dictionary<string, TagReadResult>` to `Dictionary<string, TagReadResultBatch>` to match implementation
+- **WriteTag missing types**: Added Sint, Lint, Usint, Uint, Udint, Ulint, and Lreal cases — these types previously threw at runtime
+- **Keep-alive reconnect**: Fixed reconnect to preserve route path via `_currentRoutePath` field instead of falling back to direct connection
+- **Debug output cleanup**: Removed 20+ `Console.WriteLine` debug statements from library code
+
+### ✨ Added
+- **PLC Simulator for testing without hardware**
+  - New `plc_sim` binary and in-process test simulator
+  - Expanded simulator-backed Rust and C# test coverage
+- **Broader automated test coverage**
+  - FFI safety checks, concurrency tests, bounds parsing, network failure tests
+- **Tag introspection**: `get_tag_attributes` for discovering tag type, size, and scope
+- **Subscriptions API**: Real-time tag monitoring with `subscribe_tag` / `unsubscribe_tag`
+- **Bit-level API**: Read/write individual bits within DINT tags
+- **Structured error types**: Rich `EtherNetIpError` enum replacing string errors
+
+### 📚 Documentation
+- **Tag introspection guide**: `docs/tag_introspection.md`
+
 ## [0.6.2] - 2026-01-24
 
 ### ✨ Added

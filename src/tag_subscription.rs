@@ -71,9 +71,9 @@ impl TagSubscription {
     pub async fn update_value(&self, value: &PlcValue) -> Result<()> {
         let mut last_value = self.last_value.lock().await;
 
-        // Check if value has changed significantly
-        if let (Some(PlcValue::Real(old)), PlcValue::Real(new)) = (last_value.as_ref(), value) {
-            if (*new - *old).abs() < self.options.change_threshold {
+        // Check if value has changed enough to notify
+        if let Some(old) = last_value.as_ref() {
+            if !Self::value_changed(old, value, self.options.change_threshold) {
                 return Ok(());
             }
         }
@@ -87,6 +87,28 @@ impl TagSubscription {
             .map_err(|e| EtherNetIpError::Subscription(format!("Failed to send update: {e}")))?;
 
         Ok(())
+    }
+
+    /// Checks whether a value has changed enough to warrant a notification.
+    /// For floating-point types, uses the change_threshold as a deadband.
+    /// For all other types, triggers on any change.
+    fn value_changed(old: &PlcValue, new: &PlcValue, threshold: f32) -> bool {
+        match (old, new) {
+            (PlcValue::Real(o), PlcValue::Real(n)) => (*n - *o).abs() >= threshold,
+            (PlcValue::Lreal(o), PlcValue::Lreal(n)) => (*n - *o).abs() >= threshold as f64,
+            (PlcValue::Bool(o), PlcValue::Bool(n)) => o != n,
+            (PlcValue::Sint(o), PlcValue::Sint(n)) => o != n,
+            (PlcValue::Int(o), PlcValue::Int(n)) => o != n,
+            (PlcValue::Dint(o), PlcValue::Dint(n)) => o != n,
+            (PlcValue::Lint(o), PlcValue::Lint(n)) => o != n,
+            (PlcValue::Usint(o), PlcValue::Usint(n)) => o != n,
+            (PlcValue::Uint(o), PlcValue::Uint(n)) => o != n,
+            (PlcValue::Udint(o), PlcValue::Udint(n)) => o != n,
+            (PlcValue::Ulint(o), PlcValue::Ulint(n)) => o != n,
+            (PlcValue::String(o), PlcValue::String(n)) => o != n,
+            // Different types or UDTs — always notify
+            _ => true,
+        }
     }
 
     /// Waits for the next value update

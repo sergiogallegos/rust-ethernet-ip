@@ -159,7 +159,7 @@ impl MockEipClient {
 
 /// Creates test UDT data with known values
 fn create_test_udt_data() -> Vec<u8> {
-    let mut data = vec![0u8; 96]; // Total size for test UDT
+    let mut data = vec![0u8; 100]; // Total size for test UDT
 
     // BOOL member (offset 0)
     data[0] = 0xFF; // bool1 = true (PLC standard: 0xFF = true, 0x00 = false)
@@ -173,11 +173,11 @@ fn create_test_udt_data() -> Vec<u8> {
     // REAL member (offset 8)
     data[8..12].copy_from_slice(&3.14159f32.to_le_bytes()); // real1 = 3.14159
 
-    // STRING member (offset 12)
+    // STRING member (offset 12) - 4-byte DINT length followed by string data
     let string_value = "Hello UDT!";
-    let length = string_value.len() as u16;
-    data[12..14].copy_from_slice(&length.to_le_bytes());
-    data[14..14 + string_value.len()].copy_from_slice(string_value.as_bytes());
+    let length = string_value.len() as u32;
+    data[12..16].copy_from_slice(&length.to_le_bytes());
+    data[16..16 + string_value.len()].copy_from_slice(string_value.as_bytes());
 
     data
 }
@@ -215,7 +215,7 @@ fn create_test_udt_definition() -> UserDefinedType {
         name: "string1".to_string(),
         data_type: 0x00CE,
         offset: 12,
-        size: 84,
+        size: 88,
     });
 
     udt
@@ -258,7 +258,7 @@ async fn test_udt_data_type_parsing() {
         size: 84,
     };
     let string_value = udt
-        .parse_member_value(&string_member, &test_data[12..96])
+        .parse_member_value(&string_member, &test_data[12..100])
         .unwrap();
     assert_eq!(string_value, PlcValue::String("Hello UDT!".to_string()));
 }
@@ -296,14 +296,14 @@ async fn test_udt_data_type_serialization() {
         name: "test_string".to_string(),
         data_type: 0x00CE,
         offset: 0,
-        size: 84,
+        size: 88,
     };
     let string_data = udt
         .serialize_member_value(&string_member, &PlcValue::String("Hello".to_string()))
         .unwrap();
-    assert_eq!(string_data.len(), 8); // 2 bytes length + 5 bytes data + 1 byte padding
-    assert_eq!(&string_data[0..2], &(5u16).to_le_bytes());
-    assert_eq!(&string_data[2..7], b"Hello");
+    assert_eq!(string_data.len(), 10); // 4 bytes DINT length + 5 bytes data + 1 byte padding
+    assert_eq!(&string_data[0..4], &(5u32).to_le_bytes());
+    assert_eq!(&string_data[4..9], b"Hello");
 }
 
 #[tokio::test]
@@ -402,7 +402,7 @@ async fn test_udt_member_metadata() {
     // Test getting member size
     assert_eq!(udt.get_member_size("bool1"), Some(1));
     assert_eq!(udt.get_member_size("real1"), Some(4));
-    assert_eq!(udt.get_member_size("string1"), Some(84));
+    assert_eq!(udt.get_member_size("string1"), Some(88));
     assert_eq!(udt.get_member_size("NonExistentMember"), None);
 
     // Test getting member data type
@@ -526,9 +526,9 @@ async fn test_udt_error_handling() {
         name: "test_string".to_string(),
         data_type: 0x00CE,
         offset: 0,
-        size: 84,
+        size: 88,
     };
-    let result = udt.parse_member_value(&string_member, &[1]); // Only 1 byte, need at least 2
+    let result = udt.parse_member_value(&string_member, &[1]); // Only 1 byte, need at least 4
     assert!(result.is_err());
 }
 
@@ -634,19 +634,24 @@ async fn test_udt_edge_cases() {
         name: "test_string".to_string(),
         data_type: 0x00CE,
         offset: 0,
-        size: 84,
+        size: 88,
     };
     let string_data = udt
         .serialize_member_value(&string_member, &PlcValue::String(max_string))
         .unwrap();
-    assert_eq!(string_data.len(), 84); // Should be exactly 84 bytes (2 length + 82 data)
+    assert_eq!(string_data.len(), 86); // Should be exactly 86 bytes (4 DINT length + 82 data)
 
     // Test STRING with length exceeding maximum
     let too_long_string = "X".repeat(100);
     let string_data = udt
         .serialize_member_value(&string_member, &PlcValue::String(too_long_string))
         .unwrap();
-    assert_eq!(string_data.len(), 84); // Should be truncated to 84 bytes
-    let length = u16::from_le_bytes([string_data[0], string_data[1]]);
+    assert_eq!(string_data.len(), 86); // Should be truncated to 86 bytes
+    let length = u32::from_le_bytes([
+        string_data[0],
+        string_data[1],
+        string_data[2],
+        string_data[3],
+    ]);
     assert_eq!(length, 82); // Should be truncated to max length
 }

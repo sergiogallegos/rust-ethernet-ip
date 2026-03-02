@@ -237,7 +237,7 @@ impl UdtManager {
             0x00C9 => 8,  // ULINT (64-bit unsigned)
             0x00CA => 4,  // REAL (32-bit float)
             0x00CB => 8,  // LREAL (64-bit float)
-            0x00CE => 84, // STRING (max 82 chars + 2 length bytes)
+            0x00CE => 88, // STRING (4-byte DINT length + 82 chars + 2 padding)
             _ => 4,       // Default to 4 bytes for unknown types
         }
     }
@@ -650,19 +650,19 @@ impl UserDefinedType {
                 Ok(PlcValue::Lreal(f64::from_le_bytes(bytes)))
             }
             0x00CE => {
-                // STRING type - first 2 bytes are length, followed by data
-                if data.len() < 2 {
+                // STRING type - first 4 bytes are length (DINT), followed by data (up to 82 bytes)
+                if data.len() < 4 {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "STRING data too short".to_string(),
                     ));
                 }
-                let length = u16::from_le_bytes([data[0], data[1]]) as usize;
-                if data.len() < 2 || data.len() - 2 < length {
+                let length = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+                if data.len() - 4 < length {
                     return Err(crate::error::EtherNetIpError::Protocol(
                         "STRING data incomplete".to_string(),
                     ));
                 }
-                let string_data = &data[2..2 + length];
+                let string_data = &data[4..4 + length];
                 let string_value = String::from_utf8_lossy(string_data).to_string();
                 Ok(PlcValue::String(string_value))
             }
@@ -761,9 +761,10 @@ impl UserDefinedType {
                 match value {
                     PlcValue::String(s) => {
                         let mut result = Vec::new();
-                        let max_data_len = member.size.saturating_sub(2); // Subtract 2 for length bytes
+                        let max_data_len = member.size.saturating_sub(4); // Subtract 4 for DINT length field
                         let max_chars = (max_data_len as usize).min(82); // Max STRING length is 82
-                        let length = (s.len() as u16).min(max_chars as u16);
+                        let length = (s.len() as u32).min(max_chars as u32);
+                        // Length field is 4 bytes (DINT)
                         result.extend_from_slice(&length.to_le_bytes());
                         result.extend_from_slice(&s.as_bytes()[..length as usize]);
                         // Pad to even byte boundary, but don't exceed member size

@@ -446,15 +446,20 @@ impl<'a> TagPathParser<'a> {
         // Consume '.'
         self.consume_char('.');
 
-        // Check for special string operations
-        if self.input[self.position..].starts_with("LEN") {
+        // Check for special string operations — only match if it's the complete segment
+        let remaining = &self.input[self.position..];
+        if remaining.starts_with("LEN")
+            && (remaining.len() == 3
+                || remaining.as_bytes()[3] == b'.'
+                || remaining.as_bytes()[3] == b'[')
+        {
             self.position += 3;
             return Ok(TagPath::StringLength {
                 base_path: Box::new(base_path),
             });
         }
 
-        if self.input[self.position..].starts_with("DATA[") {
+        if remaining.starts_with("DATA[") {
             self.position += 5; // Skip "DATA["
             let index = self.parse_number()?;
             if !self.consume_char(']') {

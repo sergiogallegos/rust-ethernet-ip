@@ -83,6 +83,7 @@ namespace RustEtherNetIp
     {
         private int _clientId = -1;
         private string _currentAddress = string.Empty;
+        private RoutePath? _currentRoutePath;
         private readonly object _lock = new();
         private bool _isDisposed;
         private readonly Dictionary<string, TagMetadata> _tagCache = new();
@@ -339,6 +340,7 @@ namespace RustEtherNetIp
                         if (_clientId >= 0)
                         {
                             _currentAddress = address;
+                            _currentRoutePath = routePath;
                             eip_set_max_packet_size(_clientId, 4000);
                             StartKeepAlive();
                         }
@@ -450,11 +452,15 @@ namespace RustEtherNetIp
                             if (eip_check_health_detailed(_clientId, out isHealthy) != 0 || isHealthy == 0)
                             {
                                 // Connection lost, try to reconnect
-                                Console.WriteLine("Connection health check failed, attempting reconnect...");
+                                var savedAddress = _currentAddress;
+                                var savedRoute = _currentRoutePath;
                                 Disconnect();
-                                if (!string.IsNullOrEmpty(_currentAddress))
+                                if (!string.IsNullOrEmpty(savedAddress))
                                 {
-                                    Connect(_currentAddress);
+                                    if (savedRoute != null)
+                                        ConnectWithRoute(savedAddress, savedRoute);
+                                    else
+                                        Connect(savedAddress);
                                 }
                             }
                         }
@@ -463,10 +469,9 @@ namespace RustEtherNetIp
                     {
                         break;
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
-                        // Log error but don't break the keep-alive loop
-                        Console.WriteLine($"Keep-alive error: {ex.Message}");
+                        // Swallow errors to keep the keep-alive loop running
                     }
                 }
             }, _keepAliveCts.Token);
@@ -1312,54 +1317,36 @@ namespace RustEtherNetIp
                 try
                 {
                     // First try normal UDT reading
-                    Console.WriteLine($"🔧 [DEBUG] Calling eip_read_udt for: {tagName}");
                     int result = eip_read_udt(_clientId, tagPtr, resultPtr, 16384);
-                    Console.WriteLine($"🔧 [DEBUG] eip_read_udt result: {result}");
-                    
+
                     if (result == 0)
                     {
                         // Success - convert the JSON result to PlcValue
                         string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
                         if (!string.IsNullOrEmpty(jsonResult))
                         {
-                            Console.WriteLine($"🔧 [DEBUG] UDT read successful, JSON length: {jsonResult.Length}");
-                            
-                            Console.WriteLine($"🔧 [DEBUG] JSON preview: {jsonResult.Substring(0, Math.Min(200, jsonResult.Length))}...");
-                            
                             // Try to parse as UdtData first (new format)
                             try
                             {
                                 var udtData = UdtData.FromJson(jsonResult);
-                                Console.WriteLine($"🔧 [DEBUG] Parsed as UdtData: SymbolId={udtData.SymbolId}, DataLength={udtData.Data?.Length ?? 0}");
                                 return PlcValue.UdtFromData(udtData);
                             }
-                            catch (Exception ex)
+                            catch
                             {
-                                Console.WriteLine($"🔧 [DEBUG] Failed to parse as UdtData: {ex.Message}, trying legacy format");
                                 // Fallback to legacy Dictionary format
                                 return PlcValue.FromJson(jsonResult);
                             }
                         }
-                        else
-                        {
-                            Console.WriteLine($"🔧 [DEBUG] Empty JSON result, trying chunked approach");
-                        }
                     }
-                    else
-                    {
-                        Console.WriteLine($"🔧 [DEBUG] eip_read_udt failed with result {result}, trying chunked approach");
-                    }
-                    
+
                     // If normal reading failed, try chunked reading
                     // This handles "Partial transfer" errors for large UDTs
-                    Console.WriteLine($"🔧 [DEBUG] Falling back to chunked reading");
                     return ReadUdtWithChunkedFallback(tagName);
                 }
-                catch (Exception ex)
+                catch
                 {
                     // Handle any UDT reading errors with chunked fallback
                     // This includes "Partial transfer" errors and other UDT issues
-                    Console.WriteLine($"🔧 [DEBUG] UDT reading failed, trying chunked approach: {ex.Message}");
                     return ReadUdtWithChunkedFallback(tagName);
                 }
                 finally
@@ -1372,52 +1359,39 @@ namespace RustEtherNetIp
 
         private PlcValue ReadUdtWithChunkedFallback(string tagName)
         {
-            // Actually call the Rust library's chunked reading method
+            // Chunked reading for large UDTs that exceed normal packet size
             // NOTE: This method is called from within ExecuteWithLock, so we don't need another lock
-            Console.WriteLine($"🔧 [DEBUG] Starting chunked reading for UDT: {tagName}");
-            
-            // Don't call ExecuteWithLock here - we're already inside a locked context from ReadUdt
             CheckConnection();
             IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
-            IntPtr resultPtr = Marshal.AllocHGlobal(16384); // Larger buffer for chunked reading
+            IntPtr resultPtr = Marshal.AllocHGlobal(16384);
             try
             {
-                Console.WriteLine($"🔧 [DEBUG] Calling eip_read_udt_chunked for: {tagName}");
                 int result = eip_read_udt_chunked(_clientId, tagPtr, resultPtr, 16384);
-                Console.WriteLine($"🔧 [DEBUG] eip_read_udt_chunked result: {result}");
-                
+
                 if (result == 0)
                 {
-                    // Success - convert the JSON result to PlcValue
                     string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
                     if (!string.IsNullOrEmpty(jsonResult))
                     {
-                        Console.WriteLine($"🔧 [DEBUG] Chunked UDT read successful, JSON length: {jsonResult.Length}");
-                        Console.WriteLine($"🔧 [DEBUG] JSON preview: {jsonResult.Substring(0, Math.Min(200, jsonResult.Length))}...");
-                        
                         // Try to parse as UdtData first (new format)
                         try
                         {
                             var udtData = UdtData.FromJson(jsonResult);
-                            Console.WriteLine($"🔧 [DEBUG] Parsed as UdtData: SymbolId={udtData.SymbolId}, DataLength={udtData.Data?.Length ?? 0}");
                             return PlcValue.UdtFromData(udtData);
                         }
-                        catch (Exception ex)
+                        catch
                         {
-                            Console.WriteLine($"🔧 [DEBUG] Failed to parse as UdtData: {ex.Message}, trying legacy format");
                             // Fallback to legacy Dictionary format
                             return PlcValue.FromJson(jsonResult);
                         }
                     }
                     else
                     {
-                        Console.WriteLine($"🔧 [DEBUG] Empty JSON result from chunked read");
                         throw new Exception($"Empty response when reading UDT tag '{tagName}' with chunked reading.");
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"🔧 [DEBUG] eip_read_udt_chunked failed with result {result}");
                     throw new Exception($"Failed to read UDT tag '{tagName}' with chunked reading. Check tag exists and is UDT type.");
                 }
             }
@@ -1468,7 +1442,6 @@ namespace RustEtherNetIp
                 try
                 {
                     // For large UDTs, use chunked writing approach
-                    Console.WriteLine($"🔧 [DEBUG] Writing UDT with chunked method: {tagName}");
                     
                     string jsonValue;
                     
@@ -1936,36 +1909,22 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                Console.WriteLine($"🔧 [DEBUG] Writing UDT member: {udtName}.{memberName}");
-                
-                // For now, we'll read the entire UDT, modify the specific member, and write it back
-                // This is a simplified approach - in a real implementation, we'd use direct member access
-                try
+
+                // Read the entire UDT, modify the specific member, and write it back
+                var udtValue = ReadUdt(udtName);
+                if (udtValue.IsUdt)
                 {
-                    var udtValue = ReadUdt(udtName);
-                    if (udtValue.IsUdt)
-                    {
-                        var udtMembers = udtValue.UdtMembers ?? throw new InvalidOperationException($"UDT '{udtName}' returned raw data without member definitions.");
-                        // Create a new UDT with the updated member
-                        var updatedMembers = new Dictionary<string, PlcValue>(udtMembers);
-                        updatedMembers[memberName] = value;
-                        updatedMembers["_last_modified"] = PlcValue.String(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                        updatedMembers["_modified_member"] = PlcValue.String(memberName);
-                        
-                        var updatedUdt = PlcValue.Udt(updatedMembers);
-                        WriteUdt(udtName, updatedUdt);
-                        
-                        Console.WriteLine($"🔧 [DEBUG] Successfully updated UDT member: {udtName}.{memberName}");
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException($"Failed to read UDT {udtName}");
-                    }
+                    var udtMembers = udtValue.UdtMembers ?? throw new InvalidOperationException($"UDT '{udtName}' returned raw data without member definitions.");
+                    // Create a new UDT with the updated member
+                    var updatedMembers = new Dictionary<string, PlcValue>(udtMembers);
+                    updatedMembers[memberName] = value;
+
+                    var updatedUdt = PlcValue.Udt(updatedMembers);
+                    WriteUdt(udtName, updatedUdt);
                 }
-                catch (Exception ex)
+                else
                 {
-                    Console.WriteLine($"🔧 [DEBUG] Failed to write UDT member: {ex.Message}");
-                    throw;
+                    throw new InvalidOperationException($"Failed to read UDT {udtName}");
                 }
             });
         }
@@ -2738,14 +2697,35 @@ namespace RustEtherNetIp
                 case PlcValueType.Bool:
                     WriteBool(tagName, value.As<bool>());
                     break;
+                case PlcValueType.Sint:
+                    WriteSint(tagName, value.As<sbyte>());
+                    break;
+                case PlcValueType.Int:
+                    WriteInt(tagName, value.As<short>());
+                    break;
                 case PlcValueType.Dint:
                     WriteDint(tagName, value.As<int>());
+                    break;
+                case PlcValueType.Lint:
+                    WriteLint(tagName, value.As<long>());
+                    break;
+                case PlcValueType.Usint:
+                    WriteUsint(tagName, value.As<byte>());
+                    break;
+                case PlcValueType.Uint:
+                    WriteUint(tagName, value.As<ushort>());
+                    break;
+                case PlcValueType.Udint:
+                    WriteUdint(tagName, value.As<uint>());
+                    break;
+                case PlcValueType.Ulint:
+                    WriteUlint(tagName, value.As<ulong>());
                     break;
                 case PlcValueType.Real:
                     WriteReal(tagName, value.As<float>());
                     break;
-                case PlcValueType.Int:
-                    WriteInt(tagName, value.As<short>());
+                case PlcValueType.Lreal:
+                    WriteLreal(tagName, value.As<double>());
                     break;
                 case PlcValueType.String:
                     WriteString(tagName, value.As<string>());

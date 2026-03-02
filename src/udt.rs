@@ -552,9 +552,21 @@ impl UserDefinedType {
         data: &[u8],
     ) -> crate::error::Result<PlcValue> {
         match member.data_type {
-            0x00C1 => Ok(PlcValue::Bool(data[0] != 0)),
+            0x00C1 => {
+                if data.is_empty() {
+                    return Err(crate::error::EtherNetIpError::Protocol(
+                        "BOOL data too short".to_string(),
+                    ));
+                }
+                Ok(PlcValue::Bool(data[0] != 0))
+            }
             0x00C2 => {
                 // SINT (8-bit signed integer)
+                if data.is_empty() {
+                    return Err(crate::error::EtherNetIpError::Protocol(
+                        "SINT data too short".to_string(),
+                    ));
+                }
                 Ok(PlcValue::Sint(data[0] as i8))
             }
             0x00C3 => {
@@ -592,6 +604,11 @@ impl UserDefinedType {
             }
             0x00C6 => {
                 // USINT (8-bit unsigned integer)
+                if data.is_empty() {
+                    return Err(crate::error::EtherNetIpError::Protocol(
+                        "USINT data too short".to_string(),
+                    ));
+                }
                 Ok(PlcValue::Usint(data[0]))
             }
             0x00C7 => {

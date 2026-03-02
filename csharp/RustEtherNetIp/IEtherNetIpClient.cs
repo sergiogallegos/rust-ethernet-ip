@@ -77,7 +77,7 @@ namespace RustEtherNetIp
         /// </summary>
         /// <param name="tagNames">Array of tag names to read</param>
         /// <returns>Dictionary of tag names to read results</returns>
-        Dictionary<string, TagReadResult> ReadTagsBatch(string[] tagNames);
+        Dictionary<string, TagReadResultBatch> ReadTagsBatch(string[] tagNames);
         
         /// <summary>
         /// Write multiple tags in a single optimized batch operation.

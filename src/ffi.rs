@@ -64,7 +64,10 @@ pub unsafe extern "C" fn eip_connect(ip_address: *const c_char) -> c_int {
             Err(_) => return -1,
         };
         let id = *next_id;
-        *next_id += 1;
+        *next_id = next_id.wrapping_add(1);
+        if *next_id < 1 {
+            *next_id = 1;
+        }
         id
     };
 
@@ -147,7 +150,10 @@ pub unsafe extern "C" fn eip_connect_with_route(
             Err(_) => return -1,
         };
         let id = *next_id;
-        *next_id += 1;
+        *next_id = next_id.wrapping_add(1);
+        if *next_id < 1 {
+            *next_id = 1;
+        }
         id
     };
 

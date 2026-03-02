@@ -1218,7 +1218,7 @@ impl PlcValue {
             PlcValue::Ulint(_) => 0x00C9,  // ULINT (unsigned long long)
             PlcValue::Real(_) => 0x00CA,   // REAL (float)
             PlcValue::Lreal(_) => 0x00CB,  // LREAL (double)
-            PlcValue::String(_) => 0x02A0, // Allen-Bradley STRING type (matches PLC read responses)
+            PlcValue::String(_) => 0x00CE, // Allen-Bradley STRING type
             PlcValue::Udt(_) => 0x00A0,    // UDT placeholder
         }
     }
@@ -3768,35 +3768,32 @@ impl EipClient {
     /// and updates the client's configuration accordingly
     async fn negotiate_packet_size(&mut self) -> crate::error::Result<()> {
         // Build CIP request for Get Attribute List (Service 0x03)
-        // Query the Message Router object (Class 0x02) for its attributes
-        let mut request = Vec::new();
-
-        // Service: Get Attribute List (0x03)
-        request.push(0x03);
-
-        // Path: Message Router (Class 0x02)
-        request.push(0x20); // Class ID
-        request.extend_from_slice(&[0x02, 0x00]); // Class 0x02 (Message Router)
-        request.push(0x25); // Instance ID (0x25 = all instances)
-        request.extend_from_slice(&[0x00, 0x00]);
-
+        // Query the Message Router object (Class 0x02, Instance 1) for max packet size
+        let mut request = vec![
+            0x03, // Service: Get Attribute List
+            0x02, // Path size: 2 words (4 bytes)
+            0x20, 0x02, // 8-bit class segment: Class 0x02 (Message Router)
+            0x24, 0x01, // 8-bit instance segment: Instance 1
+        ];
         // Attribute count
         request.extend_from_slice(&[0x01, 0x00]); // 1 attribute
+                                                  // Attribute: Max Packet Size (attribute 4 on the Message Router)
+        request.extend_from_slice(&[0x04, 0x00]);
 
-        // Attribute: Max Packet Size (0x03)
-        request.extend_from_slice(&[0x03, 0x00]);
-
-        // Send request
+        // Send request and extract CIP from CPF response
         let response = self.send_cip_request(&request).await?;
+        let cip_data = self.extract_cip_from_response(&response)?;
 
-        // Parse response
-        if response.len() >= 4 {
-            let max_packet_size =
-                u32::from_le_bytes([response[0], response[1], response[2], response[3]]);
+        // CIP response format: [Service Reply][Reserved][Status][AddtlStatusSize][...data...]
+        // For Get Attribute List reply: after the 4-byte CIP header, we get:
+        // [AttrCount(2)] [AttrID(2)] [Status(2)] [Value(2)]
+        // The attribute value for max packet size is a UINT (2 bytes)
+        if cip_data.len() >= 12 && cip_data[2] == 0x00 {
+            // Skip CIP header (4 bytes) + attr count (2) + attr id (2) + attr status (2) = 10
+            let max_packet_size = u16::from_le_bytes([cip_data[10], cip_data[11]]) as u32;
 
             // Update client's max packet size (with reasonable limits)
             self.max_packet_size = max_packet_size.clamp(504, 4000);
-
             tracing::debug!("Negotiated packet size: {} bytes", self.max_packet_size);
         } else {
             // If negotiation fails, use default size
@@ -4447,10 +4444,13 @@ impl EipClient {
     }
 
     async fn send_keep_alive(&mut self) -> crate::error::Result<()> {
-        let packet = vec![
-            0x6F, 0x00, // Command: SendRRData
-            0x00, 0x00, // Length: 0
-        ];
+        // Send NOP command (0x0000) — a valid 24-byte EtherNet/IP packet
+        // that keeps the TCP connection alive without affecting session state.
+        // NOP requires no response, so we don't read one.
+        let packet = vec![0u8; 24];
+        // Command: NOP (0x0000) — already zero
+        // Length: 0 — already zero
+        // Session handle, status, context, options — all zero for NOP
 
         let mut stream = self.stream.lock().await;
         stream.write_all(&packet).await?;
@@ -4798,7 +4798,7 @@ impl EipClient {
             cip_response
         );
 
-        if cip_response.len() < 2 {
+        if cip_response.len() < 4 {
             return Err(EtherNetIpError::Protocol(
                 "CIP response too short".to_string(),
             ));
@@ -4889,6 +4889,84 @@ impl EipClient {
                     tracing::trace!("Parsed DINT: {}", value);
                     Ok(PlcValue::Dint(value))
                 }
+                0x00C5 => {
+                    // LINT (64-bit signed integer)
+                    if value_data.len() < 8 {
+                        return Err(EtherNetIpError::Protocol(
+                            "Insufficient data for LINT value".to_string(),
+                        ));
+                    }
+                    let value = i64::from_le_bytes([
+                        value_data[0],
+                        value_data[1],
+                        value_data[2],
+                        value_data[3],
+                        value_data[4],
+                        value_data[5],
+                        value_data[6],
+                        value_data[7],
+                    ]);
+                    tracing::trace!("Parsed LINT: {}", value);
+                    Ok(PlcValue::Lint(value))
+                }
+                0x00C6 => {
+                    // USINT (8-bit unsigned integer)
+                    if value_data.is_empty() {
+                        return Err(EtherNetIpError::Protocol(
+                            "No data for USINT value".to_string(),
+                        ));
+                    }
+                    let value = value_data[0];
+                    tracing::trace!("Parsed USINT: {}", value);
+                    Ok(PlcValue::Usint(value))
+                }
+                0x00C7 => {
+                    // UINT (16-bit unsigned integer)
+                    if value_data.len() < 2 {
+                        return Err(EtherNetIpError::Protocol(
+                            "Insufficient data for UINT value".to_string(),
+                        ));
+                    }
+                    let value = u16::from_le_bytes([value_data[0], value_data[1]]);
+                    tracing::trace!("Parsed UINT: {}", value);
+                    Ok(PlcValue::Uint(value))
+                }
+                0x00C8 => {
+                    // UDINT (32-bit unsigned integer)
+                    if value_data.len() < 4 {
+                        return Err(EtherNetIpError::Protocol(
+                            "Insufficient data for UDINT value".to_string(),
+                        ));
+                    }
+                    let value = u32::from_le_bytes([
+                        value_data[0],
+                        value_data[1],
+                        value_data[2],
+                        value_data[3],
+                    ]);
+                    tracing::trace!("Parsed UDINT: {}", value);
+                    Ok(PlcValue::Udint(value))
+                }
+                0x00C9 => {
+                    // ULINT (64-bit unsigned integer)
+                    if value_data.len() < 8 {
+                        return Err(EtherNetIpError::Protocol(
+                            "Insufficient data for ULINT value".to_string(),
+                        ));
+                    }
+                    let value = u64::from_le_bytes([
+                        value_data[0],
+                        value_data[1],
+                        value_data[2],
+                        value_data[3],
+                        value_data[4],
+                        value_data[5],
+                        value_data[6],
+                        value_data[7],
+                    ]);
+                    tracing::trace!("Parsed ULINT: {}", value);
+                    Ok(PlcValue::Ulint(value))
+                }
                 0x00CA => {
                     // REAL
                     if value_data.len() < 4 {
@@ -4904,6 +4982,26 @@ impl EipClient {
                     ]);
                     tracing::trace!("Parsed REAL: {}", value);
                     Ok(PlcValue::Real(value))
+                }
+                0x00CB => {
+                    // LREAL (64-bit float)
+                    if value_data.len() < 8 {
+                        return Err(EtherNetIpError::Protocol(
+                            "Insufficient data for LREAL value".to_string(),
+                        ));
+                    }
+                    let value = f64::from_le_bytes([
+                        value_data[0],
+                        value_data[1],
+                        value_data[2],
+                        value_data[3],
+                        value_data[4],
+                        value_data[5],
+                        value_data[6],
+                        value_data[7],
+                    ]);
+                    tracing::trace!("Parsed LREAL: {}", value);
+                    Ok(PlcValue::Lreal(value))
                 }
                 0x00CE => {
                     // Allen-Bradley STRING type (0x00CE)

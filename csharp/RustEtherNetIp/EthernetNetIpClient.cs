@@ -1166,8 +1166,7 @@ namespace RustEtherNetIp
                         if (result == 0)
                         {
                             string value = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
-                            if (!string.IsNullOrEmpty(value))
-                                return value;
+                            return value; // Return even if empty (LEN=0 is valid for zeroed/cleared STRING tags)
                         }
                     }
                     finally
@@ -1188,6 +1187,11 @@ namespace RustEtherNetIp
                                 var plcValue = PlcValue.FromJson(jsonResult);
                                 if (plcValue.Type == PlcValueType.String)
                                     return plcValue.As<string>();
+
+                                // Tag exists and was read successfully, but not parsed as String type.
+                                // This happens with zeroed/empty STRING members (LEN=0) in UDTs —
+                                // the raw bytes get parsed as a different type. Return empty string.
+                                return string.Empty;
                             }
                         }
                     }

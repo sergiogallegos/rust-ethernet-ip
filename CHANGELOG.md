@@ -10,17 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🚧 0.7.0 Preparation (Not Released)
 - This section tracks work in progress for the upcoming `0.7.0` release line.
 - Crate/package version remains `0.6.3` until the release is finalized.
+- Work is merged to `main` for ongoing testing/hardening; publishing is intentionally deferred until release gates are met.
+
+### ✅ 0.7.0 Hardening Checklist (In Progress)
+- [x] Preserve full commit-by-commit history on `main` for traceability.
+- [x] Keep `0.6.3` as last stable published version while `0.7.0` remains unreleased.
+- [x] Add unreleased documentation notes in README and CHANGELOG.
+- [ ] Run full cross-language regression matrix (Rust + C#) after each high-impact change.
+- [ ] Add/expand simulator-based failure-mode tests (timeouts, reconnect, partial batch failures).
+- [ ] Add explicit FFI contract tests for mixed batch operations, including malformed payload handling.
+- [ ] Complete FFI batch config APIs (`eip_configure_batch_operations`, `eip_get_batch_config`) or clearly gate them as unsupported across wrappers.
+- [ ] Add performance baseline report (single read/write, batch read/write, mixed execute) and compare against `0.6.3`.
+- [ ] Add compatibility test pass for route-path scenarios and UDT-heavy workloads.
+- [ ] Perform docs/API audit to ensure examples and behavior match implemented semantics.
+- [ ] Freeze release candidate, then bump to `0.7.0` only when all gates pass.
 
 ### 🐛 Fixed — Core Library
 - **Connection pool reuse**: `PlcManager::get_connection` now reuses the least-recently-used active client when the pool is full instead of recreating a new TCP/session connection each time.
 
 ### 🐛 Fixed — FFI
-- **Batch API status codes**: `eip_write_tags_batch` and `eip_execute_batch` now return failure (`-1`) while unimplemented, matching their error payloads.
+- **Native batch execution**: Implemented `eip_write_tags_batch` and `eip_execute_batch` with typed JSON payload parsing and structured per-operation results.
 - **Batch config API status code**: `eip_configure_batch_operations` now returns failure (`-1`) while unimplemented.
+- **Response buffer safety cleanup**: Centralized FFI output buffer write handling for batch responses to reduce duplicated unsafe boundary code.
 
 ### 🐛 Fixed — C# Wrapper
-- **Batch operation expectations**: Batch method XML docs/comments now explicitly state sequential fallback behavior where native typed-batch FFI is not yet implemented.
+- **Native batch wiring**: `WriteTagsBatch` and `ExecuteBatch` now use native FFI batch paths for non-UDT-member operations with per-item result mapping.
 - **Batch config API behavior**: `ConfigureBatchOperations` and `GetBatchConfig` now throw `NotSupportedException` instead of silently behaving as if configuration succeeded.
+- **UDT batch payload compatibility**: UDT raw bytes now serialize as numeric JSON arrays for Rust `Vec<u8>` compatibility (with regression test).
 
 ### 🧹 Cleanup
 - **Desktop app warnings**: Removed unused fields/locals in `examples/desktop_app` that were generating compile warnings.

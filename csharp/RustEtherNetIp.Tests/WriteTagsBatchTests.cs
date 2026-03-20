@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
 using Xunit;
 using RustEtherNetIp;
 
@@ -68,6 +71,26 @@ namespace RustEtherNetIp.Tests
                 call.MemberPath == "Member1_DINT" &&
                 call.Value.Type == PlcValueType.Dint &&
                 call.Value.As<int>() == 500);
+        }
+
+        [Fact]
+        public void ToRustRawValue_UdtData_Uses_Numeric_Byte_Array()
+        {
+            var method = typeof(EtherNetIpClient).GetMethod(
+                "ToRustRawValue",
+                BindingFlags.NonPublic | BindingFlags.Static);
+
+            Assert.NotNull(method);
+
+            var value = PlcValue.UdtFromData(new UdtData(77, new byte[] { 0, 1, 127, 255 }));
+            var raw = method!.Invoke(null, new object[] { value });
+            var json = JsonSerializer.SerializeToElement(raw);
+
+            Assert.Equal(77, json.GetProperty("symbol_id").GetInt32());
+
+            var data = json.GetProperty("data");
+            Assert.Equal(JsonValueKind.Array, data.ValueKind);
+            Assert.Equal(new[] { 0, 1, 127, 255 }, data.EnumerateArray().Select(x => x.GetInt32()));
         }
     }
 }

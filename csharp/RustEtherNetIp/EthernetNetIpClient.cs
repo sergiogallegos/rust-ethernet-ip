@@ -2099,7 +2099,8 @@ namespace RustEtherNetIp
                 return new
                 {
                     symbol_id = udtData.SymbolId,
-                    data = udtData.Data
+                    // Rust expects Vec<u8> as a JSON numeric array, not base64 text.
+                    data = Array.ConvertAll(udtData.Data, b => (int)b)
                 };
             }
 

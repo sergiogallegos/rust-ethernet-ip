@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -10,9 +11,14 @@ const CMD_SEND_RR_DATA: u16 = 0x006F;
 
 const CIP_READ_TAG: u8 = 0x4C;
 const CIP_WRITE_TAG: u8 = 0x4D;
+const CIP_MULTIPLE_SERVICE_PACKET: u8 = 0x0A;
 
 const CIP_REPLY_READ: u8 = 0xCC;
 const CIP_REPLY_WRITE: u8 = 0xCD;
+const CIP_REPLY_MULTIPLE_SERVICE_PACKET: u8 = 0x8A;
+
+const CIP_STATUS_SUCCESS: u8 = 0x00;
+const CIP_STATUS_PATH_SEGMENT_ERROR: u8 = 0x04;
 
 const CIP_TYPE_DINT: u16 = 0x00C4;
 const CIP_TYPE_BOOL: u16 = 0x00C1;
@@ -29,6 +35,49 @@ enum TagValue {
     Array(Vec<TagValue>),
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct SimBehavior {
+    /// When true, SendRRData responses are suppressed (client-side timeout path).
+    pub drop_send_rr_response: bool,
+    /// Suppress SendRRData responses once the global SendRRData count reaches this value.
+    /// Useful to let initial connect/list-tags succeed, then inject timeout on later operations.
+    pub drop_send_rr_response_after: Option<usize>,
+    /// Close the current connection once the global SendRRData count reaches this value.
+    pub disconnect_on_send_rr_after: Option<usize>,
+    /// Tags that should fail READ requests with CIP status 0x04.
+    pub fail_read_tags: Vec<String>,
+    /// Tags that should fail WRITE requests with CIP status 0x04.
+    pub fail_write_tags: Vec<String>,
+}
+
+struct SimRuntimeBehavior {
+    config: SimBehavior,
+    send_rr_count: AtomicUsize,
+}
+
+impl SimRuntimeBehavior {
+    fn new(config: SimBehavior) -> Self {
+        Self {
+            config,
+            send_rr_count: AtomicUsize::new(0),
+        }
+    }
+
+    fn should_fail_read(&self, tag_name: &str) -> bool {
+        self.config
+            .fail_read_tags
+            .iter()
+            .any(|configured| configured == tag_name)
+    }
+
+    fn should_fail_write(&self, tag_name: &str) -> bool {
+        self.config
+            .fail_write_tags
+            .iter()
+            .any(|configured| configured == tag_name)
+    }
+}
+
 pub struct SimulatedPlc {
     pub address: SocketAddr,
     shutdown: Option<oneshot::Sender<()>>,
@@ -36,11 +85,16 @@ pub struct SimulatedPlc {
 
 impl SimulatedPlc {
     pub async fn start() -> Self {
+        Self::start_with_behavior(SimBehavior::default()).await
+    }
+
+    pub async fn start_with_behavior(behavior: SimBehavior) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind simulator");
         let address = listener.local_addr().expect("local addr");
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let behavior = Arc::new(SimRuntimeBehavior::new(behavior));
         let tags = Arc::new(Mutex::new(HashMap::from([
             ("DINT_TAG".to_string(), TagValue::Dint(1234)),
             ("BOOL_TAG".to_string(), TagValue::Bool(true)),
@@ -59,7 +113,7 @@ impl SimulatedPlc {
             ),
         ])));
 
-        tokio::spawn(run_server(listener, tags, shutdown_rx));
+        tokio::spawn(run_server(listener, tags, behavior, shutdown_rx));
 
         Self {
             address,
@@ -79,6 +133,7 @@ impl Drop for SimulatedPlc {
 async fn run_server(
     listener: TcpListener,
     tags: Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: Arc<SimRuntimeBehavior>,
     mut shutdown_rx: oneshot::Receiver<()>,
 ) {
     loop {
@@ -87,8 +142,9 @@ async fn run_server(
             accept_result = listener.accept() => {
                 if let Ok((stream, _)) = accept_result {
                     let tags = Arc::clone(&tags);
+                    let behavior = Arc::clone(&behavior);
                     tokio::spawn(async move {
-                        handle_connection(stream, tags).await;
+                        handle_connection(stream, tags, behavior).await;
                     });
                 }
             }
@@ -96,7 +152,11 @@ async fn run_server(
     }
 }
 
-async fn handle_connection(mut stream: TcpStream, tags: Arc<Mutex<HashMap<String, TagValue>>>) {
+async fn handle_connection(
+    mut stream: TcpStream,
+    tags: Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: Arc<SimRuntimeBehavior>,
+) {
     loop {
         let mut header = [0u8; 24];
         if stream.read_exact(&mut header).await.is_err() {
@@ -122,7 +182,24 @@ async fn handle_connection(mut stream: TcpStream, tags: Arc<Mutex<HashMap<String
                 }
             }
             CMD_SEND_RR_DATA => {
-                let cip_response = build_cip_response(&payload, &tags);
+                let current = behavior.send_rr_count.fetch_add(1, Ordering::SeqCst) + 1;
+
+                if let Some(disconnect_after) = behavior.config.disconnect_on_send_rr_after {
+                    if current == disconnect_after {
+                        break;
+                    }
+                }
+
+                if behavior.config.drop_send_rr_response {
+                    continue;
+                }
+                if let Some(drop_after) = behavior.config.drop_send_rr_response_after {
+                    if current >= drop_after {
+                        continue;
+                    }
+                }
+
+                let cip_response = build_cip_response(&payload, &tags, &behavior);
                 let response = build_send_rr_response(session_handle, &cip_response);
                 if stream.write_all(&response).await.is_err() {
                     break;
@@ -170,23 +247,46 @@ fn build_send_rr_response(session_handle: u32, cip_response: &[u8]) -> Vec<u8> {
     response
 }
 
-fn build_cip_response(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>>>) -> Vec<u8> {
+fn build_cip_response(
+    payload: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: &Arc<SimRuntimeBehavior>,
+) -> Vec<u8> {
     let service = extract_cip_service(payload).unwrap_or(0);
     match service {
-        CIP_READ_TAG => build_read_response(payload, tags),
+        CIP_READ_TAG => build_read_response(payload, tags, behavior),
         CIP_WRITE_TAG => {
-            handle_write(payload, tags);
-            vec![CIP_REPLY_WRITE, 0x00, 0x00, 0x00]
+            handle_write(payload, tags, behavior)
+        }
+        CIP_MULTIPLE_SERVICE_PACKET => {
+            build_multiple_service_response(payload, tags, behavior)
         }
         _ => vec![CIP_REPLY_READ, 0x00, 0x01, 0x00],
     }
 }
 
-fn build_read_response(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>>>) -> Vec<u8> {
+fn build_read_response(
+    payload: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: &Arc<SimRuntimeBehavior>,
+) -> Vec<u8> {
     let cip_request = extract_cip_request(payload);
+    build_read_response_from_cip_request(&cip_request, tags, behavior)
+}
+
+fn build_read_response_from_cip_request(
+    cip_request: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: &Arc<SimRuntimeBehavior>,
+) -> Vec<u8> {
     let (tag_name, element_index) =
-        parse_tag_and_path(&cip_request).unwrap_or(("DINT_TAG".to_string(), None));
-    let requested_count = parse_read_element_count(&cip_request).unwrap_or(1) as usize;
+        parse_tag_and_path(cip_request).unwrap_or(("DINT_TAG".to_string(), None));
+
+    if behavior.should_fail_read(&tag_name) {
+        return build_cip_error_reply(CIP_REPLY_READ, CIP_STATUS_PATH_SEGMENT_ERROR);
+    }
+
+    let requested_count = parse_read_element_count(cip_request).unwrap_or(1) as usize;
     let tags_guard = tags.lock().expect("tag lock");
     let value = tags_guard
         .get(&tag_name)
@@ -224,22 +324,38 @@ fn extract_cip_service(payload: &[u8]) -> Option<u8> {
     None
 }
 
-fn handle_write(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>>>) {
+fn handle_write(
+    payload: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: &Arc<SimRuntimeBehavior>,
+) -> Vec<u8> {
     let cip_request = extract_cip_request(payload);
+    handle_write_cip_request(&cip_request, tags, behavior)
+}
+
+fn handle_write_cip_request(
+    cip_request: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: &Arc<SimRuntimeBehavior>,
+) -> Vec<u8> {
     if cip_request.len() < 6 {
-        return;
+        return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
     }
 
-    let (tag_name, element_index) = match parse_tag_and_path(&cip_request) {
+    let (tag_name, element_index) = match parse_tag_and_path(cip_request) {
         Some(value) => value,
-        None => return,
+        None => return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR),
     };
+
+    if behavior.should_fail_write(&tag_name) {
+        return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
+    }
 
     let path_words = cip_request[1] as usize;
     let path_bytes = path_words * 2;
     let path_end = 2 + path_bytes;
     if cip_request.len() < path_end + 4 {
-        return;
+        return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
     }
 
     let data_type = u16::from_le_bytes([cip_request[path_end], cip_request[path_end + 1]]);
@@ -295,7 +411,7 @@ fn handle_write(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>>>) {
     };
 
     let Some(value) = value else {
-        return;
+        return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
     };
 
     let mut tags = tags.lock().expect("tag lock");
@@ -303,12 +419,111 @@ fn handle_write(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>>>) {
         if let Some(TagValue::Array(items)) = tags.get_mut(&tag_name) {
             if index < items.len() {
                 items[index] = value;
-                return;
+                return build_cip_ok_write_reply();
             }
         }
     }
 
     tags.insert(tag_name, value);
+    build_cip_ok_write_reply()
+}
+
+fn build_cip_ok_write_reply() -> Vec<u8> {
+    vec![CIP_REPLY_WRITE, 0x00, CIP_STATUS_SUCCESS, 0x00]
+}
+
+fn build_cip_error_reply(reply_service: u8, status: u8) -> Vec<u8> {
+    vec![reply_service, 0x00, status, 0x00]
+}
+
+fn build_multiple_service_response(
+    payload: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: &Arc<SimRuntimeBehavior>,
+) -> Vec<u8> {
+    let request = extract_cip_request(payload);
+    if request.len() < 8 {
+        return build_cip_error_reply(
+            CIP_REPLY_MULTIPLE_SERVICE_PACKET,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    }
+
+    let service_count = u16::from_le_bytes([request[6], request[7]]) as usize;
+    if service_count == 0 {
+        return build_cip_error_reply(CIP_REPLY_MULTIPLE_SERVICE_PACKET, CIP_STATUS_SUCCESS);
+    }
+
+    let offsets_start = 8;
+    let offsets_end = offsets_start + (service_count * 2);
+    if request.len() < offsets_end {
+        return build_cip_error_reply(
+            CIP_REPLY_MULTIPLE_SERVICE_PACKET,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    }
+
+    let mut offsets = Vec::with_capacity(service_count);
+    for i in 0..service_count {
+        let pos = offsets_start + (i * 2);
+        offsets.push(u16::from_le_bytes([request[pos], request[pos + 1]]) as usize);
+    }
+
+    let mut replies: Vec<Vec<u8>> = Vec::with_capacity(service_count);
+    for i in 0..service_count {
+        let start = 6 + offsets[i];
+        let end = if i + 1 < service_count {
+            6 + offsets[i + 1]
+        } else {
+            request.len()
+        };
+
+        if start >= request.len() || end > request.len() || start >= end {
+            replies.push(build_cip_error_reply(
+                CIP_REPLY_READ,
+                CIP_STATUS_PATH_SEGMENT_ERROR,
+            ));
+            continue;
+        }
+
+        let service_request = &request[start..end];
+        if service_request.is_empty() {
+            replies.push(build_cip_error_reply(
+                CIP_REPLY_READ,
+                CIP_STATUS_PATH_SEGMENT_ERROR,
+            ));
+            continue;
+        }
+
+        let reply = match service_request[0] {
+            CIP_READ_TAG => build_read_response_from_cip_request(service_request, tags, behavior),
+            CIP_WRITE_TAG => handle_write_cip_request(service_request, tags, behavior),
+            _ => build_cip_error_reply(CIP_REPLY_READ, CIP_STATUS_PATH_SEGMENT_ERROR),
+        };
+        replies.push(reply);
+    }
+
+    // Reply format expected by client parser:
+    // [0]=0x8A [1]=0x00 [2]=status [3]=add_status_size [4..5]=reply_count [offset_table] [replies...]
+    let mut response = vec![
+        CIP_REPLY_MULTIPLE_SERVICE_PACKET,
+        0x00,
+        CIP_STATUS_SUCCESS,
+        0x00,
+    ];
+    response.extend_from_slice(&(service_count as u16).to_le_bytes());
+
+    let mut current_offset = 2 + (service_count * 2); // relative to byte 4
+    for reply in &replies {
+        response.extend_from_slice(&(current_offset as u16).to_le_bytes());
+        current_offset += reply.len();
+    }
+
+    for reply in replies {
+        response.extend_from_slice(&reply);
+    }
+
+    response
 }
 
 fn extract_cip_request(payload: &[u8]) -> Vec<u8> {

@@ -1,5 +1,5 @@
 @echo off
-echo 🎉 Building Complete Rust EtherNet/IP Solution v0.6.2
+echo Building Complete Rust EtherNet/IP Solution (0.7.0 hardening line)
 echo ====================================================
 echo.
 echo ✨ This build includes:
@@ -85,7 +85,7 @@ echo 🎉 COMPLETE BUILD SUCCESS!
 echo =========================
 echo.
 echo 📦 Built Components:
-echo   ✅ Rust Library (v0.6.2) - Production-ready core library
+echo   ✅ Rust Library (stable published version currently 0.6.3)
 echo   ✅ C# Wrapper - Complete .NET integration
 echo   ✅ WinForms Example - Desktop application
 echo   ✅ WPF Example - Modern desktop application
@@ -95,14 +95,14 @@ echo 🚀 Ready for deployment!
 echo.
 echo 📋 Key Outputs:
 echo   Rust DLL:     target\release\rust_ethernet_ip.dll
-echo   C# Wrapper:    csharp\RustEtherNetIp\bin\Release\net9.0\RustEtherNetIp.dll
-echo   WinForms App:  examples\WinFormsExample\bin\Release\net9.0-windows\WinFormsExample.exe
-echo   WPF App:       examples\WpfExample\bin\Release\net9.0-windows\WpfExample.exe
-echo   ASP.NET Web:   examples\AspNetExample\bin\Release\net9.0\AspNetExample.dll
+echo   C# Wrapper:    csharp\RustEtherNetIp\bin\Release\net10.0\RustEtherNetIp.dll
+echo   WinForms App:  examples\WinFormsExample\bin\Release\net10.0-windows\WinFormsExample.exe
+echo   WPF App:       examples\WpfExample\bin\Release\net10.0-windows\WpfExample.exe
+echo   ASP.NET Web:   examples\AspNetExample\bin\Release\net10.0\AspNetExample.dll
 echo.
 echo 💡 Next Steps:
-echo   1. Run WinForms: examples\WinFormsExample\bin\Release\net9.0-windows\WinFormsExample.exe
-echo   2. Run WPF: examples\WpfExample\bin\Release\net9.0-windows\WpfExample.exe
+echo   1. Run WinForms: examples\WinFormsExample\bin\Release\net10.0-windows\WinFormsExample.exe
+echo   2. Run WPF: examples\WpfExample\bin\Release\net10.0-windows\WpfExample.exe
 echo   3. Run ASP.NET: dotnet run --project examples\AspNetExample
 echo   4. Test Rust: cargo test
 echo.

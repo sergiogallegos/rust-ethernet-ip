@@ -1,72 +1,65 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Verifies that all projects build correctly
+    Verify Rust + C# build and test health for release hardening.
 .DESCRIPTION
-    This script builds and tests all Rust and C# projects to ensure
-    everything works correctly after version updates.
+    Runs version consistency checks, Rust builds/tests, C# builds/tests,
+    and validates expected native/managed artifacts.
 .EXAMPLE
     .\scripts\verify-build.ps1
 #>
-
-Write-Host "🔧 Verifying build for Rust EtherNet/IP library..." -ForegroundColor Green
 
 $ErrorActionPreference = "Stop"
 $success = $true
 
 function Test-Command {
-    param($Command, $Description)
-    
-    Write-Host "📋 $Description..." -ForegroundColor Yellow
+    param(
+        [Parameter(Mandatory = $true)][string]$Command,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    Write-Host "Running: $Description" -ForegroundColor Yellow
     try {
         Invoke-Expression $Command
-        Write-Host "✅ $Description - SUCCESS" -ForegroundColor Green
+        Write-Host "PASS: $Description" -ForegroundColor Green
         return $true
     }
     catch {
-        Write-Host "❌ $Description - FAILED" -ForegroundColor Red
+        Write-Host "FAIL: $Description" -ForegroundColor Red
         Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 }
 
-# Check current version consistency
-Write-Host "`n🔍 Checking version consistency..." -ForegroundColor Cyan
+Write-Host "Verifying Rust EtherNet/IP build health..." -ForegroundColor Green
 
-$cargoVersion = (Get-Content "Cargo.toml" | Select-String 'version = "(.+)"').Matches[0].Groups[1].Value
-$versionFile = Get-Content "VERSION" -Raw | ForEach-Object { $_.Trim() }
+# Version consistency
+Write-Host "`nChecking version consistency..." -ForegroundColor Cyan
+$cargoVersion = (Get-Content "Cargo.toml" | Select-String 'version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+$versionFile = (Get-Content "VERSION" -Raw).Trim()
 
 Write-Host "Cargo.toml version: $cargoVersion" -ForegroundColor White
-Write-Host "VERSION file: $versionFile" -ForegroundColor White
+Write-Host "VERSION file:      $versionFile" -ForegroundColor White
 
 if ($cargoVersion -ne $versionFile) {
-    Write-Host "❌ Version mismatch between Cargo.toml and VERSION file!" -ForegroundColor Red
+    Write-Host "FAIL: VERSION does not match Cargo.toml" -ForegroundColor Red
     $success = $false
-} else {
-    Write-Host "✅ Version consistency check passed" -ForegroundColor Green
+}
+else {
+    Write-Host "PASS: Version consistency" -ForegroundColor Green
 }
 
-# Clean previous builds
-Write-Host "`n🧹 Cleaning previous builds..." -ForegroundColor Cyan
-if (Test-Path "target") {
-    Remove-Item "target" -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# Build Rust library
-Write-Host "`n🦀 Building Rust library..." -ForegroundColor Cyan
+# Rust verification
+Write-Host "`nBuilding Rust artifacts..." -ForegroundColor Cyan
 $success = $success -and (Test-Command "cargo check" "Rust syntax check")
-$success = $success -and (Test-Command "cargo build" "Rust debug build")
-$success = $success -and (Test-Command "cargo build --release" "Rust release build")
-
-# Run Rust tests
-Write-Host "`n🧪 Running Rust tests..." -ForegroundColor Cyan
+$success = $success -and (Test-Command "cargo build --release --lib" "Rust release library build")
 $success = $success -and (Test-Command "cargo test --lib" "Rust unit tests")
 
-# Build C# projects
-Write-Host "`n🔷 Building C# projects..." -ForegroundColor Cyan
-
+# C# verification
+Write-Host "`nBuilding C# projects..." -ForegroundColor Cyan
 $csharpProjects = @(
-    @{ Path = "csharp/RustEtherNetIp/RustEtherNetIp.csproj"; Name = "Main C# library" },
+    @{ Path = "csharp/RustEtherNetIp/RustEtherNetIp.csproj"; Name = "C# wrapper" },
+    @{ Path = "csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj"; Name = "C# test project" },
     @{ Path = "examples/WpfExample/WpfExample.csproj"; Name = "WPF example" },
     @{ Path = "examples/WinFormsExample/WinFormsExample.csproj"; Name = "WinForms example" },
     @{ Path = "examples/AspNetExample/AspNetExample.csproj"; Name = "ASP.NET example" }
@@ -75,46 +68,46 @@ $csharpProjects = @(
 foreach ($project in $csharpProjects) {
     if (Test-Path $project.Path) {
         $success = $success -and (Test-Command "dotnet build `"$($project.Path)`" --configuration Release" $project.Name)
-    } else {
-        Write-Host "⚠️  Project not found: $($project.Path)" -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "WARN: Project not found: $($project.Path)" -ForegroundColor Yellow
     }
 }
 
-# Check for common issues
-Write-Host "`n🔍 Checking for common issues..." -ForegroundColor Cyan
+$testsProject = "csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj"
+if (Test-Path $testsProject) {
+    $success = $success -and (Test-Command "dotnet test `"$testsProject`" --configuration Release --verbosity minimal" "C# tests")
+}
 
-# Check if native library exists
-$nativeLib = "target/release/rust_ethernet_ip.dll"
-if (Test-Path $nativeLib) {
-    Write-Host "✅ Native library found: $nativeLib" -ForegroundColor Green
-} else {
-    Write-Host "❌ Native library not found: $nativeLib" -ForegroundColor Red
+# Artifact verification
+Write-Host "`nValidating build artifacts..." -ForegroundColor Cyan
+$nativeLibPath = "target/release/rust_ethernet_ip.dll"
+if (Test-Path $nativeLibPath) {
+    Write-Host "PASS: Native library found at $nativeLibPath" -ForegroundColor Green
+}
+else {
+    Write-Host "FAIL: Native library not found at $nativeLibPath" -ForegroundColor Red
     $success = $false
 }
 
-# Check version in built assembly (if available)
-$csharpDll = "csharp/RustEtherNetIp/bin/Release/net9.0/RustEtherNetIp.dll"
-if (Test-Path $csharpDll) {
-    try {
-        $assembly = [System.Reflection.Assembly]::LoadFrom((Resolve-Path $csharpDll))
-        $version = $assembly.GetName().Version
-        Write-Host "✅ C# assembly version: $version" -ForegroundColor Green
-    }
-    catch {
-        Write-Host "⚠️  Could not read C# assembly version" -ForegroundColor Yellow
-    }
+$managedDll = Get-ChildItem "csharp/RustEtherNetIp/bin/Release" -Recurse -Filter "RustEtherNetIp.dll" -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch "\\ref\\" } |
+    Select-Object -First 1
+
+if ($null -ne $managedDll) {
+    Write-Host "PASS: Managed wrapper found at $($managedDll.FullName)" -ForegroundColor Green
+}
+else {
+    Write-Host "FAIL: Managed wrapper not found under csharp/RustEtherNetIp/bin/Release" -ForegroundColor Red
+    $success = $false
 }
 
-# Summary
-Write-Host "`n📊 Build Verification Summary" -ForegroundColor Cyan
-Write-Host "================================" -ForegroundColor Cyan
-
+Write-Host "`nBuild verification summary" -ForegroundColor Cyan
 if ($success) {
-    Write-Host "🎉 ALL CHECKS PASSED!" -ForegroundColor Green
-    Write-Host "The project is ready for release." -ForegroundColor Green
+    Write-Host "ALL CHECKS PASSED" -ForegroundColor Green
     exit 0
-} else {
-    Write-Host "💥 SOME CHECKS FAILED!" -ForegroundColor Red
-    Write-Host "Please fix the issues above before proceeding." -ForegroundColor Red
+}
+else {
+    Write-Host "SOME CHECKS FAILED" -ForegroundColor Red
     exit 1
-} 
+}

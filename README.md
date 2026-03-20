@@ -186,9 +186,10 @@ All 13 Allen-Bradley native types: BOOL, SINT, INT, DINT, LINT, USINT, UINT, UDI
 
 Optimized for PC applications with excellent performance:
 
-> **🆕 Latest Performance Improvements (v0.6.2)**
+> **🆕 Latest Reliability and Performance Notes (v0.6.3 stable line)**
 > 
 > Recent optimizations and improvements:
+> - **v0.6.3 reliability fixes**: Protocol correctness, packet/session fixes, and broader test hardening
 > - **Generic UDT Format**: New `UdtData` struct enables universal UDT handling
 > - **Memory allocation improvements**: 20-30% reduction in allocation overhead for network operations
 > - **Batch operations**: 3-10x faster than individual operations

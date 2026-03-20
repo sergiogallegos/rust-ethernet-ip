@@ -17,12 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [x] Keep `0.6.3` as last stable published version while `0.7.0` remains unreleased.
 - [x] Add unreleased documentation notes in README and CHANGELOG.
 - [ ] Run full cross-language regression matrix (Rust + C#) after each high-impact change.
-- [ ] Add/expand simulator-based failure-mode tests (timeouts, reconnect, partial batch failures).
-- [ ] Add explicit FFI contract tests for mixed batch operations, including malformed payload handling.
-- [ ] Complete FFI batch config APIs (`eip_configure_batch_operations`, `eip_get_batch_config`) or clearly gate them as unsupported across wrappers.
-- [ ] Add performance baseline report (single read/write, batch read/write, mixed execute) and compare against `0.6.3`.
-- [ ] Add compatibility test pass for route-path scenarios and UDT-heavy workloads.
-- [ ] Perform docs/API audit to ensure examples and behavior match implemented semantics.
+- [x] Add/expand simulator-based failure-mode tests (timeouts, reconnect, partial batch failures).
+- [x] Add explicit FFI contract tests for mixed batch operations, including malformed payload handling.
+- [x] Complete FFI batch config APIs (`eip_configure_batch_operations`, `eip_get_batch_config`) or clearly gate them as unsupported across wrappers.
+- [x] Add performance baseline report (single read/write, batch read/write, mixed execute) and compare against `0.6.3`.
+- [x] Add compatibility test pass for route-path scenarios and UDT-heavy workloads.
+- [x] Perform docs/API audit to ensure examples and behavior match implemented semantics.
 - [ ] Freeze release candidate, then bump to `0.7.0` only when all gates pass.
 
 ### 🐛 Fixed — Core Library
@@ -41,6 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🧹 Cleanup
 - **Desktop app warnings**: Removed unused fields/locals in `examples/desktop_app` that were generating compile warnings.
 - **Repository hygiene**: Added recursive `**/target/` ignore rule and untracked committed `examples/web_app/backend/target` build artifacts.
+
+### ✅ Test Hardening
+- **Simulator failure-mode coverage expanded**: Added deterministic simulator tests for timeout behavior, transport disconnect with reconnect workflow, and partial batch failure isolation for mixed batch paths.
+- **FFI batch contract coverage expanded**: Added explicit tests for mixed execute/write batch contracts, malformed JSON payload rejection, count mismatch rejection, and per-item parse error isolation for batch payload validation.
+- **Wrapper batch-config contract tests**: Added C# unit tests to enforce `NotSupportedException` behavior for `ConfigureBatchOperations` and `GetBatchConfig`.
+- **Performance baseline report generated**: Added simulator-based baseline harness and produced `HEAD` vs `v0.6.3` comparison report for single read/write, batch read/write, and mixed execute scenarios with raw JSON artifacts.
+- **Route-path + UDT compatibility pass**: Added deterministic simulator route-path compatibility tests and generated a consolidated Rust/C# compatibility matrix report for route-path and UDT-heavy workloads.
+- **Docs/API audit completed**: Updated stale release-state/version messaging, aligned wrapper/API docs with current batch-config unsupported semantics, and published an audit artifact capturing findings and remediations.
 
 ### 🐛 Fixed — C# Wrapper
 - **Empty STRING tag handling**: Fixed `ReadString` to return empty string for zeroed/cleared STRING tags (LEN=0) instead of falling through to error handling. Both the direct read path and the UDT member fallback path now correctly handle empty strings.

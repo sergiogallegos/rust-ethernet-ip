@@ -97,12 +97,14 @@ namespace RustEtherNetIp
         
         /// <summary>
         /// Configure batch operation behavior for performance optimization.
+        /// Currently unsupported in native Rust FFI for this release line.
         /// </summary>
         /// <param name="config">Batch configuration settings</param>
         void ConfigureBatchOperations(BatchConfig config);
         
         /// <summary>
         /// Get current batch operation configuration.
+        /// Currently unsupported in native Rust FFI for this release line.
         /// </summary>
         /// <returns>Current batch configuration</returns>
         BatchConfig GetBatchConfig();

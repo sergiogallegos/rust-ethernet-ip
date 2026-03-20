@@ -1,5 +1,5 @@
 @echo off
-echo Building Rust EtherNet/IP Library v0.5.3...
+echo Building Rust EtherNet/IP Library (0.7.0 hardening line)...
 echo =============================================
 
 echo.
@@ -47,6 +47,6 @@ echo 🎉 Build completed successfully!
 echo.
 echo 📦 Outputs:
 echo   Rust DLL: target\release\rust_ethernet_ip.dll
-echo   C# DLL:   csharp\RustEtherNetIp\bin\Release\net9.0\RustEtherNetIp.dll
+echo   C# DLL:   csharp\RustEtherNetIp\bin\Release\net10.0\RustEtherNetIp.dll
 echo.
 echo 🚀 Ready for deployment! 

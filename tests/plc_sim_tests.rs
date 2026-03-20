@@ -1,8 +1,8 @@
 mod plc_sim;
 
-use plc_sim::SimulatedPlc;
+use plc_sim::{SimBehavior, SimulatedPlc};
 use rust_ethernet_ip::error::EtherNetIpError;
-use rust_ethernet_ip::{EipClient, PlcValue};
+use rust_ethernet_ip::{BatchError, EipClient, PlcValue};
 
 #[tokio::test]
 async fn simulated_plc_read_write_dint() {
@@ -147,4 +147,82 @@ async fn simulated_plc_read_bit_write_bit() {
         .await
         .expect("read bit 0 after write");
     assert!(bit0_after);
+}
+
+#[tokio::test]
+async fn simulated_plc_timeout_failure_mode() {
+    let sim = SimulatedPlc::start_with_behavior(SimBehavior {
+        drop_send_rr_response_after: Some(2),
+        ..Default::default()
+    })
+    .await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let err = client.read_tag("DINT_TAG").await.unwrap_err();
+
+    match err {
+        EtherNetIpError::Timeout(duration) => {
+            assert_eq!(duration, std::time::Duration::from_secs(10));
+        }
+        other => panic!("expected timeout error, got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn simulated_plc_manual_reconnect_after_disconnect() {
+    let sim = SimulatedPlc::start_with_behavior(SimBehavior {
+        disconnect_on_send_rr_after: Some(3),
+        ..Default::default()
+    })
+    .await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    let first = client.read_tag("DINT_TAG").await.expect("first read");
+    assert_eq!(first, PlcValue::Dint(1234));
+
+    let err = client.read_tag("DINT_TAG").await.unwrap_err();
+    assert!(
+        matches!(err, EtherNetIpError::Io(_) | EtherNetIpError::Timeout(_)),
+        "expected transport-level failure after forced disconnect, got: {err:?}"
+    );
+
+    // Industrial clients commonly recover by reconnecting after transport loss.
+    let mut reconnected = EipClient::connect(&addr).await.expect("reconnect");
+    let value = reconnected.read_tag("DINT_TAG").await.expect("read after reconnect");
+    assert_eq!(value, PlcValue::Dint(1234));
+}
+
+#[tokio::test]
+async fn simulated_plc_partial_batch_failures_are_isolated() {
+    let sim = SimulatedPlc::start_with_behavior(SimBehavior {
+        fail_read_tags: vec!["FAIL_TAG".to_string()],
+        ..Default::default()
+    })
+    .await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let results = client
+        .read_tags_batch(&["DINT_TAG", "FAIL_TAG"])
+        .await
+        .expect("batch read should complete with per-op results");
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].0, "DINT_TAG");
+    assert_eq!(results[1].0, "FAIL_TAG");
+
+    match &results[0].1 {
+        Ok(PlcValue::Dint(value)) => assert_eq!(*value, 1234),
+        other => panic!("expected successful DINT read, got: {:?}", other),
+    }
+
+    match &results[1].1 {
+        Err(BatchError::CipError { status, .. }) => {
+            assert_eq!(*status, 0x04);
+        }
+        other => panic!("expected CIP error for failed tag, got: {:?}", other),
+    }
 }

@@ -1,0 +1,45 @@
+{
+  "iterations": 400,
+  "metrics": [
+    {
+      "name": "single_read",
+      "iterations": 400,
+      "logical_ops": 400,
+      "elapsed_ms": 29.7454,
+      "avg_call_ms": 0.0743635,
+      "ops_per_sec": 13447.457421987936
+    },
+    {
+      "name": "single_write",
+      "iterations": 400,
+      "logical_ops": 400,
+      "elapsed_ms": 28.6401,
+      "avg_call_ms": 0.07160025,
+      "ops_per_sec": 13966.431681453625
+    },
+    {
+      "name": "batch_read",
+      "iterations": 400,
+      "logical_ops": 1600,
+      "elapsed_ms": 31.0559,
+      "avg_call_ms": 0.07763975000000001,
+      "ops_per_sec": 51520.00103040002
+    },
+    {
+      "name": "batch_write",
+      "iterations": 400,
+      "logical_ops": 1200,
+      "elapsed_ms": 33.64,
+      "avg_call_ms": 0.08410000000000001,
+      "ops_per_sec": 35671.819262782396
+    },
+    {
+      "name": "mixed_execute",
+      "iterations": 400,
+      "logical_ops": 1600,
+      "elapsed_ms": 60.843599999999995,
+      "avg_call_ms": 0.152109,
+      "ops_per_sec": 26296.931805481596
+    }
+  ]
+}

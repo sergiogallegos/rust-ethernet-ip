@@ -2398,10 +2398,11 @@ namespace RustEtherNetIp
 
         /// <summary>
         /// Configure batch operation behavior for performance optimization.
+        /// Currently unsupported in native Rust FFI for this release line.
         /// </summary>
         /// <param name="config">Batch configuration settings</param>
         /// <exception cref="ArgumentNullException">Thrown if config is null</exception>
-        /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
+        /// <exception cref="NotSupportedException">Always thrown until native support is implemented</exception>
         public void ConfigureBatchOperations(BatchConfig config)
         {
             _ = config ?? throw new ArgumentNullException(nameof(config));
@@ -2413,9 +2414,10 @@ namespace RustEtherNetIp
 
         /// <summary>
         /// Get current batch operation configuration.
+        /// Currently unsupported in native Rust FFI for this release line.
         /// </summary>
         /// <returns>Current batch configuration</returns>
-        /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
+        /// <exception cref="NotSupportedException">Always thrown until native support is implemented</exception>
         public BatchConfig GetBatchConfig()
         {
             throw new NotSupportedException(

@@ -139,41 +139,17 @@ foreach (var result in results)
 
 ## Performance Configuration
 
-Optimize batch operations for your specific use case:
+Batch configuration APIs are currently **unsupported** in this release line.
+The following methods intentionally throw `NotSupportedException`:
 
-### High-Performance Configuration (Modern PLCs)
+- `ConfigureBatchOperations(BatchConfig config)`
+- `GetBatchConfig()`
 
-```csharp
-var config = BatchConfig.HighPerformance();
-client.ConfigureBatchOperations(config);
+Default native batch behavior is still available through:
 
-// Equivalent to:
-var customConfig = new BatchConfig
-{
-    MaxOperationsPerPacket = 50,
-    MaxPacketSize = 4000,
-    PacketTimeoutMs = 1000,
-    ContinueOnError = true,
-    OptimizePacketPacking = true
-};
-```
-
-### Conservative Configuration (Older PLCs/Networks)
-
-```csharp
-var config = BatchConfig.Conservative();
-client.ConfigureBatchOperations(config);
-
-// Equivalent to:
-var customConfig = new BatchConfig
-{
-    MaxOperationsPerPacket = 10,
-    MaxPacketSize = 504,
-    PacketTimeoutMs = 5000,
-    ContinueOnError = false,
-    OptimizePacketPacking = false
-};
-```
+- `ReadTagsBatch(...)`
+- `WriteTagsBatch(...)`
+- `ExecuteBatch(...)`
 
 ## Performance Comparison
 
@@ -420,7 +396,7 @@ The `EtherNetIpClient` is **NOT** thread-safe. For multi-threaded applications:
 
 4. **Performance Issues**
    - Use batch operations for multiple tags
-   - Adjust batch configuration for your network
+   - Batch configuration APIs are currently unsupported in this release line
    - Monitor network packet size limits
 
 ## API Reference
@@ -429,7 +405,7 @@ The `EtherNetIpClient` is **NOT** thread-safe. For multi-threaded applications:
 
 - **`EtherNetIpClient`**: Main client class
 - **`BatchOperation`**: Represents a batch operation
-- **`BatchConfig`**: Configuration for batch operations
+- **`BatchConfig`**: Batch configuration model (currently not applied via API in this release line)
 - **`TagReadResult`**: Result of a tag read operation
 - **`TagWriteResult`**: Result of a tag write operation
 - **`BatchOperationResult`**: Result of a batch operation
@@ -456,12 +432,14 @@ For issues and questions:
 
 ## Version History
 
-### v0.4.0 (Current)
-- ✅ **NEW: Batch Operations** - 3-10x performance improvement
-- ✅ Complete data type support
-- ✅ Advanced tag addressing
-- ✅ Cross-platform support
-- ✅ Comprehensive error handling
+### v0.6.3 (Current Stable)
+- ✅ Reliability-focused protocol and wrapper fixes
+- ✅ Batch read/write/execute paths available for production usage
+- ✅ Explicit unsupported gating for batch configuration APIs (`ConfigureBatchOperations`, `GetBatchConfig`)
+
+### v0.7.0 (Unreleased Hardening Line)
+- 🚧 Additional hardening gates in progress before release
+- 🚧 Expanded failure-mode, FFI contract, and compatibility verification suites
 
 ### v0.2.0
 - Individual tag operations

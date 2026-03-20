@@ -121,3 +121,7 @@ tarpaulin-report.html
 coverage/
 *.lcov
 *.coverage
+
+# Local hardening workspace artifacts
+.dotnet_home/
+.perf_worktrees/

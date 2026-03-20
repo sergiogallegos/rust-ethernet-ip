@@ -1,7 +1,7 @@
 // lib.rs - Rust EtherNet/IP Driver Library with Comprehensive Documentation
 // =========================================================================
 //
-// # Rust EtherNet/IP Driver Library v0.6.2
+// # Rust EtherNet/IP Driver Library
 //
 // A high-performance, production-ready EtherNet/IP communication library for
 // Allen-Bradley CompactLogix and ControlLogix PLCs, written in pure Rust with
@@ -253,7 +253,12 @@
 //
 // ## Changelog
 //
-// ### v0.6.2 (January 2026) - **CURRENT**
+// ### v0.6.3 (March 2026) - **CURRENT STABLE**
+// - Critical protocol and type-system reliability fixes
+// - Broader test coverage including simulator-backed scenarios
+// - C# wrapper reliability fixes for route path + datatype handling
+//
+// ### v0.6.2 (January 2026)
 // - **NEW: Stream Injection API** - `connect_with_stream()` for custom TCP transport
 //   - Enables wrapping streams for metrics/observability (bytes in/out)
 //   - Supports custom socket options (keepalive, timeouts, bind local address)

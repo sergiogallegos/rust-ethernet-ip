@@ -64,9 +64,6 @@ namespace RustEtherNetIp
                 // Test batch operations
                 try
                 {
-                    var batchConfig = BatchConfig.Default();
-                    client.ConfigureBatchOperations(batchConfig);
-
                     var operations = new[]
                     {
                         BatchOperation.Read("_IO_EM_DI00"),

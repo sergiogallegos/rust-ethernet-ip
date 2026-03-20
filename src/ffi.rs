@@ -37,6 +37,24 @@ unsafe fn free_c_string(ptr: *mut c_char) {
     }
 }
 
+fn write_output_buffer(output: *mut c_char, capacity: c_int, payload: &str) -> Result<(), ()> {
+    if output.is_null() || capacity <= 0 {
+        return Err(());
+    }
+
+    let bytes = payload.as_bytes();
+    if bytes.len() + 1 > capacity as usize {
+        return Err(());
+    }
+
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr(), output as *mut u8, bytes.len());
+        *output.add(bytes.len()) = 0;
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Deserialize)]
 struct FfiWriteRequestItem {
     tag_name: String,
@@ -1744,19 +1762,8 @@ pub unsafe extern "C" fn eip_read_tags_batch(
         Err(_) => return -1,
     };
 
-    // Copy results to output buffer
-    let results_bytes = results_data.as_bytes();
-    if results_bytes.len() >= results_capacity as usize {
+    if write_output_buffer(results, results_capacity, &results_data).is_err() {
         return -1;
-    }
-
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            results_bytes.as_ptr(),
-            results as *mut u8,
-            results_bytes.len(),
-        );
-        *results.add(results_bytes.len()) = 0; // Null terminate
     }
 
     0
@@ -1874,18 +1881,8 @@ pub unsafe extern "C" fn eip_write_tags_batch(
         Err(_) => return -1,
     };
 
-    let results_bytes = results_data.as_bytes();
-    if results_bytes.len() >= results_capacity as usize {
+    if write_output_buffer(results, results_capacity, &results_data).is_err() {
         return -1;
-    }
-
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            results_bytes.as_ptr(),
-            results as *mut u8,
-            results_bytes.len(),
-        );
-        *results.add(results_bytes.len()) = 0;
     }
 
     0
@@ -1940,10 +1937,8 @@ pub unsafe extern "C" fn eip_execute_batch(
             let value_type = match &item.value_type {
                 Some(v) => v,
                 None => {
-                    operation_parse_errors.insert(
-                        idx,
-                        "Missing value_type for write operation".to_string(),
-                    );
+                    operation_parse_errors
+                        .insert(idx, "Missing value_type for write operation".to_string());
                     continue;
                 }
             };
@@ -2003,17 +1998,8 @@ pub unsafe extern "C" fn eip_execute_batch(
                 Ok(json) => json,
                 Err(_) => return -1,
             };
-            let results_bytes = results_data.as_bytes();
-            if results_bytes.len() >= results_capacity as usize {
+            if write_output_buffer(results, results_capacity, &results_data).is_err() {
                 return -1;
-            }
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    results_bytes.as_ptr(),
-                    results as *mut u8,
-                    results_bytes.len(),
-                );
-                *results.add(results_bytes.len()) = 0;
             }
             return -1;
         }
@@ -2075,18 +2061,8 @@ pub unsafe extern "C" fn eip_execute_batch(
         Err(_) => return -1,
     };
 
-    let results_bytes = results_data.as_bytes();
-    if results_bytes.len() >= results_capacity as usize {
+    if write_output_buffer(results, results_capacity, &results_data).is_err() {
         return -1;
-    }
-
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            results_bytes.as_ptr(),
-            results as *mut u8,
-            results_bytes.len(),
-        );
-        *results.add(results_bytes.len()) = 0;
     }
 
     0

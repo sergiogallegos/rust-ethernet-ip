@@ -4,6 +4,7 @@ use crate::EipClient;
 use crate::PlcValue;
 use crate::RUNTIME;
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
@@ -33,6 +34,104 @@ fn lock_next_id() -> Result<MutexGuard<'static, i32>, ()> {
 unsafe fn free_c_string(ptr: *mut c_char) {
     if !ptr.is_null() {
         let _ = CString::from_raw(ptr);
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct FfiWriteRequestItem {
+    tag_name: String,
+    value_type: String,
+    value: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct FfiExecuteRequestItem {
+    tag_name: String,
+    is_write: bool,
+    value_type: Option<String>,
+    value: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+struct FfiWriteResultItem {
+    tag_name: String,
+    success: bool,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct FfiExecuteResultItem {
+    index: usize,
+    tag_name: String,
+    is_write: bool,
+    success: bool,
+    value: Option<PlcValue>,
+    error: Option<String>,
+    execution_time_us: u64,
+}
+
+fn parse_plc_value(value_type: &str, value: serde_json::Value) -> Result<PlcValue, String> {
+    let normalized = value_type.to_ascii_uppercase();
+
+    match normalized.as_str() {
+        "BOOL" => value
+            .as_bool()
+            .map(PlcValue::Bool)
+            .ok_or_else(|| "Expected BOOL as JSON boolean".to_string()),
+        "SINT" => value
+            .as_i64()
+            .and_then(|v| i8::try_from(v).ok())
+            .map(PlcValue::Sint)
+            .ok_or_else(|| "Expected SINT as JSON integer in [-128,127]".to_string()),
+        "INT" => value
+            .as_i64()
+            .and_then(|v| i16::try_from(v).ok())
+            .map(PlcValue::Int)
+            .ok_or_else(|| "Expected INT as JSON integer in [-32768,32767]".to_string()),
+        "DINT" => value
+            .as_i64()
+            .and_then(|v| i32::try_from(v).ok())
+            .map(PlcValue::Dint)
+            .ok_or_else(|| "Expected DINT as JSON integer in i32 range".to_string()),
+        "LINT" => value
+            .as_i64()
+            .map(PlcValue::Lint)
+            .ok_or_else(|| "Expected LINT as JSON integer in i64 range".to_string()),
+        "USINT" => value
+            .as_u64()
+            .and_then(|v| u8::try_from(v).ok())
+            .map(PlcValue::Usint)
+            .ok_or_else(|| "Expected USINT as JSON integer in [0,255]".to_string()),
+        "UINT" => value
+            .as_u64()
+            .and_then(|v| u16::try_from(v).ok())
+            .map(PlcValue::Uint)
+            .ok_or_else(|| "Expected UINT as JSON integer in [0,65535]".to_string()),
+        "UDINT" => value
+            .as_u64()
+            .and_then(|v| u32::try_from(v).ok())
+            .map(PlcValue::Udint)
+            .ok_or_else(|| "Expected UDINT as JSON integer in u32 range".to_string()),
+        "ULINT" => value
+            .as_u64()
+            .map(PlcValue::Ulint)
+            .ok_or_else(|| "Expected ULINT as JSON integer in u64 range".to_string()),
+        "REAL" => value
+            .as_f64()
+            .map(|v| PlcValue::Real(v as f32))
+            .ok_or_else(|| "Expected REAL as JSON number".to_string()),
+        "LREAL" => value
+            .as_f64()
+            .map(PlcValue::Lreal)
+            .ok_or_else(|| "Expected LREAL as JSON number".to_string()),
+        "STRING" => value
+            .as_str()
+            .map(|v| PlcValue::String(v.to_string()))
+            .ok_or_else(|| "Expected STRING as JSON string".to_string()),
+        "UDT" => serde_json::from_value::<crate::UdtData>(value)
+            .map(PlcValue::Udt)
+            .map_err(|e| format!("Expected UDT object {{symbol_id,data}}: {e}")),
+        _ => Err(format!("Unsupported value_type: {value_type}")),
     }
 }
 
@@ -228,7 +327,7 @@ pub unsafe extern "C" fn eip_set_route_path(
     }
 
     client.set_route_path(route_path);
-    -1
+    0
 }
 
 /// Disconnect from a PLC
@@ -1202,7 +1301,7 @@ pub unsafe extern "C" fn eip_read_string(
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
-    -1
+    0
 }
 
 /// Write a STRING tag
@@ -1326,7 +1425,7 @@ pub unsafe extern "C" fn eip_read_tag(
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
-    -1
+    0
 }
 
 /// Read a range of array elements as JSON array of PlcValue.
@@ -1396,7 +1495,7 @@ pub unsafe extern "C" fn eip_read_array_range(
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
-    -1
+    0
 }
 
 // UDT operations
@@ -1679,23 +1778,103 @@ pub unsafe extern "C" fn eip_write_tags_batch(
         Ok(guard) => guard,
         Err(_) => return -1,
     };
-    let Some(_client) = clients.get_mut(&client_id) else {
+    let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
 
-    // Parse input (simplified implementation)
-    let _input_str = unsafe {
+    let input_str = unsafe {
         match CStr::from_ptr(tag_values).to_str() {
             Ok(s) => s,
             Err(_) => return -1,
         }
     };
 
-    // For now, return not implemented
-    // TODO: Parse input and execute batch write
-    let results_data = "ERROR:Batch write not yet implemented in FFI";
-    let results_bytes = results_data.as_bytes();
+    let request_items: Vec<FfiWriteRequestItem> = match serde_json::from_str(input_str) {
+        Ok(items) => items,
+        Err(_) => return -1,
+    };
 
+    if request_items.len() != tag_count as usize {
+        return -1;
+    }
+
+    let mut parse_errors: HashMap<String, String> = HashMap::new();
+    let mut valid_writes: Vec<(String, PlcValue)> = Vec::new();
+    for item in &request_items {
+        match parse_plc_value(&item.value_type, item.value.clone()) {
+            Ok(value) => valid_writes.push((item.tag_name.clone(), value)),
+            Err(err) => {
+                parse_errors.insert(item.tag_name.clone(), err);
+            }
+        }
+    }
+
+    let mut write_results: HashMap<String, Result<(), String>> = HashMap::new();
+    if !valid_writes.is_empty() {
+        let write_refs: Vec<(&str, PlcValue)> = valid_writes
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.clone()))
+            .collect();
+
+        match RUNTIME.block_on(client.write_tags_batch(&write_refs)) {
+            Ok(results_vec) => {
+                for (tag_name, result) in results_vec {
+                    match result {
+                        Ok(()) => {
+                            write_results.insert(tag_name, Ok(()));
+                        }
+                        Err(e) => {
+                            write_results.insert(tag_name, Err(e.to_string()));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                let err = e.to_string();
+                for (tag_name, _) in &valid_writes {
+                    write_results.insert(tag_name.clone(), Err(err.clone()));
+                }
+            }
+        }
+    }
+
+    let response_items: Vec<FfiWriteResultItem> = request_items
+        .into_iter()
+        .map(|item| {
+            if let Some(err) = parse_errors.get(&item.tag_name) {
+                return FfiWriteResultItem {
+                    tag_name: item.tag_name,
+                    success: false,
+                    error: Some(err.clone()),
+                };
+            }
+
+            match write_results.get(&item.tag_name) {
+                Some(Ok(())) => FfiWriteResultItem {
+                    tag_name: item.tag_name,
+                    success: true,
+                    error: None,
+                },
+                Some(Err(err)) => FfiWriteResultItem {
+                    tag_name: item.tag_name,
+                    success: false,
+                    error: Some(err.clone()),
+                },
+                None => FfiWriteResultItem {
+                    tag_name: item.tag_name,
+                    success: false,
+                    error: Some("Missing result for write operation".to_string()),
+                },
+            }
+        })
+        .collect();
+
+    let results_data = match serde_json::to_string(&response_items) {
+        Ok(json) => json,
+        Err(_) => return -1,
+    };
+
+    let results_bytes = results_data.as_bytes();
     if results_bytes.len() >= results_capacity as usize {
         return -1;
     }
@@ -1706,10 +1885,10 @@ pub unsafe extern "C" fn eip_write_tags_batch(
             results as *mut u8,
             results_bytes.len(),
         );
-        *results.add(results_bytes.len()) = 0; // Null terminate
+        *results.add(results_bytes.len()) = 0;
     }
 
-    -1
+    0
 }
 
 #[no_mangle]
@@ -1728,23 +1907,175 @@ pub unsafe extern "C" fn eip_execute_batch(
         Ok(guard) => guard,
         Err(_) => return -1,
     };
-    let Some(_client) = clients.get_mut(&client_id) else {
+    let Some(client) = clients.get_mut(&client_id) else {
         return -1;
     };
 
-    // Parse input (simplified implementation)
-    let _input_str = unsafe {
+    let input_str = unsafe {
         match CStr::from_ptr(operations).to_str() {
             Ok(s) => s,
             Err(_) => return -1,
         }
     };
 
-    // For now, return not implemented
-    // TODO: Parse input and execute mixed batch operations
-    let results_data = "ERROR:Mixed batch operations not yet implemented in FFI";
-    let results_bytes = results_data.as_bytes();
+    let request_items: Vec<FfiExecuteRequestItem> = match serde_json::from_str(input_str) {
+        Ok(items) => items,
+        Err(_) => return -1,
+    };
 
+    if request_items.len() != operation_count as usize {
+        return -1;
+    }
+
+    let original_batch_cfg = client.get_batch_config().clone();
+    let mut sequential_cfg = original_batch_cfg.clone();
+    sequential_cfg.optimize_packet_packing = false;
+    client.configure_batch_operations(sequential_cfg);
+
+    let mut operation_parse_errors: HashMap<usize, String> = HashMap::new();
+    let mut valid_operations: Vec<crate::BatchOperation> = Vec::new();
+
+    for (idx, item) in request_items.iter().enumerate() {
+        if item.is_write {
+            let value_type = match &item.value_type {
+                Some(v) => v,
+                None => {
+                    operation_parse_errors.insert(
+                        idx,
+                        "Missing value_type for write operation".to_string(),
+                    );
+                    continue;
+                }
+            };
+            let value_json = match &item.value {
+                Some(v) => v.clone(),
+                None => {
+                    operation_parse_errors
+                        .insert(idx, "Missing value for write operation".to_string());
+                    continue;
+                }
+            };
+
+            match parse_plc_value(value_type, value_json) {
+                Ok(value) => valid_operations.push(crate::BatchOperation::Write {
+                    tag_name: item.tag_name.clone(),
+                    value,
+                }),
+                Err(err) => {
+                    operation_parse_errors.insert(idx, err);
+                }
+            }
+        } else {
+            valid_operations.push(crate::BatchOperation::Read {
+                tag_name: item.tag_name.clone(),
+            });
+        }
+    }
+
+    let batch_exec_result = if valid_operations.is_empty() {
+        Ok(Vec::new())
+    } else {
+        RUNTIME.block_on(client.execute_batch(&valid_operations))
+    };
+
+    // Restore caller's batch config to avoid side effects from this FFI call.
+    client.configure_batch_operations(original_batch_cfg);
+
+    let mut valid_iter = match batch_exec_result {
+        Ok(vec) => vec.into_iter(),
+        Err(e) => {
+            let error_message = e.to_string();
+            let response_items: Vec<FfiExecuteResultItem> = request_items
+                .into_iter()
+                .enumerate()
+                .map(|(idx, item)| FfiExecuteResultItem {
+                    index: idx,
+                    tag_name: item.tag_name,
+                    is_write: item.is_write,
+                    success: false,
+                    value: None,
+                    error: Some(error_message.clone()),
+                    execution_time_us: 0,
+                })
+                .collect();
+
+            let results_data = match serde_json::to_string(&response_items) {
+                Ok(json) => json,
+                Err(_) => return -1,
+            };
+            let results_bytes = results_data.as_bytes();
+            if results_bytes.len() >= results_capacity as usize {
+                return -1;
+            }
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    results_bytes.as_ptr(),
+                    results as *mut u8,
+                    results_bytes.len(),
+                );
+                *results.add(results_bytes.len()) = 0;
+            }
+            return -1;
+        }
+    };
+
+    let response_items: Vec<FfiExecuteResultItem> = request_items
+        .into_iter()
+        .enumerate()
+        .map(|(idx, item)| {
+            if let Some(err) = operation_parse_errors.get(&idx) {
+                return FfiExecuteResultItem {
+                    index: idx,
+                    tag_name: item.tag_name,
+                    is_write: item.is_write,
+                    success: false,
+                    value: None,
+                    error: Some(err.clone()),
+                    execution_time_us: 0,
+                };
+            }
+
+            let Some(batch_result) = valid_iter.next() else {
+                return FfiExecuteResultItem {
+                    index: idx,
+                    tag_name: item.tag_name,
+                    is_write: item.is_write,
+                    success: false,
+                    value: None,
+                    error: Some("Missing batch result for operation".to_string()),
+                    execution_time_us: 0,
+                };
+            };
+
+            match batch_result.result {
+                Ok(value_opt) => FfiExecuteResultItem {
+                    index: idx,
+                    tag_name: item.tag_name,
+                    is_write: item.is_write,
+                    success: true,
+                    value: value_opt,
+                    error: None,
+                    execution_time_us: batch_result.execution_time_us,
+                },
+                Err(e) => FfiExecuteResultItem {
+                    index: idx,
+                    tag_name: item.tag_name,
+                    is_write: item.is_write,
+                    success: false,
+                    value: None,
+                    error: Some(e.to_string()),
+                    execution_time_us: batch_result.execution_time_us,
+                },
+            }
+        })
+        .collect();
+
+    let results_data = match serde_json::to_string(&response_items) {
+        Ok(json) => json,
+        Err(_) => return -1,
+    };
+
+    let results_bytes = results_data.as_bytes();
     if results_bytes.len() >= results_capacity as usize {
         return -1;
     }
@@ -1755,10 +2086,10 @@ pub unsafe extern "C" fn eip_execute_batch(
             results as *mut u8,
             results_bytes.len(),
         );
-        *results.add(results_bytes.len()) = 0; // Null terminate
+        *results.add(results_bytes.len()) = 0;
     }
 
-    -1
+    0
 }
 
 #[no_mangle]

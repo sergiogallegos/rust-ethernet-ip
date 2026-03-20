@@ -2070,6 +2070,45 @@ namespace RustEtherNetIp
             return value.Value;
         }
 
+        private static string ToRustValueType(PlcValue value) => value.Type switch
+        {
+            PlcValueType.Bool => "BOOL",
+            PlcValueType.Sint => "SINT",
+            PlcValueType.Int => "INT",
+            PlcValueType.Dint => "DINT",
+            PlcValueType.Lint => "LINT",
+            PlcValueType.Usint => "USINT",
+            PlcValueType.Uint => "UINT",
+            PlcValueType.Udint => "UDINT",
+            PlcValueType.Ulint => "ULINT",
+            PlcValueType.Real => "REAL",
+            PlcValueType.Lreal => "LREAL",
+            PlcValueType.String => "STRING",
+            PlcValueType.Udt => "UDT",
+            _ => throw new ArgumentOutOfRangeException(nameof(value), $"Unsupported PlcValueType: {value.Type}")
+        };
+
+        private static object ToRustRawValue(PlcValue value)
+        {
+            if (value.Type == PlcValueType.Udt)
+            {
+                var udtData = value.UdtData;
+                if (udtData == null)
+                    throw new ArgumentException("Batch UDT write requires UdtData format with symbol_id and raw bytes.");
+
+                return new
+                {
+                    symbol_id = udtData.SymbolId,
+                    data = udtData.Data
+                };
+            }
+
+            return value.Value;
+        }
+
+        private static JsonElement ToJsonElement(object value) =>
+            JsonSerializer.SerializeToElement(value);
+
         #endregion
 
         #region Batch Operations
@@ -2217,8 +2256,7 @@ namespace RustEtherNetIp
         }
 
         /// <summary>
-        /// Write multiple tags and return per-tag results.
-        /// Current implementation executes writes sequentially.
+        /// Write multiple tags using native Rust batch execution and return per-tag results.
         /// </summary>
         /// <param name="tagValues">Dictionary of tag names to values to write</param>
         /// <returns>Dictionary of tag names to write results</returns>
@@ -2229,24 +2267,24 @@ namespace RustEtherNetIp
             if (tagValues == null || tagValues.Count == 0)
                 throw new ArgumentException("Tag values dictionary cannot be null or empty", nameof(tagValues));
 
-            // Sequential fallback implementation.
-            // TODO: Use a strongly-typed native batch protocol/result format.
             var results = new Dictionary<string, TagWriteResult>();
-            
-            foreach (var kvp in tagValues)
+
+            // Preserve explicit UDT-member behavior (used by tests and by PLC limitation workarounds).
+            var ffiOperations = new List<FfiWriteBatchRequestItem>();
+            foreach (var entry in tagValues)
             {
                 try
                 {
-                    if (TryParseUdtMemberPath(kvp.Key, out var baseTag, out var memberPath))
+                    if (TryParseUdtMemberPath(entry.Key, out var baseTag, out var memberPath))
                     {
-                        var plcValue = kvp.Value is System.Text.Json.JsonElement jsonElement
+                        var plcValue = entry.Value is System.Text.Json.JsonElement jsonElement
                             ? ConvertJsonElementToPlcValue(jsonElement)
-                            : ConvertObjectToPlcValue(kvp.Value);
+                            : ConvertObjectToPlcValue(entry.Value);
 
                         SetUdtMember(baseTag, memberPath, plcValue);
-                        results[kvp.Key] = new TagWriteResult
+                        results[entry.Key] = new TagWriteResult
                         {
-                            TagName = kvp.Key,
+                            TagName = entry.Key,
                             Success = true,
                             ErrorCode = 0,
                             ErrorMessage = null
@@ -2254,112 +2292,106 @@ namespace RustEtherNetIp
                         continue;
                     }
 
-                    // Determine type and call appropriate write method
-                    switch (kvp.Value)
+                    var plcBatchValue = entry.Value is System.Text.Json.JsonElement elem
+                        ? ConvertJsonElementToPlcValue(elem)
+                        : ConvertObjectToPlcValue(entry.Value);
+
+                    ffiOperations.Add(new FfiWriteBatchRequestItem
                     {
-                        case System.Text.Json.JsonElement jsonElement:
-                            // Handle JSON deserialized values from ASP.NET Core
-                            switch (jsonElement.ValueKind)
-                            {
-                                case System.Text.Json.JsonValueKind.True:
-                                    WriteBool(kvp.Key, true);
-                                    break;
-                                case System.Text.Json.JsonValueKind.False:
-                                    WriteBool(kvp.Key, false);
-                                    break;
-                                case System.Text.Json.JsonValueKind.Number:
-                                    var numberValue = jsonElement.GetDouble();
-                                    if (numberValue == Math.Floor(numberValue) && numberValue >= int.MinValue && numberValue <= int.MaxValue)
-                                    {
-                                        // Looks like an integer value, write as DINT
-                                        WriteDint(kvp.Key, (int)numberValue);
-                                    }
-                                    else
-                                    {
-                                        // Decimal value, write as REAL
-                                        WriteReal(kvp.Key, (float)numberValue);
-                                    }
-                                    break;
-                                case System.Text.Json.JsonValueKind.String:
-                                    try
-                                    {
-                                        WriteString(kvp.Key, jsonElement.GetString() ?? "");
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        // Handle any unexpected errors during STRING operations
-                                        if (ex.Message.Contains("DllNotFoundException") || ex.Message.Contains("EntryPointNotFoundException"))
-                                        {
-                                            throw new Exception("STRING support library not found or accessible");
-                                        }
-                                        throw;
-                                    }
-                                    break;
-                                default:
-                                    throw new ArgumentException($"Unsupported JSON value kind: {jsonElement.ValueKind} for tag '{kvp.Key}'. Value: {jsonElement}");
-                            }
-                            break;
-                        case bool boolValue:
-                            WriteBool(kvp.Key, boolValue);
-                            break;
-                        case int intValue:
-                            WriteDint(kvp.Key, intValue);
-                            break;
-                        case double doubleValue:
-                            // JavaScript sends all numbers as double - determine if it should be int or float
-                            if (doubleValue == Math.Floor(doubleValue) && doubleValue >= int.MinValue && doubleValue <= int.MaxValue)
-                            {
-                                // Looks like an integer value, write as DINT
-                                WriteDint(kvp.Key, (int)doubleValue);
-                            }
-                            else
-                            {
-                                // Decimal value, write as REAL
-                                WriteReal(kvp.Key, (float)doubleValue);
-                            }
-                            break;
-                        case float floatValue:
-                            WriteReal(kvp.Key, floatValue);
-                            break;
-                        case string stringValue:
-                            try
-                            {
-                                WriteString(kvp.Key, stringValue);
-                            }
-                            catch (Exception ex)
-                            {
-                                // Handle any unexpected errors during STRING operations
-                                if (ex.Message.Contains("DllNotFoundException") || ex.Message.Contains("EntryPointNotFoundException"))
-                                {
-                                    throw new Exception("STRING support library not found or accessible");
-                                }
-                                throw;
-                            }
-                            break;
-                        default:
-                            throw new ArgumentException($"Unsupported value type: {kvp.Value.GetType()} for tag '{kvp.Key}'. Value: {kvp.Value}");
-                    }
-                    
-                    results[kvp.Key] = new TagWriteResult
-                    {
-                        TagName = kvp.Key,
-                        Success = true,
-                        ErrorCode = 0,
-                        ErrorMessage = null
-                    };
+                        tag_name = entry.Key,
+                        value_type = ToRustValueType(plcBatchValue),
+                        value = ToJsonElement(ToRustRawValue(plcBatchValue))
+                    });
                 }
                 catch (Exception ex)
                 {
-                    results[kvp.Key] = new TagWriteResult
+                    results[entry.Key] = new TagWriteResult
                     {
-                        TagName = kvp.Key,
+                        TagName = entry.Key,
                         Success = false,
                         ErrorCode = -1,
                         ErrorMessage = ex.Message
                     };
                 }
             }
-            
+
+            if (ffiOperations.Count == 0)
+                return results;
+
+            try
+            {
+                var payload = JsonSerializer.Serialize(ffiOperations);
+                ExecuteWithLock(() =>
+                {
+                    IntPtr payloadPtr = Marshal.StringToHGlobalAnsi(payload);
+                    IntPtr resultPtr = Marshal.AllocHGlobal(65536);
+                    try
+                    {
+                        int rc = eip_write_tags_batch(_clientId, payloadPtr, ffiOperations.Count, resultPtr, 65536);
+                        var json = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+
+                        if (string.IsNullOrWhiteSpace(json))
+                        {
+                            foreach (var op in ffiOperations)
+                            {
+                                results[op.tag_name] = new TagWriteResult
+                                {
+                                    TagName = op.tag_name,
+                                    Success = false,
+                                    ErrorCode = -1,
+                                    ErrorMessage = "Empty native batch write response"
+                                };
+                            }
+                            return;
+                        }
+
+                        var nativeResults = JsonSerializer.Deserialize<List<FfiWriteBatchResultItem>>(json) ?? new();
+                        foreach (var native in nativeResults)
+                        {
+                            results[native.tag_name] = new TagWriteResult
+                            {
+                                TagName = native.tag_name,
+                                Success = native.success && rc == 0,
+                                ErrorCode = native.success && rc == 0 ? 0 : -1,
+                                ErrorMessage = native.error ?? (rc == 0 ? null : "Native batch write failed")
+                            };
+                        }
+
+                        foreach (var op in ffiOperations)
+                        {
+                            if (results.ContainsKey(op.tag_name))
+                                continue;
+
+                            results[op.tag_name] = new TagWriteResult
+                            {
+                                TagName = op.tag_name,
+                                Success = false,
+                                ErrorCode = -1,
+                                ErrorMessage = "Missing native batch write result"
+                            };
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(payloadPtr);
+                        Marshal.FreeHGlobal(resultPtr);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                foreach (var op in ffiOperations)
+                {
+                    results[op.tag_name] = new TagWriteResult
+                    {
+                        TagName = op.tag_name,
+                        Success = false,
+                        ErrorCode = -1,
+                        ErrorMessage = ex.Message
+                    };
+                }
+            }
+
             return results;
         }
 
@@ -2391,8 +2423,7 @@ namespace RustEtherNetIp
         }
 
         /// <summary>
-        /// Execute a mixed set of read and write operations.
-        /// Current implementation executes operations sequentially.
+        /// Execute a mixed set of read and write operations using native Rust batch execution.
         /// </summary>
         /// <param name="operations">Array of batch operations to execute</param>
         /// <returns>Array of batch operation results</returns>
@@ -2403,233 +2434,136 @@ namespace RustEtherNetIp
             if (operations == null || operations.Length == 0)
                 throw new ArgumentException("Operations array cannot be null or empty", nameof(operations));
 
-            // Sequential fallback implementation.
-            // TODO: Use a strongly-typed native batch protocol/result format.
             var results = new BatchOperationResult[operations.Length];
-            
+            var ffiOperations = new List<FfiExecuteBatchRequestItem>(operations.Length);
+
             for (int i = 0; i < operations.Length; i++)
             {
-                var operation = operations[i];
-                var startTime = DateTime.UtcNow;
-                
                 try
                 {
-                    if (operation.IsWrite)
+                    var op = operations[i];
+                    if (op.IsWrite)
                     {
-                        // Write operation
-                        switch (operation.Value)
+                        if (op.Value == null)
+                            throw new ArgumentException($"Write operation '{op.TagName}' is missing a value");
+
+                        var plcValue = op.Value is JsonElement jsonElement
+                            ? ConvertJsonElementToPlcValue(jsonElement)
+                            : ConvertObjectToPlcValue(op.Value);
+
+                        ffiOperations.Add(new FfiExecuteBatchRequestItem
                         {
-                            case System.Text.Json.JsonElement jsonElement:
-                                // Handle JSON deserialized values from ASP.NET Core
-                                switch (jsonElement.ValueKind)
-                                {
-                                    case System.Text.Json.JsonValueKind.True:
-                                        WriteBool(operation.TagName, true);
-                                        break;
-                                    case System.Text.Json.JsonValueKind.False:
-                                        WriteBool(operation.TagName, false);
-                                        break;
-                                    case System.Text.Json.JsonValueKind.Number:
-                                        var numberValue = jsonElement.GetDouble();
-                                        if (numberValue == Math.Floor(numberValue) && numberValue >= int.MinValue && numberValue <= int.MaxValue)
-                                        {
-                                            // Looks like an integer value, write as DINT
-                                            WriteDint(operation.TagName, (int)numberValue);
-                                        }
-                                        else
-                                        {
-                                            // Decimal value, write as REAL
-                                            WriteReal(operation.TagName, (float)numberValue);
-                                        }
-                                        break;
-                                    case System.Text.Json.JsonValueKind.String:
-                                        try
-                                        {
-                                            WriteString(operation.TagName, jsonElement.GetString() ?? "");
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            // Handle any unexpected errors during STRING operations
-                                            if (ex.Message.Contains("DllNotFoundException") || ex.Message.Contains("EntryPointNotFoundException"))
-                                            {
-                                                throw new Exception("STRING support library not found or accessible");
-                                            }
-                                            throw;
-                                        }
-                                        break;
-                                    default:
-                                        throw new ArgumentException($"Unsupported JSON value kind: {jsonElement.ValueKind} for tag '{operation.TagName}'. Value: {jsonElement}");
-                                }
-                                break;
-                            case bool boolValue:
-                                WriteBool(operation.TagName, boolValue);
-                                break;
-                            case int intValue:
-                                WriteDint(operation.TagName, intValue);
-                                break;
-                            case double doubleValue:
-                                // JavaScript sends all numbers as double - determine if it should be int or float
-                                if (doubleValue == Math.Floor(doubleValue) && doubleValue >= int.MinValue && doubleValue <= int.MaxValue)
-                                {
-                                    // Looks like an integer value, write as DINT
-                                    WriteDint(operation.TagName, (int)doubleValue);
-                                }
-                                else
-                                {
-                                    // Decimal value, write as REAL
-                                    WriteReal(operation.TagName, (float)doubleValue);
-                                }
-                                break;
-                            case float floatValue:
-                                WriteReal(operation.TagName, floatValue);
-                                break;
-                            case string stringValue:
-                                try
-                                {
-                                    WriteString(operation.TagName, stringValue);
-                                }
-                                catch (Exception ex)
-                                {
-                                    // Handle any unexpected errors during STRING operations
-                                    if (ex.Message.Contains("DllNotFoundException") || ex.Message.Contains("EntryPointNotFoundException"))
-                                    {
-                                        throw new Exception("STRING support library not found or accessible");
-                                    }
-                                    throw;
-                                }
-                                break;
-                            default:
-                                throw new ArgumentException($"Unsupported value type: {operation.Value?.GetType()} for tag '{operation.TagName}'. Value: {operation.Value}");
-                        }
-                        
-                        results[i] = new BatchOperationResult
-                        {
-                            TagName = operation.TagName,
-                            IsWrite = true,
-                            Success = true,
-                            Value = null,
-                            ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds,
-                            ErrorCode = 0,
-                            ErrorMessage = null
-                        };
+                            tag_name = op.TagName,
+                            is_write = true,
+                            value_type = ToRustValueType(plcValue),
+                            value = ToJsonElement(ToRustRawValue(plcValue))
+                        });
                     }
                     else
                     {
-                        // Read operation - try multiple data types to find the correct one
-                        object? value = null;
-                        bool success = false;
-                        Exception? lastException = null;
-
-                        // Try BOOL first
-                        try
+                        ffiOperations.Add(new FfiExecuteBatchRequestItem
                         {
-                            value = ReadBool(operation.TagName);
-                            success = true;
-                        }
-                        catch (Exception ex) { lastException = ex; }
-
-                        // Try DINT if BOOL failed
-                        if (!success)
-                        {
-                            try
-                            {
-                                value = ReadDint(operation.TagName);
-                                success = true;
-                            }
-                            catch (Exception ex) { lastException = ex; }
-                        }
-
-                        // Try INT if DINT failed
-                        if (!success)
-                        {
-                            try
-                            {
-                                value = ReadInt(operation.TagName);
-                                success = true;
-                            }
-                            catch (Exception ex) { lastException = ex; }
-                        }
-
-                        // Try REAL if INT failed
-                        if (!success)
-                        {
-                            try
-                            {
-                                value = ReadReal(operation.TagName);
-                                success = true;
-                            }
-                            catch (Exception ex) { lastException = ex; }
-                        }
-
-                        // Try STRING if REAL failed
-                        if (!success)
-                        {
-                            try
-                            {
-                                value = ReadString(operation.TagName);
-                                success = true;
-                            }
-                            catch (Exception ex) 
-                            { 
-                                lastException = ex;
-                                // STRING operations are fully supported in the Rust library
-                            }
-                        }
-
-                        // Try SINT if STRING failed
-                        if (!success)
-                        {
-                            try
-                            {
-                                value = ReadSint(operation.TagName);
-                                success = true;
-                            }
-                            catch (Exception ex) { lastException = ex; }
-                        }
-
-                        if (success)
-                        {
-                            results[i] = new BatchOperationResult
-                            {
-                                TagName = operation.TagName,
-                                IsWrite = false,
-                                Success = true,
-                                Value = value,
-                                ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds,
-                                ErrorCode = 0,
-                                ErrorMessage = null
-                            };
-                        }
-                        else
-                        {
-                            results[i] = new BatchOperationResult
-                            {
-                                TagName = operation.TagName,
-                                IsWrite = false,
-                                Success = false,
-                                Value = null,
-                                ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds,
-                                ErrorCode = -1,
-                                ErrorMessage = lastException?.Message ?? "Tag not found or unsupported data type"
-                            };
-                        }
+                            tag_name = op.TagName,
+                            is_write = false,
+                            value_type = null,
+                            value = null
+                        });
                     }
                 }
                 catch (Exception ex)
                 {
                     results[i] = new BatchOperationResult
                     {
-                        TagName = operation.TagName,
-                        IsWrite = operation.IsWrite,
+                        TagName = operations[i].TagName,
+                        IsWrite = operations[i].IsWrite,
                         Success = false,
                         Value = null,
-                        ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds,
+                        ExecutionTimeMs = 0,
                         ErrorCode = -1,
                         ErrorMessage = ex.Message
                     };
                 }
             }
-            
+
+            if (ffiOperations.Count == 0)
+                return results;
+
+            try
+            {
+                var payload = JsonSerializer.Serialize(ffiOperations);
+                ExecuteWithLock(() =>
+                {
+                    IntPtr payloadPtr = Marshal.StringToHGlobalAnsi(payload);
+                    IntPtr resultPtr = Marshal.AllocHGlobal(131072);
+                    try
+                    {
+                        int rc = eip_execute_batch(_clientId, payloadPtr, ffiOperations.Count, resultPtr, 131072);
+                        string json = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace(json))
+                            throw new Exception("Empty native execute-batch response");
+
+                        var nativeResults = JsonSerializer.Deserialize<List<FfiExecuteBatchResultItem>>(json) ?? new();
+                        foreach (var native in nativeResults)
+                        {
+                            if (native.index < 0 || native.index >= results.Length)
+                                continue;
+
+                            results[native.index] = new BatchOperationResult
+                            {
+                                TagName = native.tag_name,
+                                IsWrite = native.is_write,
+                                Success = native.success && rc == 0,
+                                Value = native.value.HasValue ? ConvertPlcValueToObject(PlcValue.FromJson(native.value.Value.GetRawText())) : null,
+                                ExecutionTimeMs = native.execution_time_us / 1000.0,
+                                ErrorCode = native.success && rc == 0 ? 0 : -1,
+                                ErrorMessage = native.error ?? (rc == 0 ? null : "Native execute-batch failed")
+                            };
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(payloadPtr);
+                        Marshal.FreeHGlobal(resultPtr);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                for (int i = 0; i < results.Length; i++)
+                {
+                    if (results[i] is { } existing &&
+                        (existing.Success || !string.IsNullOrEmpty(existing.ErrorMessage)))
+                        continue;
+                    results[i] = new BatchOperationResult
+                    {
+                        TagName = operations[i].TagName,
+                        IsWrite = operations[i].IsWrite,
+                        Success = false,
+                        Value = null,
+                        ExecutionTimeMs = 0,
+                        ErrorCode = -1,
+                        ErrorMessage = ex.Message
+                    };
+                }
+            }
+
+            for (int i = 0; i < results.Length; i++)
+            {
+                if (results[i] != null)
+                    continue;
+
+                results[i] = new BatchOperationResult
+                {
+                    TagName = operations[i].TagName,
+                    IsWrite = operations[i].IsWrite,
+                    Success = false,
+                    Value = null,
+                    ExecutionTimeMs = 0,
+                    ErrorCode = -1,
+                    ErrorMessage = "Missing execute-batch result"
+                };
+            }
+
             return results;
         }
 
@@ -3219,6 +3153,39 @@ namespace RustEtherNetIp
                 operation();
                 return true; // Return dummy value
             });
+        }
+
+        private sealed class FfiWriteBatchRequestItem
+        {
+            public string tag_name { get; set; } = string.Empty;
+            public string value_type { get; set; } = string.Empty;
+            public JsonElement value { get; set; }
+        }
+
+        private sealed class FfiWriteBatchResultItem
+        {
+            public string tag_name { get; set; } = string.Empty;
+            public bool success { get; set; }
+            public string? error { get; set; }
+        }
+
+        private sealed class FfiExecuteBatchRequestItem
+        {
+            public string tag_name { get; set; } = string.Empty;
+            public bool is_write { get; set; }
+            public string? value_type { get; set; }
+            public JsonElement? value { get; set; }
+        }
+
+        private sealed class FfiExecuteBatchResultItem
+        {
+            public int index { get; set; }
+            public string tag_name { get; set; } = string.Empty;
+            public bool is_write { get; set; }
+            public bool success { get; set; }
+            public JsonElement? value { get; set; }
+            public string? error { get; set; }
+            public ulong execution_time_us { get; set; }
         }
 
         #endregion

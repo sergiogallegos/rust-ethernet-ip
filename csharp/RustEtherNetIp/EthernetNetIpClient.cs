@@ -2072,11 +2072,11 @@ namespace RustEtherNetIp
 
         #endregion
 
-        #region Batch Operations - High Performance Multi-Tag Operations
+        #region Batch Operations
 
         /// <summary>
-        /// Read multiple tags in a single optimized batch operation.
-        /// Provides 3-10x performance improvement over individual reads.
+        /// Read multiple tags and return per-tag results.
+        /// Current implementation executes reads sequentially.
         /// </summary>
         /// <param name="tagNames">Array of tag names to read</param>
         /// <returns>Dictionary of tag names to read results</returns>
@@ -2087,8 +2087,8 @@ namespace RustEtherNetIp
             if (tagNames == null || tagNames.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
-            // For now, return a simplified implementation that calls individual reads
-            // TODO: Implement proper batch FFI when Rust FFI is updated
+            // Sequential fallback implementation.
+            // TODO: Use a strongly-typed native batch protocol/result format.
             var results = new Dictionary<string, TagReadResultBatch>();
             
             foreach (string tagName in tagNames)
@@ -2217,8 +2217,8 @@ namespace RustEtherNetIp
         }
 
         /// <summary>
-        /// Write multiple tags in a single optimized batch operation.
-        /// Provides 3-10x performance improvement over individual writes.
+        /// Write multiple tags and return per-tag results.
+        /// Current implementation executes writes sequentially.
         /// </summary>
         /// <param name="tagValues">Dictionary of tag names to values to write</param>
         /// <returns>Dictionary of tag names to write results</returns>
@@ -2229,8 +2229,8 @@ namespace RustEtherNetIp
             if (tagValues == null || tagValues.Count == 0)
                 throw new ArgumentException("Tag values dictionary cannot be null or empty", nameof(tagValues));
 
-            // For now, return a simplified implementation that calls individual writes
-            // TODO: Implement proper batch FFI when Rust FFI is updated
+            // Sequential fallback implementation.
+            // TODO: Use a strongly-typed native batch protocol/result format.
             var results = new Dictionary<string, TagWriteResult>();
             
             foreach (var kvp in tagValues)
@@ -2373,9 +2373,9 @@ namespace RustEtherNetIp
         {
             _ = config ?? throw new ArgumentNullException(nameof(config));
 
-            // For now, store configuration locally
-            // TODO: Implement proper batch configuration FFI when Rust FFI is updated
-            // This is a placeholder implementation
+            throw new NotSupportedException(
+                "Batch configuration is not implemented yet in the native Rust FFI."
+            );
         }
 
         /// <summary>
@@ -2385,21 +2385,14 @@ namespace RustEtherNetIp
         /// <exception cref="InvalidOperationException">Thrown if not connected to PLC</exception>
         public BatchConfig GetBatchConfig()
         {
-            // For now, return default configuration
-            // TODO: Implement proper batch configuration FFI when Rust FFI is updated
-            return new BatchConfig
-            {
-                MaxOperationsPerPacket = 20,
-                MaxPacketSize = 504,
-                PacketTimeoutMs = 3000,
-                ContinueOnError = true,
-                OptimizePacketPacking = true
-            };
+            throw new NotSupportedException(
+                "Batch configuration is not implemented yet in the native Rust FFI."
+            );
         }
 
         /// <summary>
-        /// Execute a mixed batch of read and write operations in optimized packets.
-        /// Ideal for coordinated control operations and data collection.
+        /// Execute a mixed set of read and write operations.
+        /// Current implementation executes operations sequentially.
         /// </summary>
         /// <param name="operations">Array of batch operations to execute</param>
         /// <returns>Array of batch operation results</returns>
@@ -2410,8 +2403,8 @@ namespace RustEtherNetIp
             if (operations == null || operations.Length == 0)
                 throw new ArgumentException("Operations array cannot be null or empty", nameof(operations));
 
-            // For now, return a simplified implementation that executes operations sequentially
-            // TODO: Implement proper batch FFI when Rust FFI is updated
+            // Sequential fallback implementation.
+            // TODO: Use a strongly-typed native batch protocol/result format.
             var results = new BatchOperationResult[operations.Length];
             
             for (int i = 0; i < operations.Length; i++)

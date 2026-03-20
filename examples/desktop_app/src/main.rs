@@ -29,9 +29,7 @@ struct DesktopApp {
     // UDT operations
     udt_name: String,
     udt_result: String,
-    udt_member_name: String,
     udt_member_path: String,
-    udt_member_value: String,
     udt_member_result: String,
 
     // Tab selection
@@ -63,9 +61,7 @@ impl Default for DesktopApp {
             array_result: String::new(),
             udt_name: String::new(),
             udt_result: String::new(),
-            udt_member_name: String::new(),
             udt_member_path: String::new(),
-            udt_member_value: String::new(),
             udt_member_result: String::new(),
             selected_tab: 0,
             log_messages: Vec::new(),
@@ -198,7 +194,6 @@ impl DesktopApp {
             return;
         }
 
-        let client = self.client.as_ref().unwrap().clone();
         let tag_name = self.tag_name.clone();
         let value_str = self.tag_value.clone();
         let value_str_for_log = value_str.clone();
@@ -309,7 +304,6 @@ impl DesktopApp {
             return;
         }
 
-        let client = self.client.as_ref().unwrap().clone();
         let array_name = self.array_name.clone();
         let index = self.array_index;
         let value_str = self.array_value.clone();
@@ -429,7 +423,6 @@ impl DesktopApp {
             return;
         }
 
-        let client = self.client.as_ref().unwrap().clone();
         let member_path = self.udt_member_path.clone();
 
         self.add_log(format!("Reading UDT member: {}", member_path));
@@ -441,12 +434,7 @@ impl DesktopApp {
             return;
         }
 
-        let tag_name = parts[0];
-        let member_name = parts[1..].join(".");
-
         let client = self.client.as_ref().unwrap().clone();
-        let tag_name_clone = tag_name.to_string();
-        let member_name_clone = member_name.clone();
 
         let result: Result<Option<PlcValue>, String> = self.rt.block_on(async {
             let mut client_guard = client.lock().await;

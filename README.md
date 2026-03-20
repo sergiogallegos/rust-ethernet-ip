@@ -1,4 +1,6 @@
-# 🦀 Rust EtherNet/IP Driver
+<p align="center">
+  <img src="images/rust-ethernet-ip-logo.png" alt="Rust EtherNet/IP logo" width="420" />
+</p>
 
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.6.3-blue.svg)](https://github.com/sergiogallegos/rust-ethernet-ip/releases)
@@ -18,6 +20,8 @@ A high-performance, production-ready EtherNet/IP communication library specifica
 ## 🎯 **Current Development Focus**
 
 **We are focused on the .NET stack (C# wrappers and examples) for production-quality industrial automation applications.**
+ 
+**🚧 Next release line in progress: `0.7.0` (unreleased). Current published version remains `0.6.3`.**
 
 - 🎯 **Active Development**: 
   - C# wrapper library (`RustEtherNetIp.dll`)
@@ -190,7 +194,7 @@ Optimized for PC applications with excellent performance:
 > - **Batch operations**: 3-10x faster than individual operations
 > - **Code quality**: Enhanced with idiomatic Rust patterns and clippy optimizations
 > - **Network efficiency**: Optimized packet building with pre-allocated buffers
-> - **Library Health**: All 117+ unit tests passing, production-ready core
+> - **Library Health**: 230+ automated tests discovered across workspace targets, production-ready core
 
 | Operation | Throughput | Latency | Memory Usage |
 |-----------|------------|---------|--------------|
@@ -211,7 +215,7 @@ Optimized for PC applications with excellent performance:
 - ✅ Real-time subscriptions
 - ✅ C# wrapper with WinForms, WPF, and ASP.NET examples
 - ✅ Route path support for ControlLogix (slots 0-31)
-- ✅ All 117+ unit tests passing
+- ✅ 230+ automated tests discovered across workspace targets
 
 **Note:** ControlLogix systems with CPUs in different slots can use the `RoutePath` API:
 ```rust
@@ -497,10 +501,10 @@ cd examples/AspNetExample && dotnet run
 ### **🦀 Rust Examples**
 
 ```bash
-cargo run --example advanced_tag_addressing
-cargo run --example data_types_showcase
-cargo run --example batch_operations_demo
+cargo run --example comprehensive_terminal_demo
 cargo run --example stream_injection_example
+cargo run --example test_discover_and_verify
+cargo run --example test_all_data_types_write_read
 cargo run --example test_cell_nestdata_udt
 ```
 

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚧 0.7.0 Preparation (Not Released)
+- This section tracks work in progress for the upcoming `0.7.0` release line.
+- Crate/package version remains `0.6.3` until the release is finalized.
+
+### 🐛 Fixed — Core Library
+- **Connection pool reuse**: `PlcManager::get_connection` now reuses the least-recently-used active client when the pool is full instead of recreating a new TCP/session connection each time.
+
+### 🐛 Fixed — FFI
+- **Batch API status codes**: `eip_write_tags_batch` and `eip_execute_batch` now return failure (`-1`) while unimplemented, matching their error payloads.
+- **Batch config API status code**: `eip_configure_batch_operations` now returns failure (`-1`) while unimplemented.
+
+### 🐛 Fixed — C# Wrapper
+- **Batch operation expectations**: Batch method XML docs/comments now explicitly state sequential fallback behavior where native typed-batch FFI is not yet implemented.
+- **Batch config API behavior**: `ConfigureBatchOperations` and `GetBatchConfig` now throw `NotSupportedException` instead of silently behaving as if configuration succeeded.
+
+### 🧹 Cleanup
+- **Desktop app warnings**: Removed unused fields/locals in `examples/desktop_app` that were generating compile warnings.
+- **Repository hygiene**: Added recursive `**/target/` ignore rule and untracked committed `examples/web_app/backend/target` build artifacts.
+
 ### 🐛 Fixed — C# Wrapper
 - **Empty STRING tag handling**: Fixed `ReadString` to return empty string for zeroed/cleared STRING tags (LEN=0) instead of falling through to error handling. Both the direct read path and the UDT member fallback path now correctly handle empty strings.
 

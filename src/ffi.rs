@@ -228,7 +228,7 @@ pub unsafe extern "C" fn eip_set_route_path(
     }
 
     client.set_route_path(route_path);
-    0
+    -1
 }
 
 /// Disconnect from a PLC
@@ -1202,7 +1202,7 @@ pub unsafe extern "C" fn eip_read_string(
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
-    0
+    -1
 }
 
 /// Write a STRING tag
@@ -1326,7 +1326,7 @@ pub unsafe extern "C" fn eip_read_tag(
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
-    0
+    -1
 }
 
 /// Read a range of array elements as JSON array of PlcValue.
@@ -1396,7 +1396,7 @@ pub unsafe extern "C" fn eip_read_array_range(
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
-    0
+    -1
 }
 
 // UDT operations
@@ -1709,7 +1709,7 @@ pub unsafe extern "C" fn eip_write_tags_batch(
         *results.add(results_bytes.len()) = 0; // Null terminate
     }
 
-    0
+    -1
 }
 
 #[no_mangle]
@@ -1758,7 +1758,7 @@ pub unsafe extern "C" fn eip_execute_batch(
         *results.add(results_bytes.len()) = 0; // Null terminate
     }
 
-    0
+    -1
 }
 
 #[no_mangle]
@@ -1766,7 +1766,7 @@ pub unsafe extern "C" fn eip_configure_batch_operations(
     _client_id: c_int,
     _config: *const u8,
 ) -> c_int {
-    0 // Return success for now
+    -1 // Not implemented yet
 }
 
 #[no_mangle]

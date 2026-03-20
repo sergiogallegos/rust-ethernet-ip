@@ -163,7 +163,8 @@ impl PlcManager {
             return Ok(&mut connections.last_mut().unwrap().client);
         }
 
-        // Find the least recently used connection
+        // Pool is full: return the least-recently-used existing connection.
+        // Recreating the client here causes avoidable reconnect churn.
         let lru_index = connections
             .iter()
             .enumerate()
@@ -171,14 +172,7 @@ impl PlcManager {
             .map(|(i, _)| i)
             .unwrap();
 
-        // Update the LRU connection
-        let mut client = EipClient::new(&address.to_string()).await?;
-        client.set_max_packet_size(config.max_packet_size as u32);
-        connections[lru_index].client = client;
-        connections[lru_index].health.is_active = true;
-        connections[lru_index].health.last_success = Instant::now();
-        connections[lru_index].health.failed_attempts = 0;
-        connections[lru_index].health.latency = Duration::from_millis(0);
+        // Mark usage and return the existing client to maximize reuse.
         connections[lru_index].last_used = Instant::now();
         Ok(&mut connections[lru_index].client)
     }

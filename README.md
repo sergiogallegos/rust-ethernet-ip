@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="images/logo.png" alt="Rust EtherNet/IP logo" width="420" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/brand/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="images/brand/logo-light.png">
+    <img src="images/brand/logo-light.png" alt="Rust EtherNet/IP logo" width="420" />
+  </picture>
 </p>
 
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)

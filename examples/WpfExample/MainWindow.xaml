@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:WpfExample.ViewModels"
         xmlns:local="clr-namespace:WpfExample"
         xmlns:converters="clr-namespace:WpfExample.Converters"
-        Title="🦀 Rust EtherNet/IP - Comprehensive Demo v0.6.2" 
+        Title="🦀 Rust EtherNet/IP - Comprehensive Demo (0.7.0 Hardening)" 
         Height="1000" Width="1900"
         MinHeight="1000" MinWidth="1900"
         Background="{StaticResource BackgroundBrush}"
@@ -48,7 +48,7 @@
                 
                 <!-- Title -->
                 <TextBlock Grid.Row="0" Grid.Column="0" 
-                          Text="🦀 Rust EtherNet/IP Driver - WPF Demo"
+                          Text="🦀 Rust EtherNet/IP - WPF Demo"
                           FontSize="24" FontWeight="Bold" 
                           Foreground="{StaticResource PrimaryBrush}"/>
                 
@@ -177,10 +177,10 @@
                                 <TextBlock Grid.Row="0" Text="📊 Tag Monitoring" 
                                            FontSize="18" FontWeight="Bold" Margin="0,0,0,8"/>
                                 
-                                <!-- v0.4.0 Features Notice -->
+                                <!-- Current release-line notice -->
                                 <Border Background="#D4EDDA" BorderBrush="#C3E6CB" BorderThickness="1" 
                                         CornerRadius="4" Padding="8" Margin="0,0,0,16">
-                                    <TextBlock Text="✅ v0.4.0 Features: Full STRING support, Real-time subscriptions, and High-performance batch operations now available! All Allen-Bradley data types supported."
+                                    <TextBlock Text="✅ Current status: stable release is 0.6.3, 0.7.0 is in hardening. STRING support, subscriptions, route-path operations, and batch read/write/execute are available."
                                                FontSize="12" Foreground="#155724" TextWrapping="Wrap"/>
                                 </Border>
                                 

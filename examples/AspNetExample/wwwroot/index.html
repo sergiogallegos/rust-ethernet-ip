@@ -3,31 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🦀 Rust EtherNet/IP - ASP.NET Demo</title>
+    <title>🦀 rust-ethernet-ip - ASP.NET Demo</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        .tag-value {
-            font-family: 'Consolas', monospace;
+        :root {
+            --rust-orange: #E4572E;
+            --rust-dark: #B33A1E;
+            --ink: #1F2937;
+            --bg: #F3F4F6;
+            --panel: #FFFFFF;
         }
-        .log-entry {
-            font-family: 'Consolas', monospace;
-            white-space: pre-wrap;
+        body.app-shell {
+            background:
+                radial-gradient(1200px 600px at 8% -5%, #FFD8CB 0%, transparent 55%),
+                radial-gradient(900px 500px at 92% 0%, #FFE8D8 0%, transparent 50%),
+                var(--bg);
+            min-height: 100vh;
         }
-        .connected {
-            color: #10B981;
+        .panel {
+            background: var(--panel);
+            border: 1px solid #E5E7EB;
+            border-radius: 12px;
+            box-shadow: 0 8px 22px rgba(31, 41, 55, 0.08);
         }
-        .disconnected {
-            color: #EF4444;
+        .accent-title {
+            color: var(--ink);
+            letter-spacing: 0.2px;
         }
+        .accent-chip {
+            background: linear-gradient(135deg, var(--rust-orange), var(--rust-dark));
+            color: #fff;
+            border-radius: 9999px;
+            padding: 2px 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .tag-value, .log-entry {
+            font-family: 'Consolas', 'SFMono-Regular', Menlo, Monaco, monospace;
+        }
+        .log-entry { white-space: pre-wrap; }
+        .connected { color: #059669; }
+        .disconnected { color: #DC2626; }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="app-shell">
     <div class="container mx-auto px-4 py-8">
         <!-- Header -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div class="panel p-6 mb-6">
             <div class="flex justify-between items-center">
                 <div>
-                    <h1 class="text-2xl font-bold text-gray-800">🦀 Rust EtherNet/IP Driver - ASP.NET Demo</h1>
+                    <h1 class="text-2xl font-bold accent-title">🦀 rust-ethernet-ip ASP.NET Demo</h1>
+                    <div class="mt-1"><span class="accent-chip">0.7.0 hardening line</span></div>
                     <div class="mt-2">
                         <div class="flex flex-wrap items-center gap-4">
                             <input type="text" id="plcAddress" placeholder="PLC Address" 
@@ -58,7 +84,7 @@
         </div>
 
         <!-- Performance Info -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div class="panel p-6 mb-6">
             <div class="flex justify-between items-center">
                 <div class="flex space-x-8">
                     <div>
@@ -77,7 +103,7 @@
         </div>
 
         <!-- Array Testing Section -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div class="panel p-6 mb-6">
             <h2 class="text-xl font-bold mb-4">📊 Array Element Testing</h2>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -119,7 +145,7 @@
         </div>
 
         <!-- UDT Testing Section -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div class="panel p-6 mb-6">
             <h2 class="text-xl font-bold mb-4">🏗️ UDT (User Defined Type) Testing</h2>
             
             <!-- UDT Operations -->
@@ -190,7 +216,7 @@
 
         <div class="grid grid-cols-2 gap-6">
             <!-- Left Panel: Tag Monitoring -->
-            <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="panel p-6">
                 <h2 class="text-xl font-bold mb-4">📊 Tag Monitoring</h2>
                 
                 <!-- Tag Discovery -->
@@ -242,7 +268,7 @@
             </div>
 
             <!-- Right Panel: Activity Log -->
-            <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="panel p-6">
                 <h2 class="text-xl font-bold mb-4">📝 Activity Log</h2>
                 <div id="logContainer" class="bg-gray-900 text-green-400 p-4 rounded-lg h-[500px] overflow-y-auto">
                     <!-- Log entries will be added here -->

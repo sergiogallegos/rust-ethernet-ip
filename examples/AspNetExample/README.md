@@ -1,6 +1,6 @@
-# 🚀 Rust EtherNet/IP ASP.NET Core Example with Batch Operations (v0.6.2)
+# 🚀 Rust EtherNet/IP ASP.NET Core Example (0.7.0 Hardening)
 
-A comprehensive ASP.NET Core Web API demonstrating the power of **batch operations** and **STRING support** in the Rust EtherNet/IP library (v0.6.2). This example showcases how batch operations can provide **3-10x performance improvements** over individual tag operations through optimized REST API endpoints.
+A comprehensive ASP.NET Core Web API demonstrating batch operations and STRING handling in the `rust-ethernet-ip` 0.7.0 hardening line (latest published stable is 0.6.3).
 
 ## 🎯 Features
 
@@ -18,7 +18,7 @@ A comprehensive ASP.NET Core Web API demonstrating the power of **batch operatio
 - **✏️ Batch Write API**: `/api/plc/batch/write` - Write multiple tags atomically 
 - **🔄 Mixed Operations API**: `/api/plc/batch/execute` - Combine reads and writes
 - **📊 Performance Testing**: `/api/plc/batch/benchmark` - Compare individual vs batch
-- **⚙️ Configuration API**: `/api/plc/batch/config` - Tune for your PLC
+- **⚙️ Configuration API**: `/api/plc/batch/config` - Exposed endpoint; returns `501` when wrapper runtime does not support batch-config APIs
 
 ### STRING Operations Highlights
 - **📝 STRING Read API**: `/api/plc/string/{tagName}` - Read Allen-Bradley STRING tags
@@ -53,8 +53,8 @@ A comprehensive ASP.NET Core Web API demonstrating the power of **batch operatio
 - `POST /api/plc/batch/write` - Write multiple tags  
 - `POST /api/plc/batch/execute` - Mixed read/write operations
 - `POST /api/plc/batch/benchmark` - Compare performance
-- `GET /api/plc/batch/config` - Get batch configuration
-- `POST /api/plc/batch/config` - Update batch configuration
+- `GET /api/plc/batch/config` - Get batch configuration (returns `501` if unsupported)
+- `POST /api/plc/batch/config` - Update batch configuration (returns `501` if unsupported)
 - `GET /api/plc/batch/stats` - Get performance statistics
 - `DELETE /api/plc/batch/stats` - Reset statistics
 
@@ -618,7 +618,7 @@ ab -n 1000 -c 10 http://localhost:5000/api/plc/tag/TestTag
 
 - **[WinForms Example](../WinFormsExample/)**: Desktop application with batch operations
 - **[WPF Example](../WpfExample/)**: MVVM pattern with batch operations  
-- **[TypeScript Example](../TypeScriptExample/)**: React frontend consuming this API
+- **[Web App Example](../web_app/)**: Frontend/backend dashboard consuming the same API patterns
 
 ## 📄 License
 

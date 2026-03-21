@@ -6,6 +6,10 @@ A high-performance C# wrapper for the Rust EtherNet/IP library, enabling communi
 
 **3-10x faster than individual operations!** The latest version introduces powerful batch operations that dramatically improve performance for multi-tag scenarios.
 
+Implementation note for current hardening line:
+- `WriteTagsBatch(...)` and `ExecuteBatch(...)` use native typed FFI batch paths.
+- `ReadTagsBatch(...)` currently uses a sequential type-probing fallback path.
+
 ### Key Benefits
 
 - **🚀 Performance**: 3-10x faster than individual tag operations

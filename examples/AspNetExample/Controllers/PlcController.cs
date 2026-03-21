@@ -227,6 +227,15 @@ public class PlcController : ControllerBase
                 config = _plcService.GetBatchConfig()
             });
         }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogWarning(ex, "Batch configuration API is not supported by the current wrapper/runtime");
+            return StatusCode(501, new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error configuring batch operations");
@@ -257,6 +266,15 @@ public class PlcController : ControllerBase
                     highPerformance = BatchConfig.HighPerformance(),
                     conservative = BatchConfig.Conservative()
                 }
+            });
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogWarning(ex, "Batch configuration API is not supported by the current wrapper/runtime");
+            return StatusCode(501, new
+            {
+                success = false,
+                message = ex.Message
             });
         }
         catch (Exception ex)

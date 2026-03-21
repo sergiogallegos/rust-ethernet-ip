@@ -1,6 +1,6 @@
-# 🦀 Rust EtherNet/IP WinForms Example with Batch Operations (v0.6.2)
+# 🦀 Rust EtherNet/IP WinForms Example (0.7.0 Hardening)
 
-A comprehensive Windows Forms application demonstrating the power of **batch operations** in the Rust EtherNet/IP library (v0.6.2). This example showcases how batch operations can provide **3-10x performance improvements** over individual tag operations.
+A comprehensive Windows Forms application demonstrating batch operations and diagnostics in the `rust-ethernet-ip` 0.7.0 hardening line (latest published stable is 0.6.3).
 
 ## 🚀 Features
 
@@ -8,7 +8,7 @@ A comprehensive Windows Forms application demonstrating the power of **batch ope
 - **Individual Operations**: Traditional single-tag read/write operations
 - **Batch Operations**: High-performance multi-tag operations
 - **Performance Comparison**: Side-by-side benchmarking
-- **Batch Configuration**: Optimize settings for your PLC
+- **Batch Configuration Endpoint Surface**: UI surfaces config concepts; runtime may report unsupported depending wrapper/FFI build
 
 ### Batch Operations Highlights
 - **🚀 Batch Read**: Read multiple tags in a single optimized operation
@@ -37,7 +37,7 @@ TestReal
 ```
 Read multiple sensor values simultaneously for real-time monitoring.
 
-✅ **v0.4.0 Update**: STRING tags are now fully supported with complete Allen-Bradley format compliance!
+✅ STRING tags are supported; direct writes may still be limited by PLC firmware behavior (see root docs for details).
 
 ### 2. **Recipe Management**
 ```
@@ -296,7 +296,7 @@ var results = client.ExecuteBatch(operations);
 
 - **[ASP.NET Core Example](../AspNetExample/)**: Web API with batch operations
 - **[WPF Example](../WpfExample/)**: MVVM pattern with batch operations  
-- **[TypeScript Example](../TypeScriptExample/)**: React frontend with batch operations
+- **[Web App Example](../web_app/)**: Frontend/backend dashboard demo
 
 ## 📄 License
 

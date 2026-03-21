@@ -18,7 +18,8 @@ namespace WpfExample.Converters
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            throw new NotImplementedException();
+            // One-way UI converter: avoid runtime crash if binding mode changes.
+            return Binding.DoNothing;
         }
     }
 }

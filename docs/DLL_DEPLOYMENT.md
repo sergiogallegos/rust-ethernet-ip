@@ -23,7 +23,7 @@ The DLL has been copied to the following locations for examples and wrappers:
 - `csharp/RustEtherNetIp/rust_ethernet_ip.dll`
 
 ### Other Examples
-- `examples/TypeScriptExample/rust_ethernet_ip.dll`
+- `examples/web_app/frontend/rust_ethernet_ip.dll`
 - `examples/VueExample/rust_ethernet_ip.dll`
 - `examples/gonextjs/backend/rust_ethernet_ip.dll`
 
@@ -57,7 +57,7 @@ Copy-Item -Path "target\release\rust_ethernet_ip.dll" -Destination "examples\Asp
 Copy-Item -Path "target\release\rust_ethernet_ip.dll" -Destination "csharp\RustEtherNetIp\rust_ethernet_ip.dll" -Force
 Copy-Item -Path "target\release\rust_ethernet_ip.dll" -Destination "examples\CSharpFFITest\rust_ethernet_ip.dll" -Force
 Copy-Item -Path "target\release\rust_ethernet_ip.dll" -Destination "examples\csharp_examples\rust_ethernet_ip.dll" -Force
-Copy-Item -Path "target\release\rust_ethernet_ip.dll" -Destination "examples\TypeScriptExample\rust_ethernet_ip.dll" -Force
+Copy-Item -Path "target\release\rust_ethernet_ip.dll" -Destination "examples\web_app\frontend\rust_ethernet_ip.dll" -Force
 Copy-Item -Path "target\release\rust_ethernet_ip.dll" -Destination "examples\VueExample\rust_ethernet_ip.dll" -Force
 Copy-Item -Path "target\release\rust_ethernet_ip.dll" -Destination "examples\gonextjs\backend\rust_ethernet_ip.dll" -Force
 Copy-Item -Path "target\release\rust_ethernet_ip.dll" -Destination "gowrapper\rust_ethernet_ip.dll" -Force
@@ -79,7 +79,7 @@ $destinations = @(
     "csharp\RustEtherNetIp",
     "examples\CSharpFFITest",
     "examples\csharp_examples",
-    "examples\TypeScriptExample",
+    "examples\web_app\frontend",
     "examples\VueExample",
     "examples\gonextjs\backend",
     "gowrapper",
@@ -138,4 +138,3 @@ Get-ChildItem -Recurse -Filter "rust_ethernet_ip.dll" | Select-Object FullName, 
 ## Last Updated
 
 All DLLs were last updated after building with `cargo build --release` on the latest codebase with RoutePath and UdtData support.
-

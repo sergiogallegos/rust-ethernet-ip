@@ -190,18 +190,19 @@ public class PlcService : IDisposable
             // Convert PlcValue to Dictionary<string, object>
             if (value.IsUdt)
             {
-                var result = value.UdtMembers.ToDictionary(
+                var members = value.UdtMembers ?? new Dictionary<string, PlcValue>();
+                var result = members.ToDictionary(
                     kvp => kvp.Key, 
                     kvp => ConvertPlcValueToObject(kvp.Value)
                 );
                 
                 // Demo-specific: Apply Part_Data template parsing if this is a Part_Data UDT
-                if (tagName == "Part_Data" && value.UdtMembers.ContainsKey("_raw_data"))
+                if (tagName == "Part_Data" && members.ContainsKey("_raw_data"))
                 {
                     try
                     {
                         // Parse raw data using demo-specific template
-                        var rawDataString = value.UdtMembers["_raw_data"].As<string>();
+                        var rawDataString = members["_raw_data"].As<string>();
                         if (rawDataString != null && rawDataString.StartsWith("[") && rawDataString.EndsWith("]"))
                         {
                             // Parse hex string like "[04, 00]" to bytes
@@ -259,7 +260,8 @@ public class PlcService : IDisposable
     {
         try
         {
-            return _plcClient.GetUdtMember(tagName, memberPath);
+            return _plcClient.GetUdtMember(tagName, memberPath)
+                ?? throw new InvalidOperationException($"UDT member '{tagName}.{memberPath}' returned null");
         }
         catch (Exception ex)
         {
@@ -305,12 +307,12 @@ public class PlcService : IDisposable
             case PlcValueType.String:
                 return value.As<string>();
             case PlcValueType.Udt:
-                return value.UdtMembers.ToDictionary(
+                return (value.UdtMembers ?? new Dictionary<string, PlcValue>()).ToDictionary(
                     kvp => kvp.Key,
                     kvp => ConvertPlcValueToObject(kvp.Value)
                 );
             default:
-                return value.ToString();
+                return value.ToString() ?? string.Empty;
         }
     }
 
@@ -318,7 +320,7 @@ public class PlcService : IDisposable
     {
         if (!_isConnected || _currentAddress != plcAddress)
         {
-            throw new Exception($"Not connected to PLC at {plcAddress}");
+            throw new PlcNotConnectedException(plcAddress);
         }
 
         try
@@ -352,7 +354,7 @@ public class PlcService : IDisposable
             }
             catch { }
 
-            throw new Exception($"Could not determine type for tag {tagName}");
+            throw new InvalidOperationException($"Could not determine type for tag {tagName}");
         }
         catch (Exception ex)
         {
@@ -365,7 +367,7 @@ public class PlcService : IDisposable
     {
         if (!_isConnected || _currentAddress != plcAddress)
         {
-            throw new Exception($"Not connected to PLC at {plcAddress}");
+            throw new PlcNotConnectedException(plcAddress);
         }
 
         try
@@ -376,7 +378,7 @@ public class PlcService : IDisposable
             // Convert PlcValue to Dictionary<string, object>
             if (value.IsUdt)
             {
-                return value.UdtMembers.ToDictionary(
+                return (value.UdtMembers ?? new Dictionary<string, PlcValue>()).ToDictionary(
                     kvp => kvp.Key, 
                     kvp => ConvertPlcValueToObject(kvp.Value)
                 );
@@ -398,7 +400,7 @@ public class PlcService : IDisposable
     {
         if (!_isConnected || _currentAddress != plcAddress)
         {
-            throw new Exception($"Not connected to PLC at {plcAddress}");
+            throw new PlcNotConnectedException(plcAddress);
         }
 
         try
@@ -556,7 +558,7 @@ public class PlcService : IDisposable
                 await Task.Delay(RETRY_DELAY * (int)Math.Pow(2, attempt));
             }
         }
-        throw new Exception($"{operationName} failed after {MAX_RETRIES} attempts");
+        throw new InvalidOperationException($"{operationName} failed after {MAX_RETRIES} attempts");
     }
 
     public async Task<(bool success, string type, string value)> ReadTag(string plcAddress, string tagName)

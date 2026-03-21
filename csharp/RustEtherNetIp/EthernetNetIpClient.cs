@@ -2127,8 +2127,8 @@ namespace RustEtherNetIp
             if (tagNames == null || tagNames.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
-            // Sequential fallback implementation.
-            // TODO: Use a strongly-typed native batch protocol/result format.
+            // Sequential read fallback implementation:
+            // write/execute use native typed batch FFI, while read currently probes types per tag.
             var results = new Dictionary<string, TagReadResultBatch>();
             
             foreach (string tagName in tagNames)

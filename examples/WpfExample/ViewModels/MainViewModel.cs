@@ -115,8 +115,8 @@ namespace WpfExample.ViewModels
             "ULINT",   // 64-bit unsigned integer
             "REAL",    // 32-bit IEEE 754 float
             "LREAL",   // 64-bit IEEE 754 double
-            "STRING"   // Variable-length strings (up to 82 characters) ✅ NEW in v0.4.0
-            // All Allen-Bradley data types supported in v0.4.0 including STRING and UDT
+            "STRING"   // Variable-length strings (up to 82 characters)
+            // All Allen-Bradley data types are supported, including STRING and UDT.
         };
 
         public ObservableCollection<PlcTag> Tags { get; } = new();

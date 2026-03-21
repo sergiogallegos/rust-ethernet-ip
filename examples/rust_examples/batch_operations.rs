@@ -1,7 +1,7 @@
 // examples/batch_operations.rs - Comprehensive Batch Operations Example
 // ================================================================
 //
-// This example demonstrates the powerful batch operations feature added in v0.4.0.
+// This example demonstrates the powerful batch operations feature added in 0.6.3 stable line.
 // Batch operations provide massive performance improvements by grouping multiple
 // read/write operations into single network packets.
 //

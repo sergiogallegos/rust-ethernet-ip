@@ -86,7 +86,7 @@ if (newAddress.length <= 100) {
 
 2. **Start Frontend:**
    ```bash
-   cd examples/TypeScriptExample/frontend  
+   cd examples/web_app/frontend  
    npm run dev
    ```
 

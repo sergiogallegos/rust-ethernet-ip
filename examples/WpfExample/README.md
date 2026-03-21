@@ -1,6 +1,6 @@
-# 🦀 Rust EtherNet/IP WPF Example (v0.6.2)
+# 🦀 Rust EtherNet/IP WPF Example (0.7.0 Hardening)
 
-A modern Windows Presentation Foundation (WPF) application demonstrating the Rust EtherNet/IP library (v0.6.2) with real-time tag monitoring, performance benchmarking, and **high-performance batch operations**.
+A modern Windows Presentation Foundation (WPF) application demonstrating the Rust EtherNet/IP library in the 0.7.0 hardening line (latest published stable is 0.6.3), with real-time tag monitoring, performance benchmarking, and **batch operations**.
 
 ## 🚀 Features
 
@@ -11,15 +11,15 @@ A modern Windows Presentation Foundation (WPF) application demonstrating the Rus
 - **🆕 Batch Operations**: High-performance multi-tag read/write operations
 - **Modern WPF UI**: Clean, responsive interface with MVVM pattern
 
-### Supported Data Types ✅ **All Allen-Bradley Types in v0.4.0**
+### Supported Data Types ✅ **All Allen-Bradley Types**
 - **BOOL**: Boolean values (true/false)
 - **SINT/INT/DINT/LINT**: Signed integers (8/16/32/64-bit)
 - **USINT/UINT/UDINT/ULINT**: Unsigned integers (8/16/32/64-bit)
 - **REAL/LREAL**: Floating point numbers (32/64-bit)
-- **STRING**: Variable-length strings (up to 82 characters) ✅ **NEW in v0.4.0**
-- **UDT**: User Defined Types with full nesting support ✅ **NEW in v0.4.0**
+- **STRING**: Variable-length strings (up to 82 characters)
+- **UDT**: User Defined Types with full nesting support
 
-🎉 **v0.4.0 Update**: Complete Allen-Bradley data type support including strings and UDTs!
+🎉 Complete Allen-Bradley data type support including strings and UDTs.
 
 ## 🚀 New Batch Operations
 
@@ -170,14 +170,14 @@ dotnet run
 
 The WPF application focuses on individual tag operations and real-time monitoring. For high-performance batch operations, see the WinForms example which includes comprehensive batch processing capabilities.
 
-## 🛡️ Data Type Support ✅ **Complete in v0.4.0**
+## 🛡️ Data Type Support
 
-**Fully supported by the Rust EtherNet/IP library v0.4.0:**
+**Fully supported by the Rust EtherNet/IP library:**
 ✅ **All Allen-Bradley Data Types**: BOOL, SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL
 ✅ **STRING**: Variable-length strings with complete Allen-Bradley format compliance
 ✅ **UDT**: User Defined Types with full nesting and member access support
 
-**Enhanced Features in v0.4.0:**
+**Enhanced Features:**
 🚀 **Real-time Subscriptions**: Tag change notifications with configurable intervals
 ⚡ **Batch Operations**: High-performance multi-tag read/write (2,000+ ops/sec)
 🔧 **Critical Stability Fixes**: Zero hangs, perfect string handling, robust error recovery

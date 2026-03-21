@@ -1205,6 +1205,12 @@ namespace WpfExample.ViewModels
                 if (value.IsUdtDataFormat)
                 {
                     var udtData = value.UdtData;
+                    if (udtData == null)
+                    {
+                        UdtResult = $"❌ UDT read returned null UdtData for {UdtTagName}";
+                        LogMessage($"❌ UDT read returned null UdtData for {UdtTagName}");
+                        return;
+                    }
                     UdtResult = $"✅ Success!\nTag: {UdtTagName}\nSymbol ID: {udtData.SymbolId}\nData Length: {udtData.Data.Length} bytes\n\n" +
                                $"⚠️ UDT is in UdtData format.\n" +
                                $"To access members, use direct tag paths:\n" +

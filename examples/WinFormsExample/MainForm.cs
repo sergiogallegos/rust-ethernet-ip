@@ -5603,9 +5603,9 @@ namespace WinFormsExample
                 // Filter rows
                 foreach (DataGridViewRow row in resultsGridView.Rows)
                 {
-                    if (row.Cells[0].Value != null)
+                    if (row.Cells.Count > 0 && row.Cells[0] is DataGridViewCell firstCell && firstCell.Value != null)
                     {
-                        var tagName = row.Cells[0].Value.ToString()?.ToLower() ?? "";
+                        var tagName = firstCell.Value.ToString()?.ToLower() ?? "";
                         row.Visible = tagName.Contains(filter);
                     }
                 }

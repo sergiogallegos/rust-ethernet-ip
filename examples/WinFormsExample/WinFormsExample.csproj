@@ -5,6 +5,7 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <LangVersion>14.0</LangVersion>
     <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     

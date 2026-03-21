@@ -1,45 +1,64 @@
-# Contributing to Rust EtherNet/IP Driver
+# Contributing to rust-ethernet-ip
 
-Thank you for your interest in contributing! This document provides guidelines for contributing to the project.
+Thanks for contributing. This project targets production-grade EtherNet/IP communication for Allen-Bradley PLCs, so correctness and regression safety are prioritized over speed of merge.
 
-## 🚀 Getting Started
+## Scope and Release Line
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass: `cargo test`
-6. Check code formatting: `cargo fmt`
-7. Run clippy: `cargo clippy`
-8. Commit your changes: `git commit -m 'Add amazing feature'`
-9. Push to your branch: `git push origin feature/amazing-feature`
-10. Open a Pull Request
+- `0.6.3` is the latest published stable crate line.
+- Current work on `main` is preparing `0.7.0` (unreleased).
+- Do not bump crate/package version unless explicitly requested during release cut.
 
-## 🧪 Testing
+## Development Workflow
 
-- Write tests for new functionality
-- Ensure existing tests continue to pass
-- Test with real PLCs when possible
-- Document any PLC-specific requirements
+1. Fork and create a branch from `main`.
+2. Keep changes focused (one concern per PR when possible).
+3. Add or update tests for behavior changes.
+4. Run required checks locally.
+5. Update docs/changelog if user-facing behavior changed.
+6. Open PR with clear risk notes and test evidence.
 
-## 📝 Code Style
+## Required Checks
 
-- Follow standard Rust formatting (`cargo fmt`)
-- Use meaningful variable and function names
-- Add documentation comments for public APIs
-- Keep functions focused and concise
+Run these before opening a PR:
 
-## 🐛 Bug Reports
+```bash
+cargo fmt
+cargo clippy -p rust-ethernet-ip --lib -- -D warnings
+cargo test --workspace --all-targets
+dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal
+```
 
-Please use the issue tracker to report bugs. Include:
-- PLC model and firmware version
-- Rust version and platform
-- Steps to reproduce
-- Expected vs actual behavior
+For PLC-dependent validation, include what was tested on real hardware (model, firmware, route path, tags used).
 
-## 💡 Feature Requests
+## Testing Guidelines
 
-We welcome feature requests! Please describe:
-- Use case for the feature
-- Proposed API design
-- Any relevant PLC protocol details
+- Add regression tests for every bug fix.
+- Prefer deterministic simulator tests when possible.
+- Keep FFI boundary tests strict on return codes and payload shape.
+- For cross-language changes (Rust <-> C#), include tests on both sides.
+
+## Coding Standards
+
+- Keep public APIs and behavior backwards-compatible unless change is intentional and documented.
+- Use clear error messages and typed errors where possible.
+- Avoid unrelated refactors in bug-fix PRs.
+- Update `CHANGELOG.md` under `Unreleased` for notable changes.
+
+## Pull Request Checklist
+
+- [ ] Tests added/updated for changed behavior
+- [ ] Rust checks pass
+- [ ] C# tests pass
+- [ ] Documentation updated (README/docs/changelog) if needed
+- [ ] Breaking changes called out explicitly
+
+## Bug Reports
+
+When filing issues, include:
+
+- PLC model and firmware
+- Network/routing details (direct vs backplane/slot)
+- Exact tag path(s)
+- Minimal repro code
+- Expected vs actual result
+- Logs/error codes

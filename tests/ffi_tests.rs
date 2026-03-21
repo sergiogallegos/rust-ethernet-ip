@@ -370,3 +370,74 @@ fn ffi_batch_config_apis_are_explicitly_unsupported() {
     let get_rc = unsafe { ffi::eip_get_batch_config(client.id(), &mut out_cfg as *mut u8) };
     assert_eq!(get_rc, -1);
 }
+
+#[test]
+fn ffi_read_string_success_returns_zero_and_value() {
+    let sim = SimHarness::start(plc_sim::SimBehavior::default());
+    let client = connect_ffi_client(&sim.address);
+    let tag = CString::new("STRING_TAG").expect("tag CString");
+    let mut result_buf = vec![0i8; 512];
+
+    let rc = unsafe {
+        ffi::eip_read_string(
+            client.id(),
+            tag.as_ptr(),
+            result_buf.as_mut_ptr(),
+            result_buf.len() as c_int,
+        )
+    };
+
+    assert_eq!(rc, 0);
+    let output = read_c_string_buffer(&result_buf);
+    assert_eq!(output, "Hello PLC");
+}
+
+#[test]
+fn ffi_read_tag_success_returns_zero_and_json_value() {
+    let sim = SimHarness::start(plc_sim::SimBehavior::default());
+    let client = connect_ffi_client(&sim.address);
+    let tag = CString::new("DINT_TAG").expect("tag CString");
+    let mut result_buf = vec![0i8; 1024];
+
+    let rc = unsafe {
+        ffi::eip_read_tag(
+            client.id(),
+            tag.as_ptr(),
+            result_buf.as_mut_ptr(),
+            result_buf.len() as c_int,
+        )
+    };
+
+    assert_eq!(rc, 0);
+    let output = read_c_string_buffer(&result_buf);
+    let parsed: Value = serde_json::from_str(&output).expect("read_tag JSON");
+    assert_eq!(parsed["Dint"], json!(1234));
+}
+
+#[test]
+fn ffi_read_array_range_success_returns_zero_and_values() {
+    let sim = SimHarness::start(plc_sim::SimBehavior::default());
+    let client = connect_ffi_client(&sim.address);
+    let base_array = CString::new("DINT_ARRAY").expect("array CString");
+    let mut result_buf = vec![0i8; 2048];
+
+    let rc = unsafe {
+        ffi::eip_read_array_range(
+            client.id(),
+            base_array.as_ptr(),
+            0,
+            2,
+            result_buf.as_mut_ptr(),
+            result_buf.len() as c_int,
+        )
+    };
+
+    assert_eq!(rc, 0);
+    let output = read_c_string_buffer(&result_buf);
+    let parsed: Value = serde_json::from_str(&output).expect("read_array_range JSON");
+    assert!(parsed.is_array());
+    let arr = parsed.as_array().expect("array value");
+    assert_eq!(arr.len(), 2);
+    assert_eq!(arr[0]["Dint"], json!(10));
+    assert_eq!(arr[1]["Dint"], json!(20));
+}

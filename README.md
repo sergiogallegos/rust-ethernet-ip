@@ -1,6 +1,6 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/rust-ethernet-ip-logo-transparent-dark.png">
+    <source media="(prefers-color-scheme: dark)" srcset="images/rust-ethernet-ip-log-transparent.png">
     <source media="(prefers-color-scheme: light)" srcset="images/rust-ethernet-ip-logo-transparent-light.png">
     <img src="images/rust-ethernet-ip-logo-transparent-light.png" alt="Rust EtherNet/IP logo" width="420" />
   </picture>

@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [x] Preserve full commit-by-commit history on `main` for traceability.
 - [x] Keep `0.6.3` as last stable published version while `0.7.0` remains unreleased.
 - [x] Add unreleased documentation notes in README and CHANGELOG.
-- [ ] Run full cross-language regression matrix (Rust + C#) after each high-impact change.
+- [x] Run full cross-language regression matrix (Rust + C#) after each high-impact change.
 - [x] Add/expand simulator-based failure-mode tests (timeouts, reconnect, partial batch failures).
 - [x] Add explicit FFI contract tests for mixed batch operations, including malformed payload handling.
 - [x] Complete FFI batch config APIs (`eip_configure_batch_operations`, `eip_get_batch_config`) or clearly gate them as unsupported across wrappers.
@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Performance baseline report generated**: Added simulator-based baseline harness and produced `HEAD` vs `v0.6.3` comparison report for single read/write, batch read/write, and mixed execute scenarios with raw JSON artifacts.
 - **Route-path + UDT compatibility pass**: Added deterministic simulator route-path compatibility tests and generated a consolidated Rust/C# compatibility matrix report for route-path and UDT-heavy workloads.
 - **Docs/API audit completed**: Updated stale release-state/version messaging, aligned wrapper/API docs with current batch-config unsupported semantics, and published an audit artifact capturing findings and remediations.
+- **Cross-language regression matrix (2026-03-20) passed**: `cargo test --workspace --all-targets` and `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal` (26/26 passed).
 
 ### 🐛 Fixed — C# Wrapper
 - **Empty STRING tag handling**: Fixed `ReadString` to return empty string for zeroed/cleared STRING tags (LEN=0) instead of falling through to error handling. Both the direct read path and the UDT member fallback path now correctly handle empty strings.

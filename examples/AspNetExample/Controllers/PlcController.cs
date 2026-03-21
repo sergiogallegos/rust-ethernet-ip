@@ -294,6 +294,8 @@ public class PlcController : ControllerBase
             return StatusCode(503, new { success = false, message = "Not connected to PLC" });
 
         request ??= new BatchBenchmarkRequest();
+        request.TagCount = Math.Max(1, request.TagCount);
+        request.DurationSeconds = Math.Max(1, request.DurationSeconds);
 
         try
         {
@@ -383,7 +385,9 @@ public class PlcController : ControllerBase
                 individualStopwatch.Stop();
                 benchmarkResult.IndividualTotalTimeMs = individualStopwatch.ElapsedMilliseconds;
                 benchmarkResult.IndividualSuccessCount = individualSuccessCount;
-                benchmarkResult.IndividualAverageTimeMs = (double)individualStopwatch.ElapsedMilliseconds / request.TagCount;
+                benchmarkResult.IndividualAverageTimeMs = request.TagCount > 0
+                    ? (double)individualStopwatch.ElapsedMilliseconds / request.TagCount
+                    : 0;
             }
 
             // Test batch operations
@@ -437,14 +441,18 @@ public class PlcController : ControllerBase
             batchStopwatch.Stop();
             benchmarkResult.BatchTotalTimeMs = batchStopwatch.ElapsedMilliseconds;
             benchmarkResult.BatchSuccessCount = batchSuccessCount;
-            benchmarkResult.BatchAverageTimeMs = (double)batchStopwatch.ElapsedMilliseconds / request.TagCount;
+            benchmarkResult.BatchAverageTimeMs = request.TagCount > 0
+                ? (double)batchStopwatch.ElapsedMilliseconds / request.TagCount
+                : 0;
 
             // Calculate performance metrics
             if (request.CompareWithIndividual && benchmarkResult.BatchTotalTimeMs > 0)
             {
                 benchmarkResult.SpeedupFactor = (double)benchmarkResult.IndividualTotalTimeMs / benchmarkResult.BatchTotalTimeMs;
                 benchmarkResult.TimeSavedMs = benchmarkResult.IndividualTotalTimeMs - benchmarkResult.BatchTotalTimeMs;
-                benchmarkResult.TimeSavedPercentage = (benchmarkResult.TimeSavedMs / benchmarkResult.IndividualTotalTimeMs) * 100;
+                benchmarkResult.TimeSavedPercentage = benchmarkResult.IndividualTotalTimeMs > 0
+                    ? (benchmarkResult.TimeSavedMs / benchmarkResult.IndividualTotalTimeMs) * 100
+                    : 0;
                 benchmarkResult.NetworkEfficiencyFactor = request.TagCount; // 1 packet vs N packets
             }
 

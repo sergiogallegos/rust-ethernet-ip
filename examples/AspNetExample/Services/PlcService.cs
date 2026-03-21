@@ -316,43 +316,79 @@ public class PlcService : IDisposable
         }
     }
 
-    public object GetTagMetadata(string plcAddress, string tagName)
+    private void EnsureConnectedToAddress(string plcAddress)
     {
         if (!_isConnected || _currentAddress != plcAddress)
         {
             throw new PlcNotConnectedException(plcAddress);
         }
+    }
+
+    private void EnsureConnected()
+    {
+        if (!_isConnected)
+        {
+            throw new PlcNotConnectedException(_currentAddress);
+        }
+    }
+
+    private bool TryReadTagWithDetectedType(string tagName, out string dataType, out object value)
+    {
+        try
+        {
+            value = _plcClient.ReadBool(tagName);
+            dataType = "BOOL";
+            return true;
+        }
+        catch { }
 
         try
         {
-            // First try to read the tag to determine its type
-            try
-            {
-                var boolValue = _plcClient.ReadBool(tagName);
-                return new { type = "BOOL", value = boolValue };
-            }
-            catch { }
+            value = _plcClient.ReadInt(tagName);
+            dataType = "INT";
+            return true;
+        }
+        catch { }
 
-            try
-            {
-                var dintValue = _plcClient.ReadDint(tagName);
-                return new { type = "DINT", value = dintValue };
-            }
-            catch { }
+        try
+        {
+            value = _plcClient.ReadDint(tagName);
+            dataType = "DINT";
+            return true;
+        }
+        catch { }
 
-            try
-            {
-                var realValue = _plcClient.ReadReal(tagName);
-                return new { type = "REAL", value = realValue };
-            }
-            catch { }
+        try
+        {
+            value = _plcClient.ReadReal(tagName);
+            dataType = "REAL";
+            return true;
+        }
+        catch { }
 
-            try
+        try
+        {
+            value = _plcClient.ReadString(tagName);
+            dataType = "STRING";
+            return true;
+        }
+        catch { }
+
+        dataType = "UNKNOWN";
+        value = string.Empty;
+        return false;
+    }
+
+    public object GetTagMetadata(string plcAddress, string tagName)
+    {
+        EnsureConnectedToAddress(plcAddress);
+
+        try
+        {
+            if (TryReadTagWithDetectedType(tagName, out var type, out var value))
             {
-                var stringValue = _plcClient.ReadString(tagName);
-                return new { type = "STRING", value = stringValue };
+                return new { type, value };
             }
-            catch { }
 
             throw new InvalidOperationException($"Could not determine type for tag {tagName}");
         }
@@ -365,10 +401,7 @@ public class PlcService : IDisposable
 
     public Dictionary<string, object> ReadUdt(string plcAddress, string tagName)
     {
-        if (!_isConnected || _currentAddress != plcAddress)
-        {
-            throw new PlcNotConnectedException(plcAddress);
-        }
+        EnsureConnectedToAddress(plcAddress);
 
         try
         {
@@ -398,10 +431,7 @@ public class PlcService : IDisposable
 
     public void WriteUdt(string plcAddress, string tagName, Dictionary<string, object> value)
     {
-        if (!_isConnected || _currentAddress != plcAddress)
-        {
-            throw new PlcNotConnectedException(plcAddress);
-        }
+        EnsureConnectedToAddress(plcAddress);
 
         try
         {
@@ -563,43 +593,16 @@ public class PlcService : IDisposable
 
     public async Task<(bool success, string type, string value)> ReadTag(string plcAddress, string tagName)
     {
-        if (!_isConnected || _currentAddress != plcAddress)
-        {
-            throw new PlcNotConnectedException(plcAddress);
-        }
+        EnsureConnectedToAddress(plcAddress);
 
         return await RetryOperation(async () =>
         {
             try
             {
-                // Try to read as different types
-                try
+                if (TryReadTagWithDetectedType(tagName, out var type, out var value))
                 {
-                    var value = _plcClient.ReadBool(tagName);
-                    return (true, "BOOL", value.ToString());
+                    return (true, type, value.ToString() ?? string.Empty);
                 }
-                catch { }
-
-                try
-                {
-                    var value = _plcClient.ReadInt(tagName);
-                    return (true, "INT", value.ToString());
-                }
-                catch { }
-
-                try
-                {
-                    var value = _plcClient.ReadReal(tagName);
-                    return (true, "REAL", value.ToString());
-                }
-                catch { }
-
-                try
-                {
-                    var value = _plcClient.ReadString(tagName);
-                    return (true, "STRING", value);
-                }
-                catch { }
 
                 return (false, "UNKNOWN", string.Empty);
             }
@@ -613,10 +616,7 @@ public class PlcService : IDisposable
 
     public async Task WriteTag(string plcAddress, string tagName, string value, string dataType)
     {
-        if (!_isConnected || _currentAddress != plcAddress)
-        {
-            throw new PlcNotConnectedException(plcAddress);
-        }
+        EnsureConnectedToAddress(plcAddress);
 
         await RetryOperation(async () =>
         {
@@ -720,10 +720,18 @@ public class PlcService : IDisposable
     /// Read multiple tags in a single optimized batch operation.
     /// Provides 3-10x performance improvement over individual reads.
     /// </summary>
-    public async Task<BatchReadResult> ReadTagsBatch(string[] tagNames)
+    public Task<BatchReadResult> ReadTagsBatch(string[] tagNames)
     {
-        if (!_isConnected)
-            throw new PlcNotConnectedException(_currentAddress);
+        EnsureConnected();
+
+        if (tagNames == null || tagNames.Length == 0)
+        {
+            return Task.FromResult(new BatchReadResult
+            {
+                Success = false,
+                ErrorMessage = "At least one tag name is required"
+            });
+        }
 
         var stopwatch = Stopwatch.StartNew();
         _logger.LogInformation("Starting batch read operation for {TagCount} tags", tagNames.Length);
@@ -787,7 +795,9 @@ public class PlcService : IDisposable
                 TotalTimeMs = stopwatch.ElapsedMilliseconds,
                 SuccessCount = successCount,
                 ErrorCount = results.Count - successCount,
-                AverageTimePerTagMs = (double)stopwatch.ElapsedMilliseconds / tagNames.Length
+                AverageTimePerTagMs = tagNames.Length > 0
+                    ? (double)stopwatch.ElapsedMilliseconds / tagNames.Length
+                    : 0
             };
 
             // Update statistics
@@ -796,19 +806,19 @@ public class PlcService : IDisposable
             _logger.LogInformation("Batch read completed: {SuccessCount}/{TotalCount} successful in {TimeMs}ms", 
                 successCount, tagNames.Length, stopwatch.ElapsedMilliseconds);
 
-            return result;
+            return Task.FromResult(result);
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
             _logger.LogError(ex, "Batch read operation failed");
             
-            return new BatchReadResult
+            return Task.FromResult(new BatchReadResult
             {
                 Success = false,
                 ErrorMessage = ex.Message,
                 TotalTimeMs = stopwatch.ElapsedMilliseconds
-            };
+            });
         }
     }
 
@@ -816,10 +826,18 @@ public class PlcService : IDisposable
     /// Write multiple tags in a single optimized batch operation.
     /// Provides 3-10x performance improvement over individual writes.
     /// </summary>
-    public async Task<BatchWriteResult> WriteTagsBatch(Dictionary<string, object> tagValues)
+    public Task<BatchWriteResult> WriteTagsBatch(Dictionary<string, object> tagValues)
     {
-        if (!_isConnected)
-            throw new PlcNotConnectedException(_currentAddress);
+        EnsureConnected();
+
+        if (tagValues == null || tagValues.Count == 0)
+        {
+            return Task.FromResult(new BatchWriteResult
+            {
+                Success = false,
+                ErrorMessage = "At least one tag value is required"
+            });
+        }
 
         var stopwatch = Stopwatch.StartNew();
         _logger.LogInformation("Starting batch write operation for {TagCount} tags", tagValues.Count);
@@ -837,7 +855,9 @@ public class PlcService : IDisposable
                 TotalTimeMs = stopwatch.ElapsedMilliseconds,
                 SuccessCount = successCount,
                 ErrorCount = results.Count - successCount,
-                AverageTimePerTagMs = (double)stopwatch.ElapsedMilliseconds / tagValues.Count
+                AverageTimePerTagMs = tagValues.Count > 0
+                    ? (double)stopwatch.ElapsedMilliseconds / tagValues.Count
+                    : 0
             };
 
             // Update statistics
@@ -846,19 +866,19 @@ public class PlcService : IDisposable
             _logger.LogInformation("Batch write completed: {SuccessCount}/{TotalCount} successful in {TimeMs}ms", 
                 successCount, tagValues.Count, stopwatch.ElapsedMilliseconds);
 
-            return result;
+            return Task.FromResult(result);
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
             _logger.LogError(ex, "Batch write operation failed");
             
-            return new BatchWriteResult
+            return Task.FromResult(new BatchWriteResult
             {
                 Success = false,
                 ErrorMessage = ex.Message,
                 TotalTimeMs = stopwatch.ElapsedMilliseconds
-            };
+            });
         }
     }
 
@@ -866,10 +886,18 @@ public class PlcService : IDisposable
     /// Execute a mixed batch of read and write operations in optimized packets.
     /// Ideal for coordinated control operations and data collection.
     /// </summary>
-    public async Task<BatchMixedResult> ExecuteBatch(BatchOperation[] operations)
+    public Task<BatchMixedResult> ExecuteBatch(BatchOperation[] operations)
     {
-        if (!_isConnected)
-            throw new PlcNotConnectedException(_currentAddress);
+        EnsureConnected();
+
+        if (operations == null || operations.Length == 0)
+        {
+            return Task.FromResult(new BatchMixedResult
+            {
+                Success = false,
+                ErrorMessage = "At least one batch operation is required"
+            });
+        }
 
         var stopwatch = Stopwatch.StartNew();
         _logger.LogInformation("Starting mixed batch operation with {OperationCount} operations", operations.Length);
@@ -902,7 +930,9 @@ public class PlcService : IDisposable
                 TotalTimeMs = stopwatch.ElapsedMilliseconds,
                 SuccessCount = successCount,
                 ErrorCount = results.Length - successCount,
-                AverageTimePerOperationMs = (double)stopwatch.ElapsedMilliseconds / operations.Length
+                AverageTimePerOperationMs = operations.Length > 0
+                    ? (double)stopwatch.ElapsedMilliseconds / operations.Length
+                    : 0
             };
 
             // Update statistics
@@ -911,19 +941,19 @@ public class PlcService : IDisposable
             _logger.LogInformation("Mixed batch completed: {SuccessCount}/{TotalCount} successful in {TimeMs}ms", 
                 successCount, operations.Length, stopwatch.ElapsedMilliseconds);
 
-            return result;
+            return Task.FromResult(result);
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
             _logger.LogError(ex, "Mixed batch operation failed");
             
-            return new BatchMixedResult
+            return Task.FromResult(new BatchMixedResult
             {
                 Success = false,
                 ErrorMessage = ex.Message,
                 TotalTimeMs = stopwatch.ElapsedMilliseconds
-            };
+            });
         }
     }
 
@@ -932,8 +962,7 @@ public class PlcService : IDisposable
     /// </summary>
     public void ConfigureBatchOperations(BatchConfig config)
     {
-        if (!_isConnected)
-            throw new PlcNotConnectedException(_currentAddress);
+        EnsureConnected();
 
         _plcClient.ConfigureBatchOperations(config);
         _logger.LogInformation("Batch configuration updated: {MaxOps} ops/packet, {MaxSize} bytes, {Timeout}ms timeout", 
@@ -945,8 +974,7 @@ public class PlcService : IDisposable
     /// </summary>
     public BatchConfig GetBatchConfig()
     {
-        if (!_isConnected)
-            throw new PlcNotConnectedException(_currentAddress);
+        EnsureConnected();
 
         return _plcClient.GetBatchConfig();
     }

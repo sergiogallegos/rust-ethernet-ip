@@ -11,6 +11,11 @@ This folder contains extracted brand assets derived from:
 - `icon.png`: Icon/mark-only style crop
 - `palette-guide.png`: Color/type reference panel crop
 - `package-preview.png`: Full package overview crop
+- `favicon/`: Generated favicon/app icon set from `icon.png`
+  - `icon-16.png`, `icon-32.png`, `icon-64.png`
+  - `icon-180.png` (Apple touch icon)
+  - `icon-192.png`, `icon-512.png` (PWA/manifest)
+  - `favicon.ico`
 
 ## Suggested Tokens
 - Rust Orange: `#E4572E`

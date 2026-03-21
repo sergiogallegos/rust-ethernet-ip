@@ -31,8 +31,15 @@ namespace AspNetExample
                 
                 if (udtValue.IsUdt)
                 {
-                    _logger.LogInformation("UDT has {Count} members", udtValue.UdtMembers.Count);
-                    foreach (var member in udtValue.UdtMembers)
+                    var members = udtValue.UdtMembers;
+                    if (members == null)
+                    {
+                        _logger.LogWarning("UDT reported IsUdt=true but returned null member map");
+                        return;
+                    }
+
+                    _logger.LogInformation("UDT has {Count} members", members.Count);
+                    foreach (var member in members)
                     {
                         _logger.LogInformation("Member: {Key} = {Value} (Type: {Type})", 
                             member.Key, member.Value.ToString(), member.Value.Type);

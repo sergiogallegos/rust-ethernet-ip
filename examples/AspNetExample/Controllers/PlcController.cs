@@ -802,7 +802,7 @@ public class PlcController : ControllerBase
                 ("UDT", () => _plcService.ReadUdt(tagName))
             };
 
-            Exception lastException = null;
+            Exception? lastException = null;
             
             foreach (var (type, readFunc) in typeAttempts)
             {
@@ -989,9 +989,9 @@ public class PlcController : ControllerBase
                 ("ULINT", () => _plcService.ReadUlint(testTag), (val) => _plcService.WriteUlint(testTag, (ulong)val))
             };
 
-            Func<object> readFunction = null;
-            Action<object> writeFunction = null;
-            object testValue = null;
+            Func<object>? readFunction = null;
+            Action<object>? writeFunction = null;
+            object? testValue = null;
 
             // Detect the correct data type
             foreach (var (type, readFunc, writeFunc) in typeAttempts)
@@ -1034,6 +1034,17 @@ public class PlcController : ControllerBase
                 });
             }
 
+            if (readFunction == null)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    readRate = 0,
+                    writeRate = 0,
+                    message = $"Benchmark setup failed for tag '{testTag}': read function was not initialized"
+                });
+            }
+
             // Run the benchmark with the detected type
             while ((DateTime.Now - startTime).TotalSeconds < durationSeconds)
             {
@@ -1053,6 +1064,8 @@ public class PlcController : ControllerBase
                 {
                     try 
                     { 
+                        if (testValue == null)
+                            throw new InvalidOperationException("Benchmark write value is null");
                         writeFunction(testValue);
                         writeCount++; 
                         // Alternate test values for some types

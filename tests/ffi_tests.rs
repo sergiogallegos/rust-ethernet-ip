@@ -59,7 +59,9 @@ impl SimHarness {
             let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
             rt.block_on(async move {
                 let sim = SimulatedPlc::start_with_behavior(behavior).await;
-                addr_tx.send(sim.address.to_string()).expect("send simulator addr");
+                addr_tx
+                    .send(sim.address.to_string())
+                    .expect("send simulator addr");
 
                 let _ = tokio::task::spawn_blocking(move || {
                     let _ = stop_rx.recv();
@@ -220,13 +222,11 @@ fn ffi_execute_batch_mixed_contract_keeps_parse_errors_isolated() {
     assert!(output[1].is_write);
     assert!(!output[1].success);
     assert!(output[1].value.is_none());
-    assert!(
-        output[1]
-            .error
-            .as_deref()
-            .unwrap_or("")
-            .contains("Missing value_type for write operation")
-    );
+    assert!(output[1]
+        .error
+        .as_deref()
+        .unwrap_or("")
+        .contains("Missing value_type for write operation"));
 }
 
 #[test]
@@ -302,12 +302,11 @@ fn ffi_write_tags_batch_reports_per_item_parse_errors() {
         .find(|x| x.tag_name == "DINT_TAG" && x.error.is_some())
         .expect("bad parse result");
     assert!(!bad.success);
-    assert!(
-        bad.error
-            .as_deref()
-            .unwrap_or("")
-            .contains("Unsupported value_type")
-    );
+    assert!(bad
+        .error
+        .as_deref()
+        .unwrap_or("")
+        .contains("Unsupported value_type"));
 
     let ok = output
         .iter()
@@ -362,9 +361,8 @@ fn ffi_batch_config_apis_are_explicitly_unsupported() {
     let mut out_cfg: u8 = 0;
     let in_cfg: u8 = 1;
 
-    let configure_rc = unsafe {
-        ffi::eip_configure_batch_operations(client.id(), &in_cfg as *const u8)
-    };
+    let configure_rc =
+        unsafe { ffi::eip_configure_batch_operations(client.id(), &in_cfg as *const u8) };
     assert_eq!(configure_rc, -1);
 
     let get_rc = unsafe { ffi::eip_get_batch_config(client.id(), &mut out_cfg as *mut u8) };

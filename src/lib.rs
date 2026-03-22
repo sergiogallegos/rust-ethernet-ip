@@ -4617,7 +4617,12 @@ impl EipClient {
         ucmm
     }
 
-    /// Sends a CIP request wrapped in EtherNet/IP SendRRData command
+    /// Sends a CIP request using EtherNet/IP SendRRData.
+    ///
+    /// Primary mode uses Unconnected Send (0x52) wrapping. For controllers that reject
+    /// this pattern for specific services, a direct-CIP fallback is attempted when:
+    /// - the Unconnected Send response is `0xD2` with non-zero general status, and
+    /// - no route path is configured (direct mode cannot carry a route path).
     pub async fn send_cip_request(&self, cip_request: &[u8]) -> Result<Vec<u8>> {
         tracing::trace!(
             "Sending CIP request ({} bytes): {:02X?}",
@@ -4635,9 +4640,30 @@ impl EipClient {
             &ucmm_message[..std::cmp::min(64, ucmm_message.len())]
         );
 
+        let response_data = self.send_rr_data_item(&ucmm_message).await?;
+
+        if let Ok(raw_cip_data) = self.extract_unconnected_data_item(&response_data) {
+            let use_direct_fallback = raw_cip_data.len() >= 3
+                && raw_cip_data[0] == 0xD2
+                && raw_cip_data[2] != 0x00
+                && self.route_path.is_none();
+
+            if use_direct_fallback {
+                tracing::warn!(
+                    "Unconnected Send returned 0xD2 status 0x{:02X}; retrying with direct CIP SendRRData fallback",
+                    raw_cip_data[2]
+                );
+                return self.send_rr_data_item(cip_request).await;
+            }
+        }
+
+        Ok(response_data)
+    }
+
+    async fn send_rr_data_item(&self, item_data: &[u8]) -> Result<Vec<u8>> {
         // Calculate total packet size
-        let ucmm_data_size = ucmm_message.len();
-        let total_data_len = 4 + 2 + 2 + 8 + ucmm_data_size; // Interface + Timeout + Count + Items + UCMM
+        let item_data_size = item_data.len();
+        let total_data_len = 4 + 2 + 2 + 8 + item_data_size; // Interface + Timeout + Count + Items + Data
 
         let mut packet = Vec::new();
 
@@ -4660,10 +4686,8 @@ impl EipClient {
 
         // Item 2: Unconnected Data Item (0x00B2)
         packet.extend_from_slice(&[0xB2, 0x00]); // Type: Unconnected Data
-        packet.extend_from_slice(&(ucmm_data_size as u16).to_le_bytes()); // Length
-
-        // Add Unconnected Send message (which contains the CIP request + route path)
-        packet.extend_from_slice(&ucmm_message);
+        packet.extend_from_slice(&(item_data_size as u16).to_le_bytes()); // Length
+        packet.extend_from_slice(item_data);
 
         tracing::trace!(
             "Built packet ({} bytes): {:02X?}",
@@ -4725,17 +4749,9 @@ impl EipClient {
         Ok(response_data)
     }
 
-    /// Extracts CIP data from EtherNet/IP response packet
-    fn extract_cip_from_response(&self, response: &[u8]) -> crate::error::Result<Vec<u8>> {
-        tracing::trace!(
-            "Extracting CIP from response ({} bytes): {:02X?}",
-            response.len(),
-            &response[..std::cmp::min(32, response.len())]
-        );
-
+    fn extract_unconnected_data_item(&self, response: &[u8]) -> crate::error::Result<Vec<u8>> {
         // Parse CPF (Common Packet Format) structure directly from response data
         // Response format: [Interface(4)] [Timeout(2)] [ItemCount(2)] [Items...]
-
         if response.len() < 8 {
             return Err(EtherNetIpError::Protocol(
                 "Response too short for CPF header".to_string(),
@@ -4744,14 +4760,10 @@ impl EipClient {
 
         // Skip interface handle (4 bytes) and timeout (2 bytes)
         let mut pos = 6;
-
-        // Read item count
         let item_count = u16::from_le_bytes([response[pos], response[pos + 1]]);
         pos += 2;
-        tracing::trace!("CPF item count: {}", item_count);
 
-        // Process items
-        for i in 0..item_count {
+        for _ in 0..item_count {
             if pos + 4 > response.len() {
                 return Err(EtherNetIpError::Protocol(
                     "Response truncated while parsing items".to_string(),
@@ -4760,14 +4772,7 @@ impl EipClient {
 
             let item_type = u16::from_le_bytes([response[pos], response[pos + 1]]);
             let item_length = u16::from_le_bytes([response[pos + 2], response[pos + 3]]) as usize;
-            pos += 4; // Skip item header
-
-            tracing::trace!(
-                "Item {}: type=0x{:04X}, length={}",
-                i,
-                item_type,
-                item_length
-            );
+            pos += 4;
 
             if pos
                 .checked_add(item_length)
@@ -4777,26 +4782,66 @@ impl EipClient {
             }
 
             if item_type == 0x00B2 {
-                // Unconnected Data Item
-                let cip_data = response[pos..pos + item_length].to_vec();
-                tracing::trace!(
-                    "Found Unconnected Data Item, extracted CIP data ({} bytes)",
-                    cip_data.len()
-                );
-                tracing::trace!(
-                    "CIP data bytes: {:02X?}",
-                    &cip_data[..std::cmp::min(16, cip_data.len())]
-                );
-                return Ok(cip_data);
-            } else {
-                // Skip this item's data
-                pos += item_length;
+                return Ok(response[pos..pos + item_length].to_vec());
             }
+
+            pos += item_length;
         }
 
         Err(EtherNetIpError::Protocol(
             "No Unconnected Data Item (0x00B2) found in response".to_string(),
         ))
+    }
+
+    fn unwrap_unconnected_send_reply(&self, cip_data: &[u8]) -> crate::error::Result<Vec<u8>> {
+        if cip_data.is_empty() || cip_data[0] != 0xD2 {
+            return Ok(cip_data.to_vec());
+        }
+
+        if cip_data.len() < 4 {
+            return Err(EtherNetIpError::Protocol(
+                "Unconnected Send reply too short".to_string(),
+            ));
+        }
+
+        let general_status = cip_data[2];
+        let additional_status_words = cip_data[3] as usize;
+        let embedded_offset = 4 + (additional_status_words * 2);
+
+        if general_status != 0x00 {
+            let error_msg = self.get_cip_error_message(general_status);
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unconnected Send failed (0xD2): CIP Error 0x{general_status:02X}: {error_msg}"
+            )));
+        }
+
+        if embedded_offset >= cip_data.len() {
+            return Err(EtherNetIpError::Protocol(
+                "Unconnected Send succeeded but no embedded response payload was returned"
+                    .to_string(),
+            ));
+        }
+
+        Ok(cip_data[embedded_offset..].to_vec())
+    }
+
+    /// Extracts CIP data from EtherNet/IP response packet
+    fn extract_cip_from_response(&self, response: &[u8]) -> crate::error::Result<Vec<u8>> {
+        tracing::trace!(
+            "Extracting CIP from response ({} bytes): {:02X?}",
+            response.len(),
+            &response[..std::cmp::min(32, response.len())]
+        );
+        let cip_data = self.extract_unconnected_data_item(response)?;
+        tracing::trace!(
+            "Found Unconnected Data Item, extracted CIP data ({} bytes)",
+            cip_data.len()
+        );
+        tracing::trace!(
+            "CIP data bytes: {:02X?}",
+            &cip_data[..std::cmp::min(16, cip_data.len())]
+        );
+        self.unwrap_unconnected_send_reply(&cip_data)
     }
 
     /// Parses CIP response and converts to `PlcValue`

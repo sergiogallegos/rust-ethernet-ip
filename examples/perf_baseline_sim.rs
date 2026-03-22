@@ -119,7 +119,10 @@ async fn main() {
     ];
     let mixed_start = Instant::now();
     for _ in 0..iterations {
-        let _ = client.execute_batch(&mixed_ops).await.expect("mixed execute");
+        let _ = client
+            .execute_batch(&mixed_ops)
+            .await
+            .expect("mixed execute");
     }
     let mixed_execute = build_metric(
         "mixed_execute",

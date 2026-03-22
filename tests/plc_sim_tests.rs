@@ -191,7 +191,10 @@ async fn simulated_plc_manual_reconnect_after_disconnect() {
 
     // Industrial clients commonly recover by reconnecting after transport loss.
     let mut reconnected = EipClient::connect(&addr).await.expect("reconnect");
-    let value = reconnected.read_tag("DINT_TAG").await.expect("read after reconnect");
+    let value = reconnected
+        .read_tag("DINT_TAG")
+        .await
+        .expect("read after reconnect");
     assert_eq!(value, PlcValue::Dint(1234));
 }
 

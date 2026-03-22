@@ -255,12 +255,8 @@ fn build_cip_response(
     let service = extract_cip_service(payload).unwrap_or(0);
     match service {
         CIP_READ_TAG => build_read_response(payload, tags, behavior),
-        CIP_WRITE_TAG => {
-            handle_write(payload, tags, behavior)
-        }
-        CIP_MULTIPLE_SERVICE_PACKET => {
-            build_multiple_service_response(payload, tags, behavior)
-        }
+        CIP_WRITE_TAG => handle_write(payload, tags, behavior),
+        CIP_MULTIPLE_SERVICE_PACKET => build_multiple_service_response(payload, tags, behavior),
         _ => vec![CIP_REPLY_READ, 0x00, 0x01, 0x00],
     }
 }

@@ -9,9 +9,14 @@ async fn route_path_sim_connect_with_route_roundtrip() {
     let addr = sim.address.to_string();
 
     let route = RoutePath::new().add_slot(0);
-    let mut client = EipClient::with_route_path(&addr, route).await.expect("connect with route");
+    let mut client = EipClient::with_route_path(&addr, route)
+        .await
+        .expect("connect with route");
 
-    let value = client.read_tag("DINT_TAG").await.expect("read after connect_with_route");
+    let value = client
+        .read_tag("DINT_TAG")
+        .await
+        .expect("read after connect_with_route");
     assert_eq!(value, PlcValue::Dint(1234));
 
     client
@@ -38,7 +43,10 @@ async fn route_path_sim_set_modify_clear_route_path_works() {
     let updated_route = client.get_route_path().expect("route should be set");
     assert_eq!(updated_route.slots, vec![0, 1]);
 
-    let read = client.read_tag("DINT_TAG").await.expect("read with modified route");
+    let read = client
+        .read_tag("DINT_TAG")
+        .await
+        .expect("read with modified route");
     assert_eq!(read, PlcValue::Dint(1234));
 
     client.clear_route_path();
@@ -51,7 +59,9 @@ async fn route_path_sim_batch_and_mixed_execute_compatibility() {
     let addr = sim.address.to_string();
 
     let route = RoutePath::new().add_slot(0).add_slot(1);
-    let mut client = EipClient::with_route_path(&addr, route).await.expect("connect with route");
+    let mut client = EipClient::with_route_path(&addr, route)
+        .await
+        .expect("connect with route");
 
     let batch_read = client
         .read_tags_batch(&["DINT_TAG", "REAL_TAG", "BOOL_TAG"])

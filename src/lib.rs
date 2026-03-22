@@ -409,7 +409,10 @@ pub use monitoring::{
 };
 pub use plc_manager::{PlcConfig, PlcConnection, PlcManager};
 pub use subscription::{SubscriptionManager, SubscriptionOptions, TagSubscription};
-pub use tag_group::{TagGroupConfig, TagGroupSnapshot, TagGroupSubscription, TagGroupValueResult};
+pub use tag_group::{
+    TagGroupConfig, TagGroupEvent, TagGroupEventKind, TagGroupSnapshot, TagGroupSubscription,
+    TagGroupValueResult,
+};
 pub use tag_manager::{TagCache, TagManager, TagMetadata, TagPermissions, TagScope};
 pub use tag_path::TagPath;
 pub use tag_subscription::{
@@ -7553,6 +7556,7 @@ impl EipClient {
                 let tag_refs: Vec<&str> = tags.iter().map(String::as_str).collect();
                 match client.read_tags_batch(&tag_refs).await {
                     Ok(values) => {
+                        let has_errors = values.iter().any(|(_, result)| result.is_err());
                         let snapshot = TagGroupSnapshot {
                             group_name: group_name_owned.clone(),
                             sampled_at: std::time::SystemTime::now(),
@@ -7573,7 +7577,17 @@ impl EipClient {
                                 .collect(),
                         };
 
-                        if let Err(e) = subscription_task.publish(snapshot).await {
+                        let event = TagGroupEvent {
+                            kind: if has_errors {
+                                TagGroupEventKind::PartialError
+                            } else {
+                                TagGroupEventKind::Data
+                            },
+                            snapshot,
+                            error: None,
+                        };
+
+                        if let Err(e) = subscription_task.publish_event(event).await {
                             tracing::error!(
                                 "Tag group '{}' publish failed: {}",
                                 group_name_owned,
@@ -7588,6 +7602,25 @@ impl EipClient {
                             group_name_owned,
                             e
                         );
+                        let failure_event = TagGroupEvent {
+                            kind: TagGroupEventKind::ReadFailure,
+                            snapshot: TagGroupSnapshot {
+                                group_name: group_name_owned.clone(),
+                                sampled_at: std::time::SystemTime::now(),
+                                values: Vec::new(),
+                            },
+                            error: Some(e.to_string()),
+                        };
+                        if let Err(publish_error) =
+                            subscription_task.publish_event(failure_event).await
+                        {
+                            tracing::error!(
+                                "Tag group '{}' failure-event publish failed: {}",
+                                group_name_owned,
+                                publish_error
+                            );
+                            break;
+                        }
                     }
                 }
                 tokio::time::sleep(interval).await;

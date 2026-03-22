@@ -93,6 +93,8 @@ namespace RustEtherNetIp
         private readonly Dictionary<string, TagSubscription> _subscriptions = new();
         private readonly Dictionary<string, CancellationTokenSource> _subscriptionTokens = new();
         private readonly object _subscriptionLock = new();
+        private readonly Dictionary<string, TagGroupRegistration> _tagGroups = new();
+        private readonly object _tagGroupLock = new();
         private readonly ClientStatistics _statistics = new();
 
         #region DLL Imports
@@ -3122,6 +3124,156 @@ namespace RustEtherNetIp
 
         #endregion
 
+        #region Tag Group Operations
+
+        /// <summary>
+        /// Registers or replaces a named tag group definition.
+        /// </summary>
+        /// <param name="groupName">Logical group name</param>
+        /// <param name="tagNames">Tags included in the group</param>
+        /// <param name="updateRateMs">Polling interval in milliseconds</param>
+        public void UpsertTagGroup(string groupName, string[] tagNames, int updateRateMs = 500)
+        {
+            if (_isDisposed)
+                throw new ObjectDisposedException(nameof(EtherNetIpClient));
+            if (string.IsNullOrWhiteSpace(groupName))
+                throw new ArgumentException("Group name cannot be empty", nameof(groupName));
+            if (tagNames == null || tagNames.Length == 0)
+                throw new ArgumentException("Tag group must contain at least one tag", nameof(tagNames));
+            if (updateRateMs <= 0)
+                throw new ArgumentException("Update rate must be greater than zero", nameof(updateRateMs));
+
+            lock (_tagGroupLock)
+            {
+                if (_tagGroups.TryGetValue(groupName, out var existing))
+                {
+                    existing.Group?.Stop();
+                    existing.Group?.Dispose();
+                }
+
+                _tagGroups[groupName] = new TagGroupRegistration
+                {
+                    GroupName = groupName,
+                    TagNames = tagNames.ToArray(),
+                    UpdateRateMs = updateRateMs
+                };
+            }
+        }
+
+        /// <summary>
+        /// Removes a registered tag group and stops active polling if running.
+        /// </summary>
+        /// <param name="groupName">Logical group name</param>
+        /// <returns>True when a group was removed, false when it did not exist.</returns>
+        public bool RemoveTagGroup(string groupName)
+        {
+            if (_isDisposed)
+                throw new ObjectDisposedException(nameof(EtherNetIpClient));
+
+            lock (_tagGroupLock)
+            {
+                if (!_tagGroups.TryGetValue(groupName, out var registration))
+                    return false;
+
+                registration.Group?.Stop();
+                registration.Group?.Dispose();
+                _tagGroups.Remove(groupName);
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Lists all registered tag group definitions.
+        /// </summary>
+        public List<TagGroupConfigInfo> ListTagGroups()
+        {
+            if (_isDisposed)
+                throw new ObjectDisposedException(nameof(EtherNetIpClient));
+
+            lock (_tagGroupLock)
+            {
+                return _tagGroups.Values
+                    .Select(g => new TagGroupConfigInfo
+                    {
+                        GroupName = g.GroupName,
+                        TagNames = g.TagNames.ToArray(),
+                        UpdateRateMs = g.UpdateRateMs,
+                        IsActive = g.Group?.IsActive == true
+                    })
+                    .ToList();
+            }
+        }
+
+        /// <summary>
+        /// Reads all tags in a registered group once and returns a snapshot.
+        /// </summary>
+        /// <param name="groupName">Logical group name</param>
+        /// <returns>Snapshot of values and per-tag errors for this sample.</returns>
+        public TagGroupSnapshot ReadTagGroupOnce(string groupName)
+        {
+            if (_isDisposed)
+                throw new ObjectDisposedException(nameof(EtherNetIpClient));
+
+            TagGroupRegistration registration;
+            lock (_tagGroupLock)
+            {
+                if (!_tagGroups.TryGetValue(groupName, out registration!))
+                    throw new InvalidOperationException($"Tag group '{groupName}' is not registered");
+            }
+
+            var batch = ReadTagsBatch(registration.TagNames);
+            var snapshot = new TagGroupSnapshot
+            {
+                GroupName = groupName,
+                SampledAt = DateTime.UtcNow
+            };
+
+            foreach (var kvp in batch)
+            {
+                if (kvp.Value.Success)
+                {
+                    snapshot.Values[kvp.Key] = kvp.Value.Value;
+                }
+                else
+                {
+                    snapshot.Errors[kvp.Key] = kvp.Value.ErrorMessage ?? "Unknown error";
+                }
+            }
+
+            return snapshot;
+        }
+
+        /// <summary>
+        /// Starts polling for a registered group and returns a running <see cref="TagGroup"/>.
+        /// </summary>
+        /// <param name="groupName">Logical group name</param>
+        /// <returns>Active TagGroup instance for event-driven consumption.</returns>
+        public TagGroup SubscribeToTagGroup(string groupName)
+        {
+            if (_isDisposed)
+                throw new ObjectDisposedException(nameof(EtherNetIpClient));
+
+            lock (_tagGroupLock)
+            {
+                if (!_tagGroups.TryGetValue(groupName, out var registration))
+                    throw new InvalidOperationException($"Tag group '{groupName}' is not registered");
+
+                if (registration.Group != null)
+                    return registration.Group;
+
+                var group = new TagGroup(this)
+                {
+                    TagNames = registration.TagNames.ToArray(),
+                    UpdateRateMs = registration.UpdateRateMs
+                };
+                group.Start();
+                registration.Group = group;
+                return group;
+            }
+        }
+
+        #endregion
+
         #region Private Methods
 
         private void CheckConnection()
@@ -3200,6 +3352,15 @@ namespace RustEtherNetIp
             if (!_isDisposed)
             {
                 UnsubscribeFromAllTags();
+                lock (_tagGroupLock)
+                {
+                    foreach (var group in _tagGroups.Values)
+                    {
+                        group.Group?.Stop();
+                        group.Group?.Dispose();
+                    }
+                    _tagGroups.Clear();
+                }
                 StopKeepAlive();
                 if (_clientId >= 0)
                 {
@@ -3223,6 +3384,37 @@ namespace RustEtherNetIp
         public int Scope;           // Tag scope (global, program, etc.)
         public int ArrayDimension;  // Number of array dimensions
         public int ArraySize;       // Total array size
+    }
+
+    internal class TagGroupRegistration
+    {
+        public string GroupName { get; set; } = string.Empty;
+        public string[] TagNames { get; set; } = Array.Empty<string>();
+        public int UpdateRateMs { get; set; }
+        public TagGroup? Group { get; set; }
+    }
+
+    /// <summary>
+    /// Lightweight descriptor for a registered tag group.
+    /// </summary>
+    public class TagGroupConfigInfo
+    {
+        public string GroupName { get; set; } = string.Empty;
+        public string[] TagNames { get; set; } = Array.Empty<string>();
+        public int UpdateRateMs { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    /// <summary>
+    /// Result of a one-shot group read.
+    /// </summary>
+    public class TagGroupSnapshot
+    {
+        public string GroupName { get; set; } = string.Empty;
+        public DateTime SampledAt { get; set; }
+        public Dictionary<string, object?> Values { get; set; } = new();
+        public Dictionary<string, string> Errors { get; set; } = new();
+        public bool HasErrors => Errors.Count > 0;
     }
 
     /// <summary>

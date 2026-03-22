@@ -28,14 +28,30 @@ pub struct TagGroupSnapshot {
     pub values: Vec<TagGroupValueResult>,
 }
 
+/// High-level classification for tag-group polling events.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TagGroupEventKind {
+    Data,
+    PartialError,
+    ReadFailure,
+}
+
+/// Event emitted by background tag-group polling.
+#[derive(Debug, Clone)]
+pub struct TagGroupEvent {
+    pub kind: TagGroupEventKind,
+    pub snapshot: TagGroupSnapshot,
+    pub error: Option<String>,
+}
+
 /// Live subscription to a tag group polling stream.
 #[derive(Debug, Clone)]
 pub struct TagGroupSubscription {
     pub group_name: String,
     pub update_rate_ms: u32,
     is_active: Arc<AtomicBool>,
-    sender: Arc<Mutex<mpsc::Sender<TagGroupSnapshot>>>,
-    receiver: Arc<Mutex<mpsc::Receiver<TagGroupSnapshot>>>,
+    sender: Arc<Mutex<mpsc::Sender<TagGroupEvent>>>,
+    receiver: Arc<Mutex<mpsc::Receiver<TagGroupEvent>>>,
 }
 
 impl TagGroupSubscription {
@@ -59,11 +75,24 @@ impl TagGroupSubscription {
     }
 
     pub async fn publish(&self, snapshot: TagGroupSnapshot) -> Result<(), String> {
-        let sender = self.sender.lock().await;
-        sender.send(snapshot).await.map_err(|e| e.to_string())
+        let event = TagGroupEvent {
+            kind: if snapshot.values.iter().any(|v| v.error.is_some()) {
+                TagGroupEventKind::PartialError
+            } else {
+                TagGroupEventKind::Data
+            },
+            snapshot,
+            error: None,
+        };
+        self.publish_event(event).await
     }
 
-    pub async fn wait_for_update(&self) -> Option<TagGroupSnapshot> {
+    pub async fn publish_event(&self, event: TagGroupEvent) -> Result<(), String> {
+        let sender = self.sender.lock().await;
+        sender.send(event).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn wait_for_update(&self) -> Option<TagGroupEvent> {
         let mut receiver = self.receiver.lock().await;
         receiver.recv().await
     }

@@ -160,6 +160,11 @@ list_tag_groups()
 read_tag_group_once(group_name)
 subscribe_tag_group(group_name)
 
+// Tag-group event classification
+TagGroupEventKind::Data
+TagGroupEventKind::PartialError
+TagGroupEventKind::ReadFailure
+
 // Health / diagnostics / low-level
 check_health()
 check_health_detailed()
@@ -202,6 +207,7 @@ if (client.Connect("192.168.1.100:44818"))
 | UDT | `ReadUdt`, `WriteUdt`, `ReadUdtChunked`, `GetUdtMember`, `SetUdtMember`, `WriteUdtMember`, `ReadUdtMemberByOffset`, `WriteUdtMemberByOffset`, `GetUdtDefinition` |
 | Tag Discovery / Metadata | `DiscoverTags`, `DiscoverTagsDetailed`, `GetTagMetadata`, `GetTagAttributes` |
 | Batch Operations | `ReadTagsBatch`, `WriteTagsBatch`, `ExecuteBatch` |
+| Tag Group Polling | `UpsertTagGroup`, `RemoveTagGroup`, `ListTagGroups`, `ReadTagGroupOnce`, `SubscribeToTagGroup` |
 | Subscriptions | `SubscribeToTag`, `UnsubscribeFromTag`, `UnsubscribeFromAllTags` |
 | Health / Utility | `CheckHealth`, `CheckHealthDetailed`, `SetMaxPacketSize` |
 
@@ -271,6 +277,13 @@ WriteTagsBatch
 ExecuteBatch
 ConfigureBatchOperations
 GetBatchConfig
+
+// Tag-group polling
+UpsertTagGroup
+RemoveTagGroup
+ListTagGroups
+ReadTagGroupOnce
+SubscribeToTagGroup
 
 // Health / utility / subscriptions
 SetMaxPacketSize

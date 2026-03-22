@@ -162,6 +162,7 @@ cargo run --example test_discover_and_verify
 - [API docs (docs.rs)](https://docs.rs/rust-ethernet-ip)
 - [Programmer manual (Rust + C#)](docs/programmer_manual.md)
 - [Official sources traceability](docs/OFFICIAL_SOURCES.md)
+- [PLC/simulator compatibility matrix (0.7.0)](docs/compat/0.7.0_plc_simulator_compatibility_matrix.md)
 - [C# wrapper guide](csharp/RustEtherNetIp/README.md)
 - [Tag introspection](docs/tag_introspection.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

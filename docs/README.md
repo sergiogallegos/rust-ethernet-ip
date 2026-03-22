@@ -20,6 +20,7 @@ Current release state:
 - [audit/0.7.0_docs_api_audit.md](audit/0.7.0_docs_api_audit.md)
 - [audit/0.7.0_open_issues_triage.md](audit/0.7.0_open_issues_triage.md)
 - [compat/0.7.0_route_udt_compatibility.md](compat/0.7.0_route_udt_compatibility.md)
+- [compat/0.7.0_plc_simulator_compatibility_matrix.md](compat/0.7.0_plc_simulator_compatibility_matrix.md)
 - [perf/0.7.0_baseline_vs_0.6.3.md](perf/0.7.0_baseline_vs_0.6.3.md)
 
 ## Core Technical References

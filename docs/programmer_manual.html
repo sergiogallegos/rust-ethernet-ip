@@ -106,7 +106,9 @@
         <li><a href="#integration-paths">Integration Paths</a></li>
         <li><a href="#common-concepts">Common Concepts</a></li>
         <li><a href="#rust-track">Rust Track (Native)</a></li>
+        <li><a href="#rust-api-catalog">Rust API Catalog</a></li>
         <li><a href="#csharp-track">C# Track (Wrapper)</a></li>
+        <li><a href="#csharp-api-catalog">C# API Catalog</a></li>
         <li><a href="#capability-matrix">Capability Matrix</a></li>
         <li><a href="#limitations">Known PLC/Firmware Limitations</a></li>
         <li><a href="#production-checklist">Production Checklist</a></li>
@@ -191,6 +193,69 @@ async fn main() -> Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
         <tr><td>Health / Diagnostics</td><td><code>check_health</code>, <code>check_health_detailed</code>, <code>send_cip_request</code></td></tr>
         <tr><td>Subscriptions</td><td><code>subscribe_to_tag</code>, <code>subscribe_to_tags</code></td></tr>
       </table>
+
+      <h3 id="rust-api-catalog">Rust API Catalog (Source-Derived)</h3>
+      <p class="muted">
+        Derived from <code>src/lib.rs</code> on March 22, 2026. Focused on developer-facing integration APIs.
+      </p>
+      <pre><code>// EipClient connection/session
+new(addr)
+connect(addr)
+with_route_path(addr, route)
+connect_with_stream(stream, route)
+set_route_path(route)
+get_route_path()
+clear_route_path()
+unregister_session()
+
+// Tag discovery / metadata / caches
+discover_tags()
+discover_tags_detailed()
+discover_program_tags(program_name)
+get_tag_metadata(tag_name)
+get_tag_attributes(tag_name)
+discover_udt_members(tag_name)
+get_udt_definition(udt_name)
+get_udt_definition_cached(udt_name)
+list_udt_definitions()
+list_cached_tag_attributes()
+clear_caches()
+
+// Core reads/writes
+read_tag(tag_name)
+write_tag(tag_name, value)
+read_bit(tag_base, bit_index)
+write_bit(tag_base, bit_index, value)
+write_string(tag_name, value)
+
+// Arrays / tag path building helpers
+read_array_range(base_array_name, start_index, element_count)
+build_read_array_request(base_tag_name, start_index, element_count, is_multi_dimensional)
+build_write_array_request_with_index(tag_name, index, value_data_type, value_data)
+build_element_id_segment(index)
+build_base_tag_path(tag_name)
+build_list_tags_request()
+
+// UDT helpers
+read_udt_chunked(tag_name)
+read_udt_member_by_offset(udt_name, member_offset, member_size, data_type)
+write_udt_member_by_offset(udt_name, member_offset, member_size, data_type, value)
+
+// Batch operations
+execute_batch(operations)
+read_tags_batch(tag_names)
+write_tags_batch(tag_values)
+configure_batch_operations(config)
+get_batch_config()
+
+// Health / diagnostics / low-level
+check_health()
+check_health_detailed()
+send_cip_request(cip_request)
+
+// Subscriptions
+subscribe_to_tag(tag_name, options)
+subscribe_to_tags(tag_names, options)</code></pre>
     </section>
 
     <section id="csharp-track">
@@ -232,6 +297,74 @@ if (client.Connect("192.168.1.100:44818"))
         <li><code>ReadTagsBatch(...)</code> currently uses sequential type-probing fallback.</li>
         <li><code>ConfigureBatchOperations(...)</code> and <code>GetBatchConfig()</code> are intentionally unsupported in wrapper/runtime right now.</li>
       </ul>
+
+      <h3 id="csharp-api-catalog">C# API Catalog (Source-Derived)</h3>
+      <p class="muted">
+        Derived from <code>csharp/RustEtherNetIp/EthernetNetIpClient.cs</code> on March 22, 2026.
+      </p>
+      <pre><code>// Connection / lifecycle
+ConnectWithRoute(string address, RoutePath routePath)
+Connect(string address)
+Disconnect()
+Dispose()
+ConnectToPlc(string address)
+TryConnectToPlc(string address, int maxRetries = 3, int retryDelayMs = 1000)
+
+// Typed read/write (BOOL..STRING)
+ReadBool/WriteBool
+ReadSint/WriteSint
+ReadInt/WriteInt
+ReadDint/WriteDint
+ReadLint/WriteLint
+ReadUsint/WriteUsint
+ReadUint/WriteUint
+ReadUdint/WriteUdint
+ReadUlint/WriteUlint
+ReadReal/WriteReal
+ReadLreal/WriteLreal
+ReadString/WriteString
+WriteStringAsUdt
+
+// UDT / metadata
+ReadUdt
+WriteUdt (PlcValue and Dictionary&lt;string, object&gt; overloads)
+WriteUdtData
+ReadUdtAsDictionary
+GetUdtMember
+SetUdtMember
+ReadUdtChunked
+ReadUdtMemberByOffset
+WriteUdtMemberByOffset
+WriteUdtMember
+GetUdtDefinition
+GetTagAttributes
+GetTagMetadata
+
+// Discovery / arrays / rich reads
+DiscoverTags
+DiscoverTagsDetailed
+ReadTagWithDetails
+ReadTags
+ReadTagsWithDetails
+ReadArrayRange
+ReadDintArrayRange
+ReadRealArrayRange
+WriteTags
+
+// Batch operations
+ReadTagsBatch
+WriteTagsBatch
+ExecuteBatch
+ConfigureBatchOperations
+GetBatchConfig
+
+// Health / utility / subscriptions
+SetMaxPacketSize
+CheckHealth
+CheckHealthDetailed
+SubscribeToTag
+UnsubscribeFromTag
+UnsubscribeFromAllTags</code></pre>
     </section>
 
     <section id="capability-matrix">

@@ -9,7 +9,7 @@ Current release state:
 ## Start Here
 
 - [../README.md](../README.md): Project overview and quick start
-- [programmer_manual.html](programmer_manual.html): Programmer manual (Rust + C# integration tracks)
+- [programmer_manual.md](programmer_manual.md): Programmer manual (Rust + C# integration tracks)
 - [../CHANGELOG.md](../CHANGELOG.md): Release history and unreleased changes
 - [../CONTRIBUTING.md](../CONTRIBUTING.md): Contribution workflow and required checks
 

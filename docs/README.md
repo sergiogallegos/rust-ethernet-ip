@@ -10,6 +10,7 @@ Current release state:
 
 - [../README.md](../README.md): Project overview and quick start
 - [programmer_manual.md](programmer_manual.md): Programmer manual (Rust + C# integration tracks)
+- [OFFICIAL_SOURCES.md](OFFICIAL_SOURCES.md): Official Rockwell/ODVA references used by this library
 - [../CHANGELOG.md](../CHANGELOG.md): Release history and unreleased changes
 - [../CONTRIBUTING.md](../CONTRIBUTING.md): Contribution workflow and required checks
 

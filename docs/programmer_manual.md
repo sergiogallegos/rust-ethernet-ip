@@ -2,6 +2,9 @@
 
 Practical manual for developers integrating the library in Rust projects or through the C# wrapper.
 
+- Last updated: `2026-03-22`
+- Source baseline commit: `8f502c9`
+
 - Stable crate line: `0.6.3`
 - Current hardening line: `0.7.0` (unreleased)
 - Target PLCs: CompactLogix / ControlLogix

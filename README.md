@@ -160,6 +160,7 @@ cargo run --example test_discover_and_verify
 ## Documentation
 
 - [API docs (docs.rs)](https://docs.rs/rust-ethernet-ip)
+- [Programmer manual (Rust + C#)](docs/programmer_manual.html)
 - [C# wrapper guide](csharp/RustEtherNetIp/README.md)
 - [Tag introspection](docs/tag_introspection.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

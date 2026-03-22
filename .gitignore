@@ -98,6 +98,7 @@ tarpaulin-report.html
 *.html
 !examples/**/index.html
 !examples/**/public/index.html
+!docs/programmer_manual.html
 
 # Frontend build artifacts
 **/dist/

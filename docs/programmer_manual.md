@@ -218,6 +218,49 @@ if (client.Connect("192.168.1.100:44818"))
 - `ReadTagsBatch(...)` currently uses sequential type-probing fallback.
 - `ConfigureBatchOperations(...)` and `GetBatchConfig()` are intentionally unsupported in wrapper/runtime right now.
 
+### Tag Group Event Handling (Rust + C#)
+
+Use the event kind as your first branch, then inspect details:
+
+- `Data`: all configured tags read successfully in that cycle.
+- `PartialError`: at least one tag failed, but others succeeded.
+- `ReadFailure`: full cycle failed (transport/session/scan-level issue).
+
+Rust pattern:
+
+```rust
+while let Some(event) = subscription.wait_for_update().await {
+    match event.kind {
+        TagGroupEventKind::Data => {}
+        TagGroupEventKind::PartialError => {
+            // inspect event.snapshot.values[*].error
+        }
+        TagGroupEventKind::ReadFailure => {
+            // inspect event.error and event.failure (category/retriable/status_code)
+        }
+    }
+}
+```
+
+C# pattern:
+
+```csharp
+group.PollingEvent += (_, evt) =>
+{
+    switch (evt.Kind)
+    {
+        case TagGroupEventKind.Data:
+            break;
+        case TagGroupEventKind.PartialError:
+            // inspect evt.Errors
+            break;
+        case TagGroupEventKind.ReadFailure:
+            // inspect evt.ErrorMessage and evt.Failure
+            break;
+    }
+};
+```
+
 ### C# API Catalog (Source-Derived)
 
 Derived from `csharp/RustEtherNetIp/EthernetNetIpClient.cs` on March 22, 2026.

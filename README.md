@@ -131,6 +131,61 @@ let ops = vec![
 let mixed_results = client.execute_batch(&ops).await?;
 ```
 
+## Tag Group Event Handling
+
+### Rust
+
+```rust
+use rust_ethernet_ip::{EipClient, TagGroupEventKind};
+
+let mut client = EipClient::connect("192.168.1.100:44818").await?;
+client
+    .upsert_tag_group(
+        "cell_1",
+        vec!["Program:Main.Temp".into(), "Program:Main.Pressure".into()],
+        250,
+    )
+    .await?;
+
+let sub = client.subscribe_tag_group("cell_1").await?;
+while let Some(event) = sub.wait_for_update().await {
+    match event.kind {
+        TagGroupEventKind::Data => {
+            // All tags read successfully
+        }
+        TagGroupEventKind::PartialError => {
+            // Some tags failed; inspect per-tag `snapshot.values[*].error`
+        }
+        TagGroupEventKind::ReadFailure => {
+            // Full cycle failed; inspect `event.error` and `event.failure`
+        }
+    }
+}
+```
+
+### C#
+
+```csharp
+client.UpsertTagGroup("cell_1", new[] { "DINT_TAG", "PressureTag" }, updateRateMs: 250);
+var group = client.SubscribeToTagGroup("cell_1");
+
+group.PollingEvent += (_, evt) =>
+{
+    switch (evt.Kind)
+    {
+        case TagGroupEventKind.Data:
+            // All tags good
+            break;
+        case TagGroupEventKind.PartialError:
+            // Mixed quality; inspect evt.Errors per tag
+            break;
+        case TagGroupEventKind.ReadFailure:
+            // Entire cycle failed; inspect evt.ErrorMessage + evt.Failure
+            break;
+    }
+};
+```
+
 ## Build and Test
 
 ```bash

@@ -164,6 +164,42 @@ Default native batch behavior is still available through:
 | 20 mixed ops | 50ms | 8ms | **6.25x faster** |
 | Network packets | 20 packets | 1 packet | **20x reduction** |
 
+## Tag Group Polling Events
+
+Use TagGroup polling when you need periodic multi-tag updates with explicit quality classification.
+
+```csharp
+client.UpsertTagGroup("cell_1", new[] { "DINT_TAG", "PressureTag" }, updateRateMs: 250);
+var group = client.SubscribeToTagGroup("cell_1");
+
+group.PollingEvent += (_, evt) =>
+{
+    switch (evt.Kind)
+    {
+        case TagGroupEventKind.Data:
+            // All reads succeeded in this cycle
+            break;
+        case TagGroupEventKind.PartialError:
+            // Some tags failed; check evt.Errors
+            Console.WriteLine($"PartialError: {evt.Errors.Count} tag(s)");
+            break;
+        case TagGroupEventKind.ReadFailure:
+            // Full scan failed; check evt.ErrorMessage + evt.Failure
+            Console.WriteLine($"ReadFailure: {evt.ErrorMessage}");
+            break;
+    }
+};
+```
+
+Event model:
+- `Data`: all configured tags read successfully.
+- `PartialError`: mixed cycle; some reads succeeded and some failed.
+- `ReadFailure`: cycle-level failure (for example disconnect/transport/session issue).
+
+Compatibility note:
+- `DataChanged` remains available and is still useful for direct UI value binding.
+- `PollingEvent` adds explicit diagnostic semantics for robust industrial workflows.
+
 ## Advanced Tag Addressing
 
 The wrapper supports all advanced Allen-Bradley tag addressing features:
@@ -408,6 +444,9 @@ The `EtherNetIpClient` is **NOT** thread-safe. For multi-threaded applications:
 ### Core Classes
 
 - **`EtherNetIpClient`**: Main client class
+- **`TagGroup`**: Periodic multi-tag polling helper
+- **`TagGroupPollingEventArgs`**: Classified tag-group cycle result payload
+- **`TagGroupFailureDiagnostic`**: Structured failure diagnostics for read-failure cycles
 - **`BatchOperation`**: Represents a batch operation
 - **`BatchConfig`**: Batch configuration model (currently not applied via API in this release line)
 - **`TagReadResult`**: Result of a tag read operation

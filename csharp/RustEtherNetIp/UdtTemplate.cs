@@ -21,11 +21,13 @@ namespace RustEtherNetIp
         public Dictionary<string, PlcValue> ParseRawData(byte[] rawData)
         {
             var result = new Dictionary<string, PlcValue>();
-            int offset = 0;
+            if (rawData == null)
+                throw new ArgumentNullException(nameof(rawData));
             
             foreach (var member in Members)
             {
-                if (offset + member.Size > rawData.Length)
+                int memberOffset = member.Offset >= 0 ? member.Offset : 0;
+                if (memberOffset + member.Size > rawData.Length)
                 {
                     result[$"_error_{member.Name}"] = PlcValue.String("Insufficient data");
                     break;
@@ -33,15 +35,13 @@ namespace RustEtherNetIp
                 
                 try
                 {
-                    var value = ParseMemberValue(rawData, offset, member);
+                    var value = ParseMemberValue(rawData, memberOffset, member);
                     result[member.Name] = value;
                 }
                 catch (Exception ex)
                 {
                     result[$"_error_{member.Name}"] = PlcValue.String($"Parse error: {ex.Message}");
                 }
-                
-                offset += member.Size;
             }
             
             return result;

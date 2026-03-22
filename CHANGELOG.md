@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Native batch wiring**: `WriteTagsBatch` and `ExecuteBatch` now use native FFI batch paths for non-UDT-member operations with per-item result mapping.
 - **Batch config API behavior**: `ConfigureBatchOperations` and `GetBatchConfig` now throw `NotSupportedException` instead of silently behaving as if configuration succeeded.
 - **UDT batch payload compatibility**: UDT raw bytes now serialize as numeric JSON arrays for Rust `Vec<u8>` compatibility (with regression test).
-- **UDT conversion contract clarity**: `UdtData.ToDictionary(UdtTemplate)` now throws explicit `NotSupportedException` until template-driven parsing is implemented, avoiding silent empty dictionary results.
+- **UDT conversion contract hardening**: `UdtData.ToDictionary(UdtTemplate)` now performs template-driven parsing and throws explicit `InvalidOperationException` on parse errors, avoiding silent empty dictionary results.
 
 ### 🧹 Cleanup
 - **Desktop app warnings**: Removed unused fields/locals in `examples/desktop_app` that were generating compile warnings.

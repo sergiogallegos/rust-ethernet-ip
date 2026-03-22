@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 namespace RustEtherNetIp
@@ -124,10 +125,22 @@ namespace RustEtherNetIp
         public Dictionary<string, PlcValue> ToDictionary(UdtTemplate udtDefinition)
         {
             _ = udtDefinition ?? throw new ArgumentNullException(nameof(udtDefinition));
+            if (Data == null || Data.Length == 0)
+                throw new ArgumentException("UdtData has no raw bytes to parse", nameof(Data));
 
-            throw new NotSupportedException(
-                "UdtData.ToDictionary(UdtTemplate) is not implemented yet. " +
-                "Use raw UdtData or explicit member reads until template-driven parsing is available.");
+            var parsed = udtDefinition.ParseRawData(Data);
+            var errors = parsed
+                .Where(kvp => kvp.Key.StartsWith("_error_", StringComparison.Ordinal))
+                .Select(kvp => kvp.Value.As<string>())
+                .ToArray();
+
+            if (errors.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to parse UDT data with template '{udtDefinition.Name}': {string.Join("; ", errors)}");
+            }
+
+            return parsed;
         }
 
         public override string ToString()

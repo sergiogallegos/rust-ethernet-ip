@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace RustEtherNetIp.Tests
@@ -75,6 +76,60 @@ namespace RustEtherNetIp.Tests
 
             var updatedDintRange = client.ReadDintArrayRange("DINT_ARRAY", 0, 2);
             Assert.Equal(new[] { 10, 55 }, updatedDintRange);
+        }
+
+        [Fact]
+        public async Task TagGroupPollingEvent_ReportsPartialError_WithMixedValidAndInvalidTags()
+        {
+            var address = Environment.GetEnvironmentVariable(SimAddressEnv);
+            if (string.IsNullOrWhiteSpace(address))
+            {
+                // Simulator not configured; skip without failing.
+                return;
+            }
+
+            var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                ? "librust_ethernet_ip.dylib"
+                : "rust_ethernet_ip.dll";
+            var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
+            if (!File.Exists(nativeLibPath))
+            {
+                return;
+            }
+
+            using var client = new EtherNetIpClient();
+            Assert.True(client.Connect(address));
+
+            client.UpsertTagGroup("diag", new[] { "DINT_TAG", "THIS_TAG_DOES_NOT_EXIST" }, 100);
+            var group = client.SubscribeToTagGroup("diag");
+
+            var tcs = new TaskCompletionSource<TagGroupPollingEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler<TagGroupPollingEventArgs>? handler = null;
+            handler = (_, evt) =>
+            {
+                if (evt.Kind == TagGroupEventKind.PartialError)
+                {
+                    tcs.TrySetResult(evt);
+                }
+            };
+
+            group.PollingEvent += handler;
+            try
+            {
+                var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+                Assert.True(completed == tcs.Task, "Timed out waiting for PartialError polling event");
+
+                var evt = await tcs.Task;
+                Assert.Equal(TagGroupEventKind.PartialError, evt.Kind);
+                Assert.True(evt.AllValues.ContainsKey("DINT_TAG"));
+                Assert.True(evt.Errors.ContainsKey("THIS_TAG_DOES_NOT_EXIST"));
+            }
+            finally
+            {
+                group.PollingEvent -= handler;
+                client.RemoveTagGroup("diag");
+            }
         }
     }
 }

@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🐛 Fixed — Core Library
 - **Connection pool reuse**: `PlcManager::get_connection` now reuses the least-recently-used active client when the pool is full instead of recreating a new TCP/session connection each time.
 - **Unconnected-send interoperability**: Added `0xD2` reply unwrapping and direct-CIP fallback retry (when no route path is configured) to improve discovery/read interoperability across mixed PLC/simulator behaviors.
+- **UDT fail-fast contract**: Unimplemented UDT paths (`UserDefinedType::from_cip_data`, `UdtManager::serialize_udt_instance`) now return explicit protocol errors instead of silent empty/placeholder success values.
 
 ### ✨ Added — Tag Group Polling (Rust/C# Parity)
 - **Rust tag-group API**: Added `upsert_tag_group`, `remove_tag_group`, `list_tag_groups`, `read_tag_group_once`, and `subscribe_tag_group`.
@@ -45,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Native batch wiring**: `WriteTagsBatch` and `ExecuteBatch` now use native FFI batch paths for non-UDT-member operations with per-item result mapping.
 - **Batch config API behavior**: `ConfigureBatchOperations` and `GetBatchConfig` now throw `NotSupportedException` instead of silently behaving as if configuration succeeded.
 - **UDT batch payload compatibility**: UDT raw bytes now serialize as numeric JSON arrays for Rust `Vec<u8>` compatibility (with regression test).
+- **UDT conversion contract clarity**: `UdtData.ToDictionary(UdtTemplate)` now throws explicit `NotSupportedException` until template-driven parsing is implemented, avoiding silent empty dictionary results.
 
 ### 🧹 Cleanup
 - **Desktop app warnings**: Removed unused fields/locals in `examples/desktop_app` that were generating compile warnings.
@@ -62,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **C# tag-group API coverage**: Added tests for registration/list/remove semantics, idempotent subscribe behavior, and one-shot snapshot behavior when disconnected.
 - **C# diagnostic classification coverage**: Added tests verifying exception-to-category mapping (`Timeout`, `Network`, `Data`).
 - **Simulator integration coverage (C#)**: Added tag-group tests validating `PartialError` (mixed valid+invalid tags) and `ReadFailure` diagnostics after disconnect.
+- **UDT contract tests**: Added Rust/C# contract tests to enforce explicit not-implemented behavior for currently unsupported UDT conversion/parsing paths.
 
 ### 📚 Documentation
 - **README updates**: Added Rust/C# tag-group event handling section with `Data`, `PartialError`, and `ReadFailure` consumption patterns.

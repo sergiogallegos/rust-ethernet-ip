@@ -362,9 +362,9 @@ impl UdtManager {
         &self,
         _udt_value: &HashMap<String, PlcValue>,
     ) -> Result<Vec<u8>> {
-        // For now, return empty bytes
-        // Full UDT serialization can be implemented later
-        Ok(Vec::new())
+        Err(crate::error::EtherNetIpError::Protocol(
+            "UDT instance serialization is not implemented yet".to_string(),
+        ))
     }
 }
 
@@ -421,13 +421,9 @@ impl UserDefinedType {
 
     /// Parses a UDT from CIP data
     pub fn from_cip_data(_data: &[u8]) -> crate::error::Result<Self> {
-        // TODO: Implement CIP data parsing
-        Ok(Self {
-            name: String::new(),
-            members: Vec::new(),
-            size: 0,
-            member_offsets: HashMap::new(),
-        })
+        Err(crate::error::EtherNetIpError::Protocol(
+            "UDT CIP definition parsing is not implemented yet".to_string(),
+        ))
     }
 
     /// Converts a UDT instance to a `HashMap` of member values
@@ -858,5 +854,23 @@ mod tests {
 
         assert_eq!(result.get("Bool1"), Some(&PlcValue::Bool(true)));
         assert_eq!(result.get("Dint1"), Some(&PlcValue::Dint(42)));
+    }
+
+    #[test]
+    fn test_from_cip_data_returns_explicit_error_until_implemented() {
+        let result = UserDefinedType::from_cip_data(&[0x01, 0x02, 0x03]);
+        assert!(result.is_err());
+        let error_text = result.err().unwrap().to_string();
+        assert!(error_text.contains("not implemented"));
+    }
+
+    #[test]
+    fn test_serialize_udt_instance_returns_explicit_error_until_implemented() {
+        let manager = UdtManager::new();
+        let values = HashMap::new();
+        let result = manager.serialize_udt_instance(&values);
+        assert!(result.is_err());
+        let error_text = result.err().unwrap().to_string();
+        assert!(error_text.contains("not implemented"));
     }
 }

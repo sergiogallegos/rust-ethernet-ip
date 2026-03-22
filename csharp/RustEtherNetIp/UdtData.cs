@@ -123,10 +123,11 @@ namespace RustEtherNetIp
         /// </remarks>
         public Dictionary<string, PlcValue> ToDictionary(UdtTemplate udtDefinition)
         {
-            // This would require implementing the parsing logic based on the UDT definition
-            // For now, return an empty dictionary
-            // TODO: Implement full parsing based on UdtTemplate structure
-            return new Dictionary<string, PlcValue>();
+            _ = udtDefinition ?? throw new ArgumentNullException(nameof(udtDefinition));
+
+            throw new NotSupportedException(
+                "UdtData.ToDictionary(UdtTemplate) is not implemented yet. " +
+                "Use raw UdtData or explicit member reads until template-driven parsing is available.");
         }
 
         public override string ToString()
@@ -135,4 +136,3 @@ namespace RustEtherNetIp
         }
     }
 }
-

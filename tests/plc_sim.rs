@@ -84,6 +84,7 @@ pub struct SimulatedPlc {
 }
 
 impl SimulatedPlc {
+    #[allow(dead_code)]
     pub async fn start() -> Self {
         Self::start_with_behavior(SimBehavior::default()).await
     }

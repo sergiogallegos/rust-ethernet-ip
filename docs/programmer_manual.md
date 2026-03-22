@@ -94,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | UDT | `read_udt_chunked`, `read_udt_member_by_offset`, `write_udt_member_by_offset`, `discover_udt_members`, `get_udt_definition`, `get_udt_definition_cached` |
 | Tag Discovery / Metadata | `discover_tags`, `discover_tags_detailed`, `discover_program_tags`, `get_tag_metadata`, `get_tag_attributes`, `list_cached_tag_attributes`, `clear_caches` |
 | Batch Operations | `read_tags_batch`, `write_tags_batch`, `execute_batch`, `configure_batch_operations`, `get_batch_config` |
+| Tag Group Polling | `upsert_tag_group`, `remove_tag_group`, `list_tag_groups`, `read_tag_group_once`, `subscribe_tag_group` |
 | Health / Diagnostics | `check_health`, `check_health_detailed`, `send_cip_request` |
 | Subscriptions | `subscribe_to_tag`, `subscribe_to_tags` |
 
@@ -151,6 +152,13 @@ read_tags_batch(tag_names)
 write_tags_batch(tag_values)
 configure_batch_operations(config)
 get_batch_config()
+
+// Tag-group polling
+upsert_tag_group(group_name, tags, update_rate_ms)
+remove_tag_group(group_name)
+list_tag_groups()
+read_tag_group_once(group_name)
+subscribe_tag_group(group_name)
 
 // Health / diagnostics / low-level
 check_health()

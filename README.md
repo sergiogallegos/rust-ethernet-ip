@@ -32,6 +32,7 @@ Production-focused EtherNet/IP library for **Allen-Bradley CompactLogix and Cont
 - Advanced tag addressing: program-scoped tags, array indexing, bit access, nested UDT paths
 - Route path support for backplane/slot routing (ControlLogix)
 - Batch operations (`read_tags_batch`, `write_tags_batch`, `execute_batch`)
+- Tag-group polling API (`upsert_tag_group`, `read_tag_group_once`, `subscribe_tag_group`)
 - UDT discovery and metadata access
 - Real-time subscriptions and health-check APIs
 - C# wrapper for .NET integration

@@ -390,6 +390,7 @@ pub mod ffi;
 pub mod monitoring; // Enterprise-grade monitoring and health checks
 pub mod plc_manager;
 pub mod subscription;
+pub mod tag_group;
 pub mod tag_manager;
 pub mod tag_path;
 pub mod tag_subscription; // Real-time subscription management
@@ -408,6 +409,7 @@ pub use monitoring::{
 };
 pub use plc_manager::{PlcConfig, PlcConnection, PlcManager};
 pub use subscription::{SubscriptionManager, SubscriptionOptions, TagSubscription};
+pub use tag_group::{TagGroupConfig, TagGroupSnapshot, TagGroupSubscription, TagGroupValueResult};
 pub use tag_manager::{TagCache, TagManager, TagMetadata, TagPermissions, TagScope};
 pub use tag_path::TagPath;
 pub use tag_subscription::{
@@ -1431,6 +1433,8 @@ pub struct EipClient {
     connection_sequence: Arc<Mutex<u32>>,
     /// Active tag subscriptions
     subscriptions: Arc<Mutex<Vec<TagSubscription>>>,
+    /// Registered tag-group polling definitions
+    tag_groups: Arc<Mutex<HashMap<String, TagGroupConfig>>>,
 }
 
 impl std::fmt::Debug for EipClient {
@@ -1446,6 +1450,7 @@ impl std::fmt::Debug for EipClient {
             .field("udt_manager", &"<udt_manager>")
             .field("connected_sessions", &"<connected_sessions>")
             .field("subscriptions", &"<subscriptions>")
+            .field("tag_groups", &"<tag_groups>")
             .finish()
     }
 }
@@ -1472,6 +1477,7 @@ impl EipClient {
             connected_sessions: Arc::new(Mutex::new(HashMap::new())),
             connection_sequence: Arc::new(Mutex::new(1)),
             subscriptions: Arc::new(Mutex::new(Vec::new())),
+            tag_groups: Arc::new(Mutex::new(HashMap::new())),
         };
         client.register_session().await?;
         client.negotiate_packet_size().await?;
@@ -7437,6 +7443,158 @@ impl EipClient {
             subs.push(self.subscribe_to_tag(tag_name, options.clone()).await?);
         }
         Ok(subs)
+    }
+
+    /// Registers or replaces a named tag group for grouped polling.
+    ///
+    /// Tag groups are useful for HMI/SCADA-style scan classes where multiple tags
+    /// share a polling interval and should be read together.
+    pub async fn upsert_tag_group(
+        &self,
+        group_name: &str,
+        tags: &[&str],
+        update_rate_ms: u32,
+    ) -> Result<()> {
+        if group_name.trim().is_empty() {
+            return Err(EtherNetIpError::Protocol(
+                "Tag group name cannot be empty".to_string(),
+            ));
+        }
+        if tags.is_empty() {
+            return Err(EtherNetIpError::Protocol(
+                "Tag group must contain at least one tag".to_string(),
+            ));
+        }
+        if update_rate_ms == 0 {
+            return Err(EtherNetIpError::Protocol(
+                "Tag group update rate must be greater than 0 ms".to_string(),
+            ));
+        }
+
+        let config = TagGroupConfig {
+            name: group_name.to_string(),
+            tags: tags.iter().map(|s| (*s).to_string()).collect(),
+            update_rate_ms,
+        };
+
+        let mut groups = self.tag_groups.lock().await;
+        groups.insert(group_name.to_string(), config);
+        Ok(())
+    }
+
+    /// Removes a named tag group.
+    pub async fn remove_tag_group(&self, group_name: &str) -> bool {
+        let mut groups = self.tag_groups.lock().await;
+        groups.remove(group_name).is_some()
+    }
+
+    /// Lists all currently registered tag groups.
+    pub async fn list_tag_groups(&self) -> Vec<TagGroupConfig> {
+        let groups = self.tag_groups.lock().await;
+        groups.values().cloned().collect()
+    }
+
+    /// Reads all tags in a group once and returns a snapshot.
+    pub async fn read_tag_group_once(&self, group_name: &str) -> Result<TagGroupSnapshot> {
+        let config = {
+            let groups = self.tag_groups.lock().await;
+            groups.get(group_name).cloned().ok_or_else(|| {
+                EtherNetIpError::Protocol(format!("Tag group '{}' is not registered", group_name))
+            })?
+        };
+
+        let mut client = self.clone();
+        let tag_refs: Vec<&str> = config.tags.iter().map(String::as_str).collect();
+        let values = client.read_tags_batch(&tag_refs).await?;
+
+        let mapped = values
+            .into_iter()
+            .map(|(tag_name, result)| match result {
+                Ok(value) => TagGroupValueResult {
+                    tag_name,
+                    value: Some(value),
+                    error: None,
+                },
+                Err(e) => TagGroupValueResult {
+                    tag_name,
+                    value: None,
+                    error: Some(e.to_string()),
+                },
+            })
+            .collect();
+
+        Ok(TagGroupSnapshot {
+            group_name: config.name,
+            sampled_at: std::time::SystemTime::now(),
+            values: mapped,
+        })
+    }
+
+    /// Starts background polling for a registered tag group.
+    ///
+    /// Use the returned subscription to await snapshots and to stop polling.
+    pub async fn subscribe_tag_group(&self, group_name: &str) -> Result<TagGroupSubscription> {
+        let config = {
+            let groups = self.tag_groups.lock().await;
+            groups.get(group_name).cloned().ok_or_else(|| {
+                EtherNetIpError::Protocol(format!("Tag group '{}' is not registered", group_name))
+            })?
+        };
+
+        let subscription = TagGroupSubscription::new(config.name.clone(), config.update_rate_ms);
+        let subscription_task = subscription.clone();
+        let mut client = self.clone();
+        let tags = config.tags.clone();
+        let interval = std::time::Duration::from_millis(config.update_rate_ms as u64);
+        let group_name_owned = config.name.clone();
+
+        tokio::spawn(async move {
+            while subscription_task.is_active() {
+                let tag_refs: Vec<&str> = tags.iter().map(String::as_str).collect();
+                match client.read_tags_batch(&tag_refs).await {
+                    Ok(values) => {
+                        let snapshot = TagGroupSnapshot {
+                            group_name: group_name_owned.clone(),
+                            sampled_at: std::time::SystemTime::now(),
+                            values: values
+                                .into_iter()
+                                .map(|(tag_name, result)| match result {
+                                    Ok(value) => TagGroupValueResult {
+                                        tag_name,
+                                        value: Some(value),
+                                        error: None,
+                                    },
+                                    Err(e) => TagGroupValueResult {
+                                        tag_name,
+                                        value: None,
+                                        error: Some(e.to_string()),
+                                    },
+                                })
+                                .collect(),
+                        };
+
+                        if let Err(e) = subscription_task.publish(snapshot).await {
+                            tracing::error!(
+                                "Tag group '{}' publish failed: {}",
+                                group_name_owned,
+                                e
+                            );
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Tag group '{}' polling read failed: {}",
+                            group_name_owned,
+                            e
+                        );
+                    }
+                }
+                tokio::time::sleep(interval).await;
+            }
+        });
+
+        Ok(subscription)
     }
 
     async fn update_subscription(&self, tag_name: &str, value: &PlcValue) -> Result<()> {

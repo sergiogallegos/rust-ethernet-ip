@@ -209,4 +209,61 @@ mod tests {
         assert!(event.error.is_none());
         assert!(event.failure.is_none());
     }
+
+    #[tokio::test]
+    async fn publish_assigns_data_kind_when_all_values_are_ok() {
+        let sub = TagGroupSubscription::new("group".to_string(), 100);
+        let snapshot = TagGroupSnapshot {
+            group_name: "group".to_string(),
+            sampled_at: SystemTime::now(),
+            values: vec![TagGroupValueResult {
+                tag_name: "Tag1".to_string(),
+                value: Some(crate::PlcValue::Dint(42)),
+                error: None,
+            }],
+        };
+
+        sub.publish(snapshot).await.expect("publish should succeed");
+        let event = sub.wait_for_update().await.expect("event should exist");
+
+        assert_eq!(event.kind, TagGroupEventKind::Data);
+        assert!(event.error.is_none());
+        assert!(event.failure.is_none());
+    }
+
+    #[tokio::test]
+    async fn publish_event_preserves_read_failure_diagnostics() {
+        let sub = TagGroupSubscription::new("group".to_string(), 100);
+        let event = TagGroupEvent {
+            kind: TagGroupEventKind::ReadFailure,
+            snapshot: TagGroupSnapshot {
+                group_name: "group".to_string(),
+                sampled_at: SystemTime::now(),
+                values: Vec::new(),
+            },
+            error: Some("timeout while reading tag group".to_string()),
+            failure: Some(TagGroupFailureDiagnostic {
+                category: TagGroupFailureCategory::Timeout,
+                retriable: true,
+                status_code: None,
+            }),
+        };
+
+        sub.publish_event(event.clone())
+            .await
+            .expect("publish_event should succeed");
+        let received = sub.wait_for_update().await.expect("event should exist");
+
+        assert_eq!(received.kind, TagGroupEventKind::ReadFailure);
+        assert_eq!(received.error, event.error);
+        assert_eq!(received.failure, event.failure);
+    }
+
+    #[test]
+    fn stop_marks_subscription_inactive() {
+        let sub = TagGroupSubscription::new("group".to_string(), 100);
+        assert!(sub.is_active());
+        sub.stop();
+        assert!(!sub.is_active());
+    }
 }

@@ -1547,6 +1547,7 @@ namespace WpfExample.ViewModels
                     UpdateRateMs = TagGroupUpdateRate
                 };
                 _tagGroup.DataChanged += TagGroup_DataChanged;
+                _tagGroup.PollingEvent += TagGroup_PollingEvent;
                 _tagGroup.Start();
 
                 IsTagGroupActive = true;
@@ -1564,6 +1565,11 @@ namespace WpfExample.ViewModels
         private void TagGroupStop()
         {
             _tagGroup?.Stop();
+            if (_tagGroup != null)
+            {
+                _tagGroup.DataChanged -= TagGroup_DataChanged;
+                _tagGroup.PollingEvent -= TagGroup_PollingEvent;
+            }
             IsTagGroupActive = false;
             IsTagGroupSuspended = false;
             TagGroupStatus = "Status: Stopped";
@@ -1608,6 +1614,33 @@ namespace WpfExample.ViewModels
                 {
                     LogMessage($"🔄 TagGroup: {e.ChangedTags.Length} tag(s) changed: {string.Join(", ", e.ChangedTags)}");
                 }
+            });
+        }
+
+        private void TagGroup_PollingEvent(object? sender, TagGroupPollingEventArgs e)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (e.Kind == TagGroupEventKind.Data)
+                {
+                    return;
+                }
+
+                if (e.Kind == TagGroupEventKind.PartialError)
+                {
+                    var count = e.Errors?.Count ?? 0;
+                    TagGroupStatus = $"Status: Active (Partial errors: {count})";
+                    if (count > 0)
+                    {
+                        var preview = string.Join(", ", e.Errors!.Take(3).Select(kvp => kvp.Key));
+                        LogMessage($"⚠️ TagGroup partial error on {count} tag(s): {preview}");
+                    }
+                    return;
+                }
+
+                var category = e.Failure?.Category.ToString() ?? "Unknown";
+                TagGroupStatus = $"Status: ReadFailure ({category})";
+                LogMessage($"❌ TagGroup read failure: {e.ErrorMessage ?? "Unknown error"}");
             });
         }
 
@@ -1660,6 +1693,11 @@ namespace WpfExample.ViewModels
             {
                 _statisticsTimer?.Stop();
                 _tagGroup?.Stop();
+                if (_tagGroup != null)
+                {
+                    _tagGroup.DataChanged -= TagGroup_DataChanged;
+                    _tagGroup.PollingEvent -= TagGroup_PollingEvent;
+                }
                 _tagGroup?.Dispose();
                 _tagGroup = null;
                 IsTagGroupActive = false;

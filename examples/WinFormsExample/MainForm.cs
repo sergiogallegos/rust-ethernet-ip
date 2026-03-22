@@ -4861,6 +4861,8 @@ namespace WinFormsExample
         private TagGroup? _tagGroup;
         private DateTime _lastTagGroupUpdate = DateTime.MinValue;
         private const int TAG_GROUP_UPDATE_THROTTLE_MS = 100; // Minimum 100ms between UI updates
+        private readonly object _tagGroupErrorLock = new();
+        private Dictionary<string, string> _tagGroupLatestErrors = new();
         
         private void TagGroupStartButton_Click(object? sender, EventArgs e)
         {
@@ -4882,13 +4884,19 @@ namespace WinFormsExample
 
                 var updateRate = (int)((NumericUpDown)Controls.Find("tagGroupUpdateRateNumeric", true)[0]).Value;
 
-                _tagGroup?.Dispose();
+                if (_tagGroup != null)
+                {
+                    _tagGroup.DataChanged -= TagGroup_DataChanged;
+                    _tagGroup.PollingEvent -= TagGroup_PollingEvent;
+                    _tagGroup.Dispose();
+                }
                 _tagGroup = new TagGroup(_plcClient)
                 {
                     TagNames = tagNames,
                     UpdateRateMs = updateRate
                 };
                 _tagGroup.DataChanged += TagGroup_DataChanged;
+                _tagGroup.PollingEvent += TagGroup_PollingEvent;
                 _tagGroup.Start();
 
                 var statusLabel = (Label)Controls.Find("tagGroupStatusLabel", true)[0];
@@ -4914,6 +4922,11 @@ namespace WinFormsExample
         private void TagGroupStopButton_Click(object? sender, EventArgs e)
         {
             _tagGroup?.Stop();
+            if (_tagGroup != null)
+            {
+                _tagGroup.DataChanged -= TagGroup_DataChanged;
+                _tagGroup.PollingEvent -= TagGroup_PollingEvent;
+            }
             var statusLabel = (Label)Controls.Find("tagGroupStatusLabel", true)[0];
             statusLabel.Text = "Status: Stopped";
             statusLabel.ForeColor = Color.FromArgb(107, 114, 128);
@@ -4994,6 +5007,11 @@ namespace WinFormsExample
                 try
                 {
                     resultsListView.Items.Clear();
+                    Dictionary<string, string> latestErrors;
+                    lock (_tagGroupErrorLock)
+                    {
+                        latestErrors = new Dictionary<string, string>(_tagGroupLatestErrors);
+                    }
 
                     if (e.AllValues == null || e.AllValues.Count == 0)
                     {
@@ -5014,7 +5032,7 @@ namespace WinFormsExample
                             item.SubItems.Add(kvp.Value?.ToString() ?? "N/A");
                             item.SubItems.Add(kvp.Value?.Type.ToString() ?? "N/A");
                             item.SubItems.Add(DateTime.Now.ToString("HH:mm:ss.fff"));
-                            item.SubItems.Add("Good");
+                            item.SubItems.Add(latestErrors.ContainsKey(kvp.Key) ? "Bad" : "Good");
                             resultsListView.Items.Add(item);
                         }
                         System.Diagnostics.Debug.WriteLine($"TagGroup_DataChanged: Updated {e.AllValues.Count} tags in table");
@@ -5044,6 +5062,46 @@ namespace WinFormsExample
                 System.Diagnostics.Debug.WriteLine($"TagGroup_DataChanged error: {ex.Message}");
                 Log($"❌ TagGroup UI update error: {ex.Message}");
             }
+        }
+
+        private void TagGroup_PollingEvent(object? sender, TagGroupPollingEventArgs e)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => TagGroup_PollingEvent(sender, e)));
+                return;
+            }
+
+            var statusLabel = (Label)Controls.Find("tagGroupStatusLabel", true)[0];
+            if (e.Kind == TagGroupEventKind.Data)
+            {
+                lock (_tagGroupErrorLock)
+                {
+                    _tagGroupLatestErrors.Clear();
+                }
+                if (statusLabel.Text.StartsWith("Status: ReadFailure", StringComparison.Ordinal))
+                {
+                    statusLabel.Text = "Status: Active";
+                    statusLabel.ForeColor = Color.FromArgb(34, 197, 94);
+                }
+                return;
+            }
+
+            if (e.Kind == TagGroupEventKind.PartialError)
+            {
+                lock (_tagGroupErrorLock)
+                {
+                    _tagGroupLatestErrors = new Dictionary<string, string>(e.Errors);
+                }
+                statusLabel.Text = $"Status: Active (Partial errors: {e.Errors.Count})";
+                statusLabel.ForeColor = Color.FromArgb(249, 115, 22);
+                Log($"⚠️ TagGroup partial error: {e.Errors.Count} tag(s) failed this cycle");
+                return;
+            }
+
+            statusLabel.Text = $"Status: ReadFailure ({e.Failure?.Category.ToString() ?? "Unknown"})";
+            statusLabel.ForeColor = Color.FromArgb(220, 38, 38);
+            Log($"❌ TagGroup read failure: {e.ErrorMessage ?? "Unknown error"}");
         }
 
         private void StatsResetButton_Click(object? sender, EventArgs e)
@@ -5080,6 +5138,11 @@ namespace WinFormsExample
 
             // Stop and dispose TagGroup
             _tagGroup?.Stop();
+            if (_tagGroup != null)
+            {
+                _tagGroup.DataChanged -= TagGroup_DataChanged;
+                _tagGroup.PollingEvent -= TagGroup_PollingEvent;
+            }
             _tagGroup?.Dispose();
             _tagGroup = null;
 

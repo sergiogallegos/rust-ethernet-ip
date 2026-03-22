@@ -131,5 +131,63 @@ namespace RustEtherNetIp.Tests
                 client.RemoveTagGroup("diag");
             }
         }
+
+        [Fact]
+        public async Task TagGroupPollingEvent_ReportsReadFailure_WhenClientDisconnects()
+        {
+            var address = Environment.GetEnvironmentVariable(SimAddressEnv);
+            if (string.IsNullOrWhiteSpace(address))
+            {
+                // Simulator not configured; skip without failing.
+                return;
+            }
+
+            var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                ? "librust_ethernet_ip.dylib"
+                : "rust_ethernet_ip.dll";
+            var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
+            if (!File.Exists(nativeLibPath))
+            {
+                return;
+            }
+
+            using var client = new EtherNetIpClient();
+            Assert.True(client.Connect(address));
+
+            client.UpsertTagGroup("read-failure", new[] { "DINT_TAG" }, 100);
+            var group = client.SubscribeToTagGroup("read-failure");
+
+            var tcs = new TaskCompletionSource<TagGroupPollingEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler<TagGroupPollingEventArgs>? handler = null;
+            handler = (_, evt) =>
+            {
+                if (evt.Kind == TagGroupEventKind.ReadFailure)
+                {
+                    tcs.TrySetResult(evt);
+                }
+            };
+
+            group.PollingEvent += handler;
+            try
+            {
+                client.Disconnect();
+
+                var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+                Assert.True(completed == tcs.Task, "Timed out waiting for ReadFailure polling event");
+
+                var evt = await tcs.Task;
+                Assert.Equal(TagGroupEventKind.ReadFailure, evt.Kind);
+                Assert.NotNull(evt.ErrorMessage);
+                Assert.NotNull(evt.Failure);
+                Assert.Equal(TagGroupFailureCategory.Network, evt.Failure!.Category);
+                Assert.True(evt.Failure.Retriable);
+            }
+            finally
+            {
+                group.PollingEvent -= handler;
+                client.RemoveTagGroup("read-failure");
+            }
+        }
     }
 }

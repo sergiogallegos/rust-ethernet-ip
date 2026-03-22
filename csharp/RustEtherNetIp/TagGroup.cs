@@ -113,6 +113,11 @@ namespace RustEtherNetIp
         public event EventHandler<GroupDataChangedEventArgs>? DataChanged;
 
         /// <summary>
+        /// Event fired for every polling cycle with success/error classification.
+        /// </summary>
+        public event EventHandler<TagGroupPollingEventArgs>? PollingEvent;
+
+        /// <summary>
         /// Gets the time taken for the last scan operation.
         /// </summary>
         public TimeSpan LastScanTime { get; private set; }
@@ -179,15 +184,12 @@ namespace RustEtherNetIp
             {
                 // Filter to only active tags
                 var activeTagNames = new List<string>();
-                var activeIndices = new List<int>();
-                
                 for (int i = 0; i < tagNames.Length; i++)
                 {
                     var tagName = tagNames[i];
                     if (IsTagActive(tagName))
                     {
                         activeTagNames.Add(tagName);
-                        activeIndices.Add(i);
                     }
                 }
 
@@ -200,17 +202,32 @@ namespace RustEtherNetIp
 
                 // Read only active tags in batch
                 System.Diagnostics.Debug.WriteLine($"TagGroup: Reading {activeTagNames.Count} tags: {string.Join(", ", activeTagNames)}");
-                var values = _client.ReadTags(activeTagNames.ToArray());
-                System.Diagnostics.Debug.WriteLine($"TagGroup: Read {values.Length} values successfully");
+                var batchResults = _client.ReadTagsBatch(activeTagNames.ToArray());
                 var changedTags = new List<string>();
+                var errors = new Dictionary<string, string>();
 
                 // Compare with last values and update
-                for (int i = 0; i < activeTagNames.Count; i++)
+                foreach (var tagName in activeTagNames)
                 {
-                    var tagName = activeTagNames[i];
-                    var newValue = values[i];
+                    if (!batchResults.TryGetValue(tagName, out var result))
+                    {
+                        errors[tagName] = "Missing batch read result";
+                        continue;
+                    }
 
-                    if (!_lastValues.ContainsKey(tagName) || 
+                    if (!result.Success)
+                    {
+                        errors[tagName] = result.ErrorMessage ?? "Unknown read error";
+                        continue;
+                    }
+
+                    if (!TryConvertBatchValue(result, out var newValue))
+                    {
+                        errors[tagName] = $"Unsupported value conversion for data type '{result.DataType}'";
+                        continue;
+                    }
+
+                    if (!_lastValues.ContainsKey(tagName) ||
                         !AreValuesEqual(_lastValues[tagName], newValue))
                     {
                         _lastValues[tagName] = newValue;
@@ -232,6 +249,14 @@ namespace RustEtherNetIp
                     AllValues = allValues
                 });
 
+                PollingEvent?.Invoke(this, new TagGroupPollingEventArgs
+                {
+                    Kind = errors.Count == 0 ? TagGroupEventKind.Data : TagGroupEventKind.PartialError,
+                    ChangedTags = changedTags.ToArray(),
+                    AllValues = allValues,
+                    Errors = errors
+                });
+
                 LastScanTime = DateTime.Now - startTime;
             }
             catch (Exception ex)
@@ -250,12 +275,71 @@ namespace RustEtherNetIp
                         AllValues = allValues
                     });
                 }
+
+                PollingEvent?.Invoke(this, new TagGroupPollingEventArgs
+                {
+                    Kind = TagGroupEventKind.ReadFailure,
+                    ChangedTags = Array.Empty<string>(),
+                    AllValues = new Dictionary<string, PlcValue>(_lastValues),
+                    Errors = new Dictionary<string, string>(),
+                    ErrorMessage = ex.Message,
+                    Failure = TagGroupFailureDiagnostic.FromException(ex)
+                });
                 
                 LastScanTime = DateTime.Now - startTime;
             }
             finally
             {
                 _isScanning = false;
+            }
+        }
+
+        private static bool TryConvertBatchValue(TagReadResultBatch result, out PlcValue value)
+        {
+            value = default!;
+            if (result.Value == null)
+                return false;
+
+            switch (result.DataType.ToUpperInvariant())
+            {
+                case "BOOL":
+                    value = PlcValue.Bool(Convert.ToBoolean(result.Value));
+                    return true;
+                case "SINT":
+                    value = PlcValue.Sint(Convert.ToSByte(result.Value));
+                    return true;
+                case "INT":
+                    value = PlcValue.Int(Convert.ToInt16(result.Value));
+                    return true;
+                case "DINT":
+                    value = PlcValue.Dint(Convert.ToInt32(result.Value));
+                    return true;
+                case "LINT":
+                    value = PlcValue.Lint(Convert.ToInt64(result.Value));
+                    return true;
+                case "USINT":
+                    value = PlcValue.Usint(Convert.ToByte(result.Value));
+                    return true;
+                case "UINT":
+                    value = PlcValue.Uint(Convert.ToUInt16(result.Value));
+                    return true;
+                case "UDINT":
+                    value = PlcValue.Udint(Convert.ToUInt32(result.Value));
+                    return true;
+                case "ULINT":
+                    value = PlcValue.Ulint(Convert.ToUInt64(result.Value));
+                    return true;
+                case "REAL":
+                    value = PlcValue.Real(Convert.ToSingle(result.Value));
+                    return true;
+                case "LREAL":
+                    value = PlcValue.Lreal(Convert.ToDouble(result.Value));
+                    return true;
+                case "STRING":
+                    value = PlcValue.String(Convert.ToString(result.Value) ?? string.Empty);
+                    return true;
+                default:
+                    return false;
             }
         }
 
@@ -349,4 +433,3 @@ namespace RustEtherNetIp
         }
     }
 }
-

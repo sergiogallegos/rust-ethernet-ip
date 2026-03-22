@@ -208,7 +208,7 @@ if (client.Connect("192.168.1.100:44818"))
 | UDT | `ReadUdt`, `WriteUdt`, `ReadUdtChunked`, `GetUdtMember`, `SetUdtMember`, `WriteUdtMember`, `ReadUdtMemberByOffset`, `WriteUdtMemberByOffset`, `GetUdtDefinition` |
 | Tag Discovery / Metadata | `DiscoverTags`, `DiscoverTagsDetailed`, `GetTagMetadata`, `GetTagAttributes` |
 | Batch Operations | `ReadTagsBatch`, `WriteTagsBatch`, `ExecuteBatch` |
-| Tag Group Polling | `UpsertTagGroup`, `RemoveTagGroup`, `ListTagGroups`, `ReadTagGroupOnce`, `SubscribeToTagGroup` |
+| Tag Group Polling | `UpsertTagGroup`, `RemoveTagGroup`, `ListTagGroups`, `ReadTagGroupOnce`, `SubscribeToTagGroup`, `TagGroup.PollingEvent` (`Data` / `PartialError` / `ReadFailure`) |
 | Subscriptions | `SubscribeToTag`, `UnsubscribeFromTag`, `UnsubscribeFromAllTags` |
 | Health / Utility | `CheckHealth`, `CheckHealthDetailed`, `SetMaxPacketSize` |
 
@@ -285,6 +285,9 @@ RemoveTagGroup
 ListTagGroups
 ReadTagGroupOnce
 SubscribeToTagGroup
+TagGroup.PollingEvent
+TagGroupEventKind (Data, PartialError, ReadFailure)
+TagGroupFailureDiagnostic (Category, Retriable, StatusCode)
 
 // Health / utility / subscriptions
 SetMaxPacketSize

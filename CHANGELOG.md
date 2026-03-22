@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed — Core Library
 - **Connection pool reuse**: `PlcManager::get_connection` now reuses the least-recently-used active client when the pool is full instead of recreating a new TCP/session connection each time.
+- **Unconnected-send interoperability**: Added `0xD2` reply unwrapping and direct-CIP fallback retry (when no route path is configured) to improve discovery/read interoperability across mixed PLC/simulator behaviors.
+
+### ✨ Added — Tag Group Polling (Rust/C# Parity)
+- **Rust tag-group API**: Added `upsert_tag_group`, `remove_tag_group`, `list_tag_groups`, `read_tag_group_once`, and `subscribe_tag_group`.
+- **Rust event classification**: Added `TagGroupEventKind` (`Data`, `PartialError`, `ReadFailure`) plus `TagGroupFailureDiagnostic` (`category`, `retriable`, `status_code`) for structured failure handling.
+- **C# wrapper parity APIs**: Added `UpsertTagGroup`, `RemoveTagGroup`, `ListTagGroups`, `ReadTagGroupOnce`, and `SubscribeToTagGroup`.
+- **C# event diagnostics parity**: Added `TagGroup.PollingEvent`, `TagGroupEventKind`, and `TagGroupFailureDiagnostic` with categorized `ReadFailure` payloads.
+- **C# interface parity**: `IEtherNetIpClient` now includes tag-group APIs and matches nullable `GetUdtMember` return semantics.
 
 ### 🐛 Fixed — FFI
 - **Native batch execution**: Implemented `eip_write_tags_batch` and `eip_execute_batch` with typed JSON payload parsing and structured per-operation results.
@@ -50,6 +58,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Route-path + UDT compatibility pass**: Added deterministic simulator route-path compatibility tests and generated a consolidated Rust/C# compatibility matrix report for route-path and UDT-heavy workloads.
 - **Docs/API audit completed**: Updated stale release-state/version messaging, aligned wrapper/API docs with current batch-config unsupported semantics, and published an audit artifact capturing findings and remediations.
 - **Cross-language regression matrix (2026-03-20) passed**: `cargo test --workspace --all-targets` and `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal` (26/26 passed).
+- **Rust tag-group unit coverage**: Added tests for event classification (`Data`/`PartialError`), `ReadFailure` diagnostic payload preservation, and subscription lifecycle behavior.
+- **C# tag-group API coverage**: Added tests for registration/list/remove semantics, idempotent subscribe behavior, and one-shot snapshot behavior when disconnected.
+- **C# diagnostic classification coverage**: Added tests verifying exception-to-category mapping (`Timeout`, `Network`, `Data`).
+- **Simulator integration coverage (C#)**: Added tag-group tests validating `PartialError` (mixed valid+invalid tags) and `ReadFailure` diagnostics after disconnect.
+
+### 📚 Documentation
+- **README updates**: Added Rust/C# tag-group event handling section with `Data`, `PartialError`, and `ReadFailure` consumption patterns.
+- **Programmer manual updates**: Added a dedicated Rust/C# event-handling subsection and updated API catalog notes for diagnostics/events.
+- **C# wrapper README updates**: Documented `TagGroup.PollingEvent`, event kinds, and structured failure diagnostics.
+- **Compatibility docs**: Added 0.7.0 PLC/simulator compatibility matrix.
+
+### 🧪 Examples / Demos
+- **WPF and WinForms demo hardening**: Updated tag-group demo flows to consume `PollingEvent`, surface partial/read-failure states in UI status/logs, and keep cleanup/unsubscription deterministic.
 
 ### 🐛 Fixed — C# Wrapper
 - **Empty STRING tag handling**: Fixed `ReadString` to return empty string for zeroed/cleared STRING tags (LEN=0) instead of falling through to error handling. Both the direct read path and the UDT member fallback path now correctly handle empty strings.

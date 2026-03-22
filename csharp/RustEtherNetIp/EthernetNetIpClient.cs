@@ -79,7 +79,7 @@ namespace RustEtherNetIp
     /// }
     /// </code>
     /// </example>
-    public class EtherNetIpClient : IDisposable
+    public class EtherNetIpClient : IEtherNetIpClient
     {
         private int _clientId = -1;
         private string _currentAddress = string.Empty;

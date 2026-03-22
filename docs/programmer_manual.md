@@ -164,6 +164,7 @@ subscribe_tag_group(group_name)
 TagGroupEventKind::Data
 TagGroupEventKind::PartialError
 TagGroupEventKind::ReadFailure
+TagGroupFailureDiagnostic { category, retriable, status_code }
 
 // Health / diagnostics / low-level
 check_health()

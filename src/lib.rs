@@ -410,8 +410,8 @@ pub use monitoring::{
 pub use plc_manager::{PlcConfig, PlcConnection, PlcManager};
 pub use subscription::{SubscriptionManager, SubscriptionOptions, TagSubscription};
 pub use tag_group::{
-    TagGroupConfig, TagGroupEvent, TagGroupEventKind, TagGroupSnapshot, TagGroupSubscription,
-    TagGroupValueResult,
+    TagGroupConfig, TagGroupEvent, TagGroupEventKind, TagGroupFailureCategory,
+    TagGroupFailureDiagnostic, TagGroupSnapshot, TagGroupSubscription, TagGroupValueResult,
 };
 pub use tag_manager::{TagCache, TagManager, TagMetadata, TagPermissions, TagScope};
 pub use tag_path::TagPath;
@@ -7585,6 +7585,7 @@ impl EipClient {
                             },
                             snapshot,
                             error: None,
+                            failure: None,
                         };
 
                         if let Err(e) = subscription_task.publish_event(event).await {
@@ -7610,6 +7611,7 @@ impl EipClient {
                                 values: Vec::new(),
                             },
                             error: Some(e.to_string()),
+                            failure: Some(TagGroupFailureDiagnostic::from_error(&e)),
                         };
                         if let Err(publish_error) =
                             subscription_task.publish_event(failure_event).await

@@ -27,8 +27,8 @@ Release snapshot:
 ## Project Focus
 
 - Rust core library
-- C# wrapper (`RustEtherNetIp.dll`)
-- Industrial PC applications (Windows/Linux/macOS)
+- C# wrapper via NuGet (`RustEtherNetIp`)
+- Industrial PC applications, with current NuGet packaging focused on Windows `win-x64`
 - Deterministic behavior and regression safety
 
 ## Key Capabilities
@@ -83,6 +83,17 @@ tokio = { version = "1", features = ["full"] }
 ```xml
 <PackageReference Include="RustEtherNetIp" Version="0.7.0" />
 ```
+
+Or from the CLI:
+
+```bash
+dotnet add package RustEtherNetIp --version 0.7.0
+```
+
+Current NuGet packaging note:
+- `RustEtherNetIp` `0.7.0` is published on NuGet
+- the packaged native runtime asset is currently targeted at Windows `win-x64`
+- the managed package currently targets `.NET 10`
 
 ## Quick Start (Rust)
 

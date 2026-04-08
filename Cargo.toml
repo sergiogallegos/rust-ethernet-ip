@@ -19,44 +19,16 @@ keywords = ["ethernet-ip", "plc", "industrial", "automation", "allen-bradley"]
 categories = ["network-programming", "embedded", "api-bindings"]
 rust-version = "1.70"
 
-# Exclude large files that aren't needed for the library
-exclude = [
-    # Next.js build artifacts (huge!)
-    "examples/**/frontend/.next/",
-    "examples/**/frontend/node_modules/",
-    
-    # Package lock files (large and not needed)
-    "**/package-lock.json",
-    
-    # Compiled binaries
-    "**/*.dll.a",
-    "**/*.dll",
-    "**/*.so",
-    "**/*.dylib",
-    "**/*.exe",
-    "**/*.lib",
-    "**/*.pdb",
-    
-    # Build/cache directories
-    "**/target/",
-    "**/.next/",
-    "**/dist/",
-    "**/build/",
-    "**/cache/",
-    
-    # Development files
-    "**/.vscode/",
-    "**/.idea/",
-    "**/.vs/",
-    "**/bin/",
-    "**/obj/",
-    
-    # Trace and log files
-    "**/.next/trace",
-    
-    # Example C# projects (keep source, exclude builds)
-    "examples/**/bin/",
-    "examples/**/obj/",
+# Publish only the Rust crate payload needed by consumers.
+include = [
+    "src/**",
+    "Cargo.toml",
+    "Cargo.lock",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "build.rs",
+    "VERSION",
 ]
 
 [lib]

@@ -15,14 +15,14 @@ Production-focused EtherNet/IP library for **Allen-Bradley CompactLogix and Cont
 
 ## Version Status
 
-- Latest published stable: `0.6.3`
-- Current development on `main`: `0.7.0` (unreleased)
-- We are hardening reliability and tests before publishing the next crate release
+- Current stable release: `0.7.0`
+- Previous stable release: `0.6.3`
+- Real-hardware validation evidence is included for the release
 
-Release-readiness snapshot:
-- simulator, FFI, Rust, and C# regression gates are green
-- real-hardware validation is complete on one CompactLogix and one ControlLogix target
-- `0.7.0` is in RC-candidate preparation, not yet published
+Release snapshot:
+- simulator, FFI, Rust, and C# regression gates were completed for `0.7.0`
+- real-hardware validation was completed on one CompactLogix and one ControlLogix target
+- `0.7.0` is the current released line
 
 ## Project Focus
 
@@ -50,7 +50,7 @@ Some write behaviors are restricted by PLC firmware (not library protocol implem
 - Direct writes to `STRING` members inside UDTs can fail on some controllers
 - Direct writes to UDT array element members (for example `MyUdtArray[0].Member`) can fail
 
-Real-hardware note from current `0.7.0` hardening:
+Real-hardware note from the `0.7.0` release validation:
 - Validated on `5069-L320ERMS3`, firmware `35`, at `192.168.0.1:44818`
 - Validated on `1756-L81ES`, firmware `37`, via `1756-EN3TR` slot `0` at `192.168.0.101:44818`
 - On that CompactLogix target, normal reads/writes, route-path access, subscriptions, UDT reads, and batch operations are working
@@ -74,14 +74,14 @@ Detailed technical background and examples:
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "0.6.3"
+rust-ethernet-ip = "0.7.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
 ### C#
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="0.6.3" />
+<PackageReference Include="RustEtherNetIp" Version="0.7.0" />
 ```
 
 ## Quick Start (Rust)

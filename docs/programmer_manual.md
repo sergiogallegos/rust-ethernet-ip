@@ -2,11 +2,11 @@
 
 Practical manual for developers integrating the library in Rust projects or through the C# wrapper.
 
-- Last updated: `2026-03-22`
-- Source baseline commit: `8f502c9`
+- Last updated: `2026-04-07`
+- Source baseline commit: `bd2375a`
 
-- Stable crate line: `0.6.3`
-- Current hardening line: `0.7.0` (unreleased)
+- Stable crate line: `0.7.0`
+- Previous stable crate line: `0.6.3`
 - Target PLCs: CompactLogix / ControlLogix
 
 ## Contents
@@ -56,7 +56,7 @@ MixerRecipe.Stage[2].TemperatureSetpoint
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "0.6.3"
+rust-ethernet-ip = "0.7.0"
 tokio = { version = "1", features = ["full"] }
 ```
 

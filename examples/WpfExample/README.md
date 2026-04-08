@@ -1,6 +1,6 @@
-# 🦀 Rust EtherNet/IP WPF Example (0.7.0 Hardening)
+# 🦀 Rust EtherNet/IP WPF Example (0.7.0)
 
-A modern Windows Presentation Foundation (WPF) application demonstrating the Rust EtherNet/IP library in the `0.7.0` hardening line (latest published stable is `0.6.3`), with real-time tag monitoring, subscriptions, program-tag access, and batch operations against a real PLC.
+A modern Windows Presentation Foundation (WPF) application demonstrating the released Rust EtherNet/IP `0.7.0` line, with real-time tag monitoring, subscriptions, program-tag access, and batch operations against a real PLC.
 
 ## 🚀 Features
 

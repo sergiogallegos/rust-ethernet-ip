@@ -6,21 +6,22 @@ This document describes the version management process for the Rust EtherNet/IP 
 
 This project follows [Semantic Versioning](https://semver.org/) (SemVer):
 
-- **MAJOR.MINOR.PATCH** (e.g., 0.6.3)
+- **MAJOR.MINOR.PATCH** (e.g., 0.7.0)
 - **MAJOR**: Incompatible API changes
 - **MINOR**: New functionality in a backwards compatible manner
 - **PATCH**: Backwards compatible bug fixes
 
 ## Current Version State
 
-- **Current stable published version:** `0.6.3`
-- **Next release line:** `0.7.0` (unreleased hardening line)
+- **Current stable published version:** `0.7.0`
+- **Previous stable version:** `0.6.3`
 
 ### Version History
 
 | Version | Release Date | Status | Notes |
 |---------|-------------|--------|-------|
-| 0.6.3   | 2026-03-01  | Current stable | Reliability and protocol correctness fixes |
+| 0.7.0   | 2026-04-07  | Current stable | Hardening release with Rust/C# parity improvements and real-PLC validation evidence |
+| 0.6.3   | 2026-03-01  | Previous stable | Reliability and protocol correctness fixes |
 | 0.6.2   | 2026-01-24  | Previous stable | Stream injection and test configuration support |
 | 0.6.1   | 2026-01-17  | Legacy stable | Repository scope cleanup |
 

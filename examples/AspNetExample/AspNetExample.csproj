@@ -9,11 +9,11 @@
     <InvariantGlobalization>false</InvariantGlobalization>
     
     <!-- Version Information -->
-    <Version>0.6.3</Version>
-    <AssemblyVersion>0.6.3.0</AssemblyVersion>
-    <FileVersion>0.6.3.0</FileVersion>
+    <Version>0.7.0</Version>
+    <AssemblyVersion>0.7.0.0</AssemblyVersion>
+    <FileVersion>0.7.0.0</FileVersion>
     <Product>Rust EtherNet/IP ASP.NET Example</Product>
-    <Description>ASP.NET Core example application demonstrating Rust EtherNet/IP library features for the 0.7.0 hardening line (stable published line: 0.6.3)</Description>
+    <Description>ASP.NET Core example application demonstrating Rust EtherNet/IP library features for the released 0.7.0 line</Description>
   </PropertyGroup>
 
   <ItemGroup>

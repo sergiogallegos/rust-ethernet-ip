@@ -7,12 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 🚧 0.7.0 Preparation (Not Released)
-- This section tracks work in progress for the upcoming `0.7.0` release line.
-- Crate/package version remains `0.6.3` until the release is finalized.
-- Work is merged to `main` for ongoing testing/hardening; publishing is intentionally deferred until release gates are met.
+## [0.7.0] - 2026-04-07
 
-### ✅ 0.7.0 Hardening Checklist (In Progress)
+### ✅ 0.7.0 Release Checklist
 - [x] Preserve full commit-by-commit history on `main` for traceability.
 - [x] Keep `0.6.3` as last stable published version while `0.7.0` remains unreleased.
 - [x] Add unreleased documentation notes in README and CHANGELOG.
@@ -24,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [x] Add compatibility test pass for route-path scenarios and UDT-heavy workloads.
 - [x] Perform docs/API audit to ensure examples and behavior match implemented semantics.
 - [x] Complete real-PLC validation on CompactLogix and ControlLogix hardware.
-- [ ] Freeze release candidate, then bump to `0.7.0` only when all gates pass.
+- [x] Freeze release candidate, finalize release metadata, and publish `0.7.0`.
 
 ### 🐛 Fixed — Core Library
 - **Connection pool reuse**: `PlcManager::get_connection` now reuses the least-recently-used active client when the pool is full instead of recreating a new TCP/session connection each time.

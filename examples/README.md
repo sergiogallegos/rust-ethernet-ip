@@ -3,8 +3,8 @@
 This folder contains demo apps and runnable samples for `rust-ethernet-ip`.
 
 Current release state:
-- Stable published line: `0.6.3`
-- Active hardening line on `main`: `0.7.0` (unreleased)
+- Stable published line: `0.7.0`
+- Previous stable line: `0.6.3`
 
 ## Directory Map
 

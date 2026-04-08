@@ -2,9 +2,9 @@
 
 This page tracks the **official technical documentation** used to design, validate, and maintain `rust-ethernet-ip`.
 
-- Verified on: `2026-03-22`
-- Stable release line: `0.6.3`
-- Active hardening line on `main`: `0.7.0` (unreleased)
+- Verified on: `2026-04-07`
+- Stable release line: `0.7.0`
+- Previous stable line: `0.6.3`
 
 ## Official Documentation Matrix
 

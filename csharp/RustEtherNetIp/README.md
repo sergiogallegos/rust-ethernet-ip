@@ -6,9 +6,9 @@ A high-performance C# wrapper for the Rust EtherNet/IP library, enabling communi
 
 **3-10x faster than individual operations!** The latest version introduces powerful batch operations that dramatically improve performance for multi-tag scenarios.
 
-Implementation note for current hardening line:
+Implementation note for `0.7.0`:
 - `WriteTagsBatch(...)` and `ExecuteBatch(...)` use native typed FFI batch paths.
-- `ReadTagsBatch(...)` currently uses a sequential type-probing fallback path.
+- `ReadTagsBatch(...)` uses the native batch-read path first, with fallback only when needed.
 
 ### Key Benefits
 
@@ -477,14 +477,15 @@ For issues and questions:
 
 ## Version History
 
-### v0.6.3 (Current Stable)
+### v0.7.0 (Current Stable)
+- ✅ Rust/C# parity improvements for batch, subscriptions, and tag-group polling
+- ✅ Real CompactLogix and ControlLogix validation evidence on file
+- ✅ Improved native batch-read behavior and clearer PLC firmware-limit diagnostics
+
+### v0.6.3
 - ✅ Reliability-focused protocol and wrapper fixes
 - ✅ Batch read/write/execute paths available for production usage
 - ✅ Explicit unsupported gating for batch configuration APIs (`ConfigureBatchOperations`, `GetBatchConfig`)
-
-### v0.7.0 (Unreleased Hardening Line)
-- 🚧 Additional hardening gates in progress before release
-- 🚧 Expanded failure-mode, FFI contract, and compatibility verification suites
 
 ### v0.2.0
 - Individual tag operations

@@ -10,11 +10,11 @@
     <Nullable>enable</Nullable>
     
     <!-- Version Information -->
-    <Version>0.6.3</Version>
-    <AssemblyVersion>0.6.3.0</AssemblyVersion>
-    <FileVersion>0.6.3.0</FileVersion>
+    <Version>0.7.0</Version>
+    <AssemblyVersion>0.7.0.0</AssemblyVersion>
+    <FileVersion>0.7.0.0</FileVersion>
     <Product>Rust EtherNet/IP WinForms Example</Product>
-    <Description>WinForms example application demonstrating the Rust EtherNet/IP 0.7.0 hardening line with batch operations, subscriptions, and diagnostics</Description>
+    <Description>WinForms example application demonstrating the released Rust EtherNet/IP 0.7.0 line with batch operations, subscriptions, and diagnostics</Description>
   </PropertyGroup>
 
   <ItemGroup>

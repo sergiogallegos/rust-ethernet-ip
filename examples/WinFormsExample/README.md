@@ -1,6 +1,6 @@
-# 🦀 Rust EtherNet/IP WinForms Example (0.7.0 Hardening)
+# 🦀 Rust EtherNet/IP WinForms Example (0.7.0)
 
-A comprehensive Windows Forms application demonstrating batch operations and diagnostics in the `rust-ethernet-ip` 0.7.0 hardening line (latest published stable is 0.6.3).
+A comprehensive Windows Forms application demonstrating batch operations and diagnostics in the released `rust-ethernet-ip` 0.7.0 line.
 
 Release-readiness note:
 - The WinForms sample builds cleanly against the current wrapper.

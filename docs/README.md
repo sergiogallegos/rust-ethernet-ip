@@ -3,15 +3,15 @@
 This folder contains project documentation for `rust-ethernet-ip`.
 
 Current release state:
-- Stable published line: `0.6.3`
-- Active hardening line on `main`: `0.7.0` (unreleased)
+- Stable published line: `0.7.0`
+- Previous stable line: `0.6.3`
 
 ## Start Here
 
 - [../README.md](../README.md): Project overview and quick start
 - [programmer_manual.md](programmer_manual.md): Programmer manual (Rust + C# integration tracks)
 - [OFFICIAL_SOURCES.md](OFFICIAL_SOURCES.md): Official Rockwell/ODVA references used by this library
-- [../CHANGELOG.md](../CHANGELOG.md): Release history and unreleased changes
+- [../CHANGELOG.md](../CHANGELOG.md): Release history and ongoing changes
 - [../CONTRIBUTING.md](../CONTRIBUTING.md): Contribution workflow and required checks
 
 ## Release and Quality Gates

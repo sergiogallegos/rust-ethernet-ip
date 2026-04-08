@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>Library</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>14.0</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -17,10 +17,11 @@
     <Product>Rust EtherNet/IP Driver</Product>
     <Description>High-performance EtherNet/IP communication library for Allen-Bradley CompactLogix PLCs with C# bindings</Description>
     <Copyright>Copyright © 2025 Sergio Gallegos</Copyright>
-    <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/sergiogallegos/rust-ethernet-ip</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sergiogallegos/rust-ethernet-ip</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>ethernet-ip;plc;industrial;automation;allen-bradley;rust;csharp</PackageTags>
     <PackageReleaseNotes>See CHANGELOG.md for detailed release notes</PackageReleaseNotes>
   </PropertyGroup>
@@ -33,16 +34,20 @@
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(OS)' == 'OSX' ">
-    <None Include="../../target/release/librust_ethernet_ip.dylib">
+    <Content Include="../../target/release/librust_ethernet_ip.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>librust_ethernet_ip.dylib</Link>
-    </None>
+    </Content>
   </ItemGroup>
   <ItemGroup Condition=" '$(OS)' == 'Windows_NT' ">
-    <None Include="../../target/release/rust_ethernet_ip.dll">
+    <Content Include="../../target/release/rust_ethernet_ip.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>rust_ethernet_ip.dll</Link>
-    </None>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <Target Name="CopyNativeLibrary" AfterTargets="Build">

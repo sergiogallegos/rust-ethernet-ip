@@ -147,9 +147,10 @@ git push origin vX.Y.Z
 # Publish to crates.io
 cargo publish
 
-# Publish C# package to NuGet (if configured)
-dotnet pack csharp/RustEtherNetIp/RustEtherNetIp.csproj
-dotnet nuget push bin/Release/RustEtherNetIp.X.Y.Z.nupkg
+# Publish Windows-first C# package to NuGet
+cargo build --release
+pwsh ./scripts/pack-nuget.ps1 -OutputDir ./artifacts/nuget
+dotnet nuget push ./artifacts/nuget/RustEtherNetIp.X.Y.Z.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
 ```
 
 ## Version Planning

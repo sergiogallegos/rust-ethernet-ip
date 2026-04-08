@@ -252,7 +252,7 @@ The following operations are **not supported** due to PLC firmware restrictions.
 
 **Cannot write directly to STRING tags** (e.g., `gTest_STRING`, `Program:TestProgram.gTest_STRING`).
 
-**Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC rejects direct write operations to STRING tags.
+**Root Cause:** PLC firmware limitation. On validated CompactLogix hardware this can surface either as batch-level `0x1E` (`Embedded service error`) or extended `0x2107`, depending on the request path.
 
 **What Works:**
 - ✅ Reading STRING tags: `gTest_STRING` (read successfully)
@@ -313,6 +313,8 @@ client.WriteUdt("gTestUDT_Array[0]", element);
 - All read operations work correctly for all tag types
 - Workarounds are available for UDT array element members and STRING members in UDTs
 - Standalone STRING tag writes have no workaround at the communication library level
+- Real-hardware validation on `5069-L320ERMS3` firmware `35` is recorded in:
+  - `docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md`
 
 ## Use Cases
 

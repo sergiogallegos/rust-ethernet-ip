@@ -22,9 +22,6 @@ namespace CSharpWrapperTest
     /// </summary>
     class Program
     {
-        private const string PLC_ADDRESS = "192.168.0.1:44818";
-        private const byte CPU_SLOT = 0; // ControlLogix CPU in Slot 0
-
         struct TestTag
         {
             public string Name;
@@ -35,25 +32,29 @@ namespace CSharpWrapperTest
 
         static void Main(string[] args)
         {
+            var plcAddress = Environment.GetEnvironmentVariable("TEST_PLC_ADDRESS") ?? "192.168.0.1:44818";
+            var cpuSlot = byte.TryParse(Environment.GetEnvironmentVariable("TEST_PLC_SLOT"), out var parsedSlot)
+                ? parsedSlot
+                : (byte)0;
             Console.WriteLine("═══════════════════════════════════════════════════════════════════════════════");
             Console.WriteLine("🔬 Comprehensive Test: All Tags from PLC_TEST_TAG_DEFINITIONS.md (C# Wrapper)");
             Console.WriteLine("═══════════════════════════════════════════════════════════════════════════════");
             Console.WriteLine();
 
-            Console.WriteLine($"🔌 Connecting to ControlLogix PLC at {PLC_ADDRESS}...");
-            Console.WriteLine($"   CPU Slot: {CPU_SLOT}");
+            Console.WriteLine($"🔌 Connecting to ControlLogix PLC at {plcAddress}...");
+            Console.WriteLine($"   CPU Slot: {cpuSlot}");
 
             using var client = new EtherNetIpClient();
             
             // Connect to PLC with RoutePath (for ControlLogix with CPU in specific slot)
-            var routePath = new RoutePath().AddSlot(CPU_SLOT);
-            if (!client.ConnectWithRoute(PLC_ADDRESS, routePath))
+            var routePath = new RoutePath().AddSlot(cpuSlot);
+            if (!client.ConnectWithRoute(plcAddress, routePath))
             {
                 Console.WriteLine("❌ Failed to connect to PLC");
                 return;
             }
 
-            Console.WriteLine($"✅ Connected successfully with RoutePath (CPU Slot {CPU_SLOT})!\n");
+            Console.WriteLine($"✅ Connected successfully with RoutePath (CPU Slot {cpuSlot})!\n");
 
             // Define all test tags
             var testTags = CreateTestTags();

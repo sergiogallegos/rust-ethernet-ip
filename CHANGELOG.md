@@ -23,12 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [x] Add performance baseline report (single read/write, batch read/write, mixed execute) and compare against `0.6.3`.
 - [x] Add compatibility test pass for route-path scenarios and UDT-heavy workloads.
 - [x] Perform docs/API audit to ensure examples and behavior match implemented semantics.
+- [x] Complete real-PLC validation on CompactLogix and ControlLogix hardware.
 - [ ] Freeze release candidate, then bump to `0.7.0` only when all gates pass.
 
 ### 🐛 Fixed — Core Library
 - **Connection pool reuse**: `PlcManager::get_connection` now reuses the least-recently-used active client when the pool is full instead of recreating a new TCP/session connection each time.
 - **Unconnected-send interoperability**: Added `0xD2` reply unwrapping and direct-CIP fallback retry (when no route path is configured) to improve discovery/read interoperability across mixed PLC/simulator behaviors.
 - **UDT fail-fast contract**: Unimplemented UDT paths (`UserDefinedType::from_cip_data`, `UdtManager::serialize_udt_instance`) now return explicit protocol errors instead of silent empty/placeholder success values.
+- **CompactLogix BOOL batch decoding**: Native Multiple Service batch reads now decode packed `0x00D3` BOOL-array responses correctly on CompactLogix-class controllers, eliminating the previous wrapper fallback for mixed BOOL batches.
+- **Batch STRING write diagnostics**: Batch-level `0x1E` failures on direct STRING writes now produce a CompactLogix/ControlLogix-specific firmware-limitation explanation instead of only raw protocol text.
 
 ### ✨ Added — Tag Group Polling (Rust/C# Parity)
 - **Rust tag-group API**: Added `upsert_tag_group`, `remove_tag_group`, `list_tag_groups`, `read_tag_group_once`, and `subscribe_tag_group`.
@@ -44,9 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed — C# Wrapper
 - **Native batch wiring**: `WriteTagsBatch` and `ExecuteBatch` now use native FFI batch paths for non-UDT-member operations with per-item result mapping.
+- **Native batch reads**: `ReadTagsBatch` now uses the native batch-read FFI path instead of wrapper-only sequential type probing for validated CompactLogix workloads.
 - **Batch config API behavior**: `ConfigureBatchOperations` and `GetBatchConfig` now throw `NotSupportedException` instead of silently behaving as if configuration succeeded.
 - **UDT batch payload compatibility**: UDT raw bytes now serialize as numeric JSON arrays for Rust `Vec<u8>` compatibility (with regression test).
 - **UDT conversion contract hardening**: `UdtData.ToDictionary(UdtTemplate)` now performs template-driven parsing and throws explicit `InvalidOperationException` on parse errors, avoiding silent empty dictionary results.
+- **Known firmware-limit diagnostics**: Invalid subscription handling now fails fast, direct UDT-array-member writes surface the `0x2107` firmware limitation more clearly, and direct STRING write failures preserve the observed native `0x1E` form on CompactLogix.
 
 ### 🧹 Cleanup
 - **Desktop app warnings**: Removed unused fields/locals in `examples/desktop_app` that were generating compile warnings.
@@ -65,12 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **C# diagnostic classification coverage**: Added tests verifying exception-to-category mapping (`Timeout`, `Network`, `Data`).
 - **Simulator integration coverage (C#)**: Added tag-group tests validating `PartialError` (mixed valid+invalid tags) and `ReadFailure` diagnostics after disconnect.
 - **UDT contract tests**: Added Rust/C# contract tests to enforce explicit not-implemented behavior for currently unsupported UDT conversion/parsing paths.
+- **Real PLC validation completed**: Added hardware-backed Rust and C# validation records for CompactLogix `5069-L320ERMS3` firmware `35` and ControlLogix `1756-L81ES` firmware `37` via `1756-EN3TR` slot `0`, including read/write coverage and benchmark baselines.
 
 ### 📚 Documentation
 - **README updates**: Added Rust/C# tag-group event handling section with `Data`, `PartialError`, and `ReadFailure` consumption patterns.
 - **Programmer manual updates**: Added a dedicated Rust/C# event-handling subsection and updated API catalog notes for diagnostics/events.
 - **C# wrapper README updates**: Documented `TagGroup.PollingEvent`, event kinds, and structured failure diagnostics.
 - **Compatibility docs**: Added 0.7.0 PLC/simulator compatibility matrix.
+- **Release evidence docs**: Added real-PLC validation records and a reusable `docs/validation/REAL_PLC_TESTING.md` guide for future hardware sign-off runs.
 
 ### 🧪 Examples / Demos
 - **WPF and WinForms demo hardening**: Updated tag-group demo flows to consume `PollingEvent`, surface partial/read-failure states in UI status/logs, and keep cleanup/unsubscription deterministic.

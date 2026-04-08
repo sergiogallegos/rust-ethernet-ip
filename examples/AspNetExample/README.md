@@ -2,6 +2,11 @@
 
 A comprehensive ASP.NET Core Web API demonstrating batch operations and STRING handling in the `rust-ethernet-ip` 0.7.0 hardening line (latest published stable is 0.6.3).
 
+Release-readiness note:
+- The ASP.NET sample builds cleanly against the current wrapper.
+- Batch-config endpoints intentionally return `501` when the wrapper/runtime exposes batch config as unsupported.
+- Direct STRING writes on CompactLogix/ControlLogix remain subject to PLC firmware restrictions and should not be treated as API regressions.
+
 ## 🎯 Features
 
 ### Core Functionality
@@ -67,8 +72,8 @@ A comprehensive ASP.NET Core Web API demonstrating batch operations and STRING h
 ## 🚀 Getting Started
 
 ### Prerequisites
-- .NET 9.0 or later
-- Allen-Bradley CompactLogix PLC (or compatible)
+- .NET 10.0 SDK or later
+- Allen-Bradley CompactLogix or ControlLogix PLC
 - Network connectivity to PLC
 
 ### Building and Running
@@ -107,7 +112,7 @@ docker run -p 5000:8080 rust-ethernet-ip-api
 ```bash
 curl -X POST http://localhost:5000/api/plc/connect \
   -H "Content-Type: application/json" \
-  -d '{"address": "192.168.0.1:44818"}'
+  -d '{"address": "192.168.0.101:44818", "cpuSlot": 0, "useRoutePath": true}'
 ```
 
 Response:

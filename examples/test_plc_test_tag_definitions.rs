@@ -12,10 +12,19 @@
 /// - PLC must be accessible at 192.168.0.1:44818
 /// - ControlLogix CPU in Slot 0 (or adjust CPU_SLOT constant)
 use rust_ethernet_ip::{EipClient, PlcValue, RoutePath};
+use std::env;
 use std::collections::HashMap;
 
-const PLC_ADDRESS: &str = "192.168.0.1:44818";
-const CPU_SLOT: u8 = 0; // ControlLogix CPU in Slot 0
+fn get_plc_address() -> String {
+    env::var("TEST_PLC_ADDRESS").unwrap_or_else(|_| "192.168.0.1:44818".to_string())
+}
+
+fn get_cpu_slot() -> u8 {
+    env::var("TEST_PLC_SLOT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -28,19 +37,21 @@ struct TestTag {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let plc_address = get_plc_address();
+    let cpu_slot = get_cpu_slot();
     println!("═══════════════════════════════════════════════════════════════════════════════");
     println!("🔬 Comprehensive Test: All Tags from PLC_TEST_TAG_DEFINITIONS.md");
     println!("═══════════════════════════════════════════════════════════════════════════════");
     println!();
 
-    println!("🔌 Connecting to ControlLogix PLC at {}...", PLC_ADDRESS);
-    println!("   CPU Slot: {}", CPU_SLOT);
+    println!("🔌 Connecting to ControlLogix PLC at {}...", plc_address);
+    println!("   CPU Slot: {}", cpu_slot);
 
     // Create route path for ControlLogix
-    let route_path = RoutePath::new().add_slot(CPU_SLOT);
+    let route_path = RoutePath::new().add_slot(cpu_slot);
 
     // Connect with route path
-    let mut client = EipClient::with_route_path(PLC_ADDRESS, route_path).await?;
+    let mut client = EipClient::with_route_path(&plc_address, route_path).await?;
     println!("✅ Connected successfully!\n");
 
     // Define all test tags from PLC_TEST_TAG_DEFINITIONS.md
@@ -211,6 +222,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!();
     println!("═══════════════════════════════════════════════════════════════════════════════");
+    println!("♻️  STEP 4: Restoring Initial Values");
+    println!("═══════════════════════════════════════════════════════════════════════════════");
+    println!();
+
+    let mut restore_failures: Vec<(String, String)> = Vec::new();
+    let mut restored_tags = 0usize;
+    for tag_name in &written_tags {
+        let Some(original_value) = initial_values.get(tag_name) else {
+            continue;
+        };
+
+        print!("   Restoring {}... ", tag_name);
+        match client.write_tag(tag_name, original_value.clone()).await {
+            Ok(_) => {
+                println!("✅");
+                restored_tags += 1;
+            }
+            Err(e) => {
+                let error_msg = format!("{}", e);
+                println!("❌ FAILED: {}", error_msg);
+                restore_failures.push((tag_name.clone(), error_msg));
+            }
+        }
+    }
+    println!();
+    println!(
+        "📊 Step 4 Summary: {} restored, {} failed",
+        restored_tags,
+        restore_failures.len()
+    );
+
+    println!();
+    println!("═══════════════════════════════════════════════════════════════════════════════");
     println!("📊 FINAL RESULTS");
     println!("═══════════════════════════════════════════════════════════════════════════════");
     println!("   Total Tests:     {}", total_tests);
@@ -224,7 +268,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Display failure summary
-    if !read_failures.is_empty() || !write_failures.is_empty() || !verify_failures.is_empty() {
+    if !read_failures.is_empty()
+        || !write_failures.is_empty()
+        || !verify_failures.is_empty()
+        || !restore_failures.is_empty()
+    {
         println!("═══════════════════════════════════════════════════════════════════════════════");
         println!("❌ FAILED TAGS SUMMARY");
         println!("═══════════════════════════════════════════════════════════════════════════════");
@@ -411,6 +459,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!();
         }
 
+        if !restore_failures.is_empty() {
+            println!("♻️  RESTORE FAILURES ({} tags):", restore_failures.len());
+            for (tag_name, error) in &restore_failures {
+                println!("   • {}: {}", tag_name, error);
+            }
+            println!();
+        }
+
         println!("═══════════════════════════════════════════════════════════════════════════════");
         println!();
     }
@@ -421,6 +477,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("⚠️  Some tests failed. See the FAILED TAGS SUMMARY above for details.");
     } else {
         println!("ℹ️  Some tags were skipped (may not exist in PLC).");
+    }
+
+    if restore_failures.is_empty() {
+        println!("ℹ️  Successfully restored all tags written during this run.");
+    } else {
+        println!("⚠️  Some written tags could not be restored. See RESTORE FAILURES above.");
     }
 
     Ok(())

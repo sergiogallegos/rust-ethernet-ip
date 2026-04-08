@@ -11,9 +11,19 @@
 ///
 /// Run with: cargo run --example test_comprehensive_arrays_udt
 use rust_ethernet_ip::{EipClient, PlcValue, RoutePath};
+use std::collections::HashMap;
+use std::env;
 
-const PLC_ADDRESS: &str = "192.168.0.1:44818";
-const CPU_SLOT: u8 = 0; // ControlLogix CPU in Slot 0
+fn get_plc_address() -> String {
+    env::var("TEST_PLC_ADDRESS").unwrap_or_else(|_| "192.168.0.1:44818".to_string())
+}
+
+fn get_cpu_slot() -> u8 {
+    env::var("TEST_PLC_SLOT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
+}
 
 /// Helper function to determine which tag scope works (controller or program)
 async fn detect_tag_scope(client: &mut EipClient) -> String {
@@ -45,23 +55,26 @@ async fn detect_tag_scope(client: &mut EipClient) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🔌 Connecting to ControlLogix PLC at {}...", PLC_ADDRESS);
-    println!("   CPU Slot: {}", CPU_SLOT);
-    println!("   Route Path: Port 1 (backplane), Slot {} (CPU)", CPU_SLOT);
+    let plc_address = get_plc_address();
+    let cpu_slot = get_cpu_slot();
+    println!("🔌 Connecting to ControlLogix PLC at {}...", plc_address);
+    println!("   CPU Slot: {}", cpu_slot);
+    println!("   Route Path: Port 1 (backplane), Slot {} (CPU)", cpu_slot);
 
     // Create route path for ControlLogix
     // Reference: EtherNetIP_Connection_Paths_and_Routing.md
     // Port 1 = Backplane, Slot 0 = CPU location
-    let route_path = RoutePath::new().add_slot(CPU_SLOT);
+    let route_path = RoutePath::new().add_slot(cpu_slot);
 
     println!("   Route path bytes: {:02X?}", route_path.to_cip_bytes());
 
     // Connect with route path
-    let mut client = EipClient::with_route_path(PLC_ADDRESS, route_path).await?;
+    let mut client = EipClient::with_route_path(&plc_address, route_path).await?;
     println!("✅ Connected successfully!\n");
 
     // Detect which scope works
     let scope_prefix = detect_tag_scope(&mut client).await;
+    let mut restore_values: HashMap<String, PlcValue> = HashMap::new();
     println!();
 
     // ========================================================================
@@ -105,6 +118,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📋 Test 2: Write single array element (8-bit index)");
     let write_tag = format!("{}gTestArray_DINT[5]", scope_prefix);
     println!("   Writing: {} = 999", write_tag);
+    if let Ok(original_value) = client.read_tag(&write_tag).await {
+        restore_values.insert(write_tag.clone(), original_value);
+    }
     match client.write_tag(&write_tag, PlcValue::Dint(999)).await {
         Ok(_) => {
             println!("   ✅ Write successful");
@@ -151,6 +167,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📋 Test 4: Write single array element (16-bit index)");
     println!("   Writing: gTestArray_Large[300] = 12345");
     // Note: gTestArray_Large is controller-scoped
+    if let Ok(original_value) = client.read_tag("gTestArray_Large[300]").await {
+        restore_values.insert("gTestArray_Large[300]".to_string(), original_value);
+    }
     match client
         .write_tag("gTestArray_Large[300]", PlcValue::Dint(12345))
         .await
@@ -192,6 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 PlcValue::Bool(true)
             };
+            restore_values.insert(bool_tag.clone(), value.clone());
 
             println!("   Writing: {} = {:?}", bool_tag, new_value);
             match client.write_tag(&bool_tag, new_value.clone()).await {
@@ -273,6 +293,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.read_tag(&udt_array_tag).await {
         Ok(value) => {
             println!("   ✅ Read successful: {:?}", value);
+            restore_values.insert(udt_array_tag.clone(), value.clone());
 
             // Write new value
             println!("   Writing: {} = 99", udt_array_tag);
@@ -373,6 +394,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.read_tag(&udt_array_nested_tag).await {
         Ok(value) => {
             println!("   ✅ Read successful: {:?}", value);
+            restore_values.insert(udt_array_nested_tag.clone(), value.clone());
 
             // Write new value
             println!("   Writing: {} = 888", udt_array_nested_tag);
@@ -415,6 +437,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         Ok(value) => {
             println!("   ✅ Read successful: {:?}", value);
+            restore_values.insert("Program:TestProgram.gTestArray_DINT[5]".to_string(), value.clone());
 
             // Write new value
             println!("   Writing: Program:TestProgram.gTestArray_DINT[5] = 5555");
@@ -481,6 +504,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("═══════════════════════════════════════════════════════════");
     println!("✅ Comprehensive Array and UDT Testing Complete!");
     println!("═══════════════════════════════════════════════════════════");
+    println!();
+    println!("♻️  Restoring modified tags to their original values...");
+    let mut restore_failures = Vec::new();
+    for (tag_name, original_value) in restore_values {
+        print!("   Restoring {}... ", tag_name);
+        match client.write_tag(&tag_name, original_value).await {
+            Ok(_) => println!("✅"),
+            Err(e) => {
+                println!("❌ {}", e);
+                restore_failures.push((tag_name, e.to_string()));
+            }
+        }
+    }
+    if restore_failures.is_empty() {
+        println!("   ✅ All modified tags restored");
+    } else {
+        println!("   ⚠️  Restore failures:");
+        for (tag_name, error) in restore_failures {
+            println!("      - {}: {}", tag_name, error);
+        }
+    }
     println!();
     println!("All tests that completed successfully verify:");
     println!("  ✅ Direct array element addressing (no full array read)");

@@ -71,6 +71,14 @@ struct FfiExecuteRequestItem {
 }
 
 #[derive(Debug, Serialize)]
+struct FfiReadResultItem {
+    tag_name: String,
+    success: bool,
+    value: Option<serde_json::Value>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 struct FfiWriteResultItem {
     tag_name: String,
     success: bool,
@@ -1744,20 +1752,28 @@ pub unsafe extern "C" fn eip_read_tags_batch(
 
     let results_data = match batch_results {
         Ok(results) => {
-            // Simple format: "tag1:value1;tag2:value2;..."
-            let mut formatted = String::new();
-            for (i, (tag_name, result)) in results.iter().enumerate() {
-                if i > 0 {
-                    formatted.push(';');
-                }
-                formatted.push_str(tag_name);
-                formatted.push(':');
-                match result {
-                    Ok(value) => formatted.push_str(&format!("{value:?}")),
-                    Err(e) => formatted.push_str(&format!("ERROR:{e}")),
-                }
+            let response_items: Vec<FfiReadResultItem> = results
+                .into_iter()
+                .map(|(tag_name, result)| match result {
+                    Ok(value) => FfiReadResultItem {
+                        tag_name,
+                        success: true,
+                        value: Some(serde_json::to_value(value).unwrap_or(serde_json::Value::Null)),
+                        error: None,
+                    },
+                    Err(e) => FfiReadResultItem {
+                        tag_name,
+                        success: false,
+                        value: None,
+                        error: Some(e.to_string()),
+                    },
+                })
+                .collect();
+
+            match serde_json::to_string(&response_items) {
+                Ok(json) => json,
+                Err(_) => return -1,
             }
-            formatted
         }
         Err(_) => return -1,
     };

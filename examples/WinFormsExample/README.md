@@ -2,6 +2,11 @@
 
 A comprehensive Windows Forms application demonstrating batch operations and diagnostics in the `rust-ethernet-ip` 0.7.0 hardening line (latest published stable is 0.6.3).
 
+Release-readiness note:
+- The WinForms sample builds cleanly against the current wrapper.
+- For the most up-to-date real-PLC GUI path, use the WPF sample first; it was reviewed and tightened against the current `gTest*` validation tag set.
+- Some examples below still use generic `TestTag`-style names as placeholders. For real hardware validation, prefer the `gTest*` tags documented in the root validation records.
+
 ## 🚀 Features
 
 ### Core Functionality
@@ -89,9 +94,9 @@ Read current values and write new setpoints in a single coordinated operation.
 ## 🚀 Getting Started
 
 ### Prerequisites
-- .NET 9.0 or later
+- .NET 10.0 SDK or later
 - Windows OS (for WinForms)
-- Allen-Bradley CompactLogix PLC (or compatible)
+- Allen-Bradley CompactLogix or ControlLogix PLC
 
 ### Building and Running
 
@@ -109,22 +114,27 @@ dotnet run
 
 ### Connecting to Your PLC
 
-1. **Enter PLC Address**: Default is `192.168.0.1:44818`
-2. **Click Connect**: Establishes EtherNet/IP session
-3. **Verify Connection**: Status shows "Connected" with session ID
+1. **Enter PLC Address**:
+   - CompactLogix direct: `192.168.0.1:44818`
+   - ControlLogix bridge: `192.168.0.101:44818`
+2. **Use routed connection** when testing through a ControlLogix chassis and provide the CPU slot
+3. **Click Connect**: Establishes EtherNet/IP session
+4. **Verify Connection**: Status shows "Connected" with session ID
 
 ### Setting Up Test Tags
 
-For optimal testing experience, create these test tags in your PLC:
+For real-PLC testing in the current hardening pass, prefer these tags:
 
 | Tag Name | Data Type | Description |
 |----------|-----------|-------------|
-| `TestTag` | BOOL | Boolean test value |
-| `TestBool` | BOOL | Another boolean for testing |
-| `TestInt` | DINT | 32-bit integer test value |
-| `TestReal` | REAL | Floating point test value |
+| `gTestArray_DINT[0]` | DINT | controller-scoped read target |
+| `gTestArray_DINT[5]` | DINT | controller-scoped write target |
+| `gTestArray_REAL[0]` | REAL | controller-scoped float test value |
+| `gTestArray_BOOL[0]` | BOOL | controller-scoped BOOL test value |
+| `Program:TestProgram.gTestArray_DINT[0]` | DINT | program-scoped read target |
+| `Program:TestProgram.gTestArray_DINT[5]` | DINT | program-scoped write target |
 
-**Automatic Setup**: Use the individual operations tab to write these tags, or they'll be created automatically when the application connects.
+Direct STRING writes and direct writes to UDT array element members remain subject to PLC firmware limits documented in the root README and validation records.
 
 ## 📖 Usage Examples
 

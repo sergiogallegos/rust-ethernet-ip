@@ -162,9 +162,7 @@ mod tests {
         // Try to subscribe to non-existent tag
         let options = SubscriptionOptions::default();
         match client.subscribe_to_tag("NonExistentTag", options).await {
-            Ok(_) => {
-                tracing::warn!("Subscription to non-existent tag unexpectedly succeeded");
-            }
+            Ok(_) => panic!("Subscription to non-existent tag should fail fast"),
             Err(e) => {
                 tracing::info!("Subscription correctly failed for non-existent tag: {}", e);
             }

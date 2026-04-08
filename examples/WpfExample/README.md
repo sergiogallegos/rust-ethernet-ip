@@ -1,6 +1,6 @@
 # 🦀 Rust EtherNet/IP WPF Example (0.7.0 Hardening)
 
-A modern Windows Presentation Foundation (WPF) application demonstrating the Rust EtherNet/IP library in the 0.7.0 hardening line (latest published stable is 0.6.3), with real-time tag monitoring, performance benchmarking, and **batch operations**.
+A modern Windows Presentation Foundation (WPF) application demonstrating the Rust EtherNet/IP library in the `0.7.0` hardening line (latest published stable is `0.6.3`), with real-time tag monitoring, subscriptions, program-tag access, and batch operations against a real PLC.
 
 ## 🚀 Features
 
@@ -43,23 +43,30 @@ A modern Windows Presentation Foundation (WPF) application demonstrating the Rus
 
 ## 🎯 Test Tags Setup
 
-For optimal testing experience, create these test tags in your PLC:
+For optimal testing experience, use the same `gTest*` tags from the real-PLC validation runs:
 
 | Tag Name | Data Type | Description |
 |----------|-----------|-------------|
-| `TestTag` | BOOL | Boolean test value |
-| `TestBool` | BOOL | Another boolean for testing |
-| `TestInt` | DINT | 32-bit integer test value |
-| `TestReal` | REAL | Floating point test value |
+| `gTestArray_DINT[0]` | DINT | controller-scoped integer read target |
+| `gTestArray_DINT[5]` | DINT | controller-scoped integer write target |
+| `gTestArray_REAL[0]` | REAL | controller-scoped float test value |
+| `gTestArray_BOOL[0]` | BOOL | controller-scoped BOOL test value |
+| `gTestArray_INT[0]` | INT | controller-scoped INT test value |
+| `gTestUDT.Member1_DINT` | DINT | UDT member read/write example |
+| `Program:TestProgram.gTestArray_DINT[0]` | DINT | program-scoped read target |
+| `Program:TestProgram.gTestArray_DINT[5]` | DINT | program-scoped write target |
+| `gTest_STRING` | STRING | STRING read example |
 
-Use the **"Create Test Tags"** button to automatically create these tags in your PLC.
+Use the **"Seed Test Values"** button to write verification values to tags that already exist. The sample does not create PLC tags at runtime.
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - .NET 9.0 or later
 - Windows OS (for WPF)
-- Allen-Bradley CompactLogix PLC (or compatible)
+- Windows
+- Allen-Bradley CompactLogix or ControlLogix PLC
+- If using ControlLogix, know the CPU slot and enable route-path mode
 
 ### Building and Running
 
@@ -77,9 +84,13 @@ dotnet run
 
 ### Connecting to Your PLC
 
-1. **Enter PLC Address**: Default is `192.168.0.1:44818`
-2. **Click Connect**: Establishes EtherNet/IP session
-3. **Verify Connection**: Status shows "Connected" with session ID
+1. **Enter PLC Address**: default sample target is `192.168.0.101:44818`
+   - ControlLogix bridge: `192.168.0.101:44818`
+   - CompactLogix direct: `192.168.0.1:44818`
+2. **Enable Use Route Path** when connecting through a ControlLogix chassis or when you want explicit slot routing
+3. **Set CPU Slot**: default is `0`, which matches the current `1756-L81ES` lab controller
+4. **Click Connect**: Establishes EtherNet/IP session
+5. **Verify Connection**: Status shows "Connected" with session ID
 
 ## 📖 Usage Guide
 
@@ -101,10 +112,10 @@ dotnet run
 1. Navigate to the **"🚀 Batch Operations"** tab
 2. Enter tag names in the Batch Read section (one per line):
    ```
-   TestTag
-   TestBool
-   TestInt
-   TestReal
+   gTestArray_DINT[0]
+   gTestArray_REAL[0]
+   gTestArray_BOOL[0]
+   Program:TestProgram.gTestArray_DINT[0]
    ```
 3. Click **"🚀 Execute Batch Read"**
 4. View results and performance metrics in real-time
@@ -112,10 +123,10 @@ dotnet run
 #### Batch Write
 1. In the Batch Write section, enter tag=value pairs (one per line):
    ```
-   TestTag=true
-   TestBool=false
-   TestInt=999
-   TestReal=88.8
+   gTestArray_DINT[5]=999
+   Program:TestProgram.gTestArray_DINT[5]=15555
+   gTestArray_BOOL[0]=true
+   gTestArray_REAL[0]=88.8
    ```
 2. Click **"✏️ Execute Batch Write"**
 3. Monitor individual tag success/failure status
@@ -168,7 +179,7 @@ dotnet run
 
 ## 📊 Performance Notes
 
-The WPF application focuses on individual tag operations and real-time monitoring. For high-performance batch operations, see the WinForms example which includes comprehensive batch processing capabilities.
+The WPF application now uses the same real-hardware `gTest*` tag set used by the Rust and C# validation passes, so it is suitable as a wrapper smoke/regression GUI for CompactLogix and ControlLogix testing.
 
 ## 🛡️ Data Type Support
 

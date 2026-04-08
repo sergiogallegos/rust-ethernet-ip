@@ -17,6 +17,7 @@ Current release state:
 ## Release and Quality Gates
 
 - [0.7.0_HARDENING_GATE.md](0.7.0_HARDENING_GATE.md)
+- [validation/REAL_PLC_TESTING.md](validation/REAL_PLC_TESTING.md)
 - [audit/0.7.0_docs_api_audit.md](audit/0.7.0_docs_api_audit.md)
 - [audit/0.7.0_open_issues_triage.md](audit/0.7.0_open_issues_triage.md)
 - [compat/0.7.0_route_udt_compatibility.md](compat/0.7.0_route_udt_compatibility.md)

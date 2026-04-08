@@ -19,6 +19,11 @@ Production-focused EtherNet/IP library for **Allen-Bradley CompactLogix and Cont
 - Current development on `main`: `0.7.0` (unreleased)
 - We are hardening reliability and tests before publishing the next crate release
 
+Release-readiness snapshot:
+- simulator, FFI, Rust, and C# regression gates are green
+- real-hardware validation is complete on one CompactLogix and one ControlLogix target
+- `0.7.0` is in RC-candidate preparation, not yet published
+
 ## Project Focus
 
 - Rust core library
@@ -42,12 +47,26 @@ Production-focused EtherNet/IP library for **Allen-Bradley CompactLogix and Cont
 Some write behaviors are restricted by PLC firmware (not library protocol implementation):
 
 - Direct writes to standalone `STRING` tags can fail on some controllers
+- Direct writes to `STRING` members inside UDTs can fail on some controllers
 - Direct writes to UDT array element members (for example `MyUdtArray[0].Member`) can fail
+
+Real-hardware note from current `0.7.0` hardening:
+- Validated on `5069-L320ERMS3`, firmware `35`, at `192.168.0.1:44818`
+- Validated on `1756-L81ES`, firmware `37`, via `1756-EN3TR` slot `0` at `192.168.0.101:44818`
+- On that CompactLogix target, normal reads/writes, route-path access, subscriptions, UDT reads, and batch operations are working
+- On that ControlLogix target, the same main read/write, route-path, subscription, UDT-read, and batch paths are working
+- On that same target, the remaining observed firmware-imposed limits are:
+  - direct `STRING` writes, which can surface as batch-level `0x1E` or extended `0x2107`
+  - direct writes to UDT array element members, which surface as `0x2107`
 
 Recommended pattern for restricted cases: **read-modify-write the full UDT/array element**.
 
 Detailed technical background and examples:
 - [AB String/UDT write limitations](docs/AB_String_UDT_Write_Limitations.md)
+- [CompactLogix real-PLC validation record](docs/validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md)
+- [CompactLogix C# wrapper validation record](docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md)
+- [ControlLogix real-PLC validation record](docs/validation/2026-04-07_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
+- [ControlLogix C# wrapper validation record](docs/validation/2026-04-07_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 
 ## Installation
 

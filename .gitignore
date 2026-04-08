@@ -124,4 +124,5 @@ coverage/
 
 # Local hardening workspace artifacts
 .dotnet_home/
+.dotnet/
 .perf_worktrees/

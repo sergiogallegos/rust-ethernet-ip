@@ -61,7 +61,7 @@
                                 <Binding Path="IsConnected" Converter="{StaticResource InvertedBoolConverter}"/>
                             </TextBox.IsEnabled>
                         </TextBox>
-                        <CheckBox Content="Use Route Path (Required)" IsChecked="{Binding UseRoutePath}" 
+                        <CheckBox Content="Use Route Path" IsChecked="{Binding UseRoutePath}" 
                                   VerticalAlignment="Center" Margin="16,0,8,0">
                             <CheckBox.IsEnabled>
                                 <Binding Path="IsConnected" Converter="{StaticResource InvertedBoolConverter}"/>
@@ -197,7 +197,7 @@
                                         <TextBox Text="{Binding TagToDiscover}" Width="200" Padding="8,4" Margin="0,0,8,0"/>
                                         <Button Content="Discover Tag" Command="{Binding DiscoverTagCommand}"
                                                 Style="{StaticResource ModernButton}" Margin="0,0,8,0"/>
-                                        <Button Content="Create Test Tags" Command="{Binding CreateTestTagsCommand}"
+                                        <Button Content="Seed Test Values" Command="{Binding CreateTestTagsCommand}"
                                                 Style="{StaticResource SuccessButton}"
                                                 IsEnabled="{Binding IsConnected}"/>
                                     </StackPanel>
@@ -490,7 +490,7 @@
                         <!-- Limitations Notice -->
                         <Border Grid.Row="0" Background="#FFFBF7" BorderBrush="#FCD34D" BorderThickness="1" 
                                 CornerRadius="4" Padding="8" Margin="0,0,0,16">
-                            <TextBlock Text="⚠️ PLC LIMITATIONS: STRING tags cannot be written directly due to PLC firmware restrictions (CIP Error 0x2107).&#x0a;✅ STRING tags CAN be read successfully.&#x0a;💡 Workaround: If STRING is part of a UDT, read entire UDT, modify STRING member, then write entire UDT back."
+                            <TextBlock Text="⚠️ PLC LIMITATIONS: direct STRING writes can fail on CompactLogix/ControlLogix due to firmware restrictions.&#x0a;✅ STRING tags CAN be read successfully.&#x0a;💡 Workaround: if STRING is part of a UDT, read the full UDT, modify the member, and write the full structure back."
                                        FontSize="12" Foreground="#A16207" TextWrapping="Wrap"/>
                         </Border>
                         
@@ -846,6 +846,8 @@
                                             Style="{StaticResource ModernButton}"
                                             IsEnabled="{Binding IsConnected}"/>
                                 </StackPanel>
+                                <TextBlock Text="{Binding ProgramTagReadResult}" Margin="0,8,0,0"
+                                           FontFamily="Consolas" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
                         
@@ -859,6 +861,8 @@
                                     <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto"/>
                                     <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="Auto"/>
                                     <DataGridTextColumn Header="Scope" Binding="{Binding Scope}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Last Value" Binding="{Binding LastReadValue}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Status" Binding="{Binding LastReadStatus}" Width="*"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Border>

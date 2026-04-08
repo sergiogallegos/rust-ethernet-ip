@@ -4450,6 +4450,28 @@ impl EipClient {
         }
     }
 
+    fn describe_multiple_service_error(
+        &self,
+        general_status: u8,
+        operations: &[BatchOperation],
+    ) -> String {
+        if general_status == 0x1E
+            && operations.iter().any(|op| {
+                matches!(
+                    op,
+                    BatchOperation::Write {
+                        value: PlcValue::String(_),
+                        ..
+                    }
+                )
+            })
+        {
+            return "Multiple Service Response error: 0x1E (Embedded service error). On CompactLogix/ControlLogix this commonly indicates the controller rejected a direct STRING write in the batch request; treat it as a PLC firmware limitation, not a protocol bug.".to_string();
+        }
+
+        format!("Multiple Service Response error: 0x{general_status:02X}")
+    }
+
     async fn validate_session(&mut self) -> crate::error::Result<()> {
         let time_since_activity = self.last_activity.lock().await.elapsed();
 
@@ -6019,9 +6041,9 @@ impl EipClient {
         );
 
         if general_status != 0x00 {
-            return Err(crate::error::EtherNetIpError::Protocol(format!(
-                "Multiple Service Response error: 0x{general_status:02X}"
-            )));
+            return Err(crate::error::EtherNetIpError::Protocol(
+                self.describe_multiple_service_error(general_status, operations),
+            ));
         }
 
         if num_replies != operations.len() {
@@ -6188,6 +6210,45 @@ impl EipClient {
                             ));
                         }
                         Ok(Some(PlcValue::Bool(value_data[0] != 0)))
+                    }
+                    0x00D3 => {
+                        // CompactLogix BOOL arrays are often returned as packed DWORDs in batch reads.
+                        if value_data.len() < 4 {
+                            return Err(BatchError::SerializationError(
+                                "Missing packed BOOL array DWORD value".to_string(),
+                            ));
+                        }
+
+                        let packed_value = u32::from_le_bytes([
+                            value_data[0],
+                            value_data[1],
+                            value_data[2],
+                            value_data[3],
+                        ]);
+
+                        if let BatchOperation::Read { tag_name } = operation {
+                            if let Some((_base_name, index)) =
+                                self.parse_array_element_access(tag_name)
+                            {
+                                let bit_index = (index % 32) as u32;
+                                let value = (packed_value >> bit_index) & 1 != 0;
+                                tracing::trace!(
+                                    "Parsed packed BOOL array element '{}' from DWORD 0x{:08X} using bit {} -> {}",
+                                    tag_name,
+                                    packed_value,
+                                    bit_index,
+                                    value
+                                );
+                                return Ok(Some(PlcValue::Bool(value)));
+                            }
+                        }
+
+                        tracing::trace!(
+                            "Parsed 0x00D3 batch read as UDINT fallback: {} (0x{:08X})",
+                            packed_value,
+                            packed_value
+                        );
+                        Ok(Some(PlcValue::Udint(packed_value)))
                     }
                     0x00C2 => {
                         // SINT
@@ -7401,14 +7462,21 @@ impl EipClient {
     /// - [`get_last_value()`](TagSubscription::get_last_value) for the latest cached value
     /// - [`into_stream()`](TagSubscription::into_stream) for an async `Stream` of updates
     ///
+    /// This API validates the tag with an initial read before returning so invalid or
+    /// inaccessible tags fail fast instead of surfacing only through background polling logs.
+    ///
     /// The background poll loop uses [`SubscriptionOptions::update_rate`] (milliseconds) between reads.
     pub async fn subscribe_to_tag(
         &self,
         tag_path: &str,
         options: SubscriptionOptions,
     ) -> Result<TagSubscription> {
-        let mut subscriptions = self.subscriptions.lock().await;
         let subscription = TagSubscription::new(tag_path.to_string(), options.clone());
+        let mut validation_client = self.clone();
+        let initial_value = validation_client.read_tag(tag_path).await?;
+        subscription.update_value(&initial_value).await?;
+
+        let mut subscriptions = self.subscriptions.lock().await;
         let update_rate_ms = options.update_rate;
         subscriptions.push(subscription.clone());
         drop(subscriptions);

@@ -585,7 +585,7 @@ namespace RustEtherNetIp
                     {
                         int result = eip_write_bool(_clientId, tagPtr, value ? 1 : 0);
                         if (result != 0)
-                            throw new Exception($"Failed to write BOOL tag '{tagName}'. Check tag exists and is writable.");
+                            ThrowDetailedWriteException(tagName, PlcValue.Bool(value), $"Failed to write BOOL tag '{tagName}'. Check tag exists and is writable.");
                         _statistics.IncrementWrite();
                     }
                     finally
@@ -725,7 +725,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_int(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write INT tag '{tagName}'. Check tag exists and is writable.");
+                        ThrowDetailedWriteException(tagName, PlcValue.Int(value), $"Failed to write INT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -775,7 +775,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_dint(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write DINT tag '{tagName}'. Check tag exists and is writable.");
+                        ThrowDetailedWriteException(tagName, PlcValue.Dint(value), $"Failed to write DINT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -1083,7 +1083,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_real(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write REAL tag '{tagName}'. Check tag exists and is writable.");
+                        ThrowDetailedWriteException(tagName, PlcValue.Real(value), $"Failed to write REAL tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -1238,7 +1238,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_string(_clientId, tagPtr, valuePtr);
                     if (result != 0)
-                        throw new Exception($"Failed to write STRING tag '{tagName}'. Check tag exists and is writable.");
+                        ThrowDetailedWriteException(tagName, PlcValue.String(value), $"Failed to write STRING tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -2129,10 +2129,34 @@ namespace RustEtherNetIp
             if (tagNames == null || tagNames.Length == 0)
                 throw new ArgumentException("Tag names array cannot be null or empty", nameof(tagNames));
 
-            // Sequential read fallback implementation:
-            // write/execute use native typed batch FFI, while read currently probes types per tag.
+            var nativeResults = TryReadTagsBatchNative(tagNames);
+            if (nativeResults != null)
+            {
+                var failedTags = nativeResults.Values
+                    .Where(v => !v.Success)
+                    .Select(v => v.TagName)
+                    .ToArray();
+
+                if (failedTags.Length == 0)
+                    return nativeResults;
+
+                var fallbackResults = ReadTagsBatchSequential(failedTags);
+                foreach (var failedTag in failedTags)
+                {
+                    if (fallbackResults.TryGetValue(failedTag, out var fallbackResult))
+                        nativeResults[failedTag] = fallbackResult;
+                }
+
+                return nativeResults;
+            }
+
+            return ReadTagsBatchSequential(tagNames);
+        }
+
+        private Dictionary<string, TagReadResultBatch> ReadTagsBatchSequential(string[] tagNames)
+        {
             var results = new Dictionary<string, TagReadResultBatch>();
-            
+
             foreach (string tagName in tagNames)
             {
                 try
@@ -2254,8 +2278,224 @@ namespace RustEtherNetIp
                     };
                 }
             }
-            
+
             return results;
+        }
+
+        private Dictionary<string, TagReadResultBatch>? TryReadTagsBatchNative(string[] tagNames)
+        {
+            try
+            {
+                return ExecuteWithLock(() =>
+                {
+                    CheckConnection();
+                    var tagPtrs = tagNames.Select(Marshal.StringToHGlobalAnsi).ToArray();
+                    IntPtr resultPtr = IntPtr.Zero;
+
+                    try
+                    {
+                        resultPtr = Marshal.AllocHGlobal(131072);
+                        int rc = eip_read_tags_batch(_clientId, tagPtrs, tagPtrs.Length, resultPtr, 131072);
+                        if (rc != 0)
+                            return null;
+
+                        string payload = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace(payload))
+                            return null;
+
+                        return ParseNativeBatchReadResults(payload, tagNames);
+                    }
+                    finally
+                    {
+                        if (resultPtr != IntPtr.Zero)
+                            Marshal.FreeHGlobal(resultPtr);
+
+                        foreach (var ptr in tagPtrs)
+                        {
+                            if (ptr != IntPtr.Zero)
+                                Marshal.FreeHGlobal(ptr);
+                        }
+                    }
+                });
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private Dictionary<string, TagReadResultBatch>? ParseNativeBatchReadResults(string payload, string[] requestedTags)
+        {
+            var jsonResults = TryParseNativeBatchReadResultsJson(payload, requestedTags);
+            if (jsonResults != null)
+                return jsonResults;
+
+            var results = new Dictionary<string, TagReadResultBatch>(requestedTags.Length);
+            var entries = payload.Split(';', StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var entry in entries)
+            {
+                int separator = entry.IndexOf(':');
+                if (separator <= 0)
+                    return null;
+
+                string tagName = entry.Substring(0, separator);
+                string rawValue = entry.Substring(separator + 1);
+
+                if (rawValue.StartsWith("ERROR:", StringComparison.Ordinal))
+                {
+                    results[tagName] = new TagReadResultBatch
+                    {
+                        TagName = tagName,
+                        Success = false,
+                        Value = null,
+                        DataType = "UNKNOWN",
+                        ErrorCode = -1,
+                        ErrorMessage = rawValue.Substring("ERROR:".Length)
+                    };
+                    continue;
+                }
+
+                if (!TryParseNativeBatchValue(rawValue, out var value, out var dataType))
+                    return null;
+
+                results[tagName] = new TagReadResultBatch
+                {
+                    TagName = tagName,
+                    Success = true,
+                    Value = value,
+                    DataType = dataType,
+                    ErrorCode = 0,
+                    ErrorMessage = null
+                };
+            }
+
+            if (results.Count != requestedTags.Length)
+                return null;
+
+            return results;
+        }
+
+        private static Dictionary<string, TagReadResultBatch>? TryParseNativeBatchReadResultsJson(string payload, string[] requestedTags)
+        {
+            try
+            {
+                var entries = JsonSerializer.Deserialize<List<FfiReadBatchResultItem>>(payload);
+                if (entries == null || entries.Count != requestedTags.Length)
+                    return null;
+
+                var results = new Dictionary<string, TagReadResultBatch>(requestedTags.Length);
+                foreach (var entry in entries)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.tag_name))
+                        return null;
+
+                    object? value = null;
+                    string dataType = "UNKNOWN";
+
+                    if (entry.success)
+                    {
+                        if (!TryConvertBatchReadJsonValue(entry.value, out value, out dataType))
+                            return null;
+                    }
+
+                    results[entry.tag_name] = new TagReadResultBatch
+                    {
+                        TagName = entry.tag_name,
+                        Success = entry.success,
+                        Value = value,
+                        DataType = entry.success ? dataType : "UNKNOWN",
+                        ErrorCode = entry.success ? 0 : -1,
+                        ErrorMessage = entry.success ? null : entry.error
+                    };
+                }
+
+                return results.Count == requestedTags.Length ? results : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool TryConvertBatchReadJsonValue(JsonElement? jsonValue, out object? value, out string dataType)
+        {
+            value = null;
+            dataType = "UNKNOWN";
+
+            if (jsonValue == null)
+                return false;
+
+            var plcValue = PlcValue.FromJson(jsonValue.Value.GetRawText());
+            value = plcValue.Value;
+            dataType = plcValue.Type switch
+            {
+                PlcValueType.Bool => "BOOL",
+                PlcValueType.Sint => "SINT",
+                PlcValueType.Int => "INT",
+                PlcValueType.Dint => "DINT",
+                PlcValueType.Lint => "LINT",
+                PlcValueType.Usint => "USINT",
+                PlcValueType.Uint => "UINT",
+                PlcValueType.Udint => "UDINT",
+                PlcValueType.Ulint => "ULINT",
+                PlcValueType.Real => "REAL",
+                PlcValueType.Lreal => "LREAL",
+                PlcValueType.String => "STRING",
+                PlcValueType.Udt => "UDT",
+                _ => "UNKNOWN"
+            };
+            return true;
+        }
+
+        private static bool TryParseNativeBatchValue(string rawValue, out object? value, out string dataType)
+        {
+            value = null;
+            dataType = "UNKNOWN";
+
+            if (rawValue.StartsWith("Bool(", StringComparison.Ordinal) && rawValue.EndsWith(')'))
+            {
+                value = bool.Parse(rawValue.Substring(5, rawValue.Length - 6));
+                dataType = "BOOL";
+                return true;
+            }
+
+            if (rawValue.StartsWith("Dint(", StringComparison.Ordinal) && rawValue.EndsWith(')'))
+            {
+                value = int.Parse(rawValue.Substring(5, rawValue.Length - 6));
+                dataType = "DINT";
+                return true;
+            }
+
+            if (rawValue.StartsWith("Int(", StringComparison.Ordinal) && rawValue.EndsWith(')'))
+            {
+                value = short.Parse(rawValue.Substring(4, rawValue.Length - 5));
+                dataType = "INT";
+                return true;
+            }
+
+            if (rawValue.StartsWith("Real(", StringComparison.Ordinal) && rawValue.EndsWith(')'))
+            {
+                value = float.Parse(rawValue.Substring(5, rawValue.Length - 6), System.Globalization.CultureInfo.InvariantCulture);
+                dataType = "REAL";
+                return true;
+            }
+
+            if (rawValue.StartsWith("String(\"", StringComparison.Ordinal) && rawValue.EndsWith("\")", StringComparison.Ordinal))
+            {
+                value = rawValue.Substring(8, rawValue.Length - 10).Replace("\\\"", "\"");
+                dataType = "STRING";
+                return true;
+            }
+
+            if (rawValue.StartsWith("Udint(", StringComparison.Ordinal) && rawValue.EndsWith(')'))
+            {
+                value = uint.Parse(rawValue.Substring(6, rawValue.Length - 7));
+                dataType = "UDINT";
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -3007,6 +3247,7 @@ namespace RustEtherNetIp
                 throw new ObjectDisposedException(nameof(EtherNetIpClient));
 
             options ??= new SubscriptionOptions();
+            var initialValue = ReadTagValueAsync(tagName).GetAwaiter().GetResult();
 
             lock (_subscriptionLock)
             {
@@ -3014,6 +3255,7 @@ namespace RustEtherNetIp
                     return _subscriptions[tagName];
 
                 var subscription = new TagSubscription(tagName);
+                subscription.UpdateValue(initialValue);
                 _subscriptions[tagName] = subscription;
 
                 var cts = new CancellationTokenSource();
@@ -3276,6 +3518,94 @@ namespace RustEtherNetIp
 
         #region Private Methods
 
+        private void ThrowDetailedWriteException(string tagName, PlcValue value, string fallbackMessage)
+        {
+            try
+            {
+                var request = new List<FfiWriteBatchRequestItem>
+                {
+                    new()
+                    {
+                        tag_name = tagName,
+                        value_type = ToRustValueType(value),
+                        value = ToJsonElement(ToRustRawValue(value))
+                    }
+                };
+
+                string payload = JsonSerializer.Serialize(request);
+                IntPtr payloadPtr = Marshal.StringToHGlobalAnsi(payload);
+                IntPtr resultPtr = IntPtr.Zero;
+
+                try
+                {
+                    resultPtr = Marshal.AllocHGlobal(65536);
+                    int rc = eip_write_tags_batch(_clientId, payloadPtr, 1, resultPtr, 65536);
+                    string json = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(json))
+                    {
+                        var nativeResults = JsonSerializer.Deserialize<List<FfiWriteBatchResultItem>>(json) ?? new();
+                        var nativeResult = nativeResults.FirstOrDefault(r => r.tag_name == tagName);
+                        if (nativeResult != null)
+                        {
+                            if (!string.IsNullOrWhiteSpace(nativeResult.error))
+                                throw new Exception(nativeResult.error);
+
+                            if (!nativeResult.success)
+                                throw new Exception(InferKnownWriteLimitation(tagName, value, fallbackMessage));
+
+                            if (rc != 0)
+                                throw new Exception(fallbackMessage);
+                        }
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(payloadPtr);
+                    if (resultPtr != IntPtr.Zero)
+                        Marshal.FreeHGlobal(resultPtr);
+                }
+            }
+            catch (Exception ex) when (!string.IsNullOrWhiteSpace(ex.Message))
+            {
+                throw new Exception(ex.Message);
+            }
+
+            throw new Exception(InferKnownWriteLimitation(tagName, value, fallbackMessage));
+        }
+
+        private static string InferKnownWriteLimitation(string tagName, PlcValue value, string fallbackMessage)
+        {
+            if (LooksLikeDirectUdtArrayMemberPath(tagName))
+            {
+                return $"Direct writes to UDT array element members are not supported by this PLC/firmware path (commonly surfaced as CIP extended error 0x2107): '{tagName}'. Write the whole UDT element instead.";
+            }
+
+            if (value.Type == PlcValueType.String || LooksLikeStringMemberPath(tagName))
+            {
+                return $"Direct STRING writes are not supported on this PLC/firmware path for '{tagName}' (commonly surfaced as embedded service error 0x1E or extended error 0x2107).";
+            }
+
+            return fallbackMessage;
+        }
+
+        private static bool LooksLikeDirectUdtArrayMemberPath(string tagName)
+        {
+            if (string.IsNullOrWhiteSpace(tagName))
+                return false;
+
+            int dotIndex = tagName.LastIndexOf('.');
+            int bracketStart = tagName.LastIndexOf('[');
+            int bracketEnd = tagName.LastIndexOf(']');
+            return dotIndex > bracketEnd && bracketStart >= 0 && bracketEnd > bracketStart;
+        }
+
+        private static bool LooksLikeStringMemberPath(string tagName)
+        {
+            return !string.IsNullOrWhiteSpace(tagName) &&
+                   (tagName.Contains("STRING", StringComparison.OrdinalIgnoreCase) ||
+                    tagName.Contains("String", StringComparison.Ordinal));
+        }
+
         private void CheckConnection()
         {
             if (_clientId < 0)
@@ -3317,6 +3647,14 @@ namespace RustEtherNetIp
             public JsonElement value { get; set; }
         }
 
+        private sealed class FfiReadBatchResultItem
+        {
+            public string tag_name { get; set; } = string.Empty;
+            public bool success { get; set; }
+            public JsonElement? value { get; set; }
+            public string? error { get; set; }
+        }
+
         private sealed class FfiWriteBatchResultItem
         {
             public string tag_name { get; set; } = string.Empty;
@@ -3356,7 +3694,6 @@ namespace RustEtherNetIp
                 {
                     foreach (var group in _tagGroups.Values)
                     {
-                        group.Group?.Stop();
                         group.Group?.Dispose();
                     }
                     _tagGroups.Clear();

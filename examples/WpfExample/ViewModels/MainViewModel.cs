@@ -23,12 +23,37 @@ namespace WpfExample.ViewModels
         private const int MAX_RETRIES = 3;
         private const int RETRY_DELAY = 1000;
         private readonly SemaphoreSlim _tagOperationLock = new(1, 1);
+        private readonly Dictionary<string, TagSubscription> _activeSubscriptions = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, EventHandler<TagValueChangedEventArgs>> _subscriptionHandlers = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly string[] KnownProgramTagSuffixes =
+        {
+            "gTestArray_DINT[0]",
+            "gTestArray_DINT[5]",
+            "gTestArray_REAL[0]",
+            "gTestArray_BOOL[0]",
+            "gTest_STRING",
+            "gTestUDT.Member1_DINT",
+            "gTestUDT.Member2_REAL",
+            "gTestUDT.Member3_BOOL",
+            "gTestUDT.Array_DINT[5]"
+        };
+        private static readonly (string Name, string DataType, object Value)[] SeedableTestTags =
+        {
+            ("gTestArray_BOOL[0]", "BOOL", true),
+            ("gTestArray_INT[0]", "INT", (short)321),
+            ("gTestArray_DINT[0]", "DINT", 12345),
+            ("gTestArray_DINT[5]", "DINT", 54321),
+            ("gTestArray_REAL[0]", "REAL", 123.45f),
+            ("Program:TestProgram.gTestArray_DINT[0]", "DINT", 10000),
+            ("Program:TestProgram.gTestArray_REAL[0]", "REAL", 100.0f),
+            ("Program:TestProgram.gTestArray_BOOL[0]", "BOOL", true)
+        };
 
         [ObservableProperty]
-        private string plcAddress = "192.168.0.1:44818";
+        private string plcAddress = "192.168.0.101:44818";
 
         [ObservableProperty]
-        private bool useRoutePath = true; // Default to true since RoutePath is required for both ControlLogix and CompactLogix
+        private bool useRoutePath = true;
 
         [ObservableProperty]
         private int cpuSlot = 0;
@@ -62,10 +87,10 @@ namespace WpfExample.ViewModels
 
         // Batch Operations Properties
         [ObservableProperty]
-        private string batchReadTags = "TestTag\nTestBool\nTestInt\nTestReal";
+        private string batchReadTags = "gTestArray_DINT[0]\ngTestArray_REAL[0]\ngTestArray_BOOL[0]\ngTestArray_INT[0]\nProgram:TestProgram.gTestArray_DINT[0]";
 
         [ObservableProperty]
-        private string batchWriteTags = "TestTag=true\nTestBool=false\nTestInt=999\nTestReal=88.8";
+        private string batchWriteTags = "gTestArray_DINT[5]=999\nProgram:TestProgram.gTestArray_DINT[5]=15555\ngTestArray_BOOL[0]=true\ngTestArray_REAL[0]=88.8";
 
         [ObservableProperty]
         private string batchResults = "";
@@ -134,14 +159,17 @@ namespace WpfExample.ViewModels
         private string programName = "TestProgram";
 
         [ObservableProperty]
-        private string programTagName = "";
+        private string programTagName = "gTestArray_DINT[0]";
 
         [ObservableProperty]
         private ObservableCollection<ProgramTagInfo> programTags = new();
 
+        [ObservableProperty]
+        private string programTagReadResult = "";
+
         // Subscriptions Properties
         [ObservableProperty]
-        private string subscribeTagName = "";
+        private string subscribeTagName = "gTestArray_DINT[0]";
 
         [ObservableProperty]
         private ObservableCollection<string> subscriptions = new();
@@ -164,6 +192,10 @@ namespace WpfExample.ViewModels
 
         public MainViewModel()
         {
+            TagToDiscover = "gTestArray_DINT[0]";
+            TagName = "gTestArray_DINT[0]";
+            TagValue = "0";
+            SelectedDataType = "DINT";
             InitializeTags();
             SetupTimer();
             SetupStatisticsTimer();
@@ -193,11 +225,11 @@ namespace WpfExample.ViewModels
             // Program-scoped tags
             Tags.Add(new PlcTag("Program:TestProgram.gTestArray_DINT[5]", "DINT"));
             
-            // Basic test tags (if they exist)
-            Tags.Add(new PlcTag("TestTag", "BOOL"));
-            Tags.Add(new PlcTag("TestBool", "BOOL"));
-            Tags.Add(new PlcTag("TestInt", "DINT"));
-            Tags.Add(new PlcTag("TestReal", "REAL"));
+            // More program-scoped tags that are used in the real PLC validation passes
+            Tags.Add(new PlcTag("Program:TestProgram.gTestArray_DINT[0]", "DINT"));
+            Tags.Add(new PlcTag("Program:TestProgram.gTestArray_REAL[0]", "REAL"));
+            Tags.Add(new PlcTag("Program:TestProgram.gTestArray_BOOL[0]", "BOOL"));
+            Tags.Add(new PlcTag("Program:TestProgram.gTest_STRING", "STRING"));
         }
 
         private void SetupTimer()
@@ -220,22 +252,25 @@ namespace WpfExample.ViewModels
                 await Task.Run(() =>
                 {
                     _plcClient = new EtherNetIpClient();
-                    
-                    // Always use RoutePath - works for both ControlLogix and CompactLogix
-                    // For CompactLogix, use slot 0; for ControlLogix, use the specified slot
-                    var routePath = new RoutePath().AddSlot((byte)CpuSlot);
+
+                    bool connected;
                     if (UseRoutePath)
                     {
-                        LogMessage($"📍 Using RoutePath: CPU Slot {CpuSlot} (ControlLogix)");
+                        var routePath = new RoutePath().AddSlot((byte)CpuSlot);
+                        LogMessage($"📍 Using routed connection: CPU slot {CpuSlot}");
+                        connected = _plcClient.ConnectWithRoute(PlcAddress, routePath);
                     }
                     else
                     {
-                        LogMessage($"📍 Using RoutePath: CPU Slot {CpuSlot} (CompactLogix - slot 0)");
+                        LogMessage("📍 Using direct connection (no route path)");
+                        connected = _plcClient.Connect(PlcAddress);
                     }
-                    var connected = _plcClient.ConnectWithRoute(PlcAddress, routePath);
+
                     if (connected)
                     {
-                        LogMessage("✅ Connected successfully with RoutePath!");
+                        LogMessage(UseRoutePath
+                            ? "✅ Connected successfully with RoutePath!"
+                            : "✅ Connected successfully without RoutePath!");
                     }
                     return connected;
                 }).ContinueWith(t =>
@@ -293,6 +328,7 @@ namespace WpfExample.ViewModels
             try
             {
                 _refreshTimer?.Stop();
+                UnsubscribeAllLocal();
                 
                 _plcClient?.Dispose();
                 _plcClient = null;
@@ -300,6 +336,8 @@ namespace WpfExample.ViewModels
                 IsConnected = false;
                 ConnectionStatus = "Disconnected";
                 SessionId = "None";
+                Subscriptions.Clear();
+                SubscriptionValues.Clear();
                 
                 // Clear tag values
                 foreach (var tag in Tags)
@@ -748,6 +786,7 @@ namespace WpfExample.ViewModels
                 var startTime = DateTime.Now;
                 var readCount = 0;
                 var writeCount = 0;
+                var originalWriteValue = _plcClient.ReadDint("gTestArray_DINT[5]");
                 
                 // Run benchmark on background thread
                 await Task.Run(() =>
@@ -756,19 +795,28 @@ namespace WpfExample.ViewModels
                     {
                         try
                         {
-                            _plcClient?.ReadBool("TestTag");
+                            _plcClient?.ReadDint("gTestArray_DINT[0]");
                             readCount++;
                         }
                         catch { }
                         
                         try
                         {
-                            _plcClient?.WriteBool("TestTag", true);
+                            _plcClient?.WriteDint("gTestArray_DINT[5]", 999);
                             writeCount++;
                         }
                         catch { }
                     }
                 });
+
+                try
+                {
+                    _plcClient.WriteDint("gTestArray_DINT[5]", originalWriteValue);
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"⚠️ Benchmark restore failed for gTestArray_DINT[5]: {ex.Message}");
+                }
                 
                 ReadRate = (int)(readCount / 5.0);
                 WriteRate = (int)(writeCount / 5.0);
@@ -788,23 +836,13 @@ namespace WpfExample.ViewModels
 
             try
             {
-                LogMessage("📋 Creating test tags in PLC...");
-
-                var testTags = new(string name, string type, object value)[]
-                {
-                    ("TestTag", "BOOL", true),
-                    ("TestBool", "BOOL", false),
-                    ("TestInt", "DINT", 42),
-                    ("TestReal", "REAL", 123.45f),
-                    ("TestString", "STRING", "Hello PLC!"),
-                    ("ProductName", "STRING", "Widget-A"),
-                    ("RecipeName", "STRING", "Recipe-001")
-                };
+                LogMessage("🧪 Seeding existing test tags with known values...");
+                LogMessage("ℹ️ This action does not create PLC tags. It only writes verification values to tags that already exist.");
 
                 int successCount = 0;
                 int errorCount = 0;
 
-                foreach (var (name, type, value) in testTags)
+                foreach (var (name, type, value) in SeedableTestTags)
                 {
                     try
                     {
@@ -815,19 +853,19 @@ namespace WpfExample.ViewModels
                                 case "BOOL":
                                     _plcClient.WriteBool(name, (bool)value);
                                     break;
+                                case "INT":
+                                    _plcClient.WriteInt(name, (short)value);
+                                    break;
                                 case "DINT":
                                     _plcClient.WriteDint(name, (int)value);
                                     break;
                                 case "REAL":
                                     _plcClient.WriteReal(name, (float)value);
                                     break;
-                                case "STRING":
-                                    _plcClient.WriteString(name, (string)value);
-                                    break;
                             }
                         });
 
-                        LogMessage($"✅ Created {type} tag: {name} = {value}");
+                        LogMessage($"✅ Seeded {type} tag: {name} = {value}");
                         successCount++;
                     }
                     catch (Exception ex)
@@ -839,17 +877,17 @@ namespace WpfExample.ViewModels
 
                 if (successCount > 0)
                 {
-                    LogMessage($"✅ Created {successCount}/{testTags.Length} test tags successfully");
-                    LogMessage("🚀 Test tags are ready for operations!");
+                    LogMessage($"✅ Seeded {successCount}/{SeedableTestTags.Length} existing test tags successfully");
+                    LogMessage("🚀 The WPF sample is ready for read/write verification against the real PLC.");
                 }
                 else
                 {
-                    LogMessage($"❌ Failed to create any test tags ({errorCount} errors)");
+                    LogMessage($"❌ Failed to seed any test tags ({errorCount} errors)");
                 }
             }
             catch (Exception ex)
             {
-                LogMessage($"❌ Error creating test tags: {ex.Message}");
+                LogMessage($"❌ Error seeding test tags: {ex.Message}");
             }
         }
 
@@ -939,16 +977,7 @@ namespace WpfExample.ViewModels
                         var tagName = parts[0].Trim();
                         var valueStr = parts[1].Trim();
 
-                        // Try to parse the value as different types
-                        object value;
-                        if (bool.TryParse(valueStr, out bool boolVal))
-                            value = boolVal;
-                        else if (int.TryParse(valueStr, out int intVal))
-                            value = intVal;
-                        else if (float.TryParse(valueStr, out float floatVal))
-                            value = floatVal;
-                        else
-                            value = valueStr; // String
+                        object value = InferBatchWriteValue(tagName, valueStr);
 
                         tagValues[tagName] = value;
                     }
@@ -1076,21 +1105,27 @@ namespace WpfExample.ViewModels
                     catch { }
                     
                     // Fallback to type-specific methods based on tag name
-                    if (ArrayTagName.Contains("DINT") || ArrayTagName.Contains("[") && !ArrayTagName.Contains("REAL") && !ArrayTagName.Contains("BOOL"))
-                    {
-                        return _plcClient.ReadDint(ArrayTagName).ToString();
-                    }
-                    else if (ArrayTagName.Contains("REAL"))
+                    if (ArrayTagName.Contains("REAL", StringComparison.OrdinalIgnoreCase))
                     {
                         return _plcClient.ReadReal(ArrayTagName).ToString();
                     }
-                    else if (ArrayTagName.Contains("BOOL"))
+                    else if (ArrayTagName.Contains("BOOL", StringComparison.OrdinalIgnoreCase))
                     {
                         return _plcClient.ReadBool(ArrayTagName).ToString();
                     }
-                    else if (ArrayTagName.Contains("INT") && !ArrayTagName.Contains("DINT"))
+                    else if (ArrayTagName.Contains("INT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("DINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("LINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("UINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("USINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("UDINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("ULINT", StringComparison.OrdinalIgnoreCase))
                     {
                         return _plcClient.ReadInt(ArrayTagName).ToString();
+                    }
+                    else if (ArrayTagName.Contains("DINT", StringComparison.OrdinalIgnoreCase) || ArrayTagName.Contains("["))
+                    {
+                        return _plcClient.ReadDint(ArrayTagName).ToString();
                     }
                     else
                     {
@@ -1121,18 +1156,7 @@ namespace WpfExample.ViewModels
 
                 await Task.Run(() =>
                 {
-                    if (ArrayTagName.Contains("DINT") || (ArrayTagName.Contains("INT") && !ArrayTagName.Contains("REAL") && !ArrayTagName.Contains("BOOL")))
-                    {
-                        if (int.TryParse(ArrayWriteValue, out int intValue))
-                        {
-                            _plcClient.WriteDint(ArrayTagName, intValue);
-                        }
-                        else
-                        {
-                            throw new Exception("Invalid DINT value");
-                        }
-                    }
-                    else if (ArrayTagName.Contains("REAL"))
+                    if (ArrayTagName.Contains("REAL", StringComparison.OrdinalIgnoreCase))
                     {
                         if (float.TryParse(ArrayWriteValue, out float floatValue))
                         {
@@ -1143,7 +1167,7 @@ namespace WpfExample.ViewModels
                             throw new Exception("Invalid REAL value");
                         }
                     }
-                    else if (ArrayTagName.Contains("BOOL"))
+                    else if (ArrayTagName.Contains("BOOL", StringComparison.OrdinalIgnoreCase))
                     {
                         if (bool.TryParse(ArrayWriteValue, out bool boolValue))
                         {
@@ -1154,7 +1178,13 @@ namespace WpfExample.ViewModels
                             throw new Exception("Invalid BOOL value");
                         }
                     }
-                    else if (ArrayTagName.Contains("INT") && !ArrayTagName.Contains("DINT"))
+                    else if (ArrayTagName.Contains("INT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("DINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("LINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("UINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("USINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("UDINT", StringComparison.OrdinalIgnoreCase) &&
+                             !ArrayTagName.Contains("ULINT", StringComparison.OrdinalIgnoreCase))
                     {
                         if (short.TryParse(ArrayWriteValue, out short shortValue))
                         {
@@ -1163,6 +1193,17 @@ namespace WpfExample.ViewModels
                         else
                         {
                             throw new Exception("Invalid INT value");
+                        }
+                    }
+                    else if (ArrayTagName.Contains("DINT", StringComparison.OrdinalIgnoreCase) || ArrayTagName.Contains("["))
+                    {
+                        if (int.TryParse(ArrayWriteValue, out int intValue))
+                        {
+                            _plcClient.WriteDint(ArrayTagName, intValue);
+                        }
+                        else
+                        {
+                            throw new Exception("Invalid DINT value");
                         }
                     }
                     else
@@ -1259,15 +1300,7 @@ namespace WpfExample.ViewModels
                 PlcValue? memberValue = null;
                 try
                 {
-                    if (memberPath.Contains("DINT") || (memberPath.Contains("INT") && !memberPath.Contains("REAL")))
-                    {
-                        var intValue = await Task.Run(() => _plcClient.ReadDint(UdtMemberPath));
-                        UdtMemberReadValue = intValue.ToString();
-                        UdtResult = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {UdtMemberReadValue}\nType: DINT";
-                        LogMessage($"✅ Read {UdtMemberPath} = {UdtMemberReadValue} (DINT)");
-                        return;
-                    }
-                    else if (memberPath.Contains("REAL"))
+                    if (memberPath.Contains("REAL", StringComparison.OrdinalIgnoreCase))
                     {
                         var floatValue = await Task.Run(() => _plcClient.ReadReal(UdtMemberPath));
                         UdtMemberReadValue = floatValue.ToString();
@@ -1275,12 +1308,34 @@ namespace WpfExample.ViewModels
                         LogMessage($"✅ Read {UdtMemberPath} = {UdtMemberReadValue} (REAL)");
                         return;
                     }
-                    else if (memberPath.Contains("BOOL"))
+                    else if (memberPath.Contains("BOOL", StringComparison.OrdinalIgnoreCase))
                     {
                         var boolValue = await Task.Run(() => _plcClient.ReadBool(UdtMemberPath));
                         UdtMemberReadValue = boolValue.ToString();
                         UdtResult = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {UdtMemberReadValue}\nType: BOOL";
                         LogMessage($"✅ Read {UdtMemberPath} = {boolValue} (BOOL)");
+                        return;
+                    }
+                    else if (memberPath.Contains("INT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("DINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("LINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("UINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("USINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("UDINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("ULINT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var shortValue = await Task.Run(() => _plcClient.ReadInt(UdtMemberPath));
+                        UdtMemberReadValue = shortValue.ToString();
+                        UdtResult = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {UdtMemberReadValue}\nType: INT";
+                        LogMessage($"✅ Read {UdtMemberPath} = {UdtMemberReadValue} (INT)");
+                        return;
+                    }
+                    else if (memberPath.Contains("DINT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var intValue = await Task.Run(() => _plcClient.ReadDint(UdtMemberPath));
+                        UdtMemberReadValue = intValue.ToString();
+                        UdtResult = $"✅ Success!\nUDT: {tagName}\nMember: {memberPath}\nValue: {UdtMemberReadValue}\nType: DINT";
+                        LogMessage($"✅ Read {UdtMemberPath} = {UdtMemberReadValue} (DINT)");
                         return;
                     }
                 }
@@ -1342,17 +1397,7 @@ namespace WpfExample.ViewModels
                 // Try direct tag write first
                 try
                 {
-                    if (memberPath.Contains("DINT") || (memberPath.Contains("INT") && !memberPath.Contains("REAL")))
-                    {
-                        if (int.TryParse(UdtMemberWriteValue, out int intValue))
-                        {
-                            await Task.Run(() => _plcClient.WriteDint(UdtMemberPath, intValue));
-                            UdtResult = $"✅ Success! Wrote {intValue} to {UdtMemberPath}";
-                            LogMessage($"✅ Wrote {UdtMemberPath} = {intValue}");
-                            return;
-                        }
-                    }
-                    else if (memberPath.Contains("REAL"))
+                    if (memberPath.Contains("REAL", StringComparison.OrdinalIgnoreCase))
                     {
                         if (float.TryParse(UdtMemberWriteValue, out float floatValue))
                         {
@@ -1362,13 +1407,39 @@ namespace WpfExample.ViewModels
                             return;
                         }
                     }
-                    else if (memberPath.Contains("BOOL"))
+                    else if (memberPath.Contains("BOOL", StringComparison.OrdinalIgnoreCase))
                     {
                         if (bool.TryParse(UdtMemberWriteValue, out bool boolValue))
                         {
                             await Task.Run(() => _plcClient.WriteBool(UdtMemberPath, boolValue));
                             UdtResult = $"✅ Success! Wrote {boolValue} to {UdtMemberPath}";
                             LogMessage($"✅ Wrote {UdtMemberPath} = {boolValue}");
+                            return;
+                        }
+                    }
+                    else if (memberPath.Contains("INT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("DINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("LINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("UINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("USINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("UDINT", StringComparison.OrdinalIgnoreCase) &&
+                             !memberPath.Contains("ULINT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (short.TryParse(UdtMemberWriteValue, out short shortValue))
+                        {
+                            await Task.Run(() => _plcClient.WriteInt(UdtMemberPath, shortValue));
+                            UdtResult = $"✅ Success! Wrote {shortValue} to {UdtMemberPath}";
+                            LogMessage($"✅ Wrote {UdtMemberPath} = {shortValue}");
+                            return;
+                        }
+                    }
+                    else if (memberPath.Contains("DINT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (int.TryParse(UdtMemberWriteValue, out int intValue))
+                        {
+                            await Task.Run(() => _plcClient.WriteDint(UdtMemberPath, intValue));
+                            UdtResult = $"✅ Success! Wrote {intValue} to {UdtMemberPath}";
+                            LogMessage($"✅ Wrote {UdtMemberPath} = {intValue}");
                             return;
                         }
                     }
@@ -1379,17 +1450,36 @@ namespace WpfExample.ViewModels
                 }
 
                 // Fallback: Use SetUdtMember
-                if (memberPath.Contains("DINT") && int.TryParse(UdtMemberWriteValue, out int dintValue))
+                if (memberPath.Contains("DINT", StringComparison.OrdinalIgnoreCase) && int.TryParse(UdtMemberWriteValue, out int dintValue))
                 {
                     await Task.Run(() => _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Dint(dintValue)));
                     UdtResult = $"✅ Success! Wrote {dintValue} to {UdtMemberPath}";
                     LogMessage($"✅ Wrote {UdtMemberPath} = {dintValue} via SetUdtMember");
                 }
-                else if (memberPath.Contains("REAL") && float.TryParse(UdtMemberWriteValue, out float realValue))
+                else if (memberPath.Contains("REAL", StringComparison.OrdinalIgnoreCase) && float.TryParse(UdtMemberWriteValue, out float realValue))
                 {
                     await Task.Run(() => _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Real(realValue)));
                     UdtResult = $"✅ Success! Wrote {realValue} to {UdtMemberPath}";
                     LogMessage($"✅ Wrote {UdtMemberPath} = {realValue} via SetUdtMember");
+                }
+                else if (memberPath.Contains("BOOL", StringComparison.OrdinalIgnoreCase) && bool.TryParse(UdtMemberWriteValue, out bool boolMemberValue))
+                {
+                    await Task.Run(() => _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Bool(boolMemberValue)));
+                    UdtResult = $"✅ Success! Wrote {boolMemberValue} to {UdtMemberPath}";
+                    LogMessage($"✅ Wrote {UdtMemberPath} = {boolMemberValue} via SetUdtMember");
+                }
+                else if (memberPath.Contains("INT", StringComparison.OrdinalIgnoreCase) &&
+                         !memberPath.Contains("DINT", StringComparison.OrdinalIgnoreCase) &&
+                         !memberPath.Contains("LINT", StringComparison.OrdinalIgnoreCase) &&
+                         !memberPath.Contains("UINT", StringComparison.OrdinalIgnoreCase) &&
+                         !memberPath.Contains("USINT", StringComparison.OrdinalIgnoreCase) &&
+                         !memberPath.Contains("UDINT", StringComparison.OrdinalIgnoreCase) &&
+                         !memberPath.Contains("ULINT", StringComparison.OrdinalIgnoreCase) &&
+                         short.TryParse(UdtMemberWriteValue, out short intMemberValue))
+                {
+                    await Task.Run(() => _plcClient.SetUdtMember(tagName, memberPath, PlcValue.Int(intMemberValue)));
+                    UdtResult = $"✅ Success! Wrote {intMemberValue} to {UdtMemberPath}";
+                    LogMessage($"✅ Wrote {UdtMemberPath} = {intMemberValue} via SetUdtMember");
                 }
                 else
                 {
@@ -1424,7 +1514,7 @@ namespace WpfExample.ViewModels
 
         // Tag Group Properties
         [ObservableProperty]
-        private string tagGroupTagNames = "TestTag\nTestBool\nTestInt\nTestReal";
+        private string tagGroupTagNames = "gTestArray_DINT[0]\ngTestArray_REAL[0]\ngTestArray_BOOL[0]\nProgram:TestProgram.gTestArray_DINT[0]";
 
         [ObservableProperty]
         private int tagGroupUpdateRate = 500;
@@ -1510,9 +1600,13 @@ namespace WpfExample.ViewModels
             catch (Exception ex)
             {
                 string errorMsg = ex.Message;
-                if (errorMsg.Contains("0x2107") || errorMsg.Contains("2107"))
+                if (errorMsg.Contains("0x2107", StringComparison.OrdinalIgnoreCase) ||
+                    errorMsg.Contains("2107", StringComparison.OrdinalIgnoreCase) ||
+                    errorMsg.Contains("0x1E", StringComparison.OrdinalIgnoreCase) ||
+                    errorMsg.Contains("Embedded service error", StringComparison.OrdinalIgnoreCase))
                 {
-                    errorMsg = "PLC firmware limitation (CIP Error 0x2107): STRING tags cannot be written directly. " +
+                    errorMsg = "PLC firmware limitation: direct STRING writes can fail on CompactLogix/ControlLogix " +
+                              "(commonly surfaced as 0x1E or 0x2107). " +
                               "This is a PLC restriction, not a library bug. " +
                               "For STRING members in UDTs, use the LogixString helper and write the entire UDT.";
                 }
@@ -1734,7 +1828,11 @@ namespace WpfExample.ViewModels
                 var testTags = new[]
                 {
                     "gTestArray_DINT", "gTestArray_REAL", "gTestArray_BOOL", "gTestArray_INT",
-                    "gTestUDT", "gTest_STRING", "TestTag", "TestBool", "TestInt", "TestReal"
+                    "gTestUDT", "gTest_STRING",
+                    "Program:TestProgram.gTestArray_DINT",
+                    "Program:TestProgram.gTestArray_REAL",
+                    "Program:TestProgram.gTestArray_BOOL",
+                    "Program:TestProgram.gTest_STRING"
                 };
 
                 var discovered = new List<DetailedTagInfo>();
@@ -1774,28 +1872,185 @@ namespace WpfExample.ViewModels
         private async Task DiscoverProgramTags()
         {
             if (!IsConnected || _plcClient == null) return;
-            LogMessage($"⚠️ Program tag discovery - implementation needed in service layer");
+
+            try
+            {
+                var discovered = new List<ProgramTagInfo>();
+                var prefix = $"Program:{ProgramName}.";
+
+                await Task.Run(() =>
+                {
+                    foreach (var suffix in KnownProgramTagSuffixes)
+                    {
+                        var fullTag = prefix + suffix;
+                        try
+                        {
+                            var metadata = _plcClient.GetTagMetadata(fullTag);
+                            discovered.Add(new ProgramTagInfo
+                            {
+                                Name = fullTag,
+                                Type = FormatDataTypeCode(metadata.DataType),
+                                Size = metadata.ArraySize > 0 ? metadata.ArraySize.ToString() : "Scalar",
+                                Scope = $"Program ({metadata.Scope})",
+                                LastReadValue = "Not read yet",
+                                LastReadStatus = "Discovered"
+                            });
+                        }
+                        catch
+                        {
+                            // Ignore missing tags in the candidate list.
+                        }
+                    }
+                });
+
+                ProgramTags = new ObservableCollection<ProgramTagInfo>(discovered);
+                if (discovered.Count > 0)
+                {
+                    ProgramTagName = ExtractProgramSuffix(discovered[0].Name);
+                }
+
+                LogMessage(discovered.Count > 0
+                    ? $"✅ Discovered {discovered.Count} program-scoped test tags under Program:{ProgramName}"
+                    : $"⚠️ No known program-scoped test tags were found under Program:{ProgramName}");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"❌ Program tag discovery error: {ex.Message}");
+            }
         }
 
         [RelayCommand]
         private async Task ReadProgramTag()
         {
             if (!IsConnected || _plcClient == null || string.IsNullOrEmpty(ProgramTagName)) return;
-            LogMessage($"⚠️ Program tag read - implementation needed");
+
+            try
+            {
+                var fullTag = NormalizeProgramTagName(ProgramTagName);
+                var result = await Task.Run(() => _plcClient.ReadTagWithDetails(fullTag));
+                var programTagRow = ProgramTags.FirstOrDefault(t => t.Name.Equals(fullTag, StringComparison.OrdinalIgnoreCase));
+                if (result.Success)
+                {
+                    var valueText = result.Value?.ToString() ?? "<null>";
+                    ProgramTagReadResult = $"✅ {fullTag} = {valueText}";
+                    if (programTagRow != null)
+                    {
+                        programTagRow.LastReadValue = valueText;
+                        programTagRow.LastReadStatus = "Read OK";
+                    }
+                    LogMessage($"✅ Program tag read: {fullTag} = {valueText}");
+                }
+                else
+                {
+                    ProgramTagReadResult = $"❌ {fullTag}: {result.ErrorMessage}";
+                    if (programTagRow != null)
+                    {
+                        programTagRow.LastReadValue = "<error>";
+                        programTagRow.LastReadStatus = result.ErrorMessage ?? "Read failed";
+                    }
+                    LogMessage($"❌ Program tag read failed: {fullTag} - {result.ErrorMessage}");
+                }
+            }
+            catch (Exception ex)
+            {
+                ProgramTagReadResult = $"❌ {NormalizeProgramTagName(ProgramTagName)}: {ex.Message}";
+                LogMessage($"❌ Program tag read error: {ex.Message}");
+            }
         }
 
         [RelayCommand]
         private async Task Subscribe()
         {
             if (!IsConnected || _plcClient == null || string.IsNullOrEmpty(SubscribeTagName)) return;
-            LogMessage($"⚠️ Subscription - implementation needed");
+
+            var tagName = SubscribeTagName.Trim();
+            if (_activeSubscriptions.ContainsKey(tagName))
+            {
+                LogMessage($"⚠️ Subscription already active for {tagName}");
+                return;
+            }
+
+            try
+            {
+                var subscription = await Task.Run(() => _plcClient.SubscribeToTag(tagName, new SubscriptionOptions
+                {
+                    PollIntervalMs = 500
+                }));
+
+                EventHandler<TagValueChangedEventArgs> handler = (_, e) =>
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        var existing = SubscriptionValues.FirstOrDefault(v => v.TagName.Equals(e.TagName, StringComparison.OrdinalIgnoreCase));
+                        if (existing == null)
+                        {
+                            SubscriptionValues.Add(new SubscriptionValue
+                            {
+                                TagName = e.TagName,
+                                Value = e.NewValue?.ToString() ?? "<null>",
+                                Updated = DateTime.Now
+                            });
+                        }
+                        else
+                        {
+                            existing.Value = e.NewValue?.ToString() ?? "<null>";
+                            existing.Updated = DateTime.Now;
+                        }
+                    });
+                };
+
+                subscription.ValueChanged += handler;
+                _activeSubscriptions[tagName] = subscription;
+                _subscriptionHandlers[tagName] = handler;
+                Subscriptions.Add(tagName);
+                UpsertSubscriptionValue(tagName, subscription.Value);
+                LogMessage($"✅ Subscription started for {tagName}");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"❌ Subscription error for {tagName}: {ex.Message}");
+            }
         }
 
         [RelayCommand]
         private async Task Unsubscribe()
         {
             if (!IsConnected || _plcClient == null) return;
-            LogMessage($"⚠️ Unsubscribe - implementation needed");
+
+            var tagName = SubscribeTagName.Trim();
+            if (string.IsNullOrWhiteSpace(tagName))
+            {
+                LogMessage("⚠️ Enter the tag name to unsubscribe.");
+                return;
+            }
+
+            await Task.Run(() =>
+            {
+                if (_activeSubscriptions.TryGetValue(tagName, out var subscription) &&
+                    _subscriptionHandlers.TryGetValue(tagName, out var handler))
+                {
+                    subscription.ValueChanged -= handler;
+                }
+
+                _plcClient.UnsubscribeFromTag(tagName);
+            });
+
+            _activeSubscriptions.Remove(tagName);
+            _subscriptionHandlers.Remove(tagName);
+
+            var existingName = Subscriptions.FirstOrDefault(s => s.Equals(tagName, StringComparison.OrdinalIgnoreCase));
+            if (existingName != null)
+            {
+                Subscriptions.Remove(existingName);
+            }
+
+            var existingValue = SubscriptionValues.FirstOrDefault(v => v.TagName.Equals(tagName, StringComparison.OrdinalIgnoreCase));
+            if (existingValue != null)
+            {
+                SubscriptionValues.Remove(existingValue);
+            }
+
+            LogMessage($"✅ Unsubscribed from {tagName}");
         }
 
         [RelayCommand]
@@ -1843,7 +2098,9 @@ namespace WpfExample.ViewModels
         private async Task ClearCache()
         {
             if (!IsConnected || _plcClient == null) return;
-            LogMessage("⚠️ Clear cache - implementation needed in service layer");
+            CacheInfo = "Wrapper cache management is not currently exposed as a public C# API.\n" +
+                       "Use 'Discover All Tags (Detailed)' or reconnect to rebuild cached metadata.";
+            LogMessage("ℹ️ Clear cache is not exposed in the C# wrapper. Reconnect or rediscover tags to refresh metadata.");
             await RefreshCache();
         }
 
@@ -1851,9 +2108,197 @@ namespace WpfExample.ViewModels
         private async Task RefreshCache()
         {
             if (!IsConnected || _plcClient == null) return;
-            CacheInfo = $"Cache Information\n" +
-                       $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
-                       $"Note: Cache management methods may need to be added to wrapper";
+            try
+            {
+                int discoveredMetadata = 0;
+                foreach (var tag in Tags.Take(12))
+                {
+                    try
+                    {
+                        _plcClient.GetTagMetadata(tag.Name);
+                        discoveredMetadata++;
+                    }
+                    catch
+                    {
+                        // Ignore individual tag misses in the summary.
+                    }
+                }
+
+                CacheInfo = $"Cache Information\n" +
+                           $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+                           $"Connected: yes\n" +
+                           $"Known sample tags with metadata available: {discoveredMetadata}\n" +
+                           $"Note: explicit cache clear/list APIs are not currently exposed by the C# wrapper.";
+                LogMessage($"ℹ️ Refreshed wrapper cache summary: {discoveredMetadata} sample tags have cached metadata available.");
+            }
+            catch (Exception ex)
+            {
+                CacheInfo = $"Cache refresh failed: {ex.Message}";
+                LogMessage($"❌ Cache refresh error: {ex.Message}");
+            }
+        }
+
+        private void UnsubscribeAllLocal()
+        {
+            if (_plcClient != null)
+            {
+                try
+                {
+                    _plcClient.UnsubscribeFromAllTags();
+                }
+                catch
+                {
+                    // Best-effort cleanup while disconnecting.
+                }
+            }
+
+            foreach (var entry in _activeSubscriptions)
+            {
+                if (_subscriptionHandlers.TryGetValue(entry.Key, out var handler))
+                {
+                    entry.Value.ValueChanged -= handler;
+                }
+            }
+
+            _activeSubscriptions.Clear();
+            _subscriptionHandlers.Clear();
+        }
+
+        private void UpsertSubscriptionValue(string tagName, object? value)
+        {
+            var existing = SubscriptionValues.FirstOrDefault(v => v.TagName.Equals(tagName, StringComparison.OrdinalIgnoreCase));
+            if (existing == null)
+            {
+                SubscriptionValues.Add(new SubscriptionValue
+                {
+                    TagName = tagName,
+                    Value = value?.ToString() ?? "<null>",
+                    Updated = DateTime.Now
+                });
+                return;
+            }
+
+            existing.Value = value?.ToString() ?? "<null>";
+            existing.Updated = DateTime.Now;
+        }
+
+        private string NormalizeProgramTagName(string tagName)
+        {
+            if (tagName.StartsWith("Program:", StringComparison.OrdinalIgnoreCase))
+            {
+                return tagName;
+            }
+
+            return $"Program:{ProgramName}.{tagName}";
+        }
+
+        private static string ExtractProgramSuffix(string fullTagName)
+        {
+            var marker = ".";
+            var index = fullTagName.IndexOf(marker, StringComparison.Ordinal);
+            return index >= 0 && index + 1 < fullTagName.Length
+                ? fullTagName[(index + 1)..]
+                : fullTagName;
+        }
+
+        private static string FormatDataTypeCode(int dataTypeCode)
+        {
+            return dataTypeCode switch
+            {
+                0x00C1 => "BOOL",
+                0x00C2 => "SINT",
+                0x00C3 => "INT",
+                0x00C4 => "DINT",
+                0x00C5 => "LINT",
+                0x00C6 => "USINT",
+                0x00C7 => "UINT",
+                0x00C8 => "UDINT",
+                0x00C9 => "ULINT",
+                0x00CA => "REAL",
+                0x00CB => "LREAL",
+                0x00D0 => "STRING",
+                _ => $"0x{dataTypeCode:X4}"
+            };
+        }
+
+        private static object InferBatchWriteValue(string tagName, string valueStr)
+        {
+            if (bool.TryParse(valueStr, out bool boolVal))
+            {
+                return boolVal;
+            }
+
+            if (tagName.Contains("LREAL", StringComparison.OrdinalIgnoreCase) && double.TryParse(valueStr, out double doubleVal))
+            {
+                return doubleVal;
+            }
+
+            if (tagName.Contains("REAL", StringComparison.OrdinalIgnoreCase) && float.TryParse(valueStr, out float floatVal))
+            {
+                return floatVal;
+            }
+
+            if (tagName.Contains("USINT", StringComparison.OrdinalIgnoreCase) && byte.TryParse(valueStr, out byte usintVal))
+            {
+                return usintVal;
+            }
+
+            if (tagName.Contains("SINT", StringComparison.OrdinalIgnoreCase) && sbyte.TryParse(valueStr, out sbyte sintVal))
+            {
+                return sintVal;
+            }
+
+            if (tagName.Contains("UINT", StringComparison.OrdinalIgnoreCase) &&
+                !tagName.Contains("UDINT", StringComparison.OrdinalIgnoreCase) &&
+                ushort.TryParse(valueStr, out ushort uint16Val))
+            {
+                return uint16Val;
+            }
+
+            if (tagName.Contains("INT", StringComparison.OrdinalIgnoreCase) &&
+                !tagName.Contains("DINT", StringComparison.OrdinalIgnoreCase) &&
+                !tagName.Contains("LINT", StringComparison.OrdinalIgnoreCase) &&
+                !tagName.Contains("UINT", StringComparison.OrdinalIgnoreCase) &&
+                !tagName.Contains("USINT", StringComparison.OrdinalIgnoreCase) &&
+                !tagName.Contains("UDINT", StringComparison.OrdinalIgnoreCase) &&
+                !tagName.Contains("ULINT", StringComparison.OrdinalIgnoreCase) &&
+                short.TryParse(valueStr, out short int16Val))
+            {
+                return int16Val;
+            }
+
+            if (tagName.Contains("ULINT", StringComparison.OrdinalIgnoreCase) && ulong.TryParse(valueStr, out ulong ulintVal))
+            {
+                return ulintVal;
+            }
+
+            if (tagName.Contains("LINT", StringComparison.OrdinalIgnoreCase) && long.TryParse(valueStr, out long lintVal))
+            {
+                return lintVal;
+            }
+
+            if (tagName.Contains("UDINT", StringComparison.OrdinalIgnoreCase) && uint.TryParse(valueStr, out uint udintVal))
+            {
+                return udintVal;
+            }
+
+            if ((tagName.Contains("DINT", StringComparison.OrdinalIgnoreCase) || tagName.Contains("[", StringComparison.OrdinalIgnoreCase)) &&
+                int.TryParse(valueStr, out int intVal))
+            {
+                return intVal;
+            }
+
+            if (float.TryParse(valueStr, out float fallbackFloat))
+            {
+                return fallbackFloat;
+            }
+
+            if (int.TryParse(valueStr, out int fallbackInt))
+            {
+                return fallbackInt;
+            }
+
+            return valueStr;
         }
     }
 
@@ -1876,18 +2321,36 @@ namespace WpfExample.ViewModels
         public bool Writable { get; set; }
     }
 
-    public class ProgramTagInfo
+    public partial class ProgramTagInfo : ObservableObject
     {
-        public string Name { get; set; } = string.Empty;
-        public string Type { get; set; } = string.Empty;
-        public string Size { get; set; } = string.Empty;
-        public string Scope { get; set; } = string.Empty;
+        [ObservableProperty]
+        private string name = string.Empty;
+
+        [ObservableProperty]
+        private string type = string.Empty;
+
+        [ObservableProperty]
+        private string size = string.Empty;
+
+        [ObservableProperty]
+        private string scope = string.Empty;
+
+        [ObservableProperty]
+        private string lastReadValue = "Not read yet";
+
+        [ObservableProperty]
+        private string lastReadStatus = "Not read";
     }
 
-    public class SubscriptionValue
+    public partial class SubscriptionValue : ObservableObject
     {
-        public string TagName { get; set; } = string.Empty;
-        public string Value { get; set; } = string.Empty;
-        public DateTime Updated { get; set; }
+        [ObservableProperty]
+        private string tagName = string.Empty;
+
+        [ObservableProperty]
+        private string value = string.Empty;
+
+        [ObservableProperty]
+        private DateTime updated;
     }
 }

@@ -215,8 +215,21 @@ if (client.Connect("192.168.1.100:44818"))
 ### Batch Notes (Current 0.7.0 Hardening Line)
 
 - `WriteTagsBatch(...)` and `ExecuteBatch(...)` are native typed FFI-backed.
-- `ReadTagsBatch(...)` currently uses sequential type-probing fallback.
+- `ReadTagsBatch(...)` now uses native batch-read FFI on the current `0.7.0` hardening line.
+- On the validated CompactLogix `5069-L320ERMS3` / firmware `35`, mixed native batch reads now include controller BOOL array elements correctly.
 - `ConfigureBatchOperations(...)` and `GetBatchConfig()` are intentionally unsupported in wrapper/runtime right now.
+
+### CompactLogix Validation Snapshot
+
+- Real hardware validated: `5069-L320ERMS3`, firmware `35`
+- Validated areas: primitive reads/writes, program-scoped tags, route-path connection, subscriptions, UDT reads, batch read/write/mixed execute, C# wrapper parity
+- Remaining observed firmware limits on that target:
+  - direct standalone/UDT `STRING` writes
+  - direct writes to UDT array element members
+
+See:
+- `docs/validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md`
+- `docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md`
 
 ### Tag Group Event Handling (Rust + C#)
 

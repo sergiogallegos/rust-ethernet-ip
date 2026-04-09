@@ -13,6 +13,7 @@ Current release state:
 - [OFFICIAL_SOURCES.md](OFFICIAL_SOURCES.md): Official Rockwell/ODVA references used by this library
 - [../CHANGELOG.md](../CHANGELOG.md): Release history and ongoing changes
 - [../CONTRIBUTING.md](../CONTRIBUTING.md): Contribution workflow and required checks
+- [../wiki/README.md](../wiki/README.md): Maintainer-oriented knowledge wiki for synthesized engineering context
 
 ## Release and Quality Gates
 

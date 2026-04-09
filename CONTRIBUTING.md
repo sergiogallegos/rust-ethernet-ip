@@ -44,12 +44,46 @@ For PLC-dependent validation, include what was tested on real hardware (model, f
 - Avoid unrelated refactors in bug-fix PRs.
 - Update `CHANGELOG.md` under `Unreleased` for notable changes.
 
+## Wiki Workflow
+
+This repository includes a maintainer-oriented engineering wiki in `wiki/`.
+The wiki is not a replacement for `README.md`, `docs/`, or validation artifacts. It is a synthesis layer for accumulated engineering understanding across multiple sources.
+
+Use `wiki/` when:
+
+- a conclusion depends on multiple docs, tests, or validation records
+- a behavior pattern should be captured across controller families, firmware, or wrappers
+- an investigation produces durable insight that would otherwise be lost in chat or scattered notes
+
+Use `README.md`, `docs/`, or `CHANGELOG.md` when:
+
+- the information is user-facing
+- the file is an authoritative validation or audit record
+- the change affects public behavior, installation, API semantics, or release notes
+
+When ingesting a new validation note, audit, or investigation:
+
+1. Update the authoritative source doc first if needed.
+2. Update the relevant page in `wiki/`, or create one if the synthesis does not exist yet.
+3. Update `wiki/index.md` if pages were added or materially reframed.
+4. Append a dated entry to `wiki/log.md`.
+
+Periodic wiki linting should look for:
+
+- stale claims after new validation or release work
+- contradictions between pages
+- orphan or duplicate pages
+- conclusions that should have been promoted into user-facing docs
+
+See `AGENTS.md` and `wiki/README.md` for the maintenance rules and current structure.
+
 ## Pull Request Checklist
 
 - [ ] Tests added/updated for changed behavior
 - [ ] Rust checks pass
 - [ ] C# tests pass
 - [ ] Documentation updated (README/docs/changelog) if needed
+- [ ] Wiki updated if the change adds durable engineering knowledge
 - [ ] Breaking changes called out explicitly
 
 ## Bug Reports

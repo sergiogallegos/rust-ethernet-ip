@@ -33,6 +33,10 @@ Status values:
 
 - [wrapper-parity/rust-vs-csharp.md](wrapper-parity/rust-vs-csharp.md) — Current parity picture between the Rust core and the C# wrapper. `active`
 
+## Investigations
+
+- [investigations/llm-knowledge-base-pattern.md](investigations/llm-knowledge-base-pattern.md) — Repo-specific view of the file-backed LLM knowledge-base pattern and the maintenance risks it introduces. `active`
+
 ## Planned High-Value Pages
 
 - `investigations/native-vs-wrapper-error-surfaces.md` — Mapping of Rust/native error detail to C# wrapper exceptions and messages. `seed`

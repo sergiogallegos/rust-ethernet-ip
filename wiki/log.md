@@ -49,3 +49,16 @@ Sources used:
 - `docs/audit/0.7.0_docs_api_audit.md`
 - `docs/validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md`
 - `docs/validation/2026-04-07_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+
+## [2026-04-09] ingest | add llm knowledge-base pattern investigation
+
+- Added an investigation page describing how the broader file-backed "wiki LLM" pattern maps onto this repository's wiki.
+- Recorded the main benefits of the pattern for this repo and the failure modes that require schema, source hierarchy, and linting discipline.
+- Updated `wiki/index.md` to register the new investigation page.
+
+Sources used:
+
+- `AGENTS.md`
+- `README.md`
+- `wiki/README.md`
+- User-provided excerpts on the file-backed "wiki LLM" and "LLM knowledge bases" workflow

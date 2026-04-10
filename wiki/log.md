@@ -62,3 +62,37 @@ Sources used:
 - `README.md`
 - `wiki/README.md`
 - User-provided excerpts on the file-backed "wiki LLM" and "LLM knowledge bases" workflow
+
+## [2026-04-10] query | recommend macbook dashboard demo strategy
+
+- Added a MacBook dashboard demo strategy page tying the recommendation to the validated Rust, C# wrapper, and example-app paths.
+- Updated `wiki/index.md` to register the new investigation page.
+- Captured the main recommendation that a web app is the best current demo shape for manager-facing access, with backend choice depending on whether the goal is pure Rust proof or .NET integration proof.
+
+Sources used:
+
+- `wiki/releases/0.7.0-validation-synthesis.md`
+- `wiki/wrapper-parity/rust-vs-csharp.md`
+- `wiki/limitations/string-and-udt-write-behavior.md`
+- `docs/validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md`
+- `docs/validation/2026-04-07_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+- `docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md`
+- `docs/validation/2026-04-07_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+- `examples/web_app/README.md`
+- `examples/AspNetExample/README.md`
+- `docs/PLC_TEST_TAG_DEFINITIONS.md`
+
+## [2026-04-10] ingest | implement rust macbook dashboard demo
+
+- Updated `examples/web_app/` from a simple form demo into a manager-facing dashboard with route-path connect, controller identity display, live batch snapshot cards, a speed benchmark panel, and local traceability-event persistence.
+- Expanded the same dashboard to include production-style trend charts and stronger use of the seeded `Program:TestProgram.*` tags for manufacturing-focused views.
+- Updated the MacBook dashboard strategy page to reflect the implemented Rust web path and the current file-backed persistence choice.
+- Updated `examples/web_app/README.md` so the example documentation matches the implemented API surface and demo story.
+
+Sources used:
+
+- `examples/web_app/backend/src/main.rs`
+- `examples/web_app/frontend/src/App.tsx`
+- `examples/web_app/frontend/src/types.ts`
+- `examples/web_app/README.md`
+- `wiki/investigations/macbook-dashboard-demo-strategy.md`

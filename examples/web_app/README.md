@@ -1,6 +1,6 @@
 # PLC Web Application - Rust Backend + React/TypeScript Frontend
 
-This example demonstrates how to build a web application with a native Rust backend and a React/TypeScript frontend for communicating with Allen-Bradley PLCs via EtherNet/IP.
+This example is now a MacBook-oriented manufacturing dashboard demo built on a native Rust `axum` backend and a React/TypeScript frontend for Allen-Bradley PLC communication over EtherNet/IP.
 
 ## Architecture
 
@@ -29,12 +29,16 @@ This example demonstrates how to build a web application with a native Rust back
 
 ## Features
 
-- **Native Rust Backend**: Direct use of the `rust-ethernet-ip` library without C# wrappers
-- **Modern Frontend**: React with TypeScript for type-safe UI development
-- **RESTful API**: Clean HTTP endpoints for PLC operations
-- **Real-time Status**: Connection status monitoring
-- **Tag Operations**: Read and write PLC tags with full data type support
-- **CORS Support**: Configured for development and production
+- **Pure Rust PLC Backend**: Direct use of `rust-ethernet-ip` without wrapper dependencies
+- **MacBook-Ready Web UI**: Manager-facing dashboard layout optimized for browser demos
+- **Route-Path Support**: Direct or routed ControlLogix connection from the connection panel
+- **Controller Identity**: Reads controller identity information for model, firmware, and vendor display
+- **Live Dashboard Snapshot**: Batch-read KPI cards and monitored tag tiles refreshed from the backend
+- **Trend Charts**: Time-series panels for throughput, quality proxy, cycle proxy, and availability proxy
+- **Read/Write Workstation**: Manual single-tag read and write panel for supported primitive paths
+- **Speed Benchmarking**: Runs a live single-vs-batch benchmark using the validated `gTest*` tag set
+- **Traceability Demo**: Stores part-tracking events locally for product-flow storytelling
+- **CORS Enabled**: Ready for local frontend/backend split during development
 
 ## Project Structure
 
@@ -113,12 +117,14 @@ Health check endpoint.
 ```
 
 ### `POST /api/connect`
-Connect to a PLC.
+Connect to a PLC, with optional route-path support.
 
 **Request:**
 ```json
 {
-  "address": "192.168.1.120:44818"
+  "address": "192.168.0.101:44818",
+  "use_route_path": true,
+  "slot": 0
 }
 ```
 
@@ -126,7 +132,17 @@ Connect to a PLC.
 ```json
 {
   "success": true,
-  "message": "Successfully connected to 192.168.1.120:44818"
+  "message": "Connected to 192.168.0.101:44818 using route path slot 0",
+  "status": {
+    "connected": true,
+    "address": "192.168.0.101:44818",
+    "use_route_path": true,
+    "slot": 0,
+    "plc_identity": {
+      "product_name": "1756-L81ES",
+      "firmware": "37.0"
+    }
+  }
 }
 ```
 
@@ -144,11 +160,48 @@ Disconnect from the PLC.
 ### `GET /api/status`
 Get current connection status.
 
-**Response:**
+The response includes connection mode, optional slot, connection timestamp, and PLC identity when available.
+
+### `GET /api/overview`
+Return dashboard-ready context:
+
+- supported feature list
+- validated notes
+- known controller limitations
+- default monitored tag configuration
+
+### `GET /api/demo/snapshot`
+Read the demo KPI tags in one batch and return:
+
+- refresh latency
+- KPI cards
+- monitored signal tiles
+
+### `POST /api/demo/benchmark`
+Run the live speed demo against the validated benchmark tag set.
+
+**Request:**
 ```json
 {
-  "connected": true,
-  "address": "192.168.1.120:44818"
+  "iterations": 25
+}
+```
+
+### `GET /api/traceability`
+Return saved traceability / part-tracking demo events.
+
+### `POST /api/traceability`
+Persist a traceability event locally.
+
+**Request:**
+```json
+{
+  "part_id": "PART-10027",
+  "product_code": "SKU-AXUM-01",
+  "lot_code": "LOT-2026-04A",
+  "station": "Station-3",
+  "status": "Completed",
+  "notes": "MacBook demo event captured from the dashboard."
 }
 ```
 
@@ -216,6 +269,19 @@ The API supports all Allen-Bradley data types:
 - **LREAL**: 64-bit floating point
 - **STRING**: Variable-length string
 
+## Demo Story
+
+The current dashboard is designed to support a live demo flow like this:
+
+1. Connect from the MacBook to a CompactLogix or routed ControlLogix target.
+2. Show the controller model, firmware, and route-path context in the UI.
+3. Show live KPIs, production summary, and monitored tags based on the validated `gTest*` controller and `Program:TestProgram.*` tags.
+4. Show time-series trends for throughput, quality, cycle, and availability proxies.
+5. Run the benchmark panel to compare single operations with batch operations in real time.
+6. Save a traceability event to simulate a part-tracking / production-history workflow.
+
+Traceability persistence is currently local JSON storage under `backend/data/traceability.json`. This keeps the demo self-contained. If the example later needs multi-user durability or query-heavy history, SQLite is the next reasonable upgrade.
+
 ## Usage Example
 
 1. **Start the backend server:**
@@ -233,18 +299,21 @@ The API supports all Allen-Bradley data types:
 3. **Open your browser** to `http://localhost:3000` (or the port shown)
 
 4. **Connect to your PLC:**
-   - Enter the PLC address (e.g., `192.168.1.120:44818`)
-   - Click "Connect"
+   - Enter the PLC address
+   - Enable route path and slot `0` for the validated ControlLogix path if needed
+   - Click `Connect`
 
-5. **Read a tag:**
-   - Enter a tag name (e.g., `TestDINT`)
-   - Click "Read Tag"
+5. **Show controller identity:**
+   - Confirm the dashboard displays the controller model and firmware
 
-6. **Write a tag:**
-   - Enter a tag name
-   - Select the data type
-   - Enter the value
-   - Click "Write Tag"
+6. **Refresh live data:**
+   - Review KPI cards and monitored tags from the batch snapshot panel
+
+7. **Run the speed demo:**
+   - Click the benchmark button to compare single and batch operations
+
+8. **Capture a traceability event:**
+   - Enter part metadata and save a record
 
 ## Development
 
@@ -256,7 +325,7 @@ The backend uses:
 - **Serde**: JSON serialization/deserialization
 - **Tower**: Middleware and utilities
 
-To add new endpoints, edit `backend/src/main.rs` and add new route handlers.
+To add new backend endpoints, edit `backend/src/main.rs`.
 
 ### Frontend Development
 
@@ -336,4 +405,3 @@ This example differs from the C# examples in that:
 ## License
 
 Same license as the main `rust-ethernet-ip` library.
-

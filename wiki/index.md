@@ -36,6 +36,7 @@ Status values:
 ## Investigations
 
 - [investigations/llm-knowledge-base-pattern.md](investigations/llm-knowledge-base-pattern.md) — Repo-specific view of the file-backed LLM knowledge-base pattern and the maintenance risks it introduces. `active`
+- [investigations/macbook-dashboard-demo-strategy.md](investigations/macbook-dashboard-demo-strategy.md) — Recommended MacBook-hosted demo architecture for manager-facing PLC dashboards using the currently validated stacks. `active`
 
 ## Planned High-Value Pages
 

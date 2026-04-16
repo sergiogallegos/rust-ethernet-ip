@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Target next release: `0.7.1`.
+
+### ✨ Added
+- **Windows-first NuGet release workflow**: Added a GitHub Actions release workflow that builds the Rust native library on `windows-latest`, packs the C# wrapper, uploads the `.nupkg` artifact, and publishes to NuGet on version tags when `NUGET_API_KEY` is configured.
+- **NuGet packing scripts**: Added `scripts/pack-nuget.ps1` for Windows `win-x64` native runtime packaging and `scripts/pack-nuget.sh` for local macOS package staging.
+- **Maintainer wiki**: Added `AGENTS.md` workflow instructions plus a `wiki/` synthesis layer for controller behavior, route-path behavior, wrapper parity, limitations, release validation, and investigation notes.
+- **MacBook manufacturing dashboard demo**: Expanded the web dashboard demo with a richer backend/frontend implementation, frontend lockfile, persistent backend data ignore rules, and maintainer strategy notes.
+
+### 🐛 Fixed
+- **NuGet publish package lookup**: Hardened the Windows release workflow so NuGet publishing resolves the generated package path explicitly instead of relying on wildcard expansion in `dotnet nuget push`.
+- **C# package metadata/runtime packaging**: Adjusted the wrapper project to package as a library, align the NuGet license metadata with the repository MIT license, include the package README, and mark native runtime libraries as package content.
+- **C# validation examples on macOS**: Fixed wrapper smoke/benchmark/matrix example projects so they copy `librust_ethernet_ip.dylib` on macOS and `rust_ethernet_ip.dll` on Windows using `MSBuild::IsOSPlatform(...)`.
+- **Rust 1.95 Clippy cleanup**: Removed new Clippy warnings in FFI write helpers and packed BOOL-array decoding without changing runtime behavior.
+- **crates.io README logo rendering**: Switched README logo image URLs from relative paths to absolute GitHub raw URLs so the crate page can render the logo outside the GitHub repository context.
+
+### 📚 Documentation
+- **Main README NuGet guidance**: Documented the published `RustEtherNetIp` NuGet package, CLI install command, `.NET 10` target, and current Windows `win-x64` native runtime focus.
+- **Release process docs**: Updated version-management guidance to use the Windows-first NuGet pack/publish flow.
+- **Official Rockwell source check**: Rechecked official Rockwell EtherNet/IP/data-access publications on 2026-04-16. The repository already tracks the current `1756-PM020I-EN-P` September 2025 data-access manual; `ENET-UM006C-EN-P` September 2025 was added to the traceability matrix as a relevant network-device reference for EtherNet/IP connection/message behavior.
+- **Wiki documentation**: Added maintainer-oriented pages for LLM-maintained repository knowledge, including how synthesis differs from user-facing docs.
+
+### 🧹 Cleanup
+- **Repository ignore rules**: Added Obsidian workspace ignore coverage.
+- **Example formatting**: Applied `cargo fmt` cleanup to touched Rust example files.
+
+### ✅ Verification
+- `cargo clippy --lib -p rust-ethernet-ip --` passes on Rust `1.95.0`.
+- `cargo test --workspace --all-targets` passes when run with local TCP listener permissions for simulator-backed tests.
+- `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal` passes: 41/41 tests.
+- Real ControlLogix validation on 2026-04-16 passed for the exercised Rust and C# wrapper feature sets on `1756-L81ES` via `1756-EN3TR` slot `0`; the remaining 59/392 matrix failures match documented PLC firmware limitations.
+
 ## [0.7.0] - 2026-04-07
 
 ### ✅ 0.7.0 Release Checklist

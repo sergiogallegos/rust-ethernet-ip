@@ -2,8 +2,9 @@
 
 This page tracks the **official technical documentation** used to design, validate, and maintain `rust-ethernet-ip`.
 
-- Verified on: `2026-04-07`
+- Verified on: `2026-04-16`
 - Stable release line: `0.7.0`
+- Next draft line: `0.7.1`
 - Previous stable line: `0.6.3`
 
 ## Official Documentation Matrix
@@ -11,6 +12,8 @@ This page tracks the **official technical documentation** used to design, valida
 | Publication / Spec | Official Source | In-Repo Artifact | How We Use It |
 |---|---|---|---|
 | **1756-PM020I-EN-P** (Logix 5000 Controllers Data Access, Sep 2025) | https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf | [1756-pm020_-en-p.pdf](1756-pm020_-en-p.pdf) and derived notes ([CIP_PROTOCOL_REFERENCE_1756-PM020.md](CIP_PROTOCOL_REFERENCE_1756-PM020.md), [ARRAY_ELEMENT_ADDRESSING_GUIDE.md](ARRAY_ELEMENT_ADDRESSING_GUIDE.md), [AB_String_UDT_Write_Limitations.md](AB_String_UDT_Write_Limitations.md), [UDT_IMPLEMENTATION_REVIEW.md](UDT_IMPLEMENTATION_REVIEW.md)) | Primary reference for CIP services, symbolic path encoding, tag/UDT access, and known STRING/UDT behavior constraints. |
+| **ENET-UM006C-EN-P** (EtherNet/IP Network Devices User Manual, Sep 2025) | https://literature.rockwellautomation.com/idc/groups/literature/documents/um/enet-um006_-en-p.pdf | Referenced externally (not currently mirrored in repo) | Network-device reference for EtherNet/IP terminology, TCP/CIP connection layering, explicit/implicit messaging, and UCMM context. |
+| **1756-RM094N-EN-P** (Logix 5000 Controllers Design Considerations Reference Manual, Sep 2025) | https://literature.rockwellautomation.com/idc/groups/literature/documents/rm/1756-rm094_-en-p.pdf | Referenced externally (not currently mirrored in repo) | Secondary controller-family and network-design context; not a primary tag data-access implementation source. |
 | **ENET-WP001A-EN-P** (EtherNet/IP Industrial Protocol White Paper) | https://literature.rockwellautomation.com/idc/groups/literature/documents/wp/enet-wp001_-en-p.pdf | [enet-wp001_-en-p.pdf](enet-wp001_-en-p.pdf) | Background context on EtherNet/IP architecture and CIP-over-Ethernet principles used for protocol-level framing decisions. |
 | **PUB00213R0** (EtherNet/IP Quick Start for Vendors Handbook, ODVA) | ODVA publication catalog / member resources (ODVA managed) | [PUB00213R0_EtherNetIP_Developers_Guide.pdf](PUB00213R0_EtherNetIP_Developers_Guide.pdf) | Vendor-oriented implementation reference and interoperability guidance used during protocol behavior cross-checks. |
 | **ENET-RM002D-EN-P** (Ethernet Reference Manual) | https://literature.rockwellautomation.com/idc/groups/literature/documents/rm/enet-rm002_-en-p.pdf | Referenced externally (not currently mirrored in repo) | Operational/network behavior reference for Ethernet-level integration and troubleshooting guidance. |
@@ -24,11 +27,23 @@ This page tracks the **official technical documentation** used to design, valida
   - `enet-wp001_-en-p.pdf`
 - ODVA vendor guide (`PUB00213R0`) is also present in `docs/`.
 - Some secondary references are currently link-only (external), not mirrored:
+  - `ENET-UM006`
+  - `1756-RM094`
   - `ENET-RM002`
   - `1756-PM012`
   - `TypeEncode_CIPRW.pdf`
 
-## Recommendation for 0.7.0 Hardening
+## 2026-04-16 Official Publication Check
+
+Rockwell's currently discoverable official material relevant to this library still points to `1756-PM020I-EN-P` (September 2025) as the primary Logix data-access reference. That revision is already tracked in-repo and remains the correct basis for CIP services, symbolic path encoding, tag reads/writes, Multiple Service Packet behavior, UDT access, and BOOL handling.
+
+`ENET-UM006C-EN-P` (September 2025) is a relevant newer network-device source for EtherNet/IP connection terminology and message-type context. It does not supersede `1756-PM020I-EN-P` for tag data access, but it should be kept in the traceability matrix for routing, connection, explicit-message, and UCMM discussions.
+
+`1756-RM094N-EN-P` (September 2025) is useful controller-family/network-design context. It is not currently an implementation reference for this library's tag data-access encoding.
+
+No immediate protocol implementation change was identified from this source check.
+
+## Recommendation for 0.7.1
 
 For full traceability and reproducibility, keep this document updated when:
 

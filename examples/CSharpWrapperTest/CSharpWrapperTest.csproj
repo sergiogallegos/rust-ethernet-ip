@@ -12,8 +12,16 @@
     <ProjectReference Include="..\..\csharp\RustEtherNetIp\RustEtherNetIp.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Use release DLL for both Debug and Release builds for consistency -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <!-- Use release native library for both Debug and Release builds for consistency -->
+    <None Include="..\..\target\release\librust_ethernet_ip.dylib">
+      <Link>librust_ethernet_ip.dylib</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <!-- Use release native library for both Debug and Release builds for consistency -->
     <None Include="..\..\target\release\rust_ethernet_ip.dll">
       <Link>rust_ethernet_ip.dll</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -21,4 +29,3 @@
   </ItemGroup>
 
 </Project>
-

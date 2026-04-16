@@ -26,20 +26,20 @@
     <PackageReleaseNotes>See CHANGELOG.md for detailed release notes</PackageReleaseNotes>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(OS)' == 'OSX'">
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <NativeLibraryFileName>librust_ethernet_ip.dylib</NativeLibraryFileName>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <NativeLibraryFileName>rust_ethernet_ip.dll</NativeLibraryFileName>
   </PropertyGroup>
 
-  <ItemGroup Condition=" '$(OS)' == 'OSX' ">
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <Content Include="../../target/release/librust_ethernet_ip.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>librust_ethernet_ip.dylib</Link>
     </Content>
   </ItemGroup>
-  <ItemGroup Condition=" '$(OS)' == 'Windows_NT' ">
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <Content Include="../../target/release/rust_ethernet_ip.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>rust_ethernet_ip.dll</Link>
@@ -51,8 +51,8 @@
   </ItemGroup>
 
   <Target Name="CopyNativeLibrary" AfterTargets="Build">
-    <Copy SourceFiles="../../target/release/librust_ethernet_ip.dylib" DestinationFolder="$(OutputPath)" Condition="'$(OS)' == 'OSX'" />
-    <Copy SourceFiles="../../target/release/rust_ethernet_ip.dll" DestinationFolder="$(OutputPath)" Condition="'$(OS)' == 'Windows_NT'" />
+    <Copy SourceFiles="../../target/release/librust_ethernet_ip.dylib" DestinationFolder="$(OutputPath)" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+    <Copy SourceFiles="../../target/release/rust_ethernet_ip.dll" DestinationFolder="$(OutputPath)" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
     <Message Text="Copying native library to $(OutputPath)" Importance="high" />
   </Target>
 </Project>

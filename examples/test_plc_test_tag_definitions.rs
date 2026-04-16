@@ -12,8 +12,8 @@
 /// - PLC must be accessible at 192.168.0.1:44818
 /// - ControlLogix CPU in Slot 0 (or adjust CPU_SLOT constant)
 use rust_ethernet_ip::{EipClient, PlcValue, RoutePath};
-use std::env;
 use std::collections::HashMap;
+use std::env;
 
 fn get_plc_address() -> String {
     env::var("TEST_PLC_ADDRESS").unwrap_or_else(|_| "192.168.0.1:44818".to_string())

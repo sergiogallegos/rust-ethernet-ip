@@ -6230,7 +6230,7 @@ impl EipClient {
                             if let Some((_base_name, index)) =
                                 self.parse_array_element_access(tag_name)
                             {
-                                let bit_index = (index % 32) as u32;
+                                let bit_index = index % 32;
                                 let value = (packed_value >> bit_index) & 1 != 0;
                                 tracing::trace!(
                                     "Parsed packed BOOL array element '{}' from DWORD 0x{:08X} using bit {} -> {}",

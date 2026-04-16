@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/brand/logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="images/brand/logo-light.png">
-    <img src="images/brand/logo-light.png" alt="rust-ethernet-ip logo" width="420" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/logo-light.png">
+    <img src="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/logo-light.png" alt="rust-ethernet-ip logo" width="420" />
   </picture>
 </p>
 
@@ -16,6 +16,7 @@ Production-focused EtherNet/IP library for **Allen-Bradley CompactLogix and Cont
 ## Version Status
 
 - Current stable release: `0.7.0`
+- Current working line: `0.7.1` draft, not published to crates.io or NuGet
 - Previous stable release: `0.6.3`
 - Real-hardware validation evidence is included for the release
 
@@ -23,6 +24,7 @@ Release snapshot:
 - simulator, FFI, Rust, and C# regression gates were completed for `0.7.0`
 - real-hardware validation was completed on one CompactLogix and one ControlLogix target
 - `0.7.0` is the current released line
+- `0.7.1` prep currently includes packaging fixes, Rust 1.95 cleanup, crates.io README image rendering, official-source traceability, and 2026-04-16 ControlLogix Rust/C# validation evidence
 
 ## Project Focus
 

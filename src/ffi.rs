@@ -527,19 +527,16 @@ pub unsafe extern "C" fn eip_write_sint(
         Ok(guard) => guard,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            if RUNTIME
-                .block_on(client.write_tag(tag_name_str, PlcValue::Sint(value)))
-                .is_ok()
-            {
-                0
-            } else {
-                -1
-            }
+    clients.get_mut(&client_id).map_or(-1, |client| {
+        if RUNTIME
+            .block_on(client.write_tag(tag_name_str, PlcValue::Sint(value)))
+            .is_ok()
+        {
+            0
+        } else {
+            -1
         }
-        None => -1,
-    }
+    })
 }
 
 // INT (16-bit signed integer) operations
@@ -976,19 +973,16 @@ pub unsafe extern "C" fn eip_write_ulint(
         Ok(guard) => guard,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            if RUNTIME
-                .block_on(client.write_tag(tag_name_str, PlcValue::Ulint(value)))
-                .is_ok()
-            {
-                0
-            } else {
-                -1
-            }
+    clients.get_mut(&client_id).map_or(-1, |client| {
+        if RUNTIME
+            .block_on(client.write_tag(tag_name_str, PlcValue::Ulint(value)))
+            .is_ok()
+        {
+            0
+        } else {
+            -1
         }
-        None => -1,
-    }
+    })
 }
 
 /// Read a REAL tag
@@ -1105,19 +1099,16 @@ pub unsafe extern "C" fn eip_write_lreal(
         Ok(guard) => guard,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            if RUNTIME
-                .block_on(client.write_tag(tag_name_str, PlcValue::Lreal(value)))
-                .is_ok()
-            {
-                0
-            } else {
-                -1
-            }
+    clients.get_mut(&client_id).map_or(-1, |client| {
+        if RUNTIME
+            .block_on(client.write_tag(tag_name_str, PlcValue::Lreal(value)))
+            .is_ok()
+        {
+            0
+        } else {
+            -1
         }
-        None => -1,
-    }
+    })
 }
 
 /// Read a STRING tag

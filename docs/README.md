@@ -4,6 +4,7 @@ This folder contains project documentation for `rust-ethernet-ip`.
 
 Current release state:
 - Stable published line: `0.7.0`
+- Working draft line: `0.7.1` (not published)
 - Previous stable line: `0.6.3`
 
 ## Start Here
@@ -17,8 +18,11 @@ Current release state:
 
 ## Release and Quality Gates
 
+- [release/0.7.1_RELEASE_NOTES_DRAFT.md](release/0.7.1_RELEASE_NOTES_DRAFT.md)
 - [0.7.0_HARDENING_GATE.md](0.7.0_HARDENING_GATE.md)
 - [validation/REAL_PLC_TESTING.md](validation/REAL_PLC_TESTING.md)
+- [validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
+- [validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 - [audit/0.7.0_docs_api_audit.md](audit/0.7.0_docs_api_audit.md)
 - [audit/0.7.0_open_issues_triage.md](audit/0.7.0_open_issues_triage.md)
 - [compat/0.7.0_route_udt_compatibility.md](compat/0.7.0_route_udt_compatibility.md)

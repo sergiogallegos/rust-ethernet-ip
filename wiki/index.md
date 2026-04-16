@@ -16,6 +16,7 @@ Status values:
 ## Releases
 
 - [releases/0.7.0-validation-synthesis.md](releases/0.7.0-validation-synthesis.md) — Consolidated real-hardware and gate-level view of `0.7.0` validation. `active`
+- [releases/0.7.1-validation-synthesis.md](releases/0.7.1-validation-synthesis.md) — Follow-up ControlLogix validation view for the draft `0.7.1` line. `active`
 
 ## Controllers
 
@@ -37,6 +38,7 @@ Status values:
 
 - [investigations/llm-knowledge-base-pattern.md](investigations/llm-knowledge-base-pattern.md) — Repo-specific view of the file-backed LLM knowledge-base pattern and the maintenance risks it introduces. `active`
 - [investigations/macbook-dashboard-demo-strategy.md](investigations/macbook-dashboard-demo-strategy.md) — Recommended MacBook-hosted demo architecture for manager-facing PLC dashboards using the currently validated stacks. `active`
+- [investigations/rockwell-official-docs-2026-04-16.md](investigations/rockwell-official-docs-2026-04-16.md) — 2026-04-16 check of current official Rockwell EtherNet/IP and Logix data-access publications. `active`
 
 ## Planned High-Value Pages
 

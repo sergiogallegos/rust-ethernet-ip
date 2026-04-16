@@ -96,3 +96,32 @@ Sources used:
 - `examples/web_app/frontend/src/types.ts`
 - `examples/web_app/README.md`
 - `wiki/investigations/macbook-dashboard-demo-strategy.md`
+
+## [2026-04-16] ingest | check current Rockwell official docs
+
+- Added a Rockwell official documentation check investigation page.
+- Updated `wiki/index.md` to register the new page.
+- Recorded that `1756-PM020I-EN-P` remains the primary Logix data-access implementation source and that `ENET-UM006C-EN-P` should be tracked as a relevant EtherNet/IP connection/messaging reference.
+- No immediate protocol implementation change was identified.
+
+Sources used:
+
+- `docs/OFFICIAL_SOURCES.md`
+- `docs/release/0.7.1_RELEASE_NOTES_DRAFT.md`
+- Rockwell `1756-PM020I-EN-P`, Logix 5000 Controllers Data Access, September 2025
+- Rockwell `ENET-UM006C-EN-P`, EtherNet/IP Network Devices User Manual, September 2025
+- Rockwell `1756-RM094N-EN-P`, Logix 5000 Controllers Design Considerations Reference Manual, September 2025
+
+## [2026-04-16] ingest | record 0.7.1 ControlLogix validation
+
+- Added a `0.7.1` validation synthesis page.
+- Updated `wiki/index.md` to register the new page.
+- Recorded that Rust and C# wrapper real-PLC validation passed on the exercised `1756-L81ES` routed ControlLogix feature set, with remaining full-matrix failures matching known firmware limitations.
+- Recorded the C# validation-example native-library copy fix found during the run.
+
+Sources used:
+
+- `docs/validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+- `docs/validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+- `docs/release/0.7.1_RELEASE_NOTES_DRAFT.md`
+- `CHANGELOG.md`

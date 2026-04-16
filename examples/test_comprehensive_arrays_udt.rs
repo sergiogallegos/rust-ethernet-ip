@@ -437,7 +437,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         Ok(value) => {
             println!("   ✅ Read successful: {:?}", value);
-            restore_values.insert("Program:TestProgram.gTestArray_DINT[5]".to_string(), value.clone());
+            restore_values.insert(
+                "Program:TestProgram.gTestArray_DINT[5]".to_string(),
+                value.clone(),
+            );
 
             // Write new value
             println!("   Writing: Program:TestProgram.gTestArray_DINT[5] = 5555");

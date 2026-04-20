@@ -338,11 +338,10 @@
 // =========================================================================
 
 use crate::udt::UdtManager;
-use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -570,17 +569,8 @@ impl Default for RoutePath {
     }
 }
 
-// Static runtime and client management for FFI
-lazy_static! {
-    /// Global Tokio runtime for handling async operations in FFI context
-    static ref RUNTIME: Runtime = Runtime::new().unwrap();
-
-    /// Global storage for EipClient instances, indexed by client ID
-    static ref CLIENTS: Mutex<HashMap<i32, EipClient>> = Mutex::new(HashMap::new());
-
-    /// Counter for generating unique client IDs
-    static ref NEXT_ID: Mutex<i32> = Mutex::new(1);
-}
+/// Global Tokio runtime for handling async operations in FFI context
+static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| Runtime::new().unwrap());
 
 // =========================================================================
 // BATCH OPERATIONS DATA STRUCTURES
@@ -1623,7 +1613,9 @@ impl EipClient {
         // Perform recursive drill-down discovery (similar to TypeScript implementation)
         let hierarchical_tags = {
             let tag_manager = self.tag_manager.lock().await;
-            tag_manager.drill_down_tags(&tags).await?
+            let hierarchical_tags = tag_manager.drill_down_tags(&tags).await?;
+            drop(tag_manager);
+            hierarchical_tags
         };
 
         tracing::debug!(
@@ -1831,8 +1823,7 @@ impl EipClient {
     pub async fn get_tag_metadata(&self, tag_name: &str) -> Option<TagMetadata> {
         let tag_manager = self.tag_manager.lock().await;
         let cache = tag_manager.cache.read().unwrap();
-        let result = cache.get(tag_name).cloned();
-        result
+        cache.get(tag_name).cloned()
     }
 
     /// Reads a tag value from the PLC
@@ -1909,33 +1900,33 @@ impl EipClient {
         if let Some((base_name, index)) = self.parse_array_element_access(tag_name) {
             // Only use workaround if there's no member access after the array brackets
             // Find the FIRST [ and ] pair to check for member access after it
-            if let Some(bracket_start) = tag_name.find('[') {
-                if let Some(bracket_end_rel) = tag_name[bracket_start..].find(']') {
-                    let bracket_end_abs = bracket_start + bracket_end_rel;
-                    let after_bracket = &tag_name[bracket_end_abs + 1..];
+            if let Some(bracket_start) = tag_name.find('[')
+                && let Some(bracket_end_rel) = tag_name[bracket_start..].find(']')
+            {
+                let bracket_end_abs = bracket_start + bracket_end_rel;
+                let after_bracket = &tag_name[bracket_end_abs + 1..];
+                tracing::debug!(
+                    "Array element detected for '{}': base='{}', index={}, after_bracket='{}'",
+                    tag_name,
+                    base_name,
+                    index,
+                    after_bracket
+                );
+                // If there's a dot after the bracket, it's a member access - use TagPath::parse() instead
+                if !after_bracket.starts_with('.') {
                     tracing::debug!(
-                        "Array element detected for '{}': base='{}', index={}, after_bracket='{}'",
-                        tag_name,
+                        "Detected simple array element access: {}[{}], using workaround",
+                        base_name,
+                        index
+                    );
+                    return self.read_array_element_workaround(&base_name, index).await;
+                } else {
+                    tracing::debug!(
+                        "Array element '{}[{}]' has member access after bracket ('{}'), using TagPath::parse()",
                         base_name,
                         index,
                         after_bracket
                     );
-                    // If there's a dot after the bracket, it's a member access - use TagPath::parse() instead
-                    if !after_bracket.starts_with('.') {
-                        tracing::debug!(
-                            "Detected simple array element access: {}[{}], using workaround",
-                            base_name,
-                            index
-                        );
-                        return self.read_array_element_workaround(&base_name, index).await;
-                    } else {
-                        tracing::debug!(
-                            "Array element '{}[{}]' has member access after bracket ('{}'), using TagPath::parse()",
-                            base_name,
-                            index,
-                            after_bracket
-                        );
-                    }
                 }
             }
         }
@@ -2008,18 +1999,17 @@ impl EipClient {
     /// Parses array element access syntax (e.g., "ArrayName[0]") and returns (base_name, index)
     fn parse_array_element_access(&self, tag_name: &str) -> Option<(String, u32)> {
         // Look for array bracket notation
-        if let Some(bracket_pos) = tag_name.rfind('[') {
-            if let Some(close_bracket_pos) = tag_name.rfind(']') {
-                if close_bracket_pos > bracket_pos {
-                    let base_name = tag_name[..bracket_pos].to_string();
-                    let index_str = &tag_name[bracket_pos + 1..close_bracket_pos];
-                    if let Ok(index) = index_str.parse::<u32>() {
-                        // Make sure there are no more brackets after this (multi-dimensional arrays not supported yet)
-                        if !tag_name[..bracket_pos].contains('[') {
-                            return Some((base_name, index));
-                        }
-                    }
-                }
+        if let Some(bracket_pos) = tag_name.rfind('[')
+            && let Some(close_bracket_pos) = tag_name.rfind(']')
+            && close_bracket_pos > bracket_pos
+        {
+            let base_name = tag_name[..bracket_pos].to_string();
+            let index_str = &tag_name[bracket_pos + 1..close_bracket_pos];
+            if let Ok(index) = index_str.parse::<u32>()
+                && !tag_name[..bracket_pos].contains('[')
+            {
+                // Make sure there are no more brackets after this (multi-dimensional arrays not supported yet)
+                return Some((base_name, index));
             }
         }
         None
@@ -2398,7 +2388,7 @@ impl EipClient {
             )));
         };
 
-        if bytes.len() % element_size != 0 {
+        if !bytes.len().is_multiple_of(element_size) {
             return Err(EtherNetIpError::Protocol(format!(
                 "Array payload length {} is not aligned to element size {}",
                 bytes.len(),
@@ -2767,7 +2757,7 @@ impl EipClient {
         full_path.extend_from_slice(&self.build_element_id_segment(start_index));
 
         // Ensure path is word-aligned
-        if full_path.len() % 2 != 0 {
+        if !full_path.len().is_multiple_of(2) {
             full_path.push(0x00);
         }
 
@@ -3245,12 +3235,12 @@ impl EipClient {
         request.push(0x4C);
 
         // Path size (in words) - tag name + array index
-        let path_size = 2 + (tag_name.len() + 1) / 2; // Round up for word alignment
+        let path_size = 2 + tag_name.len().div_ceil(2); // Round up for word alignment
         request.push(path_size as u8);
 
         // Path: tag name
         request.extend_from_slice(tag_name.as_bytes());
-        if tag_name.len() % 2 != 0 {
+        if !tag_name.len().is_multiple_of(2) {
             request.push(0); // Pad to word boundary
         }
 
@@ -3742,7 +3732,7 @@ impl EipClient {
 
             if offset
                 .checked_add(name_length)
-                .map_or(true, |end| end > response.len())
+                .is_none_or(|end| end > response.len())
             {
                 break; // Not enough data for tag name
             }
@@ -3969,7 +3959,7 @@ impl EipClient {
 
             // Request Path Size (in words)
             let tag_bytes = tag_name.as_bytes();
-            let path_len = if tag_bytes.len() % 2 == 0 {
+            let path_len = if tag_bytes.len().is_multiple_of(2) {
                 tag_bytes.len() + 2
             } else {
                 tag_bytes.len() + 3
@@ -3982,7 +3972,7 @@ impl EipClient {
             cip_request.extend_from_slice(tag_bytes);
 
             // Pad to word boundary if needed
-            if tag_bytes.len() % 2 != 0 {
+            if !tag_bytes.len().is_multiple_of(2) {
                 cip_request.push(0x00);
             }
 
@@ -4807,7 +4797,7 @@ impl EipClient {
 
             if pos
                 .checked_add(item_length)
-                .map_or(true, |end| end > response.len())
+                .is_none_or(|end| end > response.len())
             {
                 return Err(EtherNetIpError::Protocol("Data item truncated".to_string()));
             }
@@ -5449,7 +5439,7 @@ impl EipClient {
         full_path.extend_from_slice(&element_segment);
 
         // Ensure path is word-aligned
-        if full_path.len() % 2 != 0 {
+        if !full_path.len().is_multiple_of(2) {
             full_path.push(0x00);
         }
 
@@ -5479,7 +5469,7 @@ impl EipClient {
         // Build the application path (tag name)
         // NOTE: Route path does NOT go here - it goes at the end of Unconnected Send message
         // Reference: EtherNetIP_Connection_Paths_and_Routing.md
-        let app_path = match TagPath::parse(tag_name) {
+        match TagPath::parse(tag_name) {
             Ok(tag_path) => {
                 tracing::debug!("Parsed tag path for '{}': {:?}", tag_name, tag_path);
                 // Generate CIP path using the proper parser
@@ -5506,9 +5496,7 @@ impl EipClient {
                 // Fallback to old method if parsing fails
                 self.build_simple_tag_path_legacy(tag_name)
             }
-        };
-
-        app_path
+        }
     }
 
     /// Builds a simple tag path (no program prefix) - legacy method for fallback
@@ -5519,7 +5507,7 @@ impl EipClient {
         path.extend_from_slice(tag_name.as_bytes());
 
         // Pad to even length if necessary
-        if tag_name.len() % 2 != 0 {
+        if !tag_name.len().is_multiple_of(2) {
             path.push(0x00);
         }
 
@@ -6226,21 +6214,20 @@ impl EipClient {
                             value_data[3],
                         ]);
 
-                        if let BatchOperation::Read { tag_name } = operation {
-                            if let Some((_base_name, index)) =
+                        if let BatchOperation::Read { tag_name } = operation
+                            && let Some((_base_name, index)) =
                                 self.parse_array_element_access(tag_name)
-                            {
-                                let bit_index = index % 32;
-                                let value = (packed_value >> bit_index) & 1 != 0;
-                                tracing::trace!(
-                                    "Parsed packed BOOL array element '{}' from DWORD 0x{:08X} using bit {} -> {}",
-                                    tag_name,
-                                    packed_value,
-                                    bit_index,
-                                    value
-                                );
-                                return Ok(Some(PlcValue::Bool(value)));
-                            }
+                        {
+                            let bit_index = index % 32;
+                            let value = (packed_value >> bit_index) & 1 != 0;
+                            tracing::trace!(
+                                "Parsed packed BOOL array element '{}' from DWORD 0x{:08X} using bit {} -> {}",
+                                tag_name,
+                                packed_value,
+                                bit_index,
+                                value
+                            );
+                            return Ok(Some(PlcValue::Bool(value)));
                         }
 
                         tracing::trace!(
@@ -6891,7 +6878,7 @@ impl EipClient {
 
         // Tag path - use simple ANSI format for connected messaging
         let tag_bytes = tag_name.as_bytes();
-        let path_size_words = (2 + tag_bytes.len() + 1) / 2; // +1 for potential padding, /2 for word count
+        let path_size_words = (2 + tag_bytes.len()).div_ceil(2); // +1 for potential padding, /2 for word count
         request.push(path_size_words as u8);
 
         request.push(0x91); // ANSI symbol segment
@@ -6899,7 +6886,7 @@ impl EipClient {
         request.extend_from_slice(tag_bytes);
 
         // Add padding byte if needed to make path even length
-        if (2 + tag_bytes.len()) % 2 != 0 {
+        if !(2 + tag_bytes.len()).is_multiple_of(2) {
             request.push(0x00);
         }
 
@@ -7105,7 +7092,7 @@ impl EipClient {
 
             if pos
                 .checked_add(item_length)
-                .map_or(true, |end| end > response.len())
+                .is_none_or(|end| end > response.len())
             {
                 return Err(EtherNetIpError::Protocol(
                     "Connected data item truncated".to_string(),
@@ -7263,7 +7250,7 @@ impl EipClient {
 
         // Request Path Size (in words)
         let tag_bytes = tag_name.as_bytes();
-        let path_len = if tag_bytes.len() % 2 == 0 {
+        let path_len = if tag_bytes.len().is_multiple_of(2) {
             tag_bytes.len() + 2
         } else {
             tag_bytes.len() + 3
@@ -7276,7 +7263,7 @@ impl EipClient {
         cip_request.extend_from_slice(tag_bytes); // Tag name
 
         // Pad to even length if necessary
-        if tag_bytes.len() % 2 != 0 {
+        if !tag_bytes.len().is_multiple_of(2) {
             cip_request.push(0x00);
         }
 

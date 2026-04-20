@@ -5,14 +5,9 @@
 
 use rust_ethernet_ip::{EipClient, PlcValue, UdtData};
 use std::collections::HashMap;
-use tracing;
-
 /// Helper function to check if a PLC is available for testing
 async fn is_plc_available(address: &str) -> bool {
-    match EipClient::connect(address).await {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    EipClient::connect(address).await.is_ok()
 }
 
 #[tokio::test]
@@ -109,10 +104,10 @@ async fn test_udt_write_with_symbol_id() {
     };
 
     // Write it back
-    match client
+    let write_result = client
         .write_tag("Part_Data", PlcValue::Udt(modified_udt.clone()))
-        .await
-    {
+        .await;
+    match write_result {
         Ok(_) => {
             tracing::info!(
                 "UDT written successfully with symbol_id: {}",
@@ -144,7 +139,8 @@ async fn test_udt_write_auto_reads_symbol_id() {
     };
 
     // Write should automatically read symbol_id if it's 0
-    match client.write_tag("Part_Data", PlcValue::Udt(udt_data)).await {
+    let write_result = client.write_tag("Part_Data", PlcValue::Udt(udt_data)).await;
+    match write_result {
         Ok(_) => {
             tracing::info!("UDT write with auto symbol_id read succeeded");
         }

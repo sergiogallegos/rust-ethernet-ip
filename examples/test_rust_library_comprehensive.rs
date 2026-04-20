@@ -182,7 +182,7 @@ async fn test_udt_full(client: &mut EipClient) -> Result<(), Box<dyn std::error:
             println!("   📊 UDT Symbol ID: {}", udt_data.symbol_id);
             println!("   📊 UDT Data Length: {} bytes", udt_data.data.len());
 
-            if udt_data.data.len() > 0 {
+            if !udt_data.data.is_empty() {
                 println!(
                     "   ✅ UDT read successful with {} bytes of data",
                     udt_data.data.len()

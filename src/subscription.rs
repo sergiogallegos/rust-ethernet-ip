@@ -4,8 +4,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
-use async_stream::stream;
-use futures::Stream;
+use futures::{stream, Stream};
 
 /// Configuration options for tag subscriptions
 #[derive(Debug, Clone)]
@@ -75,10 +74,10 @@ impl TagSubscription {
         let mut last_value = self.last_value.lock().await;
 
         // Check if value has changed enough to notify
-        if let Some(old) = last_value.as_ref() {
-            if !Self::value_changed(old, value, self.options.change_threshold) {
-                return Ok(());
-            }
+        if let Some(old) = last_value.as_ref()
+            && !Self::value_changed(old, value, self.options.change_threshold)
+        {
+            return Ok(());
         }
 
         // Update value and send notification
@@ -117,15 +116,21 @@ impl TagSubscription {
     /// Waits for the next value update
     pub async fn wait_for_update(&self) -> Result<PlcValue> {
         let mut receiver = self.receiver.lock().await;
-        receiver
-            .recv()
-            .await
-            .ok_or_else(|| EtherNetIpError::Subscription("Channel closed".to_string()))
+        let next_value = receiver.recv().await;
+        drop(receiver);
+        next_value.ok_or_else(|| EtherNetIpError::Subscription("Channel closed".to_string()))
     }
 
     /// Gets the last value received
     pub async fn get_last_value(&self) -> Option<PlcValue> {
         self.last_value.lock().await.clone()
+    }
+
+    async fn recv_next_value(&self) -> Option<PlcValue> {
+        let mut receiver = self.receiver.lock().await;
+        let next_value = receiver.recv().await;
+        drop(receiver);
+        next_value
     }
 
     /// Returns an async stream of value updates for this subscription.
@@ -145,18 +150,10 @@ impl TagSubscription {
     /// }
     /// ```
     pub fn into_stream(self: Arc<Self>) -> impl Stream<Item = PlcValue> + Send {
-        stream! {
-            loop {
-                let v = {
-                    let mut receiver = self.receiver.lock().await;
-                    receiver.recv().await
-                };
-                match v {
-                    Some(plc_value) => yield plc_value,
-                    None => break,
-                }
-            }
-        }
+        stream::unfold(self, |subscription| async move {
+            let next_value = subscription.recv_next_value().await;
+            next_value.map(|plc_value| (plc_value, subscription))
+        })
     }
 }
 

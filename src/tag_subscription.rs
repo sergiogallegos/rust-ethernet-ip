@@ -72,10 +72,10 @@ impl TagSubscription {
         let mut last_value = self.last_value.lock().await;
 
         // Check if value has changed enough to notify
-        if let Some(old) = last_value.as_ref() {
-            if !Self::value_changed(old, value, self.options.change_threshold) {
-                return Ok(());
-            }
+        if let Some(old) = last_value.as_ref()
+            && !Self::value_changed(old, value, self.options.change_threshold)
+        {
+            return Ok(());
         }
 
         // Update value and send notification
@@ -114,10 +114,9 @@ impl TagSubscription {
     /// Waits for the next value update
     pub async fn wait_for_update(&self) -> Result<PlcValue> {
         let mut receiver = self.receiver.lock().await;
-        receiver
-            .recv()
-            .await
-            .ok_or_else(|| EtherNetIpError::Subscription("Channel closed".to_string()))
+        let next_value = receiver.recv().await;
+        drop(receiver);
+        next_value.ok_or_else(|| EtherNetIpError::Subscription("Channel closed".to_string()))
     }
 
     /// Gets the last value received

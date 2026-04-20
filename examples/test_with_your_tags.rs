@@ -205,11 +205,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Test array element
                 let element_tag = format!("Program:{}.{}[0]", PROGRAM_NAME, tag);
-                match client.read_tag(&element_tag).await {
-                    Ok(v) => {
-                        println!("   ✅ Program array element read: {:?}", v);
-                    }
-                    Err(_) => {}
+                if let Ok(v) = client.read_tag(&element_tag).await {
+                    println!("   ✅ Program array element read: {:?}", v);
                 }
                 break;
             }

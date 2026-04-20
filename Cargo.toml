@@ -7,7 +7,7 @@ members = [
 [package]
 name = "rust-ethernet-ip"
 version = "0.7.0"
-edition = "2021"
+edition = "2024"
 authors = ["Sergio Gallegos <sergio@example.com>"]
 description = "High-performance EtherNet/IP communication library for Allen-Bradley CompactLogix and ControlLogix PLCs"
 license = "MIT"
@@ -17,7 +17,7 @@ documentation = "https://docs.rs/rust_ethernet_ip"
 readme = "README.md"
 keywords = ["ethernet-ip", "plc", "industrial", "automation", "allen-bradley"]
 categories = ["network-programming", "embedded", "api-bindings"]
-rust-version = "1.70"
+rust-version = "1.95"
 
 # Publish only the Rust crate payload needed by consumers.
 include = [
@@ -50,12 +50,10 @@ bytes = "1.0"
 thiserror = "1.0"
 async-trait = "0.1"
 futures = "0.3"
-async-stream = "0.3"
 log = "0.4"
 env_logger = "0.10"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-lazy_static = "1.4"
 vergen = { version = "8.3", features = ["build", "git", "gitcl"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

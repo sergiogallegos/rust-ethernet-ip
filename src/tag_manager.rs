@@ -92,10 +92,10 @@ impl TagCache {
     /// Gets a tag from the cache if it exists and hasn't expired
     #[allow(dead_code)]
     pub fn get_tag(&self, name: &str) -> Option<&TagMetadata> {
-        if let Some((metadata, timestamp)) = self.tags.get(name) {
-            if timestamp.elapsed() < self.expiration {
-                return Some(metadata);
-            }
+        if let Some((metadata, timestamp)) = self.tags.get(name)
+            && timestamp.elapsed() < self.expiration
+        {
+            return Some(metadata);
         }
         None
     }
@@ -224,20 +224,20 @@ impl TagManager {
                             tag_names.insert(full_name.clone());
 
                             // Recursively discover nested structures
-                            if member_metadata.is_structure() && !member_metadata.is_array {
-                                if let Ok(nested_members) =
+                            if member_metadata.is_structure()
+                                && !member_metadata.is_array
+                                && let Ok(nested_members) =
                                     self.discover_udt_members(client, &full_name).await
-                                {
-                                    for (nested_name, nested_metadata) in nested_members {
-                                        let nested_full_name =
-                                            format!("{}.{}", full_name, nested_name);
-                                        if self.validate_tag_name(&nested_full_name)
-                                            && !tag_names.contains(&nested_full_name)
-                                        {
-                                            all_tags
-                                                .push((nested_full_name.clone(), nested_metadata));
-                                            tag_names.insert(nested_full_name);
-                                        }
+                            {
+                                for (nested_name, nested_metadata) in nested_members {
+                                    let nested_full_name =
+                                        format!("{}.{}", full_name, nested_name);
+                                    if self.validate_tag_name(&nested_full_name)
+                                        && !tag_names.contains(&nested_full_name)
+                                    {
+                                        all_tags
+                                            .push((nested_full_name.clone(), nested_metadata));
+                                        tag_names.insert(nested_full_name);
                                     }
                                 }
                             }
@@ -348,7 +348,7 @@ impl TagManager {
         request.push(0x4C);
 
         // Path size (in words)
-        let path_size = 2 + (udt_name.len() + 1) / 2; // Round up for word alignment
+        let path_size = 2 + udt_name.len().div_ceil(2); // Round up for word alignment
         request.push(path_size as u8);
 
         // Path: Symbolic segment
@@ -357,7 +357,7 @@ impl TagManager {
         request.extend_from_slice(udt_name.as_bytes());
 
         // Pad to word boundary if needed
-        if udt_name.len() % 2 != 0 {
+        if !udt_name.len().is_multiple_of(2) {
             request.push(0x00);
         }
 
@@ -626,7 +626,7 @@ impl TagManager {
             // Check if we have enough bytes for the tag name
             if offset
                 .checked_add(name_length)
-                .map_or(true, |end| end > response.len())
+                .is_none_or(|end| end > response.len())
             {
                 tracing::warn!(
                     "Not enough bytes for tag name at offset {} (need {}, have {})",

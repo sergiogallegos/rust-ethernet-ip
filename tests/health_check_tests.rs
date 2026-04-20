@@ -61,7 +61,8 @@ mod tests {
             };
 
         // Check detailed health
-        match client.check_health_detailed().await {
+        let health_result = client.check_health_detailed().await;
+        match health_result {
             Ok(is_healthy) => {
                 tracing::info!("Detailed health check result: {}", is_healthy);
                 assert!(is_healthy, "Connected client should be healthy");

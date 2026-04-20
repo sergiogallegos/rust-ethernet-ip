@@ -1,16 +1,16 @@
 [package]
 name = "plc-web-backend"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [workspace]
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1.0", features = ["full"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
@@ -24,4 +24,3 @@ anyhow = "1.0"
 
 # Library dependency (path to parent)
 rust-ethernet-ip = { path = "../../../" }
-

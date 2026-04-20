@@ -125,3 +125,69 @@ Sources used:
 - `docs/validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
 - `docs/release/0.7.1_RELEASE_NOTES_DRAFT.md`
 - `CHANGELOG.md`
+
+## [2026-04-19] query | assess rust toolchain baseline
+
+- Added a Rust toolchain baseline investigation page.
+- Updated `wiki/index.md` to register the new page.
+- Recorded that local development is already on Rust `1.95.0`, while the crate at that point still declared `rust-version = "1.70"` and `edition = "2021"`.
+- Recorded that `cargo check --all-targets` passes on Rust `1.95.0`, but a Rust 2024 migration is not yet a low-risk mechanical bump because `cargo fix --edition` surfaced async temporary drop-order warnings.
+
+Sources used:
+
+- `Cargo.toml`
+- `examples/desktop_app/Cargo.toml`
+- `examples/web_app/backend/Cargo.toml`
+- `README.md`
+- `examples/desktop_app/README.md`
+- `docs/VERSION_MANAGEMENT.md`
+- Rust 1.95.0 release post, `https://blog.rust-lang.org/2026/04/16/Rust-1.95.0/`
+
+## [2026-04-19] reframe | rust 2024 prep pass
+
+- Updated the Rust toolchain baseline investigation after a source refactor pass aimed at Rust 2024 compatibility without changing the edition.
+- Recorded that explicit local bindings and guard drops removed the repo-owned async/drop-order warnings in core code, examples, and tests.
+- Recorded that the remaining repo-owned Rust 2024 warnings are concentrated in `src/ffi.rs`, where exported `#[no_mangle]` entry points would want Rust 2024 unsafe attributes that conflicted with the then-current `rust-version = "1.70"` baseline.
+
+## [2026-04-19] reframe | finalize rust 2024 baseline
+
+- Raised the crate compiler baseline to Rust `1.95` and updated workspace manifests to `edition = "2024"`.
+- Converted exported FFI entry points in `src/ffi.rs` from `#[no_mangle]` to `#[unsafe(no_mangle)]`.
+- Updated current MSRV-facing docs and the Rust toolchain baseline investigation to reflect the new baseline.
+
+Sources used:
+
+- `Cargo.toml`
+- `examples/desktop_app/Cargo.toml`
+- `examples/web_app/backend/Cargo.toml`
+- `src/ffi.rs`
+- `README.md`
+- `examples/desktop_app/README.md`
+- Rust Edition Guide, unsafe attributes, `https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-attributes.html`
+
+Sources used:
+
+- `src/plc_manager.rs`
+- `src/subscription.rs`
+- `src/tag_subscription.rs`
+- `src/tag_group.rs`
+- `src/lib.rs`
+- `src/main.rs`
+- `examples/desktop_app/src/main.rs`
+- `tests/health_check_tests.rs`
+- `tests/subscription_tests.rs`
+- `tests/array_read_write_tests.rs`
+- `tests/batch_operations_tests.rs`
+- `tests/udt_data_tests.rs`
+- `src/ffi.rs`
+
+## [2026-04-19] lint | align rust baseline wiki wording
+
+- Updated `wiki/index.md` to describe the Rust toolchain investigation as the finalized Rust 2024 / Rust 1.95 baseline, not a pre-migration assessment.
+- Recorded that the current wiki summary should match the already-applied manifest and FFI export changes.
+
+Sources used:
+
+- `wiki/index.md`
+- `wiki/investigations/rust-toolchain-baseline-2026-04-19.md`
+- `Cargo.toml`

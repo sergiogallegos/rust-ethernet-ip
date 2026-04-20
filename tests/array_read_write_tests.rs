@@ -16,8 +16,6 @@ mod tests {
     use rust_ethernet_ip::{EipClient, PlcValue};
     use std::env;
     use tokio::time::{timeout, Duration};
-    use tracing;
-
     // Helper function to get test PLC address from environment or use default
     fn get_test_plc_address() -> String {
         env::var("TEST_PLC_ADDRESS").unwrap_or_else(|_| "192.168.0.1:44818".to_string())
@@ -112,7 +110,7 @@ mod tests {
         // Test writing array elements
         for i in 0..5 {
             let tag_name = format!("gArrayTest[{}]", i);
-            let test_value = PlcValue::Dint((i + 1) as i32 * 10);
+            let test_value = PlcValue::Dint((i + 1) * 10);
 
             match client.write_tag(&tag_name, test_value.clone()).await {
                 Ok(_) => {
@@ -251,7 +249,8 @@ mod tests {
         // Test reading a single element from middle of array (not element 0)
         // This verifies that direct element addressing is used (not reading entire array)
         let tag_name = "gArrayTest[10]";
-        match client.read_tag(tag_name).await {
+        let read_result = client.read_tag(tag_name).await;
+        match read_result {
             Ok(value) => {
                 tracing::info!(
                     "Read {} using direct element addressing: {:?}",
@@ -335,7 +334,8 @@ mod tests {
         let tag_name = "gArrayTest[15]";
         let test_value = PlcValue::Dint(999);
 
-        match client.write_tag(tag_name, test_value.clone()).await {
+        let write_result = client.write_tag(tag_name, test_value.clone()).await;
+        match write_result {
             Ok(_) => {
                 tracing::info!(
                     "Wrote {} using direct element addressing: {:?}",
@@ -389,7 +389,8 @@ mod tests {
 
         // Test reading element 300 (requires 16-bit element ID segment)
         let tag_name = "gArrayTest[300]";
-        match client.read_tag(tag_name).await {
+        let read_result = client.read_tag(tag_name).await;
+        match read_result {
             Ok(value) => {
                 tracing::info!(
                     "Read {} using 16-bit element addressing: {:?}",

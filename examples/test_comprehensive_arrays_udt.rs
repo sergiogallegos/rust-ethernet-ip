@@ -28,24 +28,19 @@ fn get_cpu_slot() -> u8 {
 /// Helper function to determine which tag scope works (controller or program)
 async fn detect_tag_scope(client: &mut EipClient) -> String {
     // Try controller-scoped first (simpler)
-    match client.read_tag("gTestArray_DINT[0]").await {
-        Ok(_) => {
-            println!("✅ Using controller-scoped tags");
-            return String::new(); // Empty prefix for controller-scoped
-        }
-        Err(_) => {}
+    if client.read_tag("gTestArray_DINT[0]").await.is_ok() {
+        println!("✅ Using controller-scoped tags");
+        return String::new(); // Empty prefix for controller-scoped
     }
 
     // Try program-scoped
-    match client
+    if client
         .read_tag("Program:TestProgram.gTestArray_DINT[0]")
         .await
+        .is_ok()
     {
-        Ok(_) => {
-            println!("✅ Using program-scoped tags (Program:TestProgram.*)");
-            return "Program:TestProgram.".to_string();
-        }
-        Err(_) => {}
+        println!("✅ Using program-scoped tags (Program:TestProgram.*)");
+        return "Program:TestProgram.".to_string();
     }
 
     // Default to controller-scoped if neither works
@@ -105,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "   ❌ Both scopes failed. Controller: {}, Program: {}",
                         e, e2
                     );
-                    return Err(format!("Failed to read array element from either scope").into());
+                    return Err("Failed to read array element from either scope".to_string().into());
                 }
             }
         }

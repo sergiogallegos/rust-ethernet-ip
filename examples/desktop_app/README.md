@@ -49,7 +49,7 @@ cargo run --release
 
 ## Requirements
 
-- Rust 1.70+
+- Rust 1.95+
 - Tokio runtime
 - egui/eframe for GUI
 
@@ -60,4 +60,3 @@ cargo build --release
 ```
 
 The executable will be in `target/release/desktop_app` (or `target/release/desktop_app.exe` on Windows).
-

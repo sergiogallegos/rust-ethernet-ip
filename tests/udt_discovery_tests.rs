@@ -222,7 +222,7 @@ fn test_data_type_name_mapping() {
 
 #[test]
 fn test_udt_member_offset_calculation() {
-    let members = vec![
+    let members = [
         UdtMember {
             name: "bool1".to_string(),
             data_type: 0x00C1, // BOOL
@@ -353,7 +353,7 @@ fn test_udt_template_parsing_with_various_types() {
 fn test_error_handling() {
     // Test error cases
     let empty_template_data: Vec<u8> = vec![];
-    let short_template_data = vec![0x01, 0x02];
+    let short_template_data = [0x01, 0x02];
 
     // These would test error handling in the actual implementation
     assert!(empty_template_data.is_empty());

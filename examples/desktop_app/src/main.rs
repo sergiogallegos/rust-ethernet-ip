@@ -243,7 +243,9 @@ impl DesktopApp {
         let client = self.client.as_ref().unwrap().clone();
         let result = self.rt.block_on(async {
             let mut client_guard = client.lock().await;
-            client_guard.write_tag(&tag_name, value).await
+            let write_result = client_guard.write_tag(&tag_name, value).await;
+            drop(client_guard);
+            write_result
         });
 
         match result {
@@ -279,7 +281,9 @@ impl DesktopApp {
 
         let result = self.rt.block_on(async {
             let mut client_guard = client.lock().await;
-            client_guard.read_tag(&tag_name).await
+            let read_result = client_guard.read_tag(&tag_name).await;
+            drop(client_guard);
+            read_result
         });
 
         match result {
@@ -362,7 +366,9 @@ impl DesktopApp {
         let client = self.client.as_ref().unwrap().clone();
         let result = self.rt.block_on(async {
             let mut client_guard = client.lock().await;
-            client_guard.write_tag(&tag_name, value).await
+            let write_result = client_guard.write_tag(&tag_name, value).await;
+            drop(client_guard);
+            write_result
         });
 
         match result {
@@ -389,7 +395,9 @@ impl DesktopApp {
         self.add_log(format!("Reading UDT: {}", udt_name));
         let result = self.rt.block_on(async {
             let mut client_guard = client.lock().await;
-            client_guard.read_tag(&udt_name).await
+            let read_result = client_guard.read_tag(&udt_name).await;
+            drop(client_guard);
+            read_result
         });
 
         match result {

@@ -5,7 +5,7 @@ This guide covers building the enhanced Rust EtherNet/IP library with comprehens
 ## 📋 **Prerequisites**
 
 ### Rust Development Environment
-- **Rust 1.70+** (latest stable recommended)
+- **Rust 1.95+** (current stable baseline)
 - **Cargo** (included with Rust)
 - **Git** for version control
 
@@ -126,7 +126,7 @@ echo ✅ Build completed successfully!
 echo.
 echo Outputs:
 echo   Rust DLL: target\release\rust_ethernet_ip.dll
-echo   C# DLL:   csharp\RustEtherNetIp\bin\Release\net8.0\RustEtherNetIp.dll
+echo   C# DLL:   csharp\RustEtherNetIp\bin\Release\net10.0\RustEtherNetIp.dll
 ```
 
 ### Linux/macOS (build.sh)
@@ -167,7 +167,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     echo "  Rust Library: target/release/librust_ethernet_ip.dylib"
 fi
-echo "  C# DLL: csharp/RustEtherNetIp/bin/Release/net8.0/RustEtherNetIp.dll"
+echo "  C# DLL: csharp/RustEtherNetIp/bin/Release/net10.0/RustEtherNetIp.dll"
 ```
 
 Make the script executable:
@@ -321,8 +321,8 @@ cp target/release/rust_ethernet_ip.dll dist/rust-ethernet-ip-v0.3.0/
 cp target/release/rust_ethernet_ip.lib dist/rust-ethernet-ip-v0.3.0/
 
 # Copy C# artifacts
-cp csharp/RustEtherNetIp/bin/Release/net8.0/RustEtherNetIp.dll dist/rust-ethernet-ip-v0.3.0/
-cp csharp/RustEtherNetIp/bin/Release/net8.0/RustEtherNetIp.xml dist/rust-ethernet-ip-v0.3.0/
+cp csharp/RustEtherNetIp/bin/Release/net10.0/RustEtherNetIp.dll dist/rust-ethernet-ip-v0.3.0/
+cp csharp/RustEtherNetIp/bin/Release/net10.0/RustEtherNetIp.xml dist/rust-ethernet-ip-v0.3.0/
 
 # Copy documentation
 cp README.md dist/rust-ethernet-ip-v0.3.0/

@@ -166,29 +166,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match timeout(Duration::from_secs(5), client.read_tag(tag_name)).await {
             Ok(Ok(actual_value)) => {
                 let success = match (expected_value, &actual_value) {
-                    (PlcValue::Real(expected), PlcValue::Real(actual)) => {
-                        if (actual - expected).abs() < FLOAT_TOLERANCE {
-                            real_success_count += 1;
-                            true
-                        } else {
-                            false
-                        }
+                    (PlcValue::Real(expected), PlcValue::Real(actual))
+                        if (actual - expected).abs() < FLOAT_TOLERANCE =>
+                    {
+                        real_success_count += 1;
+                        true
                     }
-                    (PlcValue::Dint(expected), PlcValue::Dint(actual)) => {
-                        if actual == expected {
-                            dint_success_count += 1;
-                            true
-                        } else {
-                            false
-                        }
+                    (PlcValue::Dint(expected), PlcValue::Dint(actual)) if actual == expected => {
+                        dint_success_count += 1;
+                        true
                     }
-                    (PlcValue::Bool(expected), PlcValue::Bool(actual)) => {
-                        if actual == expected {
-                            bool_success_count += 1;
-                            true
-                        } else {
-                            false
-                        }
+                    (PlcValue::Bool(expected), PlcValue::Bool(actual)) if actual == expected => {
+                        bool_success_count += 1;
+                        true
                     }
                     _ => false,
                 };

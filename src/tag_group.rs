@@ -153,13 +153,19 @@ impl TagGroupSubscription {
     }
 
     pub async fn publish_event(&self, event: TagGroupEvent) -> Result<(), String> {
-        let sender = self.sender.lock().await;
-        sender.send(event).await.map_err(|e| e.to_string())
+        let sender = {
+            let sender = self.sender.lock().await;
+            sender.clone()
+        };
+        let send_result = sender.send(event).await;
+        send_result.map_err(|e| e.to_string())
     }
 
     pub async fn wait_for_update(&self) -> Option<TagGroupEvent> {
         let mut receiver = self.receiver.lock().await;
-        receiver.recv().await
+        let next_event = receiver.recv().await;
+        drop(receiver);
+        next_event
     }
 }
 

@@ -1,6 +1,5 @@
 use rust_ethernet_ip::{EipClient, PlcConfig, PlcManager, PlcValue, TagScope};
 use std::time::Duration;
-use tracing;
 
 /// Helper function to check if a PLC is available at the given address
 async fn is_plc_available(address: &str) -> bool {

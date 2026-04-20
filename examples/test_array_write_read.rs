@@ -117,7 +117,7 @@ async fn test_dint_array(client: &mut EipClient) -> Result<(), Box<dyn std::erro
             Ok(Ok(value)) => {
                 match value {
                     PlcValue::Dint(actual) => {
-                        if actual == expected_value as i32 {
+                        if actual == expected_value {
                             println!("✅ Dint({}) (correct!)", actual);
                             success_count += 1;
                         } else {

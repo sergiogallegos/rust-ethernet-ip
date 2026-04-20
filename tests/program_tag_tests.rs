@@ -3,8 +3,6 @@ mod program_tag_tests {
     use rust_ethernet_ip::{EipClient, PlcValue};
     use std::time::Duration;
     use tokio::time::timeout;
-    use tracing;
-
     const TEST_PLC_IP: &str = "192.168.0.1:44818";
     #[tokio::test]
     async fn test_program_tag_reading() {

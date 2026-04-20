@@ -184,7 +184,8 @@ impl PlcManager {
 
             for conn in connections.iter_mut() {
                 if !conn.health.is_active {
-                    if let Ok(new_client) = EipClient::new(&address.to_string()).await {
+                    let new_client = EipClient::new(&address.to_string()).await;
+                    if let Ok(new_client) = new_client {
                         conn.client = new_client;
                         conn.health.is_active = true;
                         conn.health.last_success = Instant::now();

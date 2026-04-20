@@ -169,10 +169,8 @@ async fn handle_connection(
         let session_handle = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
 
         let mut payload = vec![0u8; length];
-        if length > 0 {
-            if stream.read_exact(&mut payload).await.is_err() {
-                break;
-            }
+        if length > 0 && stream.read_exact(&mut payload).await.is_err() {
+            break;
         }
 
         match cmd {
@@ -185,19 +183,19 @@ async fn handle_connection(
             CMD_SEND_RR_DATA => {
                 let current = behavior.send_rr_count.fetch_add(1, Ordering::SeqCst) + 1;
 
-                if let Some(disconnect_after) = behavior.config.disconnect_on_send_rr_after {
-                    if current == disconnect_after {
-                        break;
-                    }
+                if let Some(disconnect_after) = behavior.config.disconnect_on_send_rr_after
+                    && current == disconnect_after
+                {
+                    break;
                 }
 
                 if behavior.config.drop_send_rr_response {
                     continue;
                 }
-                if let Some(drop_after) = behavior.config.drop_send_rr_response_after {
-                    if current >= drop_after {
-                        continue;
-                    }
+                if let Some(drop_after) = behavior.config.drop_send_rr_response_after
+                    && current >= drop_after
+                {
+                    continue;
                 }
 
                 let cip_response = build_cip_response(&payload, &tags, &behavior);
@@ -412,13 +410,12 @@ fn handle_write_cip_request(
     };
 
     let mut tags = tags.lock().expect("tag lock");
-    if let Some(index) = element_index {
-        if let Some(TagValue::Array(items)) = tags.get_mut(&tag_name) {
-            if index < items.len() {
-                items[index] = value;
-                return build_cip_ok_write_reply();
-            }
-        }
+    if let Some(index) = element_index
+        && let Some(TagValue::Array(items)) = tags.get_mut(&tag_name)
+        && index < items.len()
+    {
+        items[index] = value;
+        return build_cip_ok_write_reply();
     }
 
     tags.insert(tag_name, value);

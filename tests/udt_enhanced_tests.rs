@@ -10,6 +10,10 @@
 
 use rust_ethernet_ip::udt::{UdtMember, UserDefinedType};
 use rust_ethernet_ip::{PlcValue, UdtData};
+
+const TEST_REAL_VALUE: f32 = std::f32::consts::PI;
+const TEST_NON_BOOL_REAL_VALUE: f32 = 2.5;
+
 /// Mock EipClient for testing UDT functionality
 struct MockEipClient {
     udt_data: Vec<u8>,
@@ -42,8 +46,7 @@ impl MockEipClient {
             || tag_name == "TestUDT"
         {
             if self.should_fail_partial_transfer {
-                return Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                return Err(Box::new(std::io::Error::other(
                     "Protocol error: CIP Error 0x06: Partial transfer",
                 )));
             }
@@ -71,8 +74,7 @@ impl MockEipClient {
             || tag_name == "TestUDT"
         {
             if self.should_fail_chunked {
-                return Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                return Err(Box::new(std::io::Error::other(
                     "UDT too large even for smallest chunk size",
                 )));
             }
@@ -112,12 +114,8 @@ impl MockEipClient {
                     "Member not found",
                 )));
             }
-            udt.read_member(&self.udt_data, member_name).map_err(|e| {
-                Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                )) as Box<dyn std::error::Error>
-            })
+            udt.read_member(&self.udt_data, member_name)
+                .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error>)
         } else {
             Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -143,10 +141,7 @@ impl MockEipClient {
             }
             udt.write_member(&mut self.udt_data, member_name, &value)
                 .map_err(|e| {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    )) as Box<dyn std::error::Error>
+                    Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error>
                 })
         } else {
             Err(Box::new(std::io::Error::new(
@@ -171,7 +166,7 @@ fn create_test_udt_data() -> Vec<u8> {
     data[4..8].copy_from_slice(&123456i32.to_le_bytes()); // dint1 = 123456
 
     // REAL member (offset 8)
-    data[8..12].copy_from_slice(&3.14159f32.to_le_bytes()); // real1 = 3.14159
+    data[8..12].copy_from_slice(&TEST_REAL_VALUE.to_le_bytes()); // real1 = PI
 
     // STRING member (offset 12) - 4-byte DINT length followed by string data
     let string_value = "Hello UDT!";
@@ -248,7 +243,7 @@ async fn test_udt_data_type_parsing() {
     let real_value = udt
         .parse_member_value(&real_member, &test_data[8..12])
         .unwrap();
-    assert_eq!(real_value, PlcValue::Real(3.14159));
+    assert_eq!(real_value, PlcValue::Real(TEST_REAL_VALUE));
 
     // Test STRING parsing
     let string_member = UdtMember {
@@ -287,9 +282,9 @@ async fn test_udt_data_type_serialization() {
         size: 4,
     };
     let real_data = udt
-        .serialize_member_value(&real_member, &PlcValue::Real(3.14))
+        .serialize_member_value(&real_member, &PlcValue::Real(TEST_NON_BOOL_REAL_VALUE))
         .unwrap();
-    assert_eq!(real_data, 3.14f32.to_le_bytes().to_vec());
+    assert_eq!(real_data, TEST_NON_BOOL_REAL_VALUE.to_le_bytes().to_vec());
 
     // Test STRING serialization
     let string_member = UdtMember {
@@ -325,7 +320,7 @@ async fn test_udt_member_access() {
 
     // Test reading REAL member
     let real_value = udt.read_member(&test_data, "real1").unwrap();
-    assert_eq!(real_value, PlcValue::Real(3.14159));
+    assert_eq!(real_value, PlcValue::Real(TEST_REAL_VALUE));
 
     // Test reading STRING member
     let string_value = udt.read_member(&test_data, "string1").unwrap();
@@ -379,7 +374,7 @@ async fn test_udt_hash_map_conversion() {
     // Verify some key members
     assert_eq!(hash_map.get("bool1"), Some(&PlcValue::Bool(true)));
     assert_eq!(hash_map.get("int1"), Some(&PlcValue::Int(1234)));
-    assert_eq!(hash_map.get("real1"), Some(&PlcValue::Real(3.14159)));
+    assert_eq!(hash_map.get("real1"), Some(&PlcValue::Real(TEST_REAL_VALUE)));
     assert_eq!(
         hash_map.get("string1"),
         Some(&PlcValue::String("Hello UDT!".to_string()))
@@ -444,7 +439,7 @@ async fn test_udt_member_reading() {
     assert_eq!(int_value, PlcValue::Int(1234));
 
     let real_value = client.read_udt_member("TestUDT", "real1").await.unwrap();
-    assert_eq!(real_value, PlcValue::Real(3.14159));
+    assert_eq!(real_value, PlcValue::Real(TEST_REAL_VALUE));
 
     let string_value = client.read_udt_member("TestUDT", "string1").await.unwrap();
     assert_eq!(string_value, PlcValue::String("Hello UDT!".to_string()));
@@ -508,7 +503,7 @@ async fn test_udt_error_handling() {
         offset: 0,
         size: 1,
     };
-    let result = udt.serialize_member_value(&bool_member, &PlcValue::Real(3.14));
+    let result = udt.serialize_member_value(&bool_member, &PlcValue::Real(TEST_NON_BOOL_REAL_VALUE));
     assert!(result.is_err());
 
     // Test insufficient data

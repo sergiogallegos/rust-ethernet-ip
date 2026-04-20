@@ -259,13 +259,12 @@ fn handle_write(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>>>) {
     };
 
     let mut tags = tags.lock().expect("tag lock");
-    if let Some(index) = element_index {
-        if let Some(TagValue::Array(items)) = tags.get_mut(&tag_name) {
-            if index < items.len() {
-                items[index] = value;
-                return;
-            }
-        }
+    if let Some(index) = element_index
+        && let Some(TagValue::Array(items)) = tags.get_mut(&tag_name)
+        && index < items.len()
+    {
+        items[index] = value;
+        return;
     }
 
     tags.insert(tag_name, value);

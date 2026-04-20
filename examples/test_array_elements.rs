@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Check if value matches expected
                     match value {
                         PlcValue::Dint(actual) => {
-                            if actual == expected_value as i32 {
+                            if actual == expected_value {
                                 println!("✅ {:?} (correct!)", value);
                                 success_count += 1;
                             } else {

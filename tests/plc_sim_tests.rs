@@ -44,7 +44,7 @@ async fn simulated_plc_read_write_bool_real_string() {
         .await
         .expect("write");
     client
-        .write_tag("REAL_TAG", PlcValue::Real(6.28))
+        .write_tag("REAL_TAG", PlcValue::Real(std::f32::consts::TAU))
         .await
         .expect("write");
     client
@@ -56,7 +56,7 @@ async fn simulated_plc_read_write_bool_real_string() {
     assert_eq!(bool_updated, PlcValue::Bool(false));
 
     let real_updated = client.read_tag("REAL_TAG").await.expect("read");
-    assert_eq!(real_updated, PlcValue::Real(6.28));
+    assert_eq!(real_updated, PlcValue::Real(std::f32::consts::TAU));
 
     let string_updated = client.read_tag("STRING_TAG").await.expect("read");
     assert_eq!(string_updated, PlcValue::String("Updated".to_string()));

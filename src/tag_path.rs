@@ -138,7 +138,7 @@ impl TagPath {
         self.build_cip_path(&mut path)?;
 
         // Pad to even length if necessary
-        if path.len() % 2 != 0 {
+        if !path.len().is_multiple_of(2) {
             path.push(0x00);
         }
 
@@ -167,7 +167,7 @@ impl TagPath {
                 path.extend_from_slice(program_path.as_bytes());
 
                 // Pad to even length if necessary after program segment
-                if path.len() % 2 != 0 {
+                if !path.len().is_multiple_of(2) {
                     path.push(0x00);
                 }
 
@@ -182,7 +182,7 @@ impl TagPath {
                 base_path.build_cip_path(path)?;
 
                 // Pad to even length if necessary before adding array segments
-                if path.len() % 2 != 0 {
+                if !path.len().is_multiple_of(2) {
                     path.push(0x00);
                 }
 
@@ -219,7 +219,7 @@ impl TagPath {
                 base_path.build_cip_path(path)?;
 
                 // Pad to even length if necessary before adding bit segment
-                if path.len() % 2 != 0 {
+                if !path.len().is_multiple_of(2) {
                     path.push(0x00);
                 }
 
@@ -236,7 +236,7 @@ impl TagPath {
                 base_path.build_cip_path(path)?;
 
                 // Pad to even length if necessary before adding member segment
-                if path.len() % 2 != 0 {
+                if !path.len().is_multiple_of(2) {
                     path.push(0x00);
                 }
 
@@ -251,7 +251,7 @@ impl TagPath {
                 base_path.build_cip_path(path)?;
 
                 // Pad to even length if necessary before adding member segment
-                if path.len() % 2 != 0 {
+                if !path.len().is_multiple_of(2) {
                     path.push(0x00);
                 }
 
@@ -266,7 +266,7 @@ impl TagPath {
                 base_path.build_cip_path(path)?;
 
                 // Pad to even length if necessary before adding member segment
-                if path.len() % 2 != 0 {
+                if !path.len().is_multiple_of(2) {
                     path.push(0x00);
                 }
 
@@ -276,7 +276,7 @@ impl TagPath {
                 path.extend_from_slice(b"DATA");
 
                 // Pad to even length if necessary before adding array segment
-                if path.len() % 2 != 0 {
+                if !path.len().is_multiple_of(2) {
                     path.push(0x00);
                 }
 
@@ -477,14 +477,14 @@ impl<'a> TagPathParser<'a> {
         let identifier = self.parse_identifier()?;
 
         // Check if it's a numeric bit index
-        if let Ok(bit_index) = identifier.parse::<u8>() {
-            if bit_index < 32 {
-                // Valid bit range for DINT
-                return Ok(TagPath::Bit {
-                    base_path: Box::new(base_path),
-                    bit_index,
-                });
-            }
+        if let Ok(bit_index) = identifier.parse::<u8>()
+            && bit_index < 32
+        {
+            // Valid bit range for DINT
+            return Ok(TagPath::Bit {
+                base_path: Box::new(base_path),
+                bit_index,
+            });
         }
 
         // It's a member name

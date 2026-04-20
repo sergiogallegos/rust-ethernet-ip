@@ -217,7 +217,8 @@ impl EipClient {
         println!("📋 Reading {} tags...", tag_names.len());
 
         for tag_name in tag_names {
-            match self.read_tag(tag_name).await {
+            let read_result = self.read_tag(tag_name).await;
+            match read_result {
                 Ok(value) => {
                     println!("✅ {}: {:?}", tag_name, value);
                     results.insert(tag_name.to_string(), value);
@@ -239,7 +240,8 @@ impl EipClient {
 
         println!("📝 Writing {} tags...", total_tags);
         for (tag_name, value) in tags {
-            match self.write_tag(tag_name, value).await {
+            let write_result = self.write_tag(tag_name, value).await;
+            match write_result {
                 Ok(()) => {
                     successful_writes.push(tag_name.to_string());
                 }
@@ -291,7 +293,8 @@ impl EipClient {
         );
 
         for i in start_index..start_index + count {
-            match self.read_array_element(tag_name, i).await {
+            let read_result = self.read_array_element(tag_name, i).await;
+            match read_result {
                 Ok(value) => {
                     println!("✅ {}[{}]: {:?}", tag_name, i, value);
                     results.push(value);

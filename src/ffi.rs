@@ -3,21 +3,19 @@
 use crate::EipClient;
 use crate::PlcValue;
 use crate::RUNTIME;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_short, c_void};
 use std::ptr;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{LazyLock, Mutex, MutexGuard};
 use tracing;
 
 // FFI-specific client manager using synchronous mutex
-lazy_static! {
-    static ref FFI_CLIENTS: Mutex<HashMap<i32, EipClient>> = Mutex::new(HashMap::new());
-    static ref FFI_NEXT_ID: Mutex<i32> = Mutex::new(1);
-}
+static FFI_CLIENTS: LazyLock<Mutex<HashMap<i32, EipClient>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static FFI_NEXT_ID: LazyLock<Mutex<i32>> = LazyLock::new(|| Mutex::new(1));
 
 fn to_c_string_owned(value: &str) -> Result<*mut c_char, ()> {
     CString::new(value).map(|s| s.into_raw()).map_err(|_| ())
@@ -33,7 +31,7 @@ fn lock_next_id() -> Result<MutexGuard<'static, i32>, ()> {
 
 unsafe fn free_c_string(ptr: *mut c_char) {
     if !ptr.is_null() {
-        let _ = CString::from_raw(ptr);
+        let _ = unsafe { CString::from_raw(ptr) };
     }
 }
 
@@ -169,7 +167,7 @@ fn parse_plc_value(value_type: &str, value: serde_json::Value) -> Result<PlcValu
 /// - `ip_address` must be a valid null-terminated C string pointer
 /// - The caller must ensure the pointer remains valid for the duration of the call
 /// - The string must contain a valid IP address format
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_connect(ip_address: *const c_char) -> c_int {
     if ip_address.is_null() {
         return -1;
@@ -215,7 +213,7 @@ pub unsafe extern "C" fn eip_connect(ip_address: *const c_char) -> c_int {
 /// - `ip_address` must be a valid null-terminated C string pointer
 /// - `slots` must be a valid pointer to an array of `slot_count` bytes
 /// - The caller must ensure all pointers remain valid for the duration of the call
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_connect_with_route(
     ip_address: *const c_char,
     slots: *const u8,
@@ -257,10 +255,10 @@ pub unsafe extern "C" fn eip_connect_with_route(
         let addresses_slice =
             unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
         for &addr_ptr in addresses_slice {
-            if !addr_ptr.is_null() {
-                if let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str() {
-                    route_path = route_path.add_address(addr_str.to_string());
-                }
+            if !addr_ptr.is_null()
+                && let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str()
+            {
+                route_path = route_path.add_address(addr_str.to_string());
             }
         }
     }
@@ -301,7 +299,7 @@ pub unsafe extern "C" fn eip_connect_with_route(
 /// - `client_id` must be a valid client ID returned from `eip_connect`
 /// - `slots` must be a valid pointer to an array of `slot_count` bytes
 /// - The caller must ensure all pointers remain valid for the duration of the call
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_set_route_path(
     client_id: c_int,
     slots: *const u8,
@@ -344,10 +342,10 @@ pub unsafe extern "C" fn eip_set_route_path(
         let addresses_slice =
             unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
         for &addr_ptr in addresses_slice {
-            if !addr_ptr.is_null() {
-                if let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str() {
-                    route_path = route_path.add_address(addr_str.to_string());
-                }
+            if !addr_ptr.is_null()
+                && let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str()
+            {
+                route_path = route_path.add_address(addr_str.to_string());
             }
         }
     }
@@ -363,13 +361,15 @@ pub unsafe extern "C" fn eip_set_route_path(
 /// This function is unsafe because:
 /// - `client_id` must be a valid client ID returned from `eip_connect`
 /// - The caller must not use the `client_id` after this call
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_disconnect(client_id: c_int) -> c_int {
     let mut clients = match lock_clients() {
         Ok(guard) => guard,
         Err(_) => return -1,
     };
-    match clients.remove(&client_id) {
+    let removed_client = clients.remove(&client_id);
+    drop(clients);
+    match removed_client {
         Some(_) => 0,
         None => -1,
     }
@@ -384,7 +384,7 @@ pub unsafe extern "C" fn eip_disconnect(client_id: c_int) -> c_int {
 /// - `result` must be a valid mutable pointer to a `c_int`
 /// - The caller must ensure both pointers remain valid for the duration of the call
 /// - `client_id` must be a valid client ID returned from `eip_connect`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_bool(
     client_id: c_int,
     tag_name: *const c_char,
@@ -425,7 +425,7 @@ pub unsafe extern "C" fn eip_read_bool(
 /// - The caller must ensure the pointer remains valid for the duration of the call
 /// - `client_id` must be a valid client ID returned from `eip_connect`
 /// - The tag name must be a valid PLC tag identifier
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_bool(
     client_id: c_int,
     tag_name: *const c_char,
@@ -469,7 +469,7 @@ pub unsafe extern "C" fn eip_write_bool(
 /// - `result` must be a valid mutable pointer to an i8
 /// - The caller must ensure both pointers remain valid for the duration of the call
 /// - `client_id` must be a valid client ID returned from `eip_connect`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_sint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -509,7 +509,7 @@ pub unsafe extern "C" fn eip_read_sint(
 /// - `tag_name` must be a valid null-terminated C string pointer
 /// - The caller must ensure the pointer remains valid for the duration of the call
 /// - `client_id` must be a valid client ID returned from `eip_connect`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_sint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -540,7 +540,7 @@ pub unsafe extern "C" fn eip_write_sint(
 }
 
 // INT (16-bit signed integer) operations
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_int(
     client_id: c_int,
     tag_name: *const c_char,
@@ -572,7 +572,7 @@ pub unsafe extern "C" fn eip_read_int(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_int(
     client_id: c_int,
     tag_name: *const c_char,
@@ -602,7 +602,7 @@ pub unsafe extern "C" fn eip_write_int(
 }
 
 /// Read a DINT tag
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_dint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -645,7 +645,7 @@ pub unsafe extern "C" fn eip_read_dint(
 }
 
 /// Write a DINT tag
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_dint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -675,7 +675,7 @@ pub unsafe extern "C" fn eip_write_dint(
 }
 
 // LINT (64-bit signed integer) operations
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_lint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -707,7 +707,7 @@ pub unsafe extern "C" fn eip_read_lint(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_lint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -737,7 +737,7 @@ pub unsafe extern "C" fn eip_write_lint(
 }
 
 // USINT (8-bit unsigned integer) operations
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_usint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -769,7 +769,7 @@ pub unsafe extern "C" fn eip_read_usint(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_usint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -799,7 +799,7 @@ pub unsafe extern "C" fn eip_write_usint(
 }
 
 // UINT (16-bit unsigned integer) operations
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_uint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -831,7 +831,7 @@ pub unsafe extern "C" fn eip_read_uint(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_uint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -861,7 +861,7 @@ pub unsafe extern "C" fn eip_write_uint(
 }
 
 // UDINT (32-bit unsigned integer) operations
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_udint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -893,7 +893,7 @@ pub unsafe extern "C" fn eip_read_udint(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_udint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -923,7 +923,7 @@ pub unsafe extern "C" fn eip_write_udint(
 }
 
 // ULINT (64-bit unsigned integer) operations
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_ulint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -955,7 +955,7 @@ pub unsafe extern "C" fn eip_read_ulint(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_ulint(
     client_id: c_int,
     tag_name: *const c_char,
@@ -986,7 +986,7 @@ pub unsafe extern "C" fn eip_write_ulint(
 }
 
 /// Read a REAL tag
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_real(
     client_id: c_int,
     tag_name: *const c_char,
@@ -1019,7 +1019,7 @@ pub unsafe extern "C" fn eip_read_real(
 }
 
 /// Write a REAL tag
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_real(
     client_id: c_int,
     tag_name: *const c_char,
@@ -1049,7 +1049,7 @@ pub unsafe extern "C" fn eip_write_real(
 }
 
 // LREAL (64-bit double precision) operations
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_lreal(
     client_id: c_int,
     tag_name: *const c_char,
@@ -1081,7 +1081,7 @@ pub unsafe extern "C" fn eip_read_lreal(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_lreal(
     client_id: c_int,
     tag_name: *const c_char,
@@ -1121,7 +1121,7 @@ pub unsafe extern "C" fn eip_write_lreal(
 /// - The caller must ensure both pointers remain valid for the duration of the call
 /// - `client_id` must be a valid client ID returned from `eip_connect`
 /// - `max_length` must be positive and represent the actual buffer size
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_string(
     client_id: c_int,
     tag_name: *const c_char,
@@ -1220,28 +1220,28 @@ pub unsafe extern "C" fn eip_read_string(
                             .take_while(|&&b| b != 0)
                             .copied()
                             .collect();
-                        if let Ok(s) = String::from_utf8(trimmed_data) {
-                            if !s.is_empty() {
-                                tracing::info!(
-                                    "[FFI] Extracted STRING (Format 2): '{}' (length={})",
-                                    s,
-                                    length
-                                );
-                                unsafe {
-                                    let Ok(c_string) = CString::new(s) else {
-                                        return -1;
-                                    };
-                                    let bytes = c_string.as_bytes_with_nul();
-                                    if bytes.len() > max_length as usize {
-                                        return -1;
-                                    }
-                                    ptr::copy_nonoverlapping(
-                                        bytes.as_ptr(),
-                                        result as *mut u8,
-                                        bytes.len(),
-                                    );
-                                    return 0;
+                        if let Ok(s) = String::from_utf8(trimmed_data)
+                            && !s.is_empty()
+                        {
+                            tracing::info!(
+                                "[FFI] Extracted STRING (Format 2): '{}' (length={})",
+                                s,
+                                length
+                            );
+                            unsafe {
+                                let Ok(c_string) = CString::new(s) else {
+                                    return -1;
+                                };
+                                let bytes = c_string.as_bytes_with_nul();
+                                if bytes.len() > max_length as usize {
+                                    return -1;
                                 }
+                                ptr::copy_nonoverlapping(
+                                    bytes.as_ptr(),
+                                    result as *mut u8,
+                                    bytes.len(),
+                                );
+                                return 0;
                             }
                         }
                     }
@@ -1322,7 +1322,7 @@ pub unsafe extern "C" fn eip_read_string(
 }
 
 /// Write a STRING tag
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_string(
     client_id: c_int,
     tag_name: *const c_char,
@@ -1371,7 +1371,7 @@ pub unsafe extern "C" fn eip_write_string(
 /// - `result` must be a valid mutable pointer to a buffer of at least `max_size` bytes
 /// - The caller must ensure both pointers remain valid for the duration of the call
 /// - `client_id` must be a valid client ID returned from `eip_connect`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_tag(
     client_id: c_int,
     tag_name: *const c_char,
@@ -1456,7 +1456,7 @@ pub unsafe extern "C" fn eip_read_tag(
 /// - `base_array_name` must be a valid null-terminated C string pointer
 /// - `result` must be a valid mutable pointer to a buffer of at least `max_size` bytes
 /// - The caller must ensure both pointers remain valid for the duration of the call
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_array_range(
     client_id: c_int,
     base_array_name: *const c_char,
@@ -1516,7 +1516,7 @@ pub unsafe extern "C" fn eip_read_array_range(
 }
 
 // UDT operations
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_udt(
     client_id: c_int,
     tag_name: *const c_char,
@@ -1566,7 +1566,7 @@ pub unsafe extern "C" fn eip_read_udt(
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_udt(
     client_id: c_int,
     tag_name: *const c_char,
@@ -1646,13 +1646,13 @@ pub unsafe extern "C" fn eip_write_udt(
 }
 
 // Tag discovery and metadata
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_discover_tags(_client_id: c_int) -> c_int {
     // Return success for now - can implement tag discovery later
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_tag_metadata(
     _client_id: c_int,
     _tag_name: *const c_char,
@@ -1663,14 +1663,14 @@ pub unsafe extern "C" fn eip_get_tag_metadata(
 }
 
 // Configuration
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_set_max_packet_size(_client_id: c_int, _size: c_int) -> c_int {
     // Return success for now - packet size configuration can be added later
     0
 }
 
 // Health checks
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_check_health(client_id: c_int, is_healthy: *mut c_int) -> c_int {
     if is_healthy.is_null() {
         return -1;
@@ -1693,17 +1693,17 @@ pub unsafe extern "C" fn eip_check_health(client_id: c_int, is_healthy: *mut c_i
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_check_health_detailed(
     client_id: c_int,
     is_healthy: *mut c_int,
 ) -> c_int {
     // Use the same logic as basic health check for now
-    eip_check_health(client_id, is_healthy)
+    unsafe { eip_check_health(client_id, is_healthy) }
 }
 
 // Batch operations implementation
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_tags_batch(
     client_id: c_int,
     tag_names: *mut *const c_char,
@@ -1776,7 +1776,7 @@ pub unsafe extern "C" fn eip_read_tags_batch(
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_tags_batch(
     client_id: c_int,
     tag_values: *const c_char,
@@ -1895,7 +1895,7 @@ pub unsafe extern "C" fn eip_write_tags_batch(
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_execute_batch(
     client_id: c_int,
     operations: *const c_char,
@@ -2075,7 +2075,7 @@ pub unsafe extern "C" fn eip_execute_batch(
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_configure_batch_operations(
     _client_id: c_int,
     _config: *const u8,
@@ -2083,13 +2083,13 @@ pub unsafe extern "C" fn eip_configure_batch_operations(
     -1 // Not implemented yet
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_batch_config(_client_id: c_int, _config: *mut u8) -> c_int {
     -1 // Not implemented yet
 }
 
 // Enhanced UDT operations
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_udt_chunked(
     client_id: c_int,
     tag_name: *const c_char,
@@ -2139,7 +2139,7 @@ pub unsafe extern "C" fn eip_read_udt_chunked(
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_udt_member_by_offset(
     client_id: c_int,
     udt_name: *const c_char,
@@ -2201,7 +2201,7 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_udt_member_by_offset(
     client_id: c_int,
     udt_name: *const c_char,
@@ -2300,13 +2300,13 @@ pub struct TagDiscoveryResult {
 }
 
 /// Free a C string allocated by this library
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_free_string(ptr: *mut c_char) {
-    free_c_string(ptr);
+    unsafe { free_c_string(ptr) };
 }
 
 /// Free a UDT definition result allocated by `eip_get_udt_definition`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_free_udt_definition(result_ptr: *mut UdtDefinitionResult) {
     if result_ptr.is_null() {
         return;
@@ -2339,7 +2339,7 @@ pub unsafe extern "C" fn eip_free_udt_definition(result_ptr: *mut UdtDefinitionR
 }
 
 /// Free a tag attributes result allocated by `eip_get_tag_attributes`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_free_tag_attributes_result(result_ptr: *mut TagAttributesResult) {
     if result_ptr.is_null() {
         return;
@@ -2358,7 +2358,7 @@ pub unsafe extern "C" fn eip_free_tag_attributes_result(result_ptr: *mut TagAttr
 }
 
 /// Free a tag discovery result allocated by `eip_discover_tags_detailed`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_free_tag_discovery_result(result_ptr: *mut TagDiscoveryResult) {
     if result_ptr.is_null() {
         return;
@@ -2392,7 +2392,7 @@ pub unsafe extern "C" fn eip_free_tag_discovery_result(result_ptr: *mut TagDisco
 /// FFI function to get UDT definition from PLC
 ///
 /// The caller must free the returned fields using `eip_free_udt_definition`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_udt_definition(
     client_ptr: *mut EipClient,
     udt_name: *const c_char,
@@ -2501,7 +2501,7 @@ pub unsafe extern "C" fn eip_get_udt_definition(
 /// FFI function to get UDT definition from PLC using client ID
 ///
 /// The caller must free the returned fields using `eip_free_udt_definition`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_udt_definition_by_id(
     client_id: c_int,
     udt_name: *const c_char,
@@ -2520,13 +2520,14 @@ pub unsafe extern "C" fn eip_get_udt_definition_by_id(
     };
 
     let client_ptr = client as *mut EipClient;
-    eip_get_udt_definition(client_ptr, udt_name, result_ptr)
+    drop(clients);
+    unsafe { eip_get_udt_definition(client_ptr, udt_name, result_ptr) }
 }
 
 /// FFI function to get tag attributes from PLC
 ///
 /// The caller must free the returned fields using `eip_free_tag_attributes_result`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_tag_attributes(
     client_ptr: *mut EipClient,
     tag_name: *const c_char,
@@ -2606,7 +2607,7 @@ pub unsafe extern "C" fn eip_get_tag_attributes(
 /// FFI function to get tag attributes from PLC using client ID
 ///
 /// The caller must free the returned fields using `eip_free_tag_attributes_result`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_tag_attributes_by_id(
     client_id: c_int,
     tag_name: *const c_char,
@@ -2625,13 +2626,14 @@ pub unsafe extern "C" fn eip_get_tag_attributes_by_id(
     };
 
     let client_ptr = client as *mut EipClient;
-    eip_get_tag_attributes(client_ptr, tag_name, result_ptr)
+    drop(clients);
+    unsafe { eip_get_tag_attributes(client_ptr, tag_name, result_ptr) }
 }
 
 /// FFI function to discover tags with detailed attributes
 ///
 /// The caller must free the returned fields using `eip_free_tag_discovery_result`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_discover_tags_detailed(
     client_ptr: *mut EipClient,
     result_ptr: *mut TagDiscoveryResult,
@@ -2735,7 +2737,7 @@ pub unsafe extern "C" fn eip_discover_tags_detailed(
 /// FFI function to discover tags with detailed attributes using client ID
 ///
 /// The caller must free the returned fields using `eip_free_tag_discovery_result`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_discover_tags_detailed_by_id(
     client_id: c_int,
     result_ptr: *mut TagDiscoveryResult,
@@ -2753,5 +2755,6 @@ pub unsafe extern "C" fn eip_discover_tags_detailed_by_id(
     };
 
     let client_ptr = client as *mut EipClient;
-    eip_discover_tags_detailed(client_ptr, result_ptr)
+    drop(clients);
+    unsafe { eip_discover_tags_detailed(client_ptr, result_ptr) }
 }

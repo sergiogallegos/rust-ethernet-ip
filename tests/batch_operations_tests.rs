@@ -13,8 +13,6 @@ mod tests {
     use rust_ethernet_ip::{BatchConfig, BatchOperation, EipClient, PlcValue};
     use std::env;
     use tokio::time::{timeout, Duration};
-    use tracing;
-
     // Helper function to get test PLC address from environment or use default
     fn get_test_plc_address() -> String {
         env::var("TEST_PLC_ADDRESS").unwrap_or_else(|_| "192.168.0.1:44818".to_string())
@@ -39,16 +37,15 @@ mod tests {
             };
 
         // Test batch read with multiple tags
-        let tag_names = vec![
+        let tag_names = [
             "gTestArray_DINT[0]",
             "gTestArray_DINT[1]",
             "gTestArray_DINT[2]",
         ];
 
-        match client
-            .read_tags_batch(&tag_names.iter().map(|s| *s).collect::<Vec<_>>())
-            .await
-        {
+        let tag_refs = tag_names.to_vec();
+        let batch_result = client.read_tags_batch(&tag_refs).await;
+        match batch_result {
             Ok(results) => {
                 tracing::info!("Batch read completed: {} tags", results.len());
                 assert_eq!(results.len(), tag_names.len());
@@ -95,7 +92,8 @@ mod tests {
             ("gTestArray_DINT[7]", PlcValue::Dint(300)),
         ];
 
-        match client.write_tags_batch(&tag_values).await {
+        let batch_result = client.write_tags_batch(&tag_values).await;
+        match batch_result {
             Ok(results) => {
                 tracing::info!("Batch write completed: {} tags", results.len());
                 assert_eq!(results.len(), tag_values.len());
@@ -177,7 +175,8 @@ mod tests {
             },
         ];
 
-        match client.execute_batch(&operations).await {
+        let batch_result = client.execute_batch(&operations).await;
+        match batch_result {
             Ok(results) => {
                 tracing::info!("Mixed batch completed: {} operations", results.len());
                 assert_eq!(results.len(), operations.len());
@@ -311,17 +310,16 @@ mod tests {
             };
 
         // Test batch with some invalid tags
-        let tag_names = vec![
+        let tag_names = [
             "gTestArray_DINT[0]",    // Valid
             "NonExistentTag",        // Invalid
             "gTestArray_DINT[1]",    // Valid
             "AnotherNonExistentTag", // Invalid
         ];
 
-        match client
-            .read_tags_batch(&tag_names.iter().map(|s| *s).collect::<Vec<_>>())
-            .await
-        {
+        let tag_refs = tag_names.to_vec();
+        let batch_result = client.read_tags_batch(&tag_refs).await;
+        match batch_result {
             Ok(results) => {
                 tracing::info!("Batch read with errors completed: {} tags", results.len());
                 for (tag_name, result) in results.iter() {

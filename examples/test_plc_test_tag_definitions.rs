@@ -289,7 +289,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let error_key = error.clone();
                 error_groups
                     .entry(error_key)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(tag_name.clone());
             }
 
@@ -350,7 +350,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 error_groups
                     .entry(error_key)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(tag_name.clone());
             }
 
@@ -370,18 +370,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let pattern = format!("{}[*]{}", base, member);
                             pattern_groups
                                 .entry(pattern)
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push(tag.clone());
                         } else {
                             pattern_groups
                                 .entry(tag.clone())
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push(tag.clone());
                         }
                     } else {
                         pattern_groups
                             .entry(tag.clone())
-                            .or_insert_with(Vec::new)
+                            .or_default()
                             .push(tag.clone());
                     }
                 }
@@ -436,7 +436,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let error_key = error.clone();
                 error_groups
                     .entry(error_key)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push((tag_name.clone(), expected.clone(), actual.clone()));
             }
 
@@ -500,7 +500,7 @@ fn create_test_tags() -> Vec<TestTag> {
         tags.push(TestTag {
             name: format!("gTestArray_DINT[{}]", i),
             initial_value: PlcValue::Dint((i + 1) * 10),
-            test_value: PlcValue::Dint(1000 + (i as i32 * 111)),
+            test_value: PlcValue::Dint(1000 + (i * 111)),
             description: format!("Controller DINT array element {}", i),
         });
     }
@@ -530,7 +530,7 @@ fn create_test_tags() -> Vec<TestTag> {
         tags.push(TestTag {
             name: format!("gTestArray_INT[{}]", i),
             initial_value: PlcValue::Int((i + 1) * 100),
-            test_value: PlcValue::Int(1000 + (i as i16 * 111)),
+            test_value: PlcValue::Int(1000 + (i * 111)),
             description: format!("Controller INT array element {}", i),
         });
     }
@@ -540,7 +540,7 @@ fn create_test_tags() -> Vec<TestTag> {
         tags.push(TestTag {
             name: format!("gTestArray_Large[{}]", idx),
             initial_value: PlcValue::Dint(0), // Unknown initial value
-            test_value: PlcValue::Dint(10000 + idx as i32),
+            test_value: PlcValue::Dint(10000 + idx),
             description: format!("Controller large DINT array element {} (16-bit index)", idx),
         });
     }
@@ -566,7 +566,7 @@ fn create_test_tags() -> Vec<TestTag> {
 
     tags.push(TestTag {
         name: "gTestUDT.Member2_REAL".to_string(),
-        initial_value: PlcValue::Real(3.14159),
+        initial_value: PlcValue::Real(std::f32::consts::PI),
         test_value: PlcValue::Real(77.77),
         description: "Controller UDT member: Member2_REAL".to_string(),
     });
@@ -596,8 +596,8 @@ fn create_test_tags() -> Vec<TestTag> {
     for i in 0..10 {
         tags.push(TestTag {
             name: format!("gTestUDT.Array_DINT[{}]", i),
-            initial_value: PlcValue::Dint(i as i32 + 1),
-            test_value: PlcValue::Dint(1000 + (i as i32 * 111)),
+            initial_value: PlcValue::Dint(i + 1),
+            test_value: PlcValue::Dint(1000 + (i * 111)),
             description: format!("Controller UDT array member: Array_DINT[{}]", i),
         });
     }
@@ -631,7 +631,7 @@ fn create_test_tags() -> Vec<TestTag> {
         tags.push(TestTag {
             name: format!("gTestUDT_Array[{}].Member1_DINT", i),
             initial_value: PlcValue::Dint((i + 1) * 100),
-            test_value: PlcValue::Dint(1000 + (i as i32 * 444)),
+            test_value: PlcValue::Dint(1000 + (i * 444)),
             description: format!("Controller UDT array element {}, member Member1_DINT", i),
         });
     }
@@ -661,7 +661,7 @@ fn create_test_tags() -> Vec<TestTag> {
         tags.push(TestTag {
             name: format!("gTestUDT_Array[{}].Member4_INT", i),
             initial_value: PlcValue::Int((i + 1) * 10),
-            test_value: PlcValue::Int(1000 + (i as i16 * 111)),
+            test_value: PlcValue::Int(1000 + (i * 111)),
             description: format!("Controller UDT array element {}, member Member4_INT", i),
         });
     }
@@ -671,8 +671,8 @@ fn create_test_tags() -> Vec<TestTag> {
         for j in 0..10 {
             tags.push(TestTag {
                 name: format!("gTestUDT_Array[{}].Array_DINT[{}]", i, j),
-                initial_value: PlcValue::Dint(j as i32 + 1),
-                test_value: PlcValue::Dint(1000 + (i as i32 * 100) + (j as i32 * 11)),
+                initial_value: PlcValue::Dint(j + 1),
+                test_value: PlcValue::Dint(1000 + (i * 100) + (j * 11)),
                 description: format!(
                     "Controller UDT array element {}, nested array member Array_DINT[{}]",
                     i, j
@@ -705,7 +705,7 @@ fn create_test_tags() -> Vec<TestTag> {
         tags.push(TestTag {
             name: format!("Program:TestProgram.gTestArray_DINT[{}]", i),
             initial_value: PlcValue::Dint((i + 1) * 1000),
-            test_value: PlcValue::Dint(10000 + (i as i32 * 1111)),
+            test_value: PlcValue::Dint(10000 + (i * 1111)),
             description: format!("Program-scoped DINT array element {}", i),
         });
     }
@@ -751,7 +751,7 @@ fn create_test_tags() -> Vec<TestTag> {
 
     tags.push(TestTag {
         name: "Program:TestProgram.gTestUDT.Member2_REAL".to_string(),
-        initial_value: PlcValue::Real(2.71828),
+        initial_value: PlcValue::Real(std::f32::consts::E),
         test_value: PlcValue::Real(88.88),
         description: "Program-scoped UDT member: Member2_REAL".to_string(),
     });
@@ -781,8 +781,8 @@ fn create_test_tags() -> Vec<TestTag> {
     for i in 0..10 {
         tags.push(TestTag {
             name: format!("Program:TestProgram.gTestUDT.Array_DINT[{}]", i),
-            initial_value: PlcValue::Dint(i as i32 + 1),
-            test_value: PlcValue::Dint(2000 + (i as i32 * 111)),
+            initial_value: PlcValue::Dint(i + 1),
+            test_value: PlcValue::Dint(2000 + (i * 111)),
             description: format!("Program-scoped UDT array member: Array_DINT[{}]", i),
         });
     }
@@ -806,7 +806,7 @@ fn create_test_tags() -> Vec<TestTag> {
         tags.push(TestTag {
             name: format!("Program:TestProgram.gTestUDT_Array[{}].Member1_DINT", i),
             initial_value: PlcValue::Dint((i + 1) * 100),
-            test_value: PlcValue::Dint(2000 + (i as i32 * 444)),
+            test_value: PlcValue::Dint(2000 + (i * 444)),
             description: format!(
                 "Program-scoped UDT array element {}, member Member1_DINT",
                 i
@@ -848,8 +848,8 @@ fn create_test_tags() -> Vec<TestTag> {
                     "Program:TestProgram.gTestUDT_Array[{}].Array_DINT[{}]",
                     i, j
                 ),
-                initial_value: PlcValue::Dint(j as i32 + 1),
-                test_value: PlcValue::Dint(2000 + (i as i32 * 100) + (j as i32 * 11)),
+                initial_value: PlcValue::Dint(j + 1),
+                test_value: PlcValue::Dint(2000 + (i * 100) + (j * 11)),
                 description: format!(
                     "Program-scoped UDT array element {}, nested array member Array_DINT[{}]",
                     i, j

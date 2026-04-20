@@ -39,6 +39,7 @@ Status values:
 - [investigations/llm-knowledge-base-pattern.md](investigations/llm-knowledge-base-pattern.md) — Repo-specific view of the file-backed LLM knowledge-base pattern and the maintenance risks it introduces. `active`
 - [investigations/macbook-dashboard-demo-strategy.md](investigations/macbook-dashboard-demo-strategy.md) — Recommended MacBook-hosted demo architecture for manager-facing PLC dashboards using the currently validated stacks. `active`
 - [investigations/rockwell-official-docs-2026-04-16.md](investigations/rockwell-official-docs-2026-04-16.md) — 2026-04-16 check of current official Rockwell EtherNet/IP and Logix data-access publications. `active`
+- [investigations/rust-toolchain-baseline-2026-04-19.md](investigations/rust-toolchain-baseline-2026-04-19.md) — Current Rust baseline, Rust 2024 migration outcome, and MSRV posture after the 2026-04-19 refresh. `active`
 
 ## Planned High-Value Pages
 

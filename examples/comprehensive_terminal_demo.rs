@@ -210,9 +210,9 @@ async fn test_tag_discovery(
                 for tag in tags.iter().take(5) {
                     println!("    Tag: {}", tag.name);
                     println!(
-                        "      Type: {} ({})",
+                        "      Type: {} (0x{:04X})",
                         tag.data_type_name,
-                        format!("0x{:04X}", tag.data_type)
+                        tag.data_type
                     );
                     println!("      Size: {} bytes", tag.size);
                     println!("      Scope: {:?}", tag.scope);

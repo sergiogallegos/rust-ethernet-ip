@@ -15,8 +15,6 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::timeout;
-    use tracing;
-
     // Helper functions
     fn get_test_plc_address() -> String {
         env::var("TEST_PLC_ADDRESS").unwrap_or_else(|_| "192.168.0.1:44818".to_string())
@@ -63,7 +61,8 @@ mod tests {
 
         // Subscribe to a tag with default options
         let options = SubscriptionOptions::default();
-        match client.subscribe_to_tag("gTestArray_DINT[0]", options).await {
+        let subscribe_result = client.subscribe_to_tag("gTestArray_DINT[0]", options).await;
+        match subscribe_result {
             Ok(subscription) => {
                 tracing::info!("Subscription created: {:?}", subscription);
                 // Note: In a real test, you would wait for value changes
@@ -100,7 +99,8 @@ mod tests {
             ("gTestArray_DINT[2]", SubscriptionOptions::default()),
         ];
 
-        match client.subscribe_to_tags(&tags).await {
+        let subscribe_result = client.subscribe_to_tags(&tags).await;
+        match subscribe_result {
             Ok(subs) => {
                 tracing::info!("Multiple subscriptions created: {} tags", subs.len());
                 assert_eq!(subs.len(), tags.len(), "one subscription per tag");
@@ -132,7 +132,8 @@ mod tests {
             timeout: 5000,           // milliseconds
         };
 
-        match client.subscribe_to_tag("gTestArray_DINT[0]", options).await {
+        let subscribe_result = client.subscribe_to_tag("gTestArray_DINT[0]", options).await;
+        match subscribe_result {
             Ok(subscription) => {
                 tracing::info!(
                     "Subscription with custom options created: {:?}",
@@ -161,7 +162,8 @@ mod tests {
 
         // Try to subscribe to non-existent tag
         let options = SubscriptionOptions::default();
-        match client.subscribe_to_tag("NonExistentTag", options).await {
+        let subscribe_result = client.subscribe_to_tag("NonExistentTag", options).await;
+        match subscribe_result {
             Ok(_) => panic!("Subscription to non-existent tag should fail fast"),
             Err(e) => {
                 tracing::info!("Subscription correctly failed for non-existent tag: {}", e);

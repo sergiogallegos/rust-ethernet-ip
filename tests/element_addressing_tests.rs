@@ -9,8 +9,6 @@
 /// They are marked with #[ignore] and will only run when explicitly requested.
 /// To run: `cargo test -- --ignored`
 use rust_ethernet_ip::{EipClient, TagPath};
-use tracing;
-
 // ============================================================================
 // Tests that don't require a connection - using public TagPath API
 // ============================================================================

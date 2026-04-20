@@ -1,6 +1,6 @@
 # Python Wrapper
 
-This package is the planned thin Python wrapper for the `rust-ethernet-ip` native library.
+This package is the current thin Python wrapper for the `rust-ethernet-ip` native library.
 
 Current scope:
 

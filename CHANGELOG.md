@@ -14,6 +14,10 @@ Target next release: `0.8.0`.
 - **NuGet packing scripts**: Added `scripts/pack-nuget.ps1` for Windows `win-x64` native runtime packaging and `scripts/pack-nuget.sh` for local macOS package staging.
 - **Maintainer wiki**: Added `AGENTS.md` workflow instructions plus a `wiki/` synthesis layer for controller behavior, route-path behavior, wrapper parity, limitations, release validation, and investigation notes.
 - **MacBook manufacturing dashboard demo**: Expanded the web dashboard demo with a richer backend/frontend implementation, frontend lockfile, persistent backend data ignore rules, and maintainer strategy notes.
+- **Python wrapper MVP**: Added an in-repo Python wrapper, unit tests, simulator-backed integration support, diagnostics accessors, and data/service examples.
+- **Schema export**: Added Rust-side schema export structs plus `export_schema()` / `export_schema_json()` for stable tag and UDT metadata export.
+- **Diagnostics snapshot surfaces**: Added Rust diagnostics snapshot and error categorization, FFI JSON export, and thin C# / Python wrapper accessors.
+- **Collector, MQTT, and Docker examples**: Added Python collector, MQTT publisher, FastAPI service, and Docker-based example stacks for local service packaging.
 
 ### 🐛 Fixed
 - **NuGet publish package lookup**: Hardened the Windows release workflow so NuGet publishing resolves the generated package path explicitly instead of relying on wildcard expansion in `dotnet nuget push`.
@@ -39,7 +43,8 @@ Target next release: `0.8.0`.
 - `cargo clippy --all-targets -- -D warnings` passes on Rust `1.95.0`.
 - `cargo test --workspace --all-targets` passes when run with local TCP listener permissions for simulator-backed tests.
 - `cargo build --release` passes on Rust `1.95.0`.
-- `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal` passes: 41/41 tests.
+- `PYTHONPATH=python python3 -m unittest discover -s python/tests` passes.
+- `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal` passes: 42/42 tests.
 - Real ControlLogix validation on 2026-04-16 passed for the exercised Rust and C# wrapper feature sets on `1756-L81ES` via `1756-EN3TR` slot `0`; the remaining 59/392 matrix failures match documented PLC firmware limitations.
 
 ## [0.7.0] - 2026-04-07

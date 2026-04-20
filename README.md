@@ -30,6 +30,7 @@ Release snapshot:
 
 - Rust core library
 - C# wrapper via NuGet (`RustEtherNetIp`)
+- Python wrapper for data collection, analytics, and service integrations
 - Industrial PC applications, with current NuGet packaging focused on Windows `win-x64`
 - Deterministic behavior and regression safety
 
@@ -42,7 +43,9 @@ Release snapshot:
 - Tag-group polling API (`upsert_tag_group`, `read_tag_group_once`, `subscribe_tag_group`)
 - UDT discovery and metadata access
 - Real-time subscriptions and health-check APIs
+- Schema export and diagnostics snapshot surfaces
 - C# wrapper for .NET integration
+- Python wrapper and service/data-pipeline examples
 
 ## Known PLC/Firmware Limitations
 
@@ -67,8 +70,8 @@ Detailed technical background and examples:
 - [AB String/UDT write limitations](docs/AB_String_UDT_Write_Limitations.md)
 - [CompactLogix real-PLC validation record](docs/validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md)
 - [CompactLogix C# wrapper validation record](docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md)
-- [ControlLogix real-PLC validation record](docs/validation/2026-04-07_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
-- [ControlLogix C# wrapper validation record](docs/validation/2026-04-07_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
+- [ControlLogix real-PLC validation record](docs/validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
+- [ControlLogix C# wrapper validation record](docs/validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 
 ## Installation
 
@@ -96,6 +99,16 @@ Current NuGet packaging note:
 - `RustEtherNetIp` `0.7.0` is published on NuGet
 - the packaged native runtime asset is currently targeted at Windows `win-x64`
 - the managed package currently targets `.NET 10`
+
+### Python
+
+The Python wrapper is currently in-repo as a working `0.8.0` draft layer and is not published yet.
+
+See:
+
+- [python/README.md](python/README.md)
+- [docs/PYTHON_WRAPPER_STRATEGY.md](docs/PYTHON_WRAPPER_STRATEGY.md)
+- [docs/DOCKER_EXAMPLE_STACKS.md](docs/DOCKER_EXAMPLE_STACKS.md)
 
 ## Quick Start (Rust)
 
@@ -245,10 +258,19 @@ cargo run --example stream_injection_example
 cargo run --example test_discover_and_verify
 ```
 
+### Python
+
+```bash
+PYTHONPATH=python python3 python/examples/read_single_tag.py
+PYTHONPATH=python python3 python/examples/collector_service.py --config python/examples/collector_config.example.json --once
+docker compose -f docker/python-stack/docker-compose.yml up --build
+```
+
 ## Documentation
 
 - [API docs (docs.rs)](https://docs.rs/rust-ethernet-ip)
 - [Programmer manual (Rust + C#)](docs/programmer_manual.md)
+- [Python wrapper guide](python/README.md)
 - [Official sources traceability](docs/OFFICIAL_SOURCES.md)
 - [PLC/simulator compatibility matrix (0.7.0)](docs/compat/0.7.0_plc_simulator_compatibility_matrix.md)
 - [C# wrapper guide](csharp/RustEtherNetIp/README.md)

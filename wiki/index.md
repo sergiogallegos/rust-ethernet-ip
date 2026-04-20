@@ -16,7 +16,7 @@ Status values:
 ## Releases
 
 - [releases/0.7.0-validation-synthesis.md](releases/0.7.0-validation-synthesis.md) — Consolidated real-hardware and gate-level view of `0.7.0` validation. `active`
-- [releases/0.7.1-validation-synthesis.md](releases/0.7.1-validation-synthesis.md) — Follow-up ControlLogix validation view for the draft `0.7.1` line. `active`
+- [releases/0.8.0-validation-synthesis.md](releases/0.8.0-validation-synthesis.md) — Follow-up ControlLogix validation view for the current draft `0.8.0` line. `active`
 
 ## Controllers
 
@@ -38,8 +38,19 @@ Status values:
 
 - [investigations/llm-knowledge-base-pattern.md](investigations/llm-knowledge-base-pattern.md) — Repo-specific view of the file-backed LLM knowledge-base pattern and the maintenance risks it introduces. `active`
 - [investigations/macbook-dashboard-demo-strategy.md](investigations/macbook-dashboard-demo-strategy.md) — Recommended MacBook-hosted demo architecture for manager-facing PLC dashboards using the currently validated stacks. `active`
+- [investigations/ecosystem-platform-patterns-2026-04-19.md](investigations/ecosystem-platform-patterns-2026-04-19.md) — External ecosystem patterns from Rockwell, Ignition community, and Design Group that inform the Python/data-platform roadmap. `active`
+- [investigations/python-wrapper-strategy-2026-04-19.md](investigations/python-wrapper-strategy-2026-04-19.md) — Current recommendation to build Python on the stable Rust FFI boundary, plus notes on stale historical wrapper docs. `active`
+- [investigations/python-mvp-surface-2026-04-19.md](investigations/python-mvp-surface-2026-04-19.md) — Concrete Python MVP API, chosen FFI calls, and current native ergonomics gaps. `active`
+- [investigations/research-papers-industrial-platform-roadmap-2026-04-19.md](investigations/research-papers-industrial-platform-roadmap-2026-04-19.md) — Curated industrial research papers and what they can realistically improve in this repo. `active`
+- [investigations/research-feature-map-2026-04-19.md](investigations/research-feature-map-2026-04-19.md) — Paper-to-feature mapping for Python, metadata, collector, and adapter work, with timing guidance. `active`
+- [investigations/metadata-schema-export-design-2026-04-19.md](investigations/metadata-schema-export-design-2026-04-19.md) — Proposed Rust-first schema export contract built on current discovery APIs. `active`
+- [investigations/collector-service-mvp-design-2026-04-19.md](investigations/collector-service-mvp-design-2026-04-19.md) — Proposed Python-first collector service shape using batch polling and simple local sinks. `active`
+- [investigations/rest-mqtt-adapter-boundaries-2026-04-19.md](investigations/rest-mqtt-adapter-boundaries-2026-04-19.md) — Recommended ownership boundaries for future REST and MQTT adapters above the Rust core and wrappers. `active`
+- [investigations/monitoring-diagnostics-plan-2026-04-19.md](investigations/monitoring-diagnostics-plan-2026-04-19.md) — Current monitoring and diagnostics gaps plus the recommended Rust-first improvement order. `active`
+- [investigations/docker-example-stacks-2026-04-19.md](investigations/docker-example-stacks-2026-04-19.md) — First local Docker packaging layer for the Python API, collector, and optional MQTT example services. `active`
 - [investigations/rockwell-official-docs-2026-04-16.md](investigations/rockwell-official-docs-2026-04-16.md) — 2026-04-16 check of current official Rockwell EtherNet/IP and Logix data-access publications. `active`
 - [investigations/rust-toolchain-baseline-2026-04-19.md](investigations/rust-toolchain-baseline-2026-04-19.md) — Current Rust baseline, Rust 2024 migration outcome, and MSRV posture after the 2026-04-19 refresh. `active`
+- [investigations/software-architecture-map.md](investigations/software-architecture-map.md) — Current architecture ownership map and links to the maintainer-facing architecture document. `active`
 
 ## Planned High-Value Pages
 

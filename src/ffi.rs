@@ -29,6 +29,17 @@ fn lock_next_id() -> Result<MutexGuard<'static, i32>, ()> {
     FFI_NEXT_ID.lock().map_err(|_| ())
 }
 
+fn get_client(client_id: c_int) -> Result<EipClient, ()> {
+    let clients = lock_clients()?;
+    clients.get(&client_id).cloned().ok_or(())
+}
+
+fn store_client(client_id: c_int, client: EipClient) -> Result<(), ()> {
+    let mut clients = lock_clients()?;
+    clients.insert(client_id, client);
+    Ok(())
+}
+
 unsafe fn free_c_string(ptr: *mut c_char) {
     if !ptr.is_null() {
         let _ = unsafe { CString::from_raw(ptr) };
@@ -51,6 +62,87 @@ fn write_output_buffer(output: *mut c_char, capacity: c_int, payload: &str) -> R
     }
 
     Ok(())
+}
+
+fn system_time_to_unix_millis(value: Option<std::time::SystemTime>) -> Option<u64> {
+    value.and_then(|time| {
+        time.duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .ok()
+            .map(|duration| duration.as_millis() as u64)
+    })
+}
+
+fn duration_to_seconds(value: std::time::Duration) -> f64 {
+    value.as_secs_f64()
+}
+
+fn diagnostics_snapshot_json(snapshot: &crate::DiagnosticsSnapshot) -> Result<String, ()> {
+    let payload = serde_json::json!({
+        "captured_at_unix_ms": system_time_to_unix_millis(Some(snapshot.captured_at)),
+        "system_metrics_are_placeholders": snapshot.system_metrics_are_placeholders,
+        "connections": {
+            "active_connections": snapshot.connections.active_connections,
+            "total_connections": snapshot.connections.total_connections,
+            "failed_connections": snapshot.connections.failed_connections,
+            "connection_uptime_avg_seconds": duration_to_seconds(snapshot.connections.connection_uptime_avg),
+            "last_connection_time_unix_ms": system_time_to_unix_millis(snapshot.connections.last_connection_time),
+        },
+        "operations": {
+            "total_reads": snapshot.operations.total_reads,
+            "total_writes": snapshot.operations.total_writes,
+            "successful_reads": snapshot.operations.successful_reads,
+            "successful_writes": snapshot.operations.successful_writes,
+            "failed_reads": snapshot.operations.failed_reads,
+            "failed_writes": snapshot.operations.failed_writes,
+            "batch_operations": snapshot.operations.batch_operations,
+            "subscription_updates": snapshot.operations.subscription_updates,
+            "partial_batch_failures": snapshot.operations.partial_batch_failures,
+            "last_successful_read_time_unix_ms": system_time_to_unix_millis(snapshot.operations.last_successful_read_time),
+            "last_failed_read_time_unix_ms": system_time_to_unix_millis(snapshot.operations.last_failed_read_time),
+            "last_successful_write_time_unix_ms": system_time_to_unix_millis(snapshot.operations.last_successful_write_time),
+            "last_failed_write_time_unix_ms": system_time_to_unix_millis(snapshot.operations.last_failed_write_time),
+        },
+        "performance": {
+            "avg_read_latency_ms": snapshot.performance.avg_read_latency_ms,
+            "avg_write_latency_ms": snapshot.performance.avg_write_latency_ms,
+            "max_read_latency_ms": snapshot.performance.max_read_latency_ms,
+            "max_write_latency_ms": snapshot.performance.max_write_latency_ms,
+            "reads_per_second": snapshot.performance.reads_per_second,
+            "writes_per_second": snapshot.performance.writes_per_second,
+            "memory_usage_mb": snapshot.performance.memory_usage_mb,
+            "cpu_usage_percent": snapshot.performance.cpu_usage_percent,
+        },
+        "errors": {
+            "network_errors": snapshot.errors.network_errors,
+            "protocol_errors": snapshot.errors.protocol_errors,
+            "timeout_errors": snapshot.errors.timeout_errors,
+            "tag_not_found_errors": snapshot.errors.tag_not_found_errors,
+            "data_type_errors": snapshot.errors.data_type_errors,
+            "session_errors": snapshot.errors.session_errors,
+            "route_path_errors": snapshot.errors.route_path_errors,
+            "embedded_service_errors": snapshot.errors.embedded_service_errors,
+            "known_controller_limitation_errors": snapshot.errors.known_controller_limitation_errors,
+            "retriable_errors": snapshot.errors.retriable_errors,
+            "non_retriable_errors": snapshot.errors.non_retriable_errors,
+            "last_error_time_unix_ms": system_time_to_unix_millis(snapshot.errors.last_error_time),
+            "last_error_message": snapshot.errors.last_error_message,
+            "last_error_category": snapshot.errors.last_error_category.map(|value| format!("{value:?}")),
+            "last_retriable_error_time_unix_ms": system_time_to_unix_millis(snapshot.errors.last_retriable_error_time),
+        },
+        "health": {
+            "overall_health": format!("{:?}", snapshot.health.overall_health),
+            "health_mode": format!("{:?}", snapshot.health.health_mode),
+            "last_health_check_unix_ms": system_time_to_unix_millis(Some(snapshot.health.last_health_check)),
+            "last_verified_health_check_unix_ms": system_time_to_unix_millis(snapshot.health.last_verified_health_check),
+            "consecutive_failures": snapshot.health.consecutive_failures,
+            "recovery_attempts": snapshot.health.recovery_attempts,
+            "system_uptime_seconds": duration_to_seconds(snapshot.health.system_uptime),
+            "last_success_time_unix_ms": system_time_to_unix_millis(snapshot.health.last_success_time),
+            "last_failure_time_unix_ms": system_time_to_unix_millis(snapshot.health.last_failure_time),
+        }
+    });
+
+    serde_json::to_string(&payload).map_err(|_| ())
 }
 
 #[derive(Debug, Deserialize)]
@@ -398,21 +490,18 @@ pub unsafe extern "C" fn eip_read_bool(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Bool(value)) => {
-                unsafe {
-                    *result = i32::from(value);
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Bool(value)) => {
+            unsafe {
+                *result = i32::from(value);
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -439,23 +528,18 @@ pub unsafe extern "C" fn eip_write_bool(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let bool_value = value != 0;
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            let bool_value = value != 0;
-            if RUNTIME
-                .block_on(client.write_tag(tag_name_str, PlcValue::Bool(bool_value)))
-                .is_ok()
-            {
-                0
-            } else {
-                -1
-            }
-        }
-        None => -1,
+    if RUNTIME
+        .block_on(client.write_tag(tag_name_str, PlcValue::Bool(bool_value)))
+        .is_ok()
+    {
+        0
+    } else {
+        -1
     }
 }
 
@@ -483,21 +567,18 @@ pub unsafe extern "C" fn eip_read_sint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Sint(value)) => {
-                unsafe {
-                    *result = value;
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Sint(value)) => {
+            unsafe {
+                *result = value;
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -523,20 +604,18 @@ pub unsafe extern "C" fn eip_write_sint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    clients.get_mut(&client_id).map_or(-1, |client| {
-        if RUNTIME
-            .block_on(client.write_tag(tag_name_str, PlcValue::Sint(value)))
-            .is_ok()
-        {
-            0
-        } else {
-            -1
-        }
-    })
+    if RUNTIME
+        .block_on(client.write_tag(tag_name_str, PlcValue::Sint(value)))
+        .is_ok()
+    {
+        0
+    } else {
+        -1
+    }
 }
 
 // INT (16-bit signed integer) operations
@@ -554,21 +633,18 @@ pub unsafe extern "C" fn eip_read_int(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Int(value)) => {
-                unsafe {
-                    *result = value;
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Int(value)) => {
+            unsafe {
+                *result = value;
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -586,18 +662,13 @@ pub unsafe extern "C" fn eip_write_int(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Int(value))) {
-                Ok(_) => 0,
-                Err(_) => -1,
-            }
-        }
-        None => -1,
+    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Int(value))) {
+        Ok(_) => 0,
+        Err(_) => -1,
     }
 }
 
@@ -616,29 +687,26 @@ pub unsafe extern "C" fn eip_read_dint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
-        Err(_) => return -1,
-    };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Dint(value)) => {
-                unsafe {
-                    *result = value;
-                }
-                0
-            }
-            Ok(other_value) => {
-                tracing::error!("[FFI] Expected DINT but got: {:?}", other_value);
-                -1
-            }
-            Err(e) => {
-                tracing::error!("[FFI] Read tag '{}' failed: {}", tag_name_str, e);
-                -1
-            }
-        },
-        None => {
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
+        Err(_) => {
             tracing::error!("[FFI] Client ID {} not found", client_id);
+            return -1;
+        }
+    };
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Dint(value)) => {
+            unsafe {
+                *result = value;
+            }
+            0
+        }
+        Ok(other_value) => {
+            tracing::error!("[FFI] Expected DINT but got: {:?}", other_value);
+            -1
+        }
+        Err(e) => {
+            tracing::error!("[FFI] Read tag '{}' failed: {}", tag_name_str, e);
             -1
         }
     }
@@ -659,18 +727,13 @@ pub unsafe extern "C" fn eip_write_dint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Dint(value))) {
-                Ok(_) => 0,
-                Err(_) => -1,
-            }
-        }
-        None => -1,
+    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Dint(value))) {
+        Ok(_) => 0,
+        Err(_) => -1,
     }
 }
 
@@ -689,21 +752,18 @@ pub unsafe extern "C" fn eip_read_lint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Lint(value)) => {
-                unsafe {
-                    *result = value;
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Lint(value)) => {
+            unsafe {
+                *result = value;
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -721,18 +781,13 @@ pub unsafe extern "C" fn eip_write_lint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Lint(value))) {
-                Ok(_) => 0,
-                Err(_) => -1,
-            }
-        }
-        None => -1,
+    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Lint(value))) {
+        Ok(_) => 0,
+        Err(_) => -1,
     }
 }
 
@@ -751,21 +806,18 @@ pub unsafe extern "C" fn eip_read_usint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Usint(value)) => {
-                unsafe {
-                    *result = value;
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Usint(value)) => {
+            unsafe {
+                *result = value;
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -783,18 +835,13 @@ pub unsafe extern "C" fn eip_write_usint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Usint(value))) {
-                Ok(_) => 0,
-                Err(_) => -1,
-            }
-        }
-        None => -1,
+    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Usint(value))) {
+        Ok(_) => 0,
+        Err(_) => -1,
     }
 }
 
@@ -813,21 +860,18 @@ pub unsafe extern "C" fn eip_read_uint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Uint(value)) => {
-                unsafe {
-                    *result = value;
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Uint(value)) => {
+            unsafe {
+                *result = value;
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -845,18 +889,13 @@ pub unsafe extern "C" fn eip_write_uint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Uint(value))) {
-                Ok(_) => 0,
-                Err(_) => -1,
-            }
-        }
-        None => -1,
+    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Uint(value))) {
+        Ok(_) => 0,
+        Err(_) => -1,
     }
 }
 
@@ -875,21 +914,18 @@ pub unsafe extern "C" fn eip_read_udint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Udint(value)) => {
-                unsafe {
-                    *result = value;
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Udint(value)) => {
+            unsafe {
+                *result = value;
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -907,18 +943,13 @@ pub unsafe extern "C" fn eip_write_udint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Udint(value))) {
-                Ok(_) => 0,
-                Err(_) => -1,
-            }
-        }
-        None => -1,
+    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Udint(value))) {
+        Ok(_) => 0,
+        Err(_) => -1,
     }
 }
 
@@ -937,21 +968,18 @@ pub unsafe extern "C" fn eip_read_ulint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Ulint(value)) => {
-                unsafe {
-                    *result = value;
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Ulint(value)) => {
+            unsafe {
+                *result = value;
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -969,20 +997,18 @@ pub unsafe extern "C" fn eip_write_ulint(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    clients.get_mut(&client_id).map_or(-1, |client| {
-        if RUNTIME
-            .block_on(client.write_tag(tag_name_str, PlcValue::Ulint(value)))
-            .is_ok()
-        {
-            0
-        } else {
-            -1
-        }
-    })
+    if RUNTIME
+        .block_on(client.write_tag(tag_name_str, PlcValue::Ulint(value)))
+        .is_ok()
+    {
+        0
+    } else {
+        -1
+    }
 }
 
 /// Read a REAL tag
@@ -1000,21 +1026,18 @@ pub unsafe extern "C" fn eip_read_real(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Real(value)) => {
-                unsafe {
-                    *result = f64::from(value);
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Real(value)) => {
+            unsafe {
+                *result = f64::from(value);
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -1033,18 +1056,13 @@ pub unsafe extern "C" fn eip_write_real(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => {
-            match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Real(value as f32))) {
-                Ok(_) => 0,
-                Err(_) => -1,
-            }
-        }
-        None => -1,
+    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Real(value as f32))) {
+        Ok(_) => 0,
+        Err(_) => -1,
     }
 }
 
@@ -1063,21 +1081,18 @@ pub unsafe extern "C" fn eip_read_lreal(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    match clients.get_mut(&client_id) {
-        Some(client) => match RUNTIME.block_on(client.read_tag(tag_name_str)) {
-            Ok(PlcValue::Lreal(value)) => {
-                unsafe {
-                    *result = value;
-                }
-                0
+    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+        Ok(PlcValue::Lreal(value)) => {
+            unsafe {
+                *result = value;
             }
-            _ => -1,
-        },
-        None => -1,
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -1095,20 +1110,18 @@ pub unsafe extern "C" fn eip_write_lreal(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    clients.get_mut(&client_id).map_or(-1, |client| {
-        if RUNTIME
-            .block_on(client.write_tag(tag_name_str, PlcValue::Lreal(value)))
-            .is_ok()
-        {
-            0
-        } else {
-            -1
-        }
-    })
+    if RUNTIME
+        .block_on(client.write_tag(tag_name_str, PlcValue::Lreal(value)))
+        .is_ok()
+    {
+        0
+    } else {
+        -1
+    }
 }
 
 /// Read a STRING tag
@@ -1136,12 +1149,9 @@ pub unsafe extern "C" fn eip_read_string(
         return -1;
     };
 
-    let mut clients = match FFI_CLIENTS.lock() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
-    };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
     };
 
     let value = match RUNTIME.block_on(client.read_tag(tag_name_str)) {
@@ -1340,12 +1350,9 @@ pub unsafe extern "C" fn eip_write_string(
         return -1;
     };
 
-    let mut clients = match FFI_CLIENTS.lock() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
-    };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
     };
 
     if RUNTIME
@@ -1386,15 +1393,13 @@ pub unsafe extern "C" fn eip_read_tag(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
-        Err(_) => return -1,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
+        Err(_) => {
+            tracing::error!("[FFI] Client ID {} not found", client_id);
+            return -1;
+        }
     };
-    let Some(client) = clients.get_mut(&client_id) else {
-        tracing::error!("[FFI] Client ID {} not found", client_id);
-        return -1;
-    };
-
     let value = match RUNTIME.block_on(client.read_tag(tag_name_str)) {
         Ok(value) => {
             tracing::info!(
@@ -1478,12 +1483,9 @@ pub unsafe extern "C" fn eip_read_array_range(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
-    };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
     };
 
     let values = match RUNTIME.block_on(client.read_array_range(
@@ -1531,12 +1533,9 @@ pub unsafe extern "C" fn eip_read_udt(
         return -1;
     };
 
-    let mut clients = match FFI_CLIENTS.lock() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
-    };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
     };
 
     let value = match RUNTIME.block_on(client.read_udt_chunked(tag_name_str)) {
@@ -1591,12 +1590,9 @@ pub unsafe extern "C" fn eip_write_udt(
         Err(_) => return -1,
     };
 
-    let mut clients = match FFI_CLIENTS.lock() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
-    };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
     };
 
     // Convert HashMap to UdtData format
@@ -1627,10 +1623,9 @@ pub unsafe extern "C" fn eip_write_udt(
         Ok(data) => data,
         Err(_) => {
             // Fallback: create UdtData with symbol_id=0 (will trigger auto-read in write_tag)
-            // Note: This won't work perfectly without UDT definition, but write_tag will try
             crate::UdtData {
                 symbol_id: 0,
-                data: vec![], // Empty - write_tag will need to handle this
+                data: vec![],
             }
         }
     };
@@ -1676,21 +1671,21 @@ pub unsafe extern "C" fn eip_check_health(client_id: c_int, is_healthy: *mut c_i
         return -1;
     }
 
-    let clients = match lock_clients() {
-        Ok(guard) => guard,
-        Err(_) => return -1,
+    let client = match get_client(client_id) {
+        Ok(client) => client,
+        Err(_) => {
+            unsafe {
+                *is_healthy = 0;
+            }
+            return -1;
+        }
     };
-    if clients.get(&client_id).is_some() {
-        unsafe {
-            *is_healthy = 1;
-        }
-        0
-    } else {
-        unsafe {
-            *is_healthy = 0;
-        }
-        -1
+
+    let is_ok = RUNTIME.block_on(client.check_health());
+    unsafe {
+        *is_healthy = if is_ok { 1 } else { 0 };
     }
+    0
 }
 
 #[unsafe(no_mangle)]
@@ -1698,8 +1693,79 @@ pub unsafe extern "C" fn eip_check_health_detailed(
     client_id: c_int,
     is_healthy: *mut c_int,
 ) -> c_int {
-    // Use the same logic as basic health check for now
-    unsafe { eip_check_health(client_id, is_healthy) }
+    if is_healthy.is_null() {
+        return -1;
+    }
+
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
+        Err(_) => {
+            unsafe {
+                *is_healthy = 0;
+            }
+            return -1;
+        }
+    };
+
+    let is_ok = match RUNTIME.block_on(client.check_health_detailed()) {
+        Ok(value) => value,
+        Err(_) => false,
+    };
+
+    if store_client(client_id, client).is_err() {
+        unsafe {
+            *is_healthy = 0;
+        }
+        return -1;
+    }
+
+    unsafe {
+        *is_healthy = if is_ok { 1 } else { 0 };
+    }
+    0
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn eip_get_diagnostics_json(
+    client_id: c_int,
+    detailed: c_int,
+    result_ptr: *mut *mut c_char,
+) -> c_int {
+    if result_ptr.is_null() {
+        return -1;
+    }
+
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
+        Err(_) => return -1,
+    };
+
+    let snapshot = if detailed != 0 {
+        match RUNTIME.block_on(client.get_diagnostics_snapshot_detailed()) {
+            Ok(snapshot) => snapshot,
+            Err(_) => return -1,
+        }
+    } else {
+        RUNTIME.block_on(client.get_diagnostics_snapshot())
+    };
+
+    if detailed != 0 && store_client(client_id, client).is_err() {
+        return -1;
+    }
+
+    let json = match diagnostics_snapshot_json(&snapshot) {
+        Ok(json) => json,
+        Err(_) => return -1,
+    };
+
+    let Ok(owned) = to_c_string_owned(&json) else {
+        return -1;
+    };
+
+    unsafe {
+        *result_ptr = owned;
+    }
+    0
 }
 
 // Batch operations implementation
@@ -1715,12 +1781,9 @@ pub unsafe extern "C" fn eip_read_tags_batch(
         return -1;
     }
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
-    };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
     };
 
     // Convert C strings to Rust strings
@@ -1788,14 +1851,10 @@ pub unsafe extern "C" fn eip_write_tags_batch(
         return -1;
     }
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
-    };
-
     let input_str = unsafe {
         match CStr::from_ptr(tag_values).to_str() {
             Ok(s) => s,
@@ -1907,14 +1966,10 @@ pub unsafe extern "C" fn eip_execute_batch(
         return -1;
     }
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
-    };
-
     let input_str = unsafe {
         match CStr::from_ptr(operations).to_str() {
             Ok(s) => s,
@@ -2104,18 +2159,15 @@ pub unsafe extern "C" fn eip_read_udt_chunked(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
-    };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
     };
 
     let value = match RUNTIME.block_on(client.read_udt_chunked(tag_name_str)) {
         Ok(PlcValue::Udt(udt_data)) => udt_data,
-        Ok(_) => return -1,  // Wrong data type
-        Err(_) => return -1, // Error reading tag
+        Ok(_) => return -1,
+        Err(_) => return -1,
     };
 
     // Serialize UDT to JSON for C# consumption
@@ -2162,12 +2214,9 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
         return -1;
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
-    };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
     };
 
     let value = match RUNTIME.block_on(client.read_udt_member_by_offset(
@@ -2229,12 +2278,9 @@ pub unsafe extern "C" fn eip_write_udt_member_by_offset(
         Err(_) => return -1,
     };
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
-    };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
     };
 
     match RUNTIME.block_on(client.write_udt_member_by_offset(
@@ -2511,17 +2557,12 @@ pub unsafe extern "C" fn eip_get_udt_definition_by_id(
         return -1;
     }
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
-    };
 
-    let client_ptr = client as *mut EipClient;
-    drop(clients);
-    unsafe { eip_get_udt_definition(client_ptr, udt_name, result_ptr) }
+    unsafe { eip_get_udt_definition(&mut client, udt_name, result_ptr) }
 }
 
 /// FFI function to get tag attributes from PLC
@@ -2617,17 +2658,12 @@ pub unsafe extern "C" fn eip_get_tag_attributes_by_id(
         return -1;
     }
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
-    };
 
-    let client_ptr = client as *mut EipClient;
-    drop(clients);
-    unsafe { eip_get_tag_attributes(client_ptr, tag_name, result_ptr) }
+    unsafe { eip_get_tag_attributes(&mut client, tag_name, result_ptr) }
 }
 
 /// FFI function to discover tags with detailed attributes
@@ -2746,15 +2782,10 @@ pub unsafe extern "C" fn eip_discover_tags_detailed_by_id(
         return -1;
     }
 
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    let Some(client) = clients.get_mut(&client_id) else {
-        return -1;
-    };
 
-    let client_ptr = client as *mut EipClient;
-    drop(clients);
-    unsafe { eip_discover_tags_detailed(client_ptr, result_ptr) }
+    unsafe { eip_discover_tags_detailed(&mut client, result_ptr) }
 }

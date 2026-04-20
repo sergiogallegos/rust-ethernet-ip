@@ -82,7 +82,11 @@ impl TagSubscription {
 
         // Update value and send notification
         *last_value = Some(value.clone());
-        let sender = self.sender.lock().await;
+        drop(last_value);
+        let sender = {
+            let sender = self.sender.lock().await;
+            sender.clone()
+        };
         sender
             .send(value.clone())
             .await
@@ -191,8 +195,11 @@ impl SubscriptionManager {
 
     /// Updates a value for all matching subscriptions
     pub async fn update_value(&self, tag_name: &str, value: &PlcValue) -> Result<()> {
-        let subscriptions = self.subscriptions.lock().await;
-        for subscription in subscriptions.iter() {
+        let subscriptions = {
+            let subscriptions = self.subscriptions.lock().await;
+            subscriptions.clone()
+        };
+        for subscription in &subscriptions {
             if subscription.tag_path == tag_name && subscription.is_active() {
                 subscription.update_value(value).await?;
             }

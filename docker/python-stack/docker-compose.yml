@@ -1,0 +1,58 @@
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: docker/python-stack/Dockerfile
+    environment:
+      RUST_ETHERNET_IP_PLC_ADDRESS: ${RUST_ETHERNET_IP_PLC_ADDRESS:-192.168.0.10:44818}
+      RUST_ETHERNET_IP_API_HOST: 0.0.0.0
+      RUST_ETHERNET_IP_API_PORT: 8000
+    command: ["python", "python/examples/fastapi_service_example.py"]
+    ports:
+      - "8000:8000"
+
+  collector:
+    build:
+      context: ../..
+      dockerfile: docker/python-stack/Dockerfile
+    environment:
+      RUST_ETHERNET_IP_PLC_ADDRESS: ${RUST_ETHERNET_IP_PLC_ADDRESS:-192.168.0.10:44818}
+      RUST_ETHERNET_IP_SINK_PATH: /data/plc_samples.sqlite
+    command:
+      [
+        "python",
+        "python/examples/collector_service.py",
+        "--config",
+        "docker/python-stack/config/collector_config.json"
+      ]
+    volumes:
+      - collector_data:/data
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    profiles: ["mqtt"]
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  mqtt-publisher:
+    build:
+      context: ../..
+      dockerfile: docker/python-stack/Dockerfile
+    profiles: ["mqtt"]
+    environment:
+      RUST_ETHERNET_IP_PLC_ADDRESS: ${RUST_ETHERNET_IP_PLC_ADDRESS:-192.168.0.10:44818}
+      RUST_ETHERNET_IP_MQTT_HOST: mqtt
+    command:
+      [
+        "python",
+        "python/examples/mqtt_publisher_example.py",
+        "--config",
+        "docker/python-stack/config/mqtt_publisher_config.json"
+      ]
+    depends_on:
+      - mqtt
+
+volumes:
+  collector_data:

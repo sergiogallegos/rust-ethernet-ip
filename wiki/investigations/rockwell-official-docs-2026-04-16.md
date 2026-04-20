@@ -16,7 +16,7 @@ The main new synthesis item is traceability, not code: `ENET-UM006C-EN-P` from S
 ## Evidence
 
 - [docs/OFFICIAL_SOURCES.md](../../docs/OFFICIAL_SOURCES.md)
-- [docs/release/0.7.1_RELEASE_NOTES_DRAFT.md](../../docs/release/0.7.1_RELEASE_NOTES_DRAFT.md)
+- [docs/release/0.8.0_RELEASE_NOTES_DRAFT.md](../../docs/release/0.8.0_RELEASE_NOTES_DRAFT.md)
 - Rockwell `1756-PM020I-EN-P`, Logix 5000 Controllers Data Access, September 2025
 - Rockwell `ENET-UM006C-EN-P`, EtherNet/IP Network Devices User Manual, September 2025
 - Rockwell `1756-RM094N-EN-P`, Logix 5000 Controllers Design Considerations Reference Manual, September 2025

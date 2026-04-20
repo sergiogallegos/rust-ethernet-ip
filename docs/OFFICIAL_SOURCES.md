@@ -4,7 +4,7 @@ This page tracks the **official technical documentation** used to design, valida
 
 - Verified on: `2026-04-16`
 - Stable release line: `0.7.0`
-- Next draft line: `0.7.1`
+- Next draft line: `0.8.0`
 - Previous stable line: `0.6.3`
 
 ## Official Documentation Matrix
@@ -43,7 +43,7 @@ Rockwell's currently discoverable official material relevant to this library sti
 
 No immediate protocol implementation change was identified from this source check.
 
-## Recommendation for 0.7.1
+## Recommendation for 0.8.0
 
 For full traceability and reproducibility, keep this document updated when:
 

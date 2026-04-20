@@ -212,54 +212,6 @@ impl PlcManager {
         self.get_connection(addr).await
     }
 
-    async fn _get_or_create_connection(&mut self, address: &SocketAddr) -> Result<&mut EipClient> {
-        let config = self.configs.get(address).cloned().unwrap();
-        let connections = self.connections.entry(*address).or_default();
-
-        // Try to find an existing inactive connection
-        for (i, connection) in connections.iter_mut().enumerate() {
-            if !connection.health.is_active {
-                let mut client = EipClient::new(&address.to_string()).await?;
-                client.set_max_packet_size(config.max_packet_size as u32);
-                connection.client = client;
-                connection.health.is_active = true;
-                connection.health.last_success = Instant::now();
-                connection.health.failed_attempts = 0;
-                connection.health.latency = Duration::from_millis(0);
-                connection.last_used = Instant::now();
-                return Ok(&mut connections[i].client);
-            }
-        }
-
-        // If we have room for more connections, create a new one
-        if connections.len() < config.max_connections as usize {
-            let mut client = EipClient::new(&address.to_string()).await?;
-            client.set_max_packet_size(config.max_packet_size as u32);
-            let mut new_conn = PlcConnection::new(client);
-            new_conn.last_used = Instant::now();
-            connections.push(new_conn);
-            return Ok(&mut connections.last_mut().unwrap().client);
-        }
-
-        // Find the least recently used connection
-        let lru_index = connections
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, conn)| conn.last_used)
-            .map(|(i, _)| i)
-            .unwrap();
-
-        // Update the LRU connection
-        let mut client = EipClient::new(&address.to_string()).await?;
-        client.set_max_packet_size(config.max_packet_size as u32);
-        connections[lru_index].client = client;
-        connections[lru_index].health.is_active = true;
-        connections[lru_index].health.last_success = Instant::now();
-        connections[lru_index].health.failed_attempts = 0;
-        connections[lru_index].health.latency = Duration::from_millis(0);
-        connections[lru_index].last_used = Instant::now();
-        Ok(&mut connections[lru_index].client)
-    }
 }
 
 #[cfg(test)]

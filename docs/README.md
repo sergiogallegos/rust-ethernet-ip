@@ -4,13 +4,25 @@ This folder contains project documentation for `rust-ethernet-ip`.
 
 Current release state:
 - Stable published line: `0.7.0`
-- Working draft line: `0.7.1` (not published)
+- Working draft line: `0.8.0` (not published)
 - Previous stable line: `0.6.3`
 
 ## Start Here
 
 - [../README.md](../README.md): Project overview and quick start
 - [programmer_manual.md](programmer_manual.md): Programmer manual (Rust + C# integration tracks)
+- [SOFTWARE_ARCHITECTURE.md](SOFTWARE_ARCHITECTURE.md): Current architecture map, design boundaries, and refactor guidance
+- [PLATFORM_EXPANSION_BACKLOG.md](PLATFORM_EXPANSION_BACKLOG.md): Planned Python/data-platform expansion backlog and rationale
+- [CODEX_PYTHON_PLATFORM_EXPANSION_PROMPT.md](CODEX_PYTHON_PLATFORM_EXPANSION_PROMPT.md): Detailed Codex prompt for planning and implementing the Python/data-platform path
+- [PYTHON_WRAPPER_STRATEGY.md](PYTHON_WRAPPER_STRATEGY.md): Current recommendation and plan shape for the future Python wrapper
+- [PYTHON_MVP_API_AND_FFI_MAPPING.md](PYTHON_MVP_API_AND_FFI_MAPPING.md): Concrete Python MVP API, FFI mapping, and identified native-layer gaps
+- [research/CURATED_INDUSTRIAL_RESEARCH_READING_LIST.md](research/CURATED_INDUSTRIAL_RESEARCH_READING_LIST.md): Curated papers and technical references for future platform/data-layer improvements
+- [RESEARCH_FEATURE_MAP.md](RESEARCH_FEATURE_MAP.md): Mapping from the curated research papers to concrete repo components, priorities, and recommended implementation order
+- [METADATA_SCHEMA_EXPORT_DESIGN.md](METADATA_SCHEMA_EXPORT_DESIGN.md): Proposed stable export contract for tag and UDT metadata built on the current Rust discovery APIs
+- [COLLECTOR_SERVICE_MVP_DESIGN.md](COLLECTOR_SERVICE_MVP_DESIGN.md): Proposed first collector-service shape using the Python wrapper, batch polling, and CSV/SQLite sinks
+- [REST_MQTT_ADAPTER_BOUNDARIES.md](REST_MQTT_ADAPTER_BOUNDARIES.md): Recommended ownership boundaries and transport shape for future REST and MQTT adapters
+- [MONITORING_DIAGNOSTICS_IMPROVEMENT_PLAN.md](MONITORING_DIAGNOSTICS_IMPROVEMENT_PLAN.md): Recommended next diagnostics and health-surface improvements for the Rust core and thin wrappers
+- [DOCKER_EXAMPLE_STACKS.md](DOCKER_EXAMPLE_STACKS.md): Local Docker packaging for the Python API, collector, and optional MQTT example services
 - [OFFICIAL_SOURCES.md](OFFICIAL_SOURCES.md): Official Rockwell/ODVA references used by this library
 - [../CHANGELOG.md](../CHANGELOG.md): Release history and ongoing changes
 - [../CONTRIBUTING.md](../CONTRIBUTING.md): Contribution workflow and required checks
@@ -18,7 +30,7 @@ Current release state:
 
 ## Release and Quality Gates
 
-- [release/0.7.1_RELEASE_NOTES_DRAFT.md](release/0.7.1_RELEASE_NOTES_DRAFT.md)
+- [release/0.8.0_RELEASE_NOTES_DRAFT.md](release/0.8.0_RELEASE_NOTES_DRAFT.md)
 - [0.7.0_HARDENING_GATE.md](0.7.0_HARDENING_GATE.md)
 - [validation/REAL_PLC_TESTING.md](validation/REAL_PLC_TESTING.md)
 - [validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)

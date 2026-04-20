@@ -1,0 +1,26 @@
+{
+  "plc": {
+    "address": "192.168.0.10:44818",
+    "name": "compactlogix-a",
+    "site": "lab"
+  },
+  "polling": {
+    "interval_ms": 1000,
+    "max_retry_count": 3,
+    "retry_delay_ms": 1000
+  },
+  "tags": [
+    "DINT_TAG",
+    "REAL_TAG",
+    "BOOL_TAG",
+    "STRING_TAG"
+  ],
+  "mqtt": {
+    "host": "127.0.0.1",
+    "port": 1883,
+    "topic_root": "factory",
+    "client_id": "rust-ethernet-ip-publisher",
+    "qos": 0,
+    "retain": false
+  }
+}

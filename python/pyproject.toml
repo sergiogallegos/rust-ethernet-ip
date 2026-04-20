@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rust-ethernet-ip"
+version = "0.8.0.dev0"
+description = "Thin Python wrapper for the rust-ethernet-ip native library"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Sergio Gallegos" }
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Manufacturing",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Topic :: System :: Hardware",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = []
+analytics = ["pandas>=2.0"]
+api = ["fastapi>=0.115", "uvicorn>=0.30"]
+mqtt = ["paho-mqtt>=2.1"]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rust_ethernet_ip*"]

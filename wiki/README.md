@@ -42,7 +42,7 @@ Examples:
 
 - `Ingest docs/validation/2026-04-15_real_plc_xxx.md into the wiki. Update index and log too.`
 - `We changed batch error handling. Check src/ffi.rs, csharp/RustEtherNetIp/EthernetNetIpClient.cs, and docs/README.md, then update wrapper parity if needed.`
-- `Lint the wiki after the 0.7.1 docs changes. Focus on release validation, limitations, and wrapper parity.`
+- `Lint the wiki after the 0.8.0 docs changes. Focus on release validation, limitations, and wrapper parity.`
 - `Answer this from the wiki first: what is the current supported pattern for writing STRING-related values? If the wiki is missing something, update it.`
 
 Reusable default prompt:

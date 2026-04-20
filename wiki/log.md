@@ -191,3 +191,353 @@ Sources used:
 - `wiki/index.md`
 - `wiki/investigations/rust-toolchain-baseline-2026-04-19.md`
 - `Cargo.toml`
+
+## [2026-04-19] reframe | move active draft line to 0.8.0
+
+- Reframed the active unreleased line from `0.7.1` to `0.8.0` to match the larger migration and planned feature scope.
+- Renamed the active release-notes draft and release-validation synthesis pages from `0.7.1` to `0.8.0`.
+- Updated README, docs index, official-sources notes, validation notes, and wiki references to point at the new `0.8.0` draft line.
+
+Sources used:
+
+- `README.md`
+- `CHANGELOG.md`
+- `docs/README.md`
+- `docs/OFFICIAL_SOURCES.md`
+- `docs/release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- `docs/validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+- `docs/validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+- `wiki/index.md`
+- `wiki/README.md`
+- `wiki/releases/0.8.0-validation-synthesis.md`
+- `wiki/investigations/rockwell-official-docs-2026-04-16.md`
+- `wiki/investigations/rust-toolchain-baseline-2026-04-19.md`
+
+## [2026-04-19] ingest | add software architecture map
+
+- Added a maintainer-facing architecture document in `docs/SOFTWARE_ARCHITECTURE.md` describing the layer model, ownership boundaries, design patterns, and current refactor seams.
+- Added a wiki synthesis page so the architecture map is discoverable from the wiki entry point.
+- Updated `wiki/index.md` and `docs/README.md` to register the new architecture references.
+
+Sources used:
+
+- `src/lib.rs`
+- `src/ffi.rs`
+- `src/subscription.rs`
+- `src/tag_subscription.rs`
+- `src/plc_manager.rs`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.cs`
+- `docs/README.md`
+
+## [2026-04-19] ingest | capture platform expansion backlog
+
+- Added a backlog document for Python, data-platform, and service-layer expansion informed by public Rockwell, Ignition-community, and Design Group patterns.
+- Added a detailed Codex prompt file for planning and implementing the Python/data-platform path against the repo's current `0.8.0` line and current toolchain baselines.
+- Added a wiki investigation page summarizing the main external ecosystem takeaways and how they inform this repo's strategic direction.
+
+Sources used:
+
+- `https://github.com/RockwellAutomation`
+- `https://github.com/RockwellAutomation/ra-logix-cicd`
+- `https://github.com/IgnitionModuleDevelopmentCommunity/ignition-extensions`
+- `https://github.com/IgnitionModuleDevelopmentCommunity/IgnitionNode-RED`
+- `https://github.com/design-group`
+- `https://github.com/design-group/ignition-docker`
+- `https://github.com/design-group/ignition-tag-cicd-module`
+- `docs/README.md`
+
+## [2026-04-19] ingest | define python wrapper strategy
+
+- Added a Python wrapper strategy document recommending the existing Rust FFI boundary as the primary foundation instead of starting with a separate PyO3-first architecture.
+- Recorded that historical docs still reference earlier `pywrapper/`-style work that is not present in the current live repo tree.
+- Updated the docs index and wiki index so the Python wrapper recommendation is discoverable.
+
+Sources used:
+
+- `Cargo.toml`
+- `src/ffi.rs`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.NativeMethods.cs`
+- `docs/ALL_WRAPPERS_UPDATE_COMPLETE.md`
+- `docs/WRAPPER_UPDATE_SUMMARY.md`
+
+## [2026-04-19] ingest | define python mvp surface
+
+- Added a concrete Python MVP API and FFI mapping document.
+- Recorded the recommended minimal native surface for Python and the main FFI gaps that affect wrapper ergonomics.
+- Updated docs and wiki indexes so the Python MVP design is easy to find from the current repo documentation layer.
+
+Sources used:
+
+- `src/ffi.rs`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.NativeMethods.cs`
+- `docs/PYTHON_WRAPPER_STRATEGY.md`
+
+## [2026-04-19] ingest | curate industrial research papers
+
+- Added a curated reading list of ten industrial, IIoT, digital-twin, and ML/security papers relevant to the repo's wrapper and platform roadmap.
+- Recorded that some initially proposed `arXiv` links did not match the named industrial papers and replaced them with verified references.
+- Added a wiki synthesis page describing which papers are most actionable for this repo and which are broader context only.
+
+Sources used:
+
+- `https://www.mdpi.com/2624-831X/3/4/27`
+- `https://www.mdpi.com/2079-9292/8/6/600`
+- `https://www.mdpi.com/1424-8220/24/7/2072`
+- `https://www.mdpi.com/1999-5903/11/3/66`
+- `https://www.sciencedirect.com/science/article/pii/S2542660521000846`
+- `https://colab.ws/articles/10.1109/access.2020.2998358`
+- `https://www.mdpi.com/2071-1050/12/19/8211`
+- `https://www.mdpi.com/2078-2489/16/9/737`
+- `https://link.springer.com/article/10.1186/s42400-021-00095-5`
+
+## [2026-04-19] ingest | extend industrial research reading list
+
+- Extended the research reading list with five more targeted papers on Asset Administration Shell modeling, edge/CPPS deployment, low-latency data-collection architecture, unified-namespace transport tradeoffs, and semantic OPC UA pub/sub patterns.
+- Updated the research synthesis page to highlight which additions are most actionable for schema export, collector-service architecture, and future MQTT or streaming adapters.
+
+Sources used:
+
+- `https://www.mdpi.com/1424-8220/21/6/2004`
+- `https://www.sciencedirect.com/science/article/pii/S1877050919309317`
+- `https://www.sciencedirect.com/science/article/pii/S1383762122001564`
+- `https://www.sciencedirect.com/science/article/pii/S2542660525002483`
+- `https://pmc.ncbi.nlm.nih.gov/articles/PMC9606965/`
+
+## [2026-04-19] ingest | map research papers to repo features
+
+- Added a concrete paper-to-feature map in `docs/RESEARCH_FEATURE_MAP.md`.
+- Added a matching wiki synthesis page so agents can find the paper-driven priorities quickly.
+- Updated the platform backlog to carry the paper-driven items as explicit to-dos.
+
+Sources used:
+
+- `docs/research/CURATED_INDUSTRIAL_RESEARCH_READING_LIST.md`
+- `docs/PLATFORM_EXPANSION_BACKLOG.md`
+- `docs/PYTHON_WRAPPER_STRATEGY.md`
+- `docs/PYTHON_MVP_API_AND_FFI_MAPPING.md`
+
+## [2026-04-19] ingest | advance python wrapper mvp skeleton
+
+- Added the initial `python/` package skeleton with bindings, client API, examples, and lightweight tests.
+- Updated the Python strategy and MVP wiki pages to reflect that the package now loads the native library and validates with `unittest`.
+- Added local Python development and test instructions in `python/README.md`.
+
+Sources used:
+
+- `python/pyproject.toml`
+- `python/rust_ethernet_ip/bindings.py`
+- `python/rust_ethernet_ip/client.py`
+- `python/tests/test_client_value_mapping.py`
+- `python/tests/test_import.py`
+- `python/README.md`
+
+## [2026-04-19] ingest | add python simulator integration tests
+
+- Added optional Python integration tests for simulator-backed connect/read/write/batch/health flows.
+- Matched the existing C# test pattern by keying the integration path off `SIM_PLC_ADDRESS` and skipping cleanly when it is not configured.
+- Updated Python strategy docs and wiki pages to record that the test skeleton exists and what still remains is actual configured execution.
+
+Sources used:
+
+- `python/tests/test_integration.py`
+- `python/README.md`
+- `csharp/RustEtherNetIp.Tests/SimulatorIntegrationTests.cs`
+
+## [2026-04-19] ingest | add auto-launch python simulator path
+
+- Added `examples/python_test_simulator.rs` so the in-repo deterministic simulator can be launched directly for Python validation.
+- Added a Python-side simulator harness that can auto-start the simulator when `RUST_ETHERNET_IP_START_SIM=1` is set.
+- Initial end-to-end validation surfaced a batch STRING parsing gap and a Python float-inference mismatch.
+
+Sources used:
+
+- `examples/python_test_simulator.rs`
+- `python/tests/sim_harness.py`
+- `python/tests/test_integration.py`
+- `python/README.md`
+
+## [2026-04-19] ingest | fix python simulator batch validation issues
+
+- Fixed batch-result parsing for Allen-Bradley `STRING` values (`0x00CE`) in the Rust core.
+- Changed Python float inference to default to PLC `REAL` instead of `LREAL`, with explicit override still available.
+- Updated Python loader precedence to prefer freshly built debug libraries during local development.
+- Revalidated the full Python suite end-to-end with `RUST_ETHERNET_IP_START_SIM=1`.
+
+Sources used:
+
+- `src/lib.rs`
+- `python/rust_ethernet_ip/client.py`
+- `python/rust_ethernet_ip/bindings.py`
+- `python/tests/test_client_value_mapping.py`
+- `python/tests/test_integration.py`
+
+## [2026-04-19] ingest | define metadata schema export design
+
+- Added a Rust-first metadata and schema export design document based on the repo's current discovery and UDT APIs.
+- Added a wiki synthesis page linking that design back to the research-driven roadmap.
+- Updated the backlog to mark the design task complete and make implementation of `export_schema()` the next concrete follow-up.
+
+Sources used:
+
+- `docs/tag_introspection.md`
+- `docs/RESEARCH_FEATURE_MAP.md`
+- `src/lib.rs`
+- `src/ffi.rs`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.Support.cs`
+
+## [2026-04-19] ingest | implement rust schema export
+
+- Added explicit Rust-side schema export structs in `src/schema.rs`.
+- Implemented `EipClient::export_schema()` and `EipClient::export_schema_json()` on top of the current discovery and UDT APIs.
+- Added unit coverage for schema type classification and timestamp formatting, and updated the backlog to move schema export from design into implemented status.
+
+Sources used:
+
+- `src/schema.rs`
+- `src/lib.rs`
+- `src/tag_manager.rs`
+- `src/udt.rs`
+- `docs/METADATA_SCHEMA_EXPORT_DESIGN.md`
+
+## [2026-04-19] ingest | expand schema export tests
+
+- Added focused schema-export unit coverage for tag mapping, UDT mapping, and top-level JSON serialization shape.
+- Updated backlog/docs to distinguish completed assembly/serialization tests from still-pending real-PLC validation.
+
+Sources used:
+
+- `src/schema.rs`
+- `docs/METADATA_SCHEMA_EXPORT_DESIGN.md`
+- `docs/PLATFORM_EXPANSION_BACKLOG.md`
+
+## [2026-04-19] ingest | add python analytics and api examples
+
+- Added optional Python examples for pandas/dataframe export and a simple FastAPI service.
+- Added isolated Python extras for analytics and API examples so the core package remains dependency-light.
+- Updated backlog and strategy docs to mark the batch-first analytics example step complete.
+
+Sources used:
+
+- `python/pyproject.toml`
+- `python/README.md`
+- `python/examples/pandas_dataframe_example.py`
+- `python/examples/fastapi_service_example.py`
+
+## [2026-04-19] ingest | define collector service mvp
+
+- Added a collector-service MVP design document that recommends a Python example service using batch polling and CSV/SQLite sinks.
+- Added a wiki synthesis page linking the collector direction back to the paper-driven roadmap and current repo service patterns.
+- Updated backlog/docs to mark collector design complete and implementation as the next concrete follow-up.
+
+Sources used:
+
+- `docs/RESEARCH_FEATURE_MAP.md`
+- `python/examples/log_tags_to_csv.py`
+- `python/examples/log_tags_to_sqlite.py`
+- `examples/web_app/backend/src/main.rs`
+
+## [2026-04-19] ingest | implement collector service example
+
+- Added a batch-first Python collector example driven by a JSON config file.
+- Added a starter collector config and updated the Python README with collector usage.
+- Marked the collector-service MVP implementation task complete while leaving real-PLC validation as follow-up work.
+
+Sources used:
+
+- `python/examples/collector_service.py`
+- `python/examples/collector_config.example.json`
+- `python/README.md`
+
+## [2026-04-19] ingest | define rest and mqtt adapter boundaries
+
+- Added a design note that keeps REST and MQTT above the Rust core and thin wrappers instead of turning them into parallel protocol implementations.
+- Marked the adapter-boundary design step complete and corrected the backlog to reflect that the repo already has a small REST example and a configurable collector example.
+- Added a wiki synthesis page linking the new boundary guidance to the collector, schema-export, and paper-driven roadmap work.
+
+Sources used:
+
+- `docs/REST_MQTT_ADAPTER_BOUNDARIES.md`
+- `docs/PLATFORM_EXPANSION_BACKLOG.md`
+- `python/examples/fastapi_service_example.py`
+- `python/examples/collector_service.py`
+- `examples/web_app/backend/src/main.rs`
+
+## [2026-04-19] ingest | add mqtt publisher example
+
+- Added a Python MQTT example that publishes normalized batch snapshots above the wrapper layer using an optional dependency.
+- Added a starter MQTT config and updated the Python README to document install and usage for the example.
+- Marked the MQTT example step complete while leaving broker-backed validation and Docker packaging as follow-up work.
+
+Sources used:
+
+- `python/examples/mqtt_publisher_example.py`
+- `python/examples/mqtt_publisher_config.example.json`
+- `python/README.md`
+- `docs/REST_MQTT_ADAPTER_BOUNDARIES.md`
+
+## [2026-04-19] ingest | define monitoring and diagnostics plan
+
+- Added a Rust-first monitoring and diagnostics improvement plan focused on stable health and error telemetry before anomaly-oriented work.
+- Added a wiki synthesis page linking the plan back to the current monitoring module, paper-driven roadmap, and real-PLC validation records.
+- Applied a small code cleanup in `src/monitoring.rs` by removing an unnecessary async metrics-update path while holding the write lock.
+
+Sources used:
+
+- `src/monitoring.rs`
+- `docs/MONITORING_DIAGNOSTICS_IMPROVEMENT_PLAN.md`
+- `docs/RESEARCH_FEATURE_MAP.md`
+- `docs/validation/REAL_PLC_TESTING.md`
+- `docs/validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md`
+
+## [2026-04-19] ingest | implement rust diagnostics snapshot
+
+- Added a first Rust-side diagnostics snapshot, explicit passive-versus-verified health mode, and first-pass operational error categories in the monitoring module.
+- Re-exported the new diagnostics types from the public Rust API and added focused unit tests for error classification and health-state transitions.
+- Updated the backlog and monitoring plan to treat wrapper/FFI exposure as the next follow-up step.
+
+Sources used:
+
+- `src/monitoring.rs`
+- `src/lib.rs`
+- `docs/MONITORING_DIAGNOSTICS_IMPROVEMENT_PLAN.md`
+- `docs/PLATFORM_EXPANSION_BACKLOG.md`
+
+## [2026-04-19] ingest | expose diagnostics through ffi and wrappers
+
+- Added a JSON-based FFI diagnostics export built on the Rust-side diagnostics snapshot and updated the basic/detailed health FFI calls to use real client health checks.
+- Added thin C# DTOs and wrapper methods plus thin Python dataclasses and client accessors for diagnostics snapshots.
+- Updated the backlog and monitoring plan to mark wrapper exposure complete and leave real-PLC diagnostics validation as the next follow-up step.
+
+Sources used:
+
+- `src/lib.rs`
+- `src/ffi.rs`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.Diagnostics.cs`
+- `csharp/RustEtherNetIp/DiagnosticsSnapshot.cs`
+- `python/rust_ethernet_ip/client.py`
+- `python/rust_ethernet_ip/types.py`
+
+## [2026-04-19] reframe | add session checkpoint for tomorrow
+
+- Added an explicit session checkpoint to the backlog so the next session can resume from the completed diagnostics-wrapper exposure work.
+- Recorded the preferred next step as the real-PLC validation block, with Docker example stacks as the fallback if hardware is still unavailable.
+
+Sources used:
+
+- `docs/PLATFORM_EXPANSION_BACKLOG.md`
+
+## [2026-04-19] ingest | add docker example stacks
+
+- Added a first local Docker packaging layer for the Python API, collector, and optional MQTT example services.
+- Updated the Python examples to support environment-driven PLC and broker overrides so they can run cleanly in containers.
+- Marked the Docker-stack backlog item complete and added a small C# diagnostics contract test alongside the stack work.
+
+Sources used:
+
+- `docker/python-stack/Dockerfile`
+- `docker/python-stack/docker-compose.yml`
+- `docs/DOCKER_EXAMPLE_STACKS.md`
+- `python/examples/fastapi_service_example.py`
+- `python/examples/collector_service.py`
+- `python/examples/mqtt_publisher_example.py`
+- `csharp/RustEtherNetIp.Tests/DiagnosticsSnapshotContractTests.cs`

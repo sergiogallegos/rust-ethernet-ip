@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Target next release: `0.7.1`.
+Target next release: `0.8.0`.
 
 ### ✨ Added
 - **Windows-first NuGet release workflow**: Added a GitHub Actions release workflow that builds the Rust native library on `windows-latest`, packs the C# wrapper, uploads the `.nupkg` artifact, and publishes to NuGet on version tags when `NUGET_API_KEY` is configured.
@@ -21,12 +21,14 @@ Target next release: `0.7.1`.
 - **C# validation examples on macOS**: Fixed wrapper smoke/benchmark/matrix example projects so they copy `librust_ethernet_ip.dylib` on macOS and `rust_ethernet_ip.dll` on Windows using `MSBuild::IsOSPlatform(...)`.
 - **Rust 1.95 Clippy cleanup**: Removed new Clippy warnings in FFI write helpers and packed BOOL-array decoding without changing runtime behavior.
 - **crates.io README logo rendering**: Switched README logo image URLs from relative paths to absolute GitHub raw URLs so the crate page can render the logo outside the GitHub repository context.
+- **Rust 2024 migration without wrapper breakage**: Moved the repo to Rust `2024` / `1.95`, updated FFI exports to Rust 2024 `#[unsafe(no_mangle)]`, refreshed dependency baselines, and verified that Rust tests plus C# wrapper build/tests still pass against the updated native library.
 
 ### 📚 Documentation
 - **Main README NuGet guidance**: Documented the published `RustEtherNetIp` NuGet package, CLI install command, `.NET 10` target, and current Windows `win-x64` native runtime focus.
 - **Release process docs**: Updated version-management guidance to use the Windows-first NuGet pack/publish flow.
 - **Official Rockwell source check**: Rechecked official Rockwell EtherNet/IP/data-access publications on 2026-04-16. The repository already tracks the current `1756-PM020I-EN-P` September 2025 data-access manual; `ENET-UM006C-EN-P` September 2025 was added to the traceability matrix as a relevant network-device reference for EtherNet/IP connection/message behavior.
 - **Wiki documentation**: Added maintainer-oriented pages for LLM-maintained repository knowledge, including how synthesis differs from user-facing docs.
+- **Toolchain baseline docs**: Updated build/readme/wiki references to the current Rust `1.95` / Rust 2024 baseline and current `.NET 10` wrapper outputs.
 
 ### 🧹 Cleanup
 - **Repository ignore rules**: Added Obsidian workspace ignore coverage.
@@ -34,7 +36,9 @@ Target next release: `0.7.1`.
 
 ### ✅ Verification
 - `cargo clippy --lib -p rust-ethernet-ip --` passes on Rust `1.95.0`.
+- `cargo clippy --all-targets -- -D warnings` passes on Rust `1.95.0`.
 - `cargo test --workspace --all-targets` passes when run with local TCP listener permissions for simulator-backed tests.
+- `cargo build --release` passes on Rust `1.95.0`.
 - `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal` passes: 41/41 tests.
 - Real ControlLogix validation on 2026-04-16 passed for the exercised Rust and C# wrapper feature sets on `1756-L81ES` via `1756-EN3TR` slot `0`; the remaining 59/392 matrix failures match documented PLC firmware limitations.
 

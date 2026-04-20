@@ -123,5 +123,7 @@ namespace RustEtherNetIp
         // Configuration
         void SetMaxPacketSize(int size);
         bool CheckHealth();
+        DiagnosticsSnapshot GetDiagnosticsSnapshot();
+        DiagnosticsSnapshot GetDiagnosticsSnapshotDetailed();
     }
 } 

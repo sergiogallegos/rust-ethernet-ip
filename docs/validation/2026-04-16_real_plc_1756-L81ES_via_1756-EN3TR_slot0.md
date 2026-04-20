@@ -7,7 +7,7 @@ Network topology: Routed Ethernet connection to `192.168.0.101:44818` via `1756-
 
 ## Scope
 
-This is a follow-up validation for the `0.7.1` draft line against the same ControlLogix target and `gTest*` tag set used during the `0.7.0` release validation.
+This is a follow-up validation for the current `0.8.0` draft line against the same ControlLogix target and `gTest*` tag set used during the `0.7.0` release validation.
 
 ## Commands Executed
 
@@ -60,4 +60,4 @@ Iterations per scenario: 100
 
 ## Assessment
 
-The Rust library remains stable on the exercised routed ControlLogix feature set for the `0.7.1` draft line. The observed failures are unchanged controller firmware limitations, not new protocol regressions.
+The Rust library remains stable on the exercised routed ControlLogix feature set for the `0.8.0` draft line. The observed failures are unchanged controller firmware limitations, not new protocol regressions.

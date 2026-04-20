@@ -61,4 +61,4 @@
 ## Related Pages
 
 - [wrapper-parity/rust-vs-csharp.md](../wrapper-parity/rust-vs-csharp.md)
-- [releases/0.7.1-validation-synthesis.md](../releases/0.7.1-validation-synthesis.md)
+- [releases/0.8.0-validation-synthesis.md](../releases/0.8.0-validation-synthesis.md)

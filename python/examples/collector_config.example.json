@@ -1,0 +1,20 @@
+{
+  "plc": {
+    "address": "192.168.0.10:44818"
+  },
+  "polling": {
+    "interval_ms": 1000,
+    "max_retry_count": 3,
+    "retry_delay_ms": 1000
+  },
+  "tags": [
+    "DINT_TAG",
+    "REAL_TAG",
+    "BOOL_TAG",
+    "STRING_TAG"
+  ],
+  "sink": {
+    "kind": "sqlite",
+    "path": "python/examples/data/plc_samples.sqlite"
+  }
+}

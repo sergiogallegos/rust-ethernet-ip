@@ -388,6 +388,7 @@ pub mod error;
 pub mod ffi;
 pub mod monitoring; // Enterprise-grade monitoring and health checks
 pub mod plc_manager;
+pub mod schema;
 pub mod subscription;
 pub mod tag_group;
 pub mod tag_manager;
@@ -403,10 +404,15 @@ pub use config::{
 };
 pub use error::{EtherNetIpError, Result};
 pub use monitoring::{
-    ConnectionMetrics, ErrorMetrics, HealthMetrics, HealthStatus, MonitoringMetrics,
-    OperationMetrics, PerformanceMetrics, ProductionMonitor,
+    ConnectionMetrics, DiagnosticsSnapshot, ErrorCategory, ErrorMetrics, HealthCheckMode,
+    HealthMetrics, HealthStatus, MonitoringMetrics, OperationMetrics, PerformanceMetrics,
+    ProductionMonitor,
 };
 pub use plc_manager::{PlcConfig, PlcConnection, PlcManager};
+pub use schema::{
+    SchemaCapabilities, SchemaDataType, SchemaExport, SchemaLibraryInfo, SchemaRoutePath,
+    SchemaScope, SchemaTag, SchemaTargetInfo, SchemaUdt, SchemaUdtMember,
+};
 pub use subscription::{SubscriptionManager, SubscriptionOptions, TagSubscription};
 pub use tag_group::{
     TagGroupConfig, TagGroupEvent, TagGroupEventKind, TagGroupFailureCategory,
@@ -1824,6 +1830,65 @@ impl EipClient {
         let tag_manager = self.tag_manager.lock().await;
         let cache = tag_manager.cache.read().unwrap();
         cache.get(tag_name).cloned()
+    }
+
+    /// Exports a stable schema view built from the current discovery APIs.
+    pub async fn export_schema(&mut self) -> crate::error::Result<SchemaExport> {
+        let discovered_tags = self.discover_tags_detailed().await?;
+        let mut schema = SchemaExport::new(self.route_path.as_ref());
+
+        let mut tags = discovered_tags;
+        tags.sort_by(|a, b| a.name.cmp(&b.name));
+        schema.tags = tags.iter().map(schema::SchemaTag::from).collect();
+
+        let mut udt_sources: std::collections::HashMap<u32, (&str, u32)> =
+            std::collections::HashMap::new();
+        for tag in &tags {
+            if tag.data_type == 0x00A0
+                && let Some(template_instance_id) = tag.template_instance_id
+            {
+                udt_sources
+                    .entry(template_instance_id)
+                    .or_insert((tag.name.as_str(), tag.size));
+            }
+        }
+
+        let mut template_ids: Vec<u32> = udt_sources.keys().copied().collect();
+        template_ids.sort_unstable();
+
+        for template_id in template_ids {
+            let Some((tag_name, size_bytes)) = udt_sources.get(&template_id).copied() else {
+                continue;
+            };
+
+            match self.get_udt_definition(tag_name).await {
+                Ok(definition) => {
+                    schema.udts.push(schema::SchemaUdt::from_definition(
+                        &definition,
+                        Some(template_id),
+                        size_bytes,
+                    ));
+                }
+                Err(err) => schema.warnings.push(format!(
+                    "Failed to resolve UDT definition for tag '{}' (template {}): {}",
+                    tag_name, template_id, err
+                )),
+            }
+        }
+
+        schema.udts.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(schema)
+    }
+
+    /// Exports the current schema view as pretty-printed JSON.
+    pub async fn export_schema_json(&mut self) -> crate::error::Result<String> {
+        let schema = self.export_schema().await?;
+        serde_json::to_string_pretty(&schema).map_err(|err| {
+            crate::error::EtherNetIpError::Protocol(format!(
+                "Failed to serialize schema export to JSON: {}",
+                err
+            ))
+        })
     }
 
     /// Reads a tag value from the PLC
@@ -4498,6 +4563,12 @@ impl EipClient {
             && self.last_activity.lock().await.elapsed() < Duration::from_secs(150)
     }
 
+    /// Builds a lightweight diagnostics snapshot from the current client state.
+    pub async fn get_diagnostics_snapshot(&self) -> crate::DiagnosticsSnapshot {
+        self.build_diagnostics_snapshot(crate::HealthCheckMode::Passive, self.check_health().await)
+            .await
+    }
+
     /// Verifies the connection by sending a keep-alive (and re-registering if needed).
     ///
     /// Use this when you need to confirm the PLC is still reachable (e.g. after
@@ -4518,6 +4589,132 @@ impl EipClient {
                     Err(_) => Ok(false),
                 }
             }
+        }
+    }
+
+    /// Builds a verified diagnostics snapshot by actively checking PLC connectivity.
+    pub async fn get_diagnostics_snapshot_detailed(
+        &mut self,
+    ) -> crate::error::Result<crate::DiagnosticsSnapshot> {
+        let is_healthy = self.check_health_detailed().await?;
+        Ok(self
+            .build_diagnostics_snapshot(crate::HealthCheckMode::Verified, is_healthy)
+            .await)
+    }
+
+    async fn build_diagnostics_snapshot(
+        &self,
+        health_mode: crate::HealthCheckMode,
+        is_healthy: bool,
+    ) -> crate::DiagnosticsSnapshot {
+        let now = std::time::SystemTime::now();
+        let session_active = self.session_handle != 0;
+        let last_activity_elapsed = self.last_activity.lock().await.elapsed();
+        let last_success_time = if is_healthy || session_active {
+            Some(now
+                .checked_sub(last_activity_elapsed)
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH))
+        } else {
+            None
+        };
+
+        let error_category = if session_active && !is_healthy {
+            Some(crate::ErrorCategory::Session)
+        } else {
+            None
+        };
+
+        crate::DiagnosticsSnapshot {
+            captured_at: now,
+            connections: crate::ConnectionMetrics {
+                active_connections: if session_active { 1 } else { 0 },
+                total_connections: if session_active { 1 } else { 0 },
+                failed_connections: 0,
+                connection_uptime_avg: Duration::ZERO,
+                last_connection_time: last_success_time,
+            },
+            operations: crate::OperationMetrics {
+                total_reads: 0,
+                total_writes: 0,
+                successful_reads: 0,
+                successful_writes: 0,
+                failed_reads: 0,
+                failed_writes: 0,
+                batch_operations: 0,
+                subscription_updates: 0,
+                partial_batch_failures: 0,
+                last_successful_read_time: None,
+                last_failed_read_time: None,
+                last_successful_write_time: None,
+                last_failed_write_time: None,
+            },
+            performance: crate::PerformanceMetrics {
+                avg_read_latency_ms: 0.0,
+                avg_write_latency_ms: 0.0,
+                max_read_latency_ms: 0.0,
+                max_write_latency_ms: 0.0,
+                reads_per_second: 0.0,
+                writes_per_second: 0.0,
+                memory_usage_mb: 0.0,
+                cpu_usage_percent: 0.0,
+            },
+            errors: crate::ErrorMetrics {
+                network_errors: 0,
+                protocol_errors: 0,
+                timeout_errors: 0,
+                tag_not_found_errors: 0,
+                data_type_errors: 0,
+                session_errors: if error_category == Some(crate::ErrorCategory::Session) {
+                    1
+                } else {
+                    0
+                },
+                route_path_errors: 0,
+                embedded_service_errors: 0,
+                known_controller_limitation_errors: 0,
+                retriable_errors: if error_category == Some(crate::ErrorCategory::Session) {
+                    1
+                } else {
+                    0
+                },
+                non_retriable_errors: 0,
+                last_error_time: if error_category.is_some() { Some(now) } else { None },
+                last_error_message: error_category
+                    .map(|_| "Detailed health check reported session-level connectivity failure".to_string()),
+                last_error_category: error_category,
+                last_retriable_error_time: if error_category == Some(crate::ErrorCategory::Session)
+                {
+                    Some(now)
+                } else {
+                    None
+                },
+            },
+            health: crate::HealthMetrics {
+                overall_health: if is_healthy {
+                    crate::HealthStatus::Healthy
+                } else if session_active {
+                    crate::HealthStatus::Critical
+                } else {
+                    crate::HealthStatus::Unknown
+                },
+                last_health_check: now,
+                health_mode,
+                last_verified_health_check: if health_mode == crate::HealthCheckMode::Verified {
+                    Some(now)
+                } else {
+                    None
+                },
+                consecutive_failures: if is_healthy { 0 } else { 1 },
+                recovery_attempts: 0,
+                system_uptime: Duration::ZERO,
+                last_success_time,
+                last_failure_time: if session_active && !is_healthy {
+                    Some(now)
+                } else {
+                    None
+                },
+            },
+            system_metrics_are_placeholders: true,
         }
     }
 
@@ -6392,6 +6589,38 @@ impl EipClient {
                         tracing::trace!("Parsed STRING: '{}'", value);
                         Ok(Some(PlcValue::String(value)))
                     }
+                    0x00CE => {
+                        // Allen-Bradley STRING type (4-byte DINT length followed by data)
+                        if value_data.len() < 4 {
+                            return Err(BatchError::SerializationError(
+                                "Insufficient data for STRING length field".to_string(),
+                            ));
+                        }
+
+                        let length = u32::from_le_bytes([
+                            value_data[0],
+                            value_data[1],
+                            value_data[2],
+                            value_data[3],
+                        ]) as usize;
+
+                        if value_data.len() - 4 < length {
+                            return Err(BatchError::SerializationError(format!(
+                                "Insufficient data for STRING value: need {} bytes, have {} bytes",
+                                4 + length,
+                                value_data.len()
+                            )));
+                        }
+
+                        let string_data = &value_data[4..4 + length];
+                        let value = String::from_utf8_lossy(string_data).to_string();
+                        tracing::trace!(
+                            "Parsed batch STRING (0x00CE): length={}, value='{}'",
+                            length,
+                            value
+                        );
+                        Ok(Some(PlcValue::String(value)))
+                    }
                     0x02A0 => {
                         // Allen-Bradley UDT type (0x02A0) for batch operations
                         // Note: symbol_id not available in batch read context
@@ -7688,8 +7917,11 @@ impl EipClient {
     }
 
     async fn update_subscription(&self, tag_name: &str, value: &PlcValue) -> Result<()> {
-        let subscriptions = self.subscriptions.lock().await;
-        for subscription in subscriptions.iter() {
+        let subscriptions = {
+            let subscriptions = self.subscriptions.lock().await;
+            subscriptions.clone()
+        };
+        for subscription in &subscriptions {
             if subscription.tag_path == tag_name && subscription.is_active() {
                 subscription.update_value(value).await?;
             }

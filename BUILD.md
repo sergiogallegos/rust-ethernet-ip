@@ -10,7 +10,7 @@ This guide covers building the enhanced Rust EtherNet/IP library with comprehens
 - **Git** for version control
 
 ### C# Development Environment (Optional)
-- **.NET 8.0 SDK** or later
+- **.NET 10.0 SDK** or later
 - **Visual Studio 2022** or **Visual Studio Code** with C# extension
 
 ### System Requirements

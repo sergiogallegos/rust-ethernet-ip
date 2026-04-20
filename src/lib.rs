@@ -381,7 +381,7 @@ pub trait EtherNetIpStream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<S> EtherNetIpStream for S where S: AsyncRead + AsyncWrite + Unpin + Send {}
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
-use tokio::time::{timeout, Duration, Instant};
+use tokio::time::{Duration, Instant, timeout};
 
 pub mod config; // Production-ready configuration management
 pub mod error;
@@ -458,8 +458,8 @@ pub use udt::{TagAttributes, UdtDefinition, UdtMember, UdtTemplate};
 /// This function will panic if called more than once. Use `try_init_tracing()` for
 /// non-panicking initialization.
 pub fn init_tracing() {
-    use tracing_subscriber::fmt;
     use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::fmt;
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
@@ -476,8 +476,8 @@ pub fn init_tracing() {
 /// Returns `Ok(())` if initialization was successful, or an error if a subscriber
 /// was already set.
 pub fn try_init_tracing() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    use tracing_subscriber::fmt;
     use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::fmt;
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
@@ -497,6 +497,21 @@ pub struct RoutePath {
     pub slots: Vec<u8>,
     pub ports: Vec<u8>,
     pub addresses: Vec<String>,
+}
+
+#[derive(Debug)]
+struct TagListPage {
+    tags: Vec<TagAttributes>,
+    last_instance_id: Option<u32>,
+    partial_transfer: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TemplateAttributes {
+    structure_handle: u16,
+    member_count: u16,
+    definition_size_words: u32,
+    structure_size_bytes: u32,
 }
 
 impl RoutePath {
@@ -1496,6 +1511,28 @@ impl EipClient {
         Self::new(addr).await
     }
 
+    #[cfg(test)]
+    fn new_unconnected_for_testing() -> Self {
+        let (stream, _peer) = tokio::io::duplex(64);
+        Self {
+            stream: Arc::new(Mutex::new(Box::new(stream))),
+            session_handle: 0,
+            _connection_id: 0,
+            tag_manager: Arc::new(Mutex::new(TagManager::new())),
+            udt_manager: Arc::new(Mutex::new(UdtManager::new())),
+            route_path: None,
+            _connected: Arc::new(AtomicBool::new(false)),
+            max_packet_size: 4000,
+            last_activity: Arc::new(Mutex::new(Instant::now())),
+            _session_timeout: Duration::from_secs(120),
+            batch_config: BatchConfig::default(),
+            connected_sessions: Arc::new(Mutex::new(HashMap::new())),
+            connection_sequence: Arc::new(Mutex::new(1)),
+            subscriptions: Arc::new(Mutex::new(Vec::new())),
+            tag_groups: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
     /// Registers an EtherNet/IP session with the PLC
     ///
     /// This is an internal function that implements the EtherNet/IP session
@@ -1708,23 +1745,78 @@ impl EipClient {
     /// Discovers all tags with full attributes
     /// This method queries the PLC for all available tags and their detailed attributes
     pub async fn discover_tags_detailed(&mut self) -> crate::error::Result<Vec<TagAttributes>> {
-        // Build CIP request for tag list with attributes
-        let request = self.build_tag_list_request()?;
-        let response = self.send_cip_request(&request).await?;
+        let (tags, _) = self.discover_tags_detailed_internal(false).await?;
+        Ok(tags)
+    }
 
-        // Extract CIP data from response and check for errors
-        let cip_data = self.extract_cip_from_response(&response)?;
+    async fn discover_tags_detailed_internal(
+        &mut self,
+        best_effort: bool,
+    ) -> crate::error::Result<(Vec<TagAttributes>, Vec<String>)> {
+        let mut start_instance = 0u32;
+        let mut tags = Vec::new();
+        let mut warnings = Vec::new();
 
-        // Check for CIP errors before parsing
-        if let Err(e) = self.check_cip_error(&cip_data) {
-            return Err(crate::error::EtherNetIpError::Protocol(format!(
-                "Tag discovery failed: {}. Some PLCs may not support tag discovery. Try reading tags directly by name.",
-                e
-            )));
+        loop {
+            let request = self.build_tag_list_request_from_instance(start_instance)?;
+            let response = match self.send_cip_request(&request).await {
+                Ok(response) => response,
+                Err(err) if best_effort && !tags.is_empty() => {
+                    warnings.push(format!(
+                        "Tag discovery stopped early at instance {} after transport/protocol failure: {}",
+                        start_instance, err
+                    ));
+                    break;
+                }
+                Err(err) => return Err(err),
+            };
+            let cip_data = match self.extract_cip_from_response(&response) {
+                Ok(cip_data) => cip_data,
+                Err(err) if best_effort && !tags.is_empty() => {
+                    warnings.push(format!(
+                        "Tag discovery stopped early at instance {} after response extraction failure: {}",
+                        start_instance, err
+                    ));
+                    break;
+                }
+                Err(err) => return Err(err),
+            };
+            let page = match self.parse_tag_list_response_page(&cip_data) {
+                Ok(page) => page,
+                Err(err) if best_effort && !tags.is_empty() => {
+                    warnings.push(format!(
+                        "Tag discovery stopped early at instance {} after page-parse failure: {}",
+                        start_instance, err
+                    ));
+                    break;
+                }
+                Err(err) => return Err(err),
+            };
+
+            tags.extend(page.tags);
+
+            if !page.partial_transfer {
+                break;
+            }
+
+            let Some(last_instance_id) = page.last_instance_id else {
+                return Err(crate::error::EtherNetIpError::Protocol(
+                    "Tag discovery returned Partial transfer without a last instance ID"
+                        .to_string(),
+                ));
+            };
+
+            if last_instance_id == u32::MAX || last_instance_id < start_instance {
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "Tag discovery pagination stalled at instance {}",
+                    last_instance_id
+                )));
+            }
+
+            start_instance = last_instance_id.saturating_add(1);
         }
 
-        // Parse response with all attributes
-        self.parse_tag_list_response(&cip_data)
+        Ok((tags, warnings))
     }
 
     /// Discovers program-scoped tags
@@ -1834,8 +1926,10 @@ impl EipClient {
 
     /// Exports a stable schema view built from the current discovery APIs.
     pub async fn export_schema(&mut self) -> crate::error::Result<SchemaExport> {
-        let discovered_tags = self.discover_tags_detailed().await?;
+        let (discovered_tags, discovery_warnings) =
+            self.discover_tags_detailed_internal(true).await?;
         let mut schema = SchemaExport::new(self.route_path.as_ref());
+        schema.warnings.extend(discovery_warnings);
 
         let mut tags = discovered_tags;
         tags.sort_by(|a, b| a.name.cmp(&b.name));
@@ -1861,12 +1955,19 @@ impl EipClient {
                 continue;
             };
 
-            match self.get_udt_definition(tag_name).await {
-                Ok(definition) => {
+            match self
+                .get_udt_definition_by_template_id(template_id, tag_name)
+                .await
+            {
+                Ok((definition, structure_size_bytes)) => {
                     schema.udts.push(schema::SchemaUdt::from_definition(
                         &definition,
                         Some(template_id),
-                        size_bytes,
+                        if size_bytes == 0 {
+                            structure_size_bytes
+                        } else {
+                            size_bytes
+                        },
                     ));
                 }
                 Err(err) => schema.warnings.push(format!(
@@ -2322,7 +2423,9 @@ impl EipClient {
                 }
                 return Err(EtherNetIpError::Protocol(format!(
                     "Chunk response too short: got {} bytes, expected at least 8 (requested {} elements starting at {})",
-                    cip_data.len(), chunk_size, next_chunk_start
+                    cip_data.len(),
+                    chunk_size,
+                    next_chunk_start
                 )));
             }
 
@@ -2696,7 +2799,7 @@ impl EipClient {
             _ => {
                 return Err(EtherNetIpError::Protocol(
                     "Expected BOOL value for BOOL array element".to_string(),
-                ))
+                ));
             }
         };
 
@@ -3500,29 +3603,50 @@ impl EipClient {
             )
         })?;
 
-        // Read UDT template
-        let template_data = self.read_udt_template(template_id).await?;
+        let (definition, _structure_size_bytes) = self
+            .load_udt_definition_from_template(template_id, udt_name)
+            .await?;
 
-        // Parse template
-        let template = self
-            .udt_manager
-            .lock()
+        Ok(definition)
+    }
+
+    async fn get_udt_definition_by_template_id(
+        &mut self,
+        template_id: u32,
+        udt_name: &str,
+    ) -> crate::error::Result<(UdtDefinition, u32)> {
+        if let Some(cached) = self.udt_manager.lock().await.get_definition(udt_name) {
+            return Ok((cached.clone(), 0));
+        }
+
+        self.load_udt_definition_from_template(template_id, udt_name)
             .await
-            .parse_udt_template(template_id, &template_data)?;
+    }
 
-        // Convert template to definition
+    async fn load_udt_definition_from_template(
+        &mut self,
+        template_id: u32,
+        udt_name: &str,
+    ) -> crate::error::Result<(UdtDefinition, u32)> {
+        let (template_attributes, template_data) = self.read_udt_template(template_id).await?;
+        let template = self.udt_manager.lock().await.parse_udt_template(
+            template_id,
+            template_attributes.member_count,
+            template_attributes.structure_size_bytes,
+            &template_data,
+        )?;
+
         let definition = UdtDefinition {
             name: udt_name.to_string(),
             members: template.members,
         };
 
-        // Cache the definition
         self.udt_manager
             .lock()
             .await
             .add_definition(definition.clone());
 
-        Ok(definition)
+        Ok((definition, template_attributes.structure_size_bytes))
     }
 
     /// Gets tag attributes (type, size, dimensions, scope) from the PLC.
@@ -3555,9 +3679,10 @@ impl EipClient {
 
         // Send request and get response
         let response = self.send_cip_request(&request).await?;
+        let cip_data = self.extract_cip_from_response(&response)?;
 
         // Parse response
-        let attributes = self.parse_attributes_response(tag_name, &response)?;
+        let attributes = self.parse_attributes_response(tag_name, &cip_data)?;
 
         // Cache the attributes
         self.udt_manager
@@ -3569,15 +3694,58 @@ impl EipClient {
     }
 
     /// Reads UDT template data from the PLC
-    async fn read_udt_template(&mut self, template_id: u32) -> crate::error::Result<Vec<u8>> {
-        // Build CIP request for Read Tag Fragmented (Service 0x4C)
-        let request = self.build_read_template_request(template_id)?;
+    async fn read_udt_template(
+        &mut self,
+        template_id: u32,
+    ) -> crate::error::Result<(TemplateAttributes, Vec<u8>)> {
+        let template_attributes = self.get_template_attributes(template_id).await?;
+        let read_size = template_attributes
+            .definition_size_words
+            .checked_mul(4)
+            .and_then(|bytes| bytes.checked_sub(23))
+            .ok_or_else(|| {
+                crate::error::EtherNetIpError::Protocol(format!(
+                    "Template {} reported invalid definition size {} words",
+                    template_id, template_attributes.definition_size_words
+                ))
+            })?;
 
-        // Send request and get response
+        let mut template_data = Vec::with_capacity(read_size as usize);
+        let mut offset = 0u32;
+
+        while offset < read_size {
+            let chunk_size = (read_size - offset).min(200);
+            let request = self.build_read_template_request(template_id, offset, chunk_size)?;
+            let response = self.send_cip_request(&request).await?;
+            let cip_data = self.extract_cip_from_response(&response)?;
+            let (chunk, partial_transfer) = self.parse_template_response_chunk(&cip_data)?;
+
+            if chunk.is_empty() {
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "Template {} returned an empty chunk at offset {}",
+                    template_id, offset
+                )));
+            }
+
+            offset = offset.saturating_add(chunk.len() as u32);
+            template_data.extend_from_slice(&chunk);
+
+            if !partial_transfer && chunk.len() < chunk_size as usize {
+                break;
+            }
+        }
+
+        Ok((template_attributes, template_data))
+    }
+
+    async fn get_template_attributes(
+        &mut self,
+        template_id: u32,
+    ) -> crate::error::Result<TemplateAttributes> {
+        let request = self.build_get_template_attributes_request(template_id)?;
         let response = self.send_cip_request(&request).await?;
-
-        // Parse response and extract template data
-        self.parse_template_response(&response)
+        let cip_data = self.extract_cip_from_response(&response)?;
+        self.parse_template_attributes_response(template_id, &cip_data)
     }
 
     /// Builds CIP request for Get Attribute List (Service 0x03)
@@ -3605,22 +3773,58 @@ impl EipClient {
         Ok(request)
     }
 
-    /// Builds CIP request for Read Tag Fragmented (Service 0x4C)
-    fn build_read_template_request(&self, template_id: u32) -> crate::error::Result<Vec<u8>> {
+    fn build_get_template_attributes_request(
+        &self,
+        template_id: u32,
+    ) -> crate::error::Result<Vec<u8>> {
         let mut request = Vec::new();
+        let template_id = u16::try_from(template_id).map_err(|_| {
+            crate::error::EtherNetIpError::Protocol(format!(
+                "Template instance {} exceeds 16-bit path encoding",
+                template_id
+            ))
+        })?;
 
-        // Service: Read Tag Fragmented (0x4C)
-        request.push(0x4C);
-
-        // Path: Template instance
-        request.push(0x20); // Class ID
-        request.extend_from_slice(&[0x02, 0x00]); // Class 0x02 (Data Type)
-        request.push(0x24); // Instance ID
+        request.push(0x03);
+        request.push(0x03);
+        request.extend_from_slice(&[0x20, 0x6C, 0x25, 0x00]);
         request.extend_from_slice(&template_id.to_le_bytes());
+        request.extend_from_slice(&[0x04, 0x00]);
+        request.extend_from_slice(&[0x01, 0x00]);
+        request.extend_from_slice(&[0x02, 0x00]);
+        request.extend_from_slice(&[0x04, 0x00]);
+        request.extend_from_slice(&[0x05, 0x00]);
 
-        // Offset and size (read entire template)
-        request.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Offset 0
-        request.extend_from_slice(&[0xFF, 0xFF, 0x00, 0x00]); // Size (max)
+        Ok(request)
+    }
+
+    /// Builds CIP request for Template Read (Service 0x4C)
+    fn build_read_template_request(
+        &self,
+        template_id: u32,
+        read_offset: u32,
+        read_size: u32,
+    ) -> crate::error::Result<Vec<u8>> {
+        let mut request = Vec::new();
+        let template_id = u16::try_from(template_id).map_err(|_| {
+            crate::error::EtherNetIpError::Protocol(format!(
+                "Template instance {} exceeds 16-bit path encoding",
+                template_id
+            ))
+        })?;
+        let read_size = u16::try_from(read_size).map_err(|_| {
+            crate::error::EtherNetIpError::Protocol(format!(
+                "Template read size {} exceeds 16-bit service limit",
+                read_size
+            ))
+        })?;
+
+        request.push(0x4C);
+        request.push(0x03);
+        request.extend_from_slice(&[0x20, 0x6C, 0x25, 0x00]);
+        request.extend_from_slice(&template_id.to_le_bytes());
+        request.extend_from_slice(&read_offset.to_le_bytes());
+        request.extend_from_slice(&read_size.to_le_bytes());
 
         Ok(request)
     }
@@ -3688,17 +3892,158 @@ impl EipClient {
         Ok(attributes)
     }
 
-    /// Parses template response from CIP
-    fn parse_template_response(&self, response: &[u8]) -> crate::error::Result<Vec<u8>> {
+    fn parse_template_attributes_response(
+        &self,
+        template_id: u32,
+        response: &[u8],
+    ) -> crate::error::Result<TemplateAttributes> {
+        if response.len() < 4 {
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "Template attribute response too short".to_string(),
+            ));
+        }
+
+        let general_status = response[2];
+        if general_status != 0x00 {
+            return Err(crate::error::EtherNetIpError::Protocol(format!(
+                "Template {} attribute read failed: {}",
+                template_id,
+                self.get_cip_error_message(general_status)
+            )));
+        }
+
+        let additional_status_words = response[3] as usize;
+        let mut offset = 4 + additional_status_words * 2;
+        if response.len() < offset + 2 {
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "Template attribute response missing attribute count".to_string(),
+            ));
+        }
+
+        let attr_count = u16::from_le_bytes([response[offset], response[offset + 1]]) as usize;
+        offset += 2;
+
+        let mut attributes = TemplateAttributes {
+            structure_handle: 0,
+            member_count: 0,
+            definition_size_words: 0,
+            structure_size_bytes: 0,
+        };
+
+        for _ in 0..attr_count {
+            if response.len() < offset + 4 {
+                return Err(crate::error::EtherNetIpError::Protocol(
+                    "Template attribute response truncated".to_string(),
+                ));
+            }
+
+            let attr_id = u16::from_le_bytes([response[offset], response[offset + 1]]);
+            let attr_status = u16::from_le_bytes([response[offset + 2], response[offset + 3]]);
+            offset += 4;
+
+            if attr_status != 0 {
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "Template {} attribute {} read returned status 0x{:04X}",
+                    template_id, attr_id, attr_status
+                )));
+            }
+
+            match attr_id {
+                1 => {
+                    if response.len() < offset + 2 {
+                        return Err(crate::error::EtherNetIpError::Protocol(
+                            "Template attribute 1 missing value".to_string(),
+                        ));
+                    }
+                    attributes.structure_handle =
+                        u16::from_le_bytes([response[offset], response[offset + 1]]);
+                    offset += 2;
+                }
+                2 => {
+                    if response.len() < offset + 2 {
+                        return Err(crate::error::EtherNetIpError::Protocol(
+                            "Template attribute 2 missing value".to_string(),
+                        ));
+                    }
+                    attributes.member_count =
+                        u16::from_le_bytes([response[offset], response[offset + 1]]);
+                    offset += 2;
+                }
+                4 => {
+                    if response.len() < offset + 4 {
+                        return Err(crate::error::EtherNetIpError::Protocol(
+                            "Template attribute 4 missing value".to_string(),
+                        ));
+                    }
+                    attributes.definition_size_words = u32::from_le_bytes([
+                        response[offset],
+                        response[offset + 1],
+                        response[offset + 2],
+                        response[offset + 3],
+                    ]);
+                    offset += 4;
+                }
+                5 => {
+                    if response.len() < offset + 4 {
+                        return Err(crate::error::EtherNetIpError::Protocol(
+                            "Template attribute 5 missing value".to_string(),
+                        ));
+                    }
+                    attributes.structure_size_bytes = u32::from_le_bytes([
+                        response[offset],
+                        response[offset + 1],
+                        response[offset + 2],
+                        response[offset + 3],
+                    ]);
+                    offset += 4;
+                }
+                _ => {
+                    return Err(crate::error::EtherNetIpError::Protocol(format!(
+                        "Unexpected template attribute {} in response",
+                        attr_id
+                    )));
+                }
+            }
+        }
+
+        if attributes.definition_size_words == 0 {
+            return Err(crate::error::EtherNetIpError::Protocol(format!(
+                "Template {} reported zero definition size",
+                template_id
+            )));
+        }
+
+        Ok(attributes)
+    }
+
+    fn parse_template_response_chunk(
+        &self,
+        response: &[u8],
+    ) -> crate::error::Result<(Vec<u8>, bool)> {
         if response.len() < 4 {
             return Err(crate::error::EtherNetIpError::Protocol(
                 "Template response too short".to_string(),
             ));
         }
 
-        // Skip CIP header and return data portion
-        let data_start = 4; // Skip status and other header bytes
-        Ok(response[data_start..].to_vec())
+        let general_status = response[2];
+        let partial_transfer = general_status == 0x06;
+        if general_status != 0x00 && !partial_transfer {
+            return Err(crate::error::EtherNetIpError::Protocol(format!(
+                "Template read failed: {}",
+                self.get_cip_error_message(general_status)
+            )));
+        }
+
+        let additional_status_words = response[3] as usize;
+        let data_start = 4 + additional_status_words * 2;
+        if data_start > response.len() {
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "Template response missing payload".to_string(),
+            ));
+        }
+
+        Ok((response[data_start..].to_vec(), partial_transfer))
     }
 
     /// Gets human-readable data type name
@@ -3721,26 +4066,37 @@ impl EipClient {
         }
     }
 
-    /// Builds CIP request for tag list discovery
-    fn build_tag_list_request(&self) -> crate::error::Result<Vec<u8>> {
-        let mut request = Vec::new();
-
-        // Service: Get Instance Attribute List (0x55)
-        request.push(0x55);
-
-        // Path: Symbol Object (Class 0x6B)
-        request.push(0x20); // Class ID
-        request.extend_from_slice(&[0x6B, 0x00]); // Class 0x6B (Symbol Object)
-        request.push(0x25); // Instance ID (0x25 = all instances)
-        request.extend_from_slice(&[0x00, 0x00]);
+    /// Builds CIP request for tag list discovery starting from a specific symbol instance.
+    fn build_tag_list_request_from_instance(
+        &self,
+        start_instance: u32,
+    ) -> crate::error::Result<Vec<u8>> {
+        let start_instance = u16::try_from(start_instance).map_err(|_| {
+            crate::error::EtherNetIpError::Protocol(format!(
+                "Tag discovery start instance {} exceeds 16-bit Symbol Object range",
+                start_instance
+            ))
+        })?;
+        let mut request = vec![
+            // Service: Get Instance Attribute List (0x55)
+            0x55,
+            // Path size: 3 words (6 bytes)
+            0x03,
+            // Path: Symbol Object (Class 0x6B), start instance
+            0x20,
+            0x6B,
+            0x25,
+            0x00,
+        ];
+        request.extend_from_slice(&start_instance.to_le_bytes());
 
         // Attribute count
-        request.extend_from_slice(&[0x02, 0x00]); // 2 attributes
+        request.extend_from_slice(&[0x02, 0x00]);
 
         // Attribute 1: Symbol Name (0x01)
         request.extend_from_slice(&[0x01, 0x00]);
 
-        // Attribute 2: Data Type (0x02)
+        // Attribute 2: Symbol Type (0x02)
         request.extend_from_slice(&[0x02, 0x00]);
 
         Ok(request)
@@ -3748,16 +4104,17 @@ impl EipClient {
 
     /// Builds CIP request for program-scoped tag list discovery
     fn build_program_tag_list_request(&self, _program_name: &str) -> crate::error::Result<Vec<u8>> {
-        let mut request = Vec::new();
-
-        // Service: Get Instance Attribute List (0x55)
-        request.push(0x55);
-
-        // Path: Program Object (Class 0x6C)
-        request.push(0x20); // Class ID
-        request.extend_from_slice(&[0x6C, 0x00]); // Class 0x6C (Program Object)
-        request.push(0x24); // Instance ID
-        request.extend_from_slice(&[0x00, 0x00]); // Would need to resolve program name to ID
+        let mut request = vec![
+            // Service: Get Instance Attribute List (0x55)
+            0x55,
+            // Path size: 3 words (6 bytes)
+            0x03,
+            // Path: Program Object (Class 0x6C), instance 0 placeholder.
+            0x20,
+            0x6C,
+            0x25,
+        ];
+        request.extend_from_slice(&[0x00, 0x00, 0x00]);
 
         // Attribute count
         request.extend_from_slice(&[0x02, 0x00]); // 2 attributes
@@ -3771,27 +4128,50 @@ impl EipClient {
         Ok(request)
     }
 
-    /// Parses tag list response from CIP
-    fn parse_tag_list_response(&self, response: &[u8]) -> crate::error::Result<Vec<TagAttributes>> {
+    /// Parses one page of tag discovery results from a Get Instance Attribute List response.
+    fn parse_tag_list_response_page(&self, response: &[u8]) -> crate::error::Result<TagListPage> {
         if response.len() < 4 {
             return Err(crate::error::EtherNetIpError::Protocol(
                 "Tag list response too short".to_string(),
             ));
         }
 
-        let mut offset = 0;
+        let general_status = response[2];
+        let partial_transfer = general_status == 0x06;
+        if general_status != 0x00 && !partial_transfer {
+            return Err(crate::error::EtherNetIpError::Protocol(format!(
+                "Tag discovery failed: {}. Some PLCs may not support tag discovery. Try reading tags directly by name.",
+                self.get_cip_error_message(general_status)
+            )));
+        }
+
+        let additional_status_words = response[3] as usize;
+        let mut offset = 4 + additional_status_words * 2;
+        if response.len() == offset {
+            return Ok(TagListPage {
+                tags: Vec::new(),
+                last_instance_id: None,
+                partial_transfer: false,
+            });
+        }
+        if response.len() < offset + 4 {
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "Tag list response missing first entry".to_string(),
+            ));
+        }
         let mut tags = Vec::new();
+        let mut last_instance_id = None;
 
-        // Skip CIP header
-        offset += 4;
+        while offset + 8 <= response.len() {
+            let instance_id = u32::from_le_bytes([
+                response[offset],
+                response[offset + 1],
+                response[offset + 2],
+                response[offset + 3],
+            ]);
+            last_instance_id = Some(instance_id);
+            offset += 4;
 
-        // Parse each tag entry
-        while offset < response.len() {
-            if offset + 8 > response.len() {
-                break; // Not enough data for another tag
-            }
-
-            // Parse tag name length
             let name_length = u16::from_le_bytes([response[offset], response[offset + 1]]) as usize;
             offset += 2;
 
@@ -3799,41 +4179,78 @@ impl EipClient {
                 .checked_add(name_length)
                 .is_none_or(|end| end > response.len())
             {
-                break; // Not enough data for tag name
+                break;
             }
 
-            // Parse tag name
             let name_bytes = &response[offset..offset + name_length];
             let tag_name = String::from_utf8_lossy(name_bytes).to_string();
             offset += name_length;
 
-            // Align to 4-byte boundary
-            offset = (offset + 3) & !3;
-
             if offset + 2 > response.len() {
-                break; // Not enough data for data type
+                break;
             }
 
-            // Parse data type
-            let data_type = u16::from_le_bytes([response[offset], response[offset + 1]]);
+            let raw_tag_type = u16::from_le_bytes([response[offset], response[offset + 1]]);
             offset += 2;
 
-            // Create tag attributes
-            let attributes = TagAttributes {
-                name: tag_name,
-                data_type,
-                data_type_name: self.get_data_type_name(data_type),
-                dimensions: Vec::new(), // Would need additional parsing
-                permissions: udt::TagPermissions::ReadWrite, // Default assumption
-                scope: udt::TagScope::Controller, // Default assumption
-                template_instance_id: if data_type == 0x00A0 { Some(0) } else { None },
-                size: 0, // Would need additional parsing
+            // Symbol list includes controller/program/system tags. Keep user-visible names only.
+            if tag_name.starts_with("__") || tag_name.contains(':') {
+                continue;
+            }
+
+            let array_dims = ((raw_tag_type & 0x6000) >> 13) as usize;
+            let is_structure = (raw_tag_type & 0x8000) != 0;
+            let reserved = (raw_tag_type & 0x1000) != 0;
+            let type_param = raw_tag_type & 0x0FFF;
+            let is_user_atomic =
+                !is_structure && !reserved && (0x0001..=0x00FF).contains(&type_param);
+            let is_user_structure =
+                is_structure && !reserved && (0x0100..=0x0EFF).contains(&type_param);
+
+            if !is_user_atomic && !is_user_structure {
+                continue;
+            }
+
+            let data_type = if is_structure {
+                0x00A0
+            } else if (raw_tag_type & 0x00FF) == 0x00C1 {
+                0x00C1
+            } else {
+                type_param
             };
 
-            tags.push(attributes);
+            let template_instance_id = if is_structure && !reserved {
+                Some(type_param as u32)
+            } else {
+                None
+            };
+
+            tags.push(TagAttributes {
+                name: tag_name,
+                data_type,
+                data_type_name: if is_structure {
+                    "UDT".to_string()
+                } else {
+                    self.get_data_type_name(data_type)
+                },
+                dimensions: vec![0; array_dims],
+                permissions: udt::TagPermissions::ReadWrite,
+                scope: udt::TagScope::Controller,
+                template_instance_id,
+                size: 0,
+            });
         }
 
-        Ok(tags)
+        Ok(TagListPage {
+            tags,
+            last_instance_id,
+            partial_transfer,
+        })
+    }
+
+    /// Parses tag list response from CIP
+    fn parse_tag_list_response(&self, response: &[u8]) -> crate::error::Result<Vec<TagAttributes>> {
+        Ok(self.parse_tag_list_response_page(response)?.tags)
     }
 
     /// Negotiates packet size with the PLC
@@ -3850,7 +4267,7 @@ impl EipClient {
         ];
         // Attribute count
         request.extend_from_slice(&[0x01, 0x00]); // 1 attribute
-                                                  // Attribute: Max Packet Size (attribute 4 on the Message Router)
+        // Attribute: Max Packet Size (attribute 4 on the Message Router)
         request.extend_from_slice(&[0x04, 0x00]);
 
         // Send request and extract CIP from CPF response
@@ -4380,17 +4797,25 @@ impl EipClient {
                     0x0014 => "Attribute not supported (extended, BE)".to_string(),
                     0x0015 => "Too much data (extended, BE)".to_string(),
                     0x0016 => "Object does not exist (extended, BE)".to_string(),
-                    0x0017 => "Service fragmentation sequence not in progress (extended, BE)".to_string(),
+                    0x0017 => {
+                        "Service fragmentation sequence not in progress (extended, BE)".to_string()
+                    }
                     0x0018 => "No stored attribute data (extended, BE)".to_string(),
                     0x0019 => "Store operation failure (extended, BE)".to_string(),
-                    0x001A => "Routing failure, request packet too large (extended, BE)".to_string(),
-                    0x001B => "Routing failure, response packet too large (extended, BE)".to_string(),
+                    0x001A => {
+                        "Routing failure, request packet too large (extended, BE)".to_string()
+                    }
+                    0x001B => {
+                        "Routing failure, response packet too large (extended, BE)".to_string()
+                    }
                     0x001C => "Missing attribute list entry data (extended, BE)".to_string(),
                     0x001D => "Invalid attribute value list (extended, BE)".to_string(),
                     0x001E => "Embedded service error (extended, BE)".to_string(),
                     0x001F => "Vendor specific error (extended, BE)".to_string(),
                     0x0020 => "Invalid parameter (extended, BE)".to_string(),
-                    0x0021 => "Write-once value or medium already written (extended, BE)".to_string(),
+                    0x0021 => {
+                        "Write-once value or medium already written (extended, BE)".to_string()
+                    }
                     0x0022 => "Invalid reply received (extended, BE)".to_string(),
                     0x0023 => "Buffer overflow (extended, BE)".to_string(),
                     0x0024 => "Invalid message format (extended, BE)".to_string(),
@@ -4611,9 +5036,10 @@ impl EipClient {
         let session_active = self.session_handle != 0;
         let last_activity_elapsed = self.last_activity.lock().await.elapsed();
         let last_success_time = if is_healthy || session_active {
-            Some(now
-                .checked_sub(last_activity_elapsed)
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH))
+            Some(
+                now.checked_sub(last_activity_elapsed)
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+            )
         } else {
             None
         };
@@ -4678,9 +5104,14 @@ impl EipClient {
                     0
                 },
                 non_retriable_errors: 0,
-                last_error_time: if error_category.is_some() { Some(now) } else { None },
-                last_error_message: error_category
-                    .map(|_| "Detailed health check reported session-level connectivity failure".to_string()),
+                last_error_time: if error_category.is_some() {
+                    Some(now)
+                } else {
+                    None
+                },
+                last_error_message: error_category.map(|_| {
+                    "Detailed health check reported session-level connectivity failure".to_string()
+                }),
                 last_error_category: error_category,
                 last_retriable_error_time: if error_category == Some(crate::ErrorCategory::Session)
                 {
@@ -5651,7 +6082,10 @@ impl EipClient {
 
         tracing::trace!(
             "build_read_array_request: final request = {:02X?} ({} bytes), path_size = {} words ({} bytes)",
-            cip_request, cip_request.len(), path_size, full_path.len()
+            cip_request,
+            cip_request.len(),
+            path_size,
+            full_path.len()
         );
 
         cip_request
@@ -6850,7 +7284,9 @@ impl EipClient {
 
                             // If it's a specific status error, log it
                             if e.to_string().contains("status: 0x") {
-                                tracing::debug!("Status indicates: parameter incompatibility or resource conflict");
+                                tracing::debug!(
+                                    "Status indicates: parameter incompatibility or resource conflict"
+                                );
                             }
                         }
                     }
@@ -7164,7 +7600,8 @@ impl EipClient {
     ) -> crate::error::Result<Vec<u8>> {
         tracing::debug!(
             "[CONNECTED] Sending connected CIP request ({} bytes) using T->O connection ID 0x{:08X}",
-            cip_request.len(), session.t_to_o_connection_id
+            cip_request.len(),
+            session.t_to_o_connection_id
         );
 
         // Build EtherNet/IP header for connected data (Send RR Data)
@@ -7193,7 +7630,7 @@ impl EipClient {
         // Item 1: Connected Address Item (specifies which connection to use)
         packet.extend_from_slice(&[0xA1, 0x00]); // Type: Connected Address Item (0x00A1)
         packet.extend_from_slice(&[0x04, 0x00]); // Length: 4 bytes
-                                                 // Use T->O connection ID (Target to Originator) for addressing
+        // Use T->O connection ID (Target to Originator) for addressing
         packet.extend_from_slice(&session.t_to_o_connection_id.to_le_bytes());
 
         // Item 2: Connected Data Item (contains the CIP request + sequence)
@@ -8097,6 +8534,114 @@ impl EipClient {
     #[allow(dead_code)]
     fn is_reasonable_value(&self, value: i32) -> bool {
         (-1000..=1000).contains(&value)
+    }
+}
+
+#[cfg(test)]
+mod discovery_tests {
+    use super::{EipClient, TemplateAttributes};
+
+    #[test]
+    fn build_tag_list_request_rejects_instance_above_u16() {
+        let client = EipClient::new_unconnected_for_testing();
+        let request = client
+            .build_tag_list_request_from_instance(0x12345678)
+            .expect_err("instance should be rejected");
+
+        assert!(format!("{request}").contains("exceeds 16-bit"));
+    }
+
+    #[test]
+    fn build_tag_list_request_encodes_path_size_and_start_instance() {
+        let client = EipClient::new_unconnected_for_testing();
+        let request = client
+            .build_tag_list_request_from_instance(0x5678)
+            .expect("request should build");
+
+        assert_eq!(request[0], 0x55);
+        assert_eq!(request[1], 0x03);
+        assert_eq!(&request[2..8], &[0x20, 0x6B, 0x25, 0x00, 0x78, 0x56]);
+    }
+
+    #[test]
+    fn parse_tag_list_response_page_handles_partial_transfer() {
+        let client = EipClient::new_unconnected_for_testing();
+        let response = [
+            0xD5, 0x00, 0x06,
+            0x00, // service, reserved, partial-transfer status, no addl status
+            0x34, 0x12, 0x00, 0x00, // instance id = 0x1234
+            0x04, 0x00, // name length = 4
+            b'R', b'a', b't', b'e', // tag name
+            0xC4, 0x00, // DINT
+        ];
+
+        let page = client
+            .parse_tag_list_response_page(&response)
+            .expect("response should parse");
+
+        assert!(page.partial_transfer);
+        assert_eq!(page.last_instance_id, Some(0x1234));
+        assert_eq!(page.tags.len(), 1);
+        assert_eq!(page.tags[0].name, "Rate");
+        assert_eq!(page.tags[0].data_type, 0x00C4);
+        assert_eq!(page.tags[0].data_type_name, "DINT");
+    }
+
+    #[test]
+    fn build_get_template_attributes_request_encodes_template_object_path() {
+        let client = EipClient::new_unconnected_for_testing();
+        let request = client
+            .build_get_template_attributes_request(0x0456)
+            .expect("request should build");
+
+        assert_eq!(request[0], 0x03);
+        assert_eq!(request[1], 0x03);
+        assert_eq!(&request[2..8], &[0x20, 0x6C, 0x25, 0x00, 0x56, 0x04]);
+        assert_eq!(
+            &request[8..],
+            &[0x04, 0x00, 0x01, 0x00, 0x02, 0x00, 0x04, 0x00, 0x05, 0x00]
+        );
+    }
+
+    #[test]
+    fn build_read_template_request_encodes_template_read_size() {
+        let client = EipClient::new_unconnected_for_testing();
+        let request = client
+            .build_read_template_request(0x0456, 0x0010, 0x0032)
+            .expect("request should build");
+
+        assert_eq!(request[0], 0x4C);
+        assert_eq!(request[1], 0x03);
+        assert_eq!(&request[2..8], &[0x20, 0x6C, 0x25, 0x00, 0x56, 0x04]);
+        assert_eq!(&request[8..12], &[0x10, 0x00, 0x00, 0x00]);
+        assert_eq!(&request[12..14], &[0x32, 0x00]);
+    }
+
+    #[test]
+    fn parse_template_attributes_response_reads_mixed_width_values() {
+        let client = EipClient::new_unconnected_for_testing();
+        let response = [
+            0x83, 0x00, 0x00, 0x00, // service reply, reserved, success, no addl status
+            0x04, 0x00, // four attributes
+            0x01, 0x00, 0x00, 0x00, 0x34, 0x12, // attr 1 = structure handle
+            0x02, 0x00, 0x00, 0x00, 0x07, 0x00, // attr 2 = member count
+            0x04, 0x00, 0x00, 0x00, 0x19, 0x00, 0x00, 0x00, // attr 4 = definition words
+            0x05, 0x00, 0x00, 0x00, 0x58, 0x00, 0x00, 0x00, // attr 5 = structure bytes
+        ];
+
+        let attributes = client
+            .parse_template_attributes_response(0x0456, &response)
+            .expect("response should parse");
+
+        assert_eq!(
+            attributes,
+            TemplateAttributes {
+                structure_handle: 0x1234,
+                member_count: 7,
+                definition_size_words: 25,
+                structure_size_bytes: 88,
+            }
+        );
     }
 }
 

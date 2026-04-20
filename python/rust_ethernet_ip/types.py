@@ -2,6 +2,13 @@ from dataclasses import dataclass
 
 
 @dataclass(slots=True)
+class RoutePath:
+    slots: list[int] | None = None
+    ports: list[int] | None = None
+    addresses: list[str] | None = None
+
+
+@dataclass(slots=True)
 class WriteResult:
     tag_name: str
     success: bool

@@ -5,6 +5,7 @@ services:
       dockerfile: docker/python-stack/Dockerfile
     environment:
       RUST_ETHERNET_IP_PLC_ADDRESS: ${RUST_ETHERNET_IP_PLC_ADDRESS:-192.168.0.10:44818}
+      RUST_ETHERNET_IP_PLC_SLOT: ${RUST_ETHERNET_IP_PLC_SLOT:-0}
       RUST_ETHERNET_IP_API_HOST: 0.0.0.0
       RUST_ETHERNET_IP_API_PORT: 8000
     command: ["python", "python/examples/fastapi_service_example.py"]
@@ -17,6 +18,7 @@ services:
       dockerfile: docker/python-stack/Dockerfile
     environment:
       RUST_ETHERNET_IP_PLC_ADDRESS: ${RUST_ETHERNET_IP_PLC_ADDRESS:-192.168.0.10:44818}
+      RUST_ETHERNET_IP_PLC_SLOT: ${RUST_ETHERNET_IP_PLC_SLOT:-0}
       RUST_ETHERNET_IP_SINK_PATH: /data/plc_samples.sqlite
     command:
       [
@@ -43,6 +45,7 @@ services:
     profiles: ["mqtt"]
     environment:
       RUST_ETHERNET_IP_PLC_ADDRESS: ${RUST_ETHERNET_IP_PLC_ADDRESS:-192.168.0.10:44818}
+      RUST_ETHERNET_IP_PLC_SLOT: ${RUST_ETHERNET_IP_PLC_SLOT:-0}
       RUST_ETHERNET_IP_MQTT_HOST: mqtt
     command:
       [

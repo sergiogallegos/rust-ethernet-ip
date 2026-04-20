@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rust_ethernet_ip import BatchReadError, Client, PlcConnectionError, PlcOperationError
+from rust_ethernet_ip import RoutePath as PlcRoutePath
 
 
 @dataclass(slots=True)
@@ -27,6 +28,13 @@ class PollingConfig:
 
 
 @dataclass(slots=True)
+class RoutePathConfig:
+    slots: list[int]
+    ports: list[int]
+    addresses: list[str]
+
+
+@dataclass(slots=True)
 class SinkConfig:
     kind: str
     path: str
@@ -36,6 +44,7 @@ class SinkConfig:
 class CollectorConfig:
     plc: PlcConfig
     polling: PollingConfig
+    route_path: RoutePathConfig | None
     tags: list[str]
     sink: SinkConfig
 
@@ -136,6 +145,13 @@ def load_config(path: Path) -> CollectorConfig:
     interval_ms = int(payload.get("polling", {}).get("interval_ms", 1000))
     max_retry_count = int(payload.get("polling", {}).get("max_retry_count", 3))
     retry_delay_ms = int(payload.get("polling", {}).get("retry_delay_ms", 1000))
+    route_payload = payload.get("route_path", {})
+    route_slots = route_payload.get("slots", [])
+    route_ports = route_payload.get("ports", [])
+    route_addresses = route_payload.get("addresses", [])
+    env_slot = os.environ.get("RUST_ETHERNET_IP_PLC_SLOT")
+    if env_slot is not None:
+        route_slots = [int(env_slot)]
 
     if interval_ms <= 0:
         raise ValueError("config.polling.interval_ms must be > 0")
@@ -143,6 +159,21 @@ def load_config(path: Path) -> CollectorConfig:
         raise ValueError("config.polling.max_retry_count must be >= 0")
     if retry_delay_ms < 0:
         raise ValueError("config.polling.retry_delay_ms must be >= 0")
+    if not isinstance(route_slots, list) or not all(isinstance(slot, int) for slot in route_slots):
+        raise ValueError("config.route_path.slots must be a list of integers")
+    if not isinstance(route_ports, list) or not all(isinstance(port, int) for port in route_ports):
+        raise ValueError("config.route_path.ports must be a list of integers")
+    if not isinstance(route_addresses, list) or not all(
+        isinstance(address, str) for address in route_addresses
+    ):
+        raise ValueError("config.route_path.addresses must be a list of strings")
+    route_path = None
+    if route_slots or route_ports or route_addresses:
+        route_path = RoutePathConfig(
+            slots=route_slots,
+            ports=route_ports,
+            addresses=route_addresses,
+        )
 
     return CollectorConfig(
         plc=PlcConfig(address=plc_address),
@@ -151,6 +182,7 @@ def load_config(path: Path) -> CollectorConfig:
             max_retry_count=max_retry_count,
             retry_delay_ms=retry_delay_ms,
         ),
+        route_path=route_path,
         tags=tags,
         sink=SinkConfig(kind=sink_kind, path=sink_path),
     )
@@ -194,7 +226,14 @@ def run_collector(config: CollectorConfig, *, once: bool, cycle_limit: int | Non
         while True:
             try:
                 if client is None or not client.is_connected:
-                    client = Client(config.plc.address)
+                    route_path = None
+                    if config.route_path is not None:
+                        route_path = PlcRoutePath(
+                            slots=config.route_path.slots,
+                            ports=config.route_path.ports,
+                            addresses=config.route_path.addresses,
+                        )
+                    client = Client(config.plc.address, route_path=route_path)
                     retries = 0
                     print(f"[collector] connected to {config.plc.address}")
 

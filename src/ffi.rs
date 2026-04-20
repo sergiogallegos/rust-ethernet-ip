@@ -1166,9 +1166,12 @@ pub unsafe extern "C" fn eip_read_string(
         Ok(PlcValue::Udt(udt_data)) => {
             // Allen-Bradley STRING tags are returned as UDT structures (0x02A0)
             // STRING UDT format: 4-byte length (DINT) followed by string data (up to 82 bytes)
-            tracing::warn!("[FFI] STRING tag '{}' returned as UDT, attempting to extract string from UDT data ({} bytes): {:02X?}",
-                tag_name_str, udt_data.data.len(),
-                &udt_data.data[..std::cmp::min(20, udt_data.data.len())]);
+            tracing::warn!(
+                "[FFI] STRING tag '{}' returned as UDT, attempting to extract string from UDT data ({} bytes): {:02X?}",
+                tag_name_str,
+                udt_data.data.len(),
+                &udt_data.data[..std::cmp::min(20, udt_data.data.len())]
+            );
 
             // Allen-Bradley STRING UDT format when returned as 0x02A0:
             // The UDT data might have a header before the actual STRING data
@@ -1707,10 +1710,9 @@ pub unsafe extern "C" fn eip_check_health_detailed(
         }
     };
 
-    let is_ok = match RUNTIME.block_on(client.check_health_detailed()) {
-        Ok(value) => value,
-        Err(_) => false,
-    };
+    let is_ok = RUNTIME
+        .block_on(client.check_health_detailed())
+        .unwrap_or_default();
 
     if store_client(client_id, client).is_err() {
         unsafe {

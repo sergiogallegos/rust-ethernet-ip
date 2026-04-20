@@ -18,6 +18,7 @@ except ImportError as exc:
     ) from exc
 
 from rust_ethernet_ip import BatchReadError, Client, PlcConnectionError, PlcOperationError
+from rust_ethernet_ip import RoutePath as PlcRoutePath
 
 
 @dataclass(slots=True)
@@ -35,6 +36,13 @@ class PollingConfig:
 
 
 @dataclass(slots=True)
+class RoutePathConfig:
+    slots: list[int]
+    ports: list[int]
+    addresses: list[str]
+
+
+@dataclass(slots=True)
 class MqttConfig:
     host: str
     port: int
@@ -48,6 +56,7 @@ class MqttConfig:
 class PublisherConfig:
     plc: PlcConfig
     polling: PollingConfig
+    route_path: RoutePathConfig | None
     tags: list[str]
     mqtt: MqttConfig
 
@@ -81,6 +90,28 @@ def load_config(path: Path) -> PublisherConfig:
         raise ValueError("config.polling.max_retry_count must be >= 0")
     if retry_delay_ms < 0:
         raise ValueError("config.polling.retry_delay_ms must be >= 0")
+    route_payload = payload.get("route_path", {})
+    route_slots = route_payload.get("slots", [])
+    route_ports = route_payload.get("ports", [])
+    route_addresses = route_payload.get("addresses", [])
+    env_slot = os.environ.get("RUST_ETHERNET_IP_PLC_SLOT")
+    if env_slot is not None:
+        route_slots = [int(env_slot)]
+    if not isinstance(route_slots, list) or not all(isinstance(slot, int) for slot in route_slots):
+        raise ValueError("config.route_path.slots must be a list of integers")
+    if not isinstance(route_ports, list) or not all(isinstance(port, int) for port in route_ports):
+        raise ValueError("config.route_path.ports must be a list of integers")
+    if not isinstance(route_addresses, list) or not all(
+        isinstance(address, str) for address in route_addresses
+    ):
+        raise ValueError("config.route_path.addresses must be a list of strings")
+    route_path = None
+    if route_slots or route_ports or route_addresses:
+        route_path = RoutePathConfig(
+            slots=route_slots,
+            ports=route_ports,
+            addresses=route_addresses,
+        )
 
     mqtt_payload = payload.get("mqtt", {})
     host = mqtt_payload.get("host")
@@ -106,6 +137,7 @@ def load_config(path: Path) -> PublisherConfig:
             max_retry_count=max_retry_count,
             retry_delay_ms=retry_delay_ms,
         ),
+        route_path=route_path,
         tags=tags,
         mqtt=MqttConfig(
             host=host,
@@ -157,7 +189,14 @@ def publish_loop(config: PublisherConfig, *, once: bool, cycle_limit: int | None
         while True:
             try:
                 if client is None or not client.is_connected:
-                    client = Client(config.plc.address)
+                    route_path = None
+                    if config.route_path is not None:
+                        route_path = PlcRoutePath(
+                            slots=config.route_path.slots,
+                            ports=config.route_path.ports,
+                            addresses=config.route_path.addresses,
+                        )
+                    client = Client(config.plc.address, route_path=route_path)
                     retries = 0
                     print(f"[mqtt] connected to PLC {config.plc.address}")
 

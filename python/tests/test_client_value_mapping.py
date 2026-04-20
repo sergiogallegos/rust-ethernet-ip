@@ -13,6 +13,19 @@ class ClientValueMappingTests(unittest.TestCase):
         value = {"outer": {"Dint": 7}, "inner": [{"Bool": False}, {"String": "x"}]}
         self.assertEqual(_decode_plc_value(value), {"outer": 7, "inner": [False, "x"]})
 
+    def test_decode_logix_string_payload_with_header(self) -> None:
+        value = {
+            "Udt": {
+                "symbol_id": 0,
+                "data": [0xCE, 0x0F, 5, 0, 0, 0, 72, 69, 76, 76, 79],
+            }
+        }
+        self.assertEqual(_decode_plc_value(value), "HELLO")
+
+    def test_preserve_generic_udt_payloads(self) -> None:
+        value = {"Udt": {"symbol_id": 123, "data": [1, 2, 3, 4]}}
+        self.assertEqual(_decode_plc_value(value), {"symbol_id": 123, "data": [1, 2, 3, 4]})
+
     def test_infer_value_type(self) -> None:
         self.assertEqual(_infer_value_type(True), "BOOL")
         self.assertEqual(_infer_value_type("abc"), "STRING")

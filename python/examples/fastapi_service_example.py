@@ -15,13 +15,20 @@ try:
 except ImportError:
     uvicorn = None
 
-from rust_ethernet_ip import Client, PlcOperationError
+from rust_ethernet_ip import Client, PlcOperationError, RoutePath
 
 
 PLC_ADDRESS = os.environ.get("RUST_ETHERNET_IP_PLC_ADDRESS", "192.168.0.10:44818")
+PLC_SLOT = os.environ.get("RUST_ETHERNET_IP_PLC_SLOT")
 API_HOST = os.environ.get("RUST_ETHERNET_IP_API_HOST", "0.0.0.0")
 API_PORT = int(os.environ.get("RUST_ETHERNET_IP_API_PORT", "8000"))
 app = FastAPI(title="rust-ethernet-ip example service")
+
+
+def build_route_path() -> RoutePath | None:
+    if PLC_SLOT is None:
+        return None
+    return RoutePath(slots=[int(PLC_SLOT)])
 
 
 @app.get("/health")
@@ -32,7 +39,7 @@ def health() -> dict[str, str]:
 @app.get("/diagnostics")
 def diagnostics(detailed: bool = False) -> dict[str, object]:
     try:
-        with Client(PLC_ADDRESS) as plc:
+        with Client(PLC_ADDRESS, route_path=build_route_path()) as plc:
             snapshot = plc.get_diagnostics_snapshot(detailed=detailed)
     except PlcOperationError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -48,7 +55,7 @@ def diagnostics(detailed: bool = False) -> dict[str, object]:
 @app.get("/tags/{tag_name}")
 def read_tag(tag_name: str) -> dict[str, object]:
     try:
-        with Client(PLC_ADDRESS) as plc:
+        with Client(PLC_ADDRESS, route_path=build_route_path()) as plc:
             value = plc.read_tag(tag_name)
     except PlcOperationError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

@@ -9,6 +9,11 @@
     "max_retry_count": 3,
     "retry_delay_ms": 1000
   },
+  "route_path": {
+    "slots": [],
+    "ports": [],
+    "addresses": []
+  },
   "tags": [
     "DINT_TAG",
     "REAL_TAG",

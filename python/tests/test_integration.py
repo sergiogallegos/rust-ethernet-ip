@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from rust_ethernet_ip import BatchWriteItem, Client
+from rust_ethernet_ip import BatchWriteItem, Client, RoutePath
 
 try:
     from .sim_harness import SimulatorHarness
@@ -51,6 +51,12 @@ class SimulatorIntegrationTests(unittest.TestCase):
                 self.assertEqual(updated["REAL_TAG"], 6.5)
                 self.assertIs(updated["BOOL_TAG"], False)
                 self.assertEqual(updated["STRING_TAG"], "Batch Updated")
+
+    def test_connect_with_route_path(self) -> None:
+        with SimulatorHarness() as address:
+            with Client(address, route_path=RoutePath(slots=[0])) as plc:
+                self.assertTrue(plc.check_health())
+                self.assertEqual(plc.read_tag("DINT_TAG"), 1234)
 
 
 if __name__ == "__main__":

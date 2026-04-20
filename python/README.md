@@ -6,6 +6,7 @@ Current scope:
 
 - thin bindings over the existing Rust FFI boundary
 - Pythonic client lifecycle
+- optional route-path connection support for routed ControlLogix targets
 - generic read/write and batch operations
 
 It is intentionally light and keeps Rust as the protocol and performance core.
@@ -58,7 +59,7 @@ On Windows, point that variable to `rust_ethernet_ip.dll`.
 
 ## Current MVP Surface
 
-- `Client(address, auto_connect=True)`
+- `Client(address, route_path=None, auto_connect=True)`
 - `connect()`
 - `disconnect()`
 - `read_tag(name)`
@@ -73,6 +74,8 @@ Python `float` values default to PLC `REAL` in the wrapper.
 If you need `LREAL`, pass it explicitly with `value_type="LREAL"`.
 
 Diagnostics snapshots are exposed as thin Python dataclasses with nested metrics sections.
+
+For routed ControlLogix access, pass `route_path=RoutePath(slots=[cpu_slot])`.
 
 ## Examples
 
@@ -101,6 +104,7 @@ PYTHONPATH=python python3 python/examples/collector_service.py \
 
 The collector uses batch reads and writes timestamped rows to either CSV or SQLite based on the config file.
 Set `RUST_ETHERNET_IP_PLC_ADDRESS` to override the PLC address from the config file.
+Set `RUST_ETHERNET_IP_PLC_SLOT` to inject a simple slot-only route path for routed ControlLogix targets.
 
 MQTT publisher example:
 
@@ -113,10 +117,12 @@ PYTHONPATH=python python3 python/examples/mqtt_publisher_example.py \
 The MQTT example publishes normalized batch snapshots to a broker topic shaped like
 `factory/{site}/plc/{plc_name}/snapshot`.
 Set `RUST_ETHERNET_IP_MQTT_HOST` to override the broker host from the config file.
+Set `RUST_ETHERNET_IP_PLC_SLOT` to inject a simple slot-only route path for routed ControlLogix targets.
 
 The FastAPI example also supports:
 
 - `RUST_ETHERNET_IP_PLC_ADDRESS`
+- `RUST_ETHERNET_IP_PLC_SLOT`
 - `RUST_ETHERNET_IP_API_HOST`
 - `RUST_ETHERNET_IP_API_PORT`
 

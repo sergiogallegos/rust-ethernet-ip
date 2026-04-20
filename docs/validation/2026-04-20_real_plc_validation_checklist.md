@@ -1,8 +1,69 @@
 # 2026-04-20 Real PLC Validation Checklist
 
-Status: planned
+Status: routed ControlLogix release-gate pass captured
 
 Use this checklist for the next real-PLC validation session on the current `0.8.0` draft line.
+
+Target exercised on 2026-04-20:
+
+- PLC: `1756-L81ES`
+- Address: `192.168.0.101:44818`
+- Topology: routed via `1756-EN3TR`, backplane slot `0`
+
+## Current Results
+
+### Final Release-Gate Pass
+
+- PASS: a final serial release-gate run on 2026-04-20 revalidated the exercised Rust, C#, and Python surfaces against the same routed `1756-L81ES` target without cross-test interference
+- CONFIRMED: live write-heavy checks must be run serially on this PLC/test-tag set; running the smoke, benchmark, and full validation app in parallel can perturb shared `gTestArray_DINT[5..7]` write targets
+
+### Rust Core
+
+- PASS: `cargo test schema:: --lib`
+- PASS: `cargo test discovery_tests --lib`
+- PASS: `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo test --test health_check_tests -- --ignored --nocapture`
+- PASS: `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo test --test route_path_operations_tests -- --nocapture`
+- PASS: routed read-only probe still passed `44/44`
+- PASS: routed passive and detailed health checks both reported healthy
+- PASS: routed diagnostics snapshots returned `Passive` and `Verified` health modes with `Healthy` overall status and `0` route-path errors
+- PASS: routed `export_schema()` now succeeds after fixing the malformed request shape, adding paged Symbol Object discovery, and implementing paged Template Object reads for large UDT definitions
+- PASS WITH WARNINGS: the live schema export on this target returned `43` top-level tags, `9` UDTs, preserved `route_path=[0]`, and reduced the warning list to a single target-address omission note
+- CONFIRMED: routed Template Object reads on this target require `Template Read (0x4C)` request data in the form `offset:u32 + byte_count:u16`; size-only requests return `0x13 Not enough data`
+
+### Python Wrapper
+
+- PASS AFTER REBUILD: `cargo build` / `cargo build --release` refreshed the cdylib so the Python wrapper could load `eip_get_diagnostics_json`
+- PASS: Python route-path support was added on top of the existing FFI `eip_connect_with_route` entry point
+- PASS: routed Python `check_health()` and diagnostics snapshot calls succeeded against `192.168.0.101:44818`
+- PASS: routed Python single-tag read succeeded for `gTestArray_DINT[0]`
+- PASS: routed Python batch reads succeeded for valid `gTest*` tags
+- PASS: routed Python `STRING` reads now decode live Logix `STRING` payloads to plain text, including `gTest_STRING="HELLO"` in both single and batch reads
+- PASS: collector example wrote `4` rows to SQLite when run with `RUST_ETHERNET_IP_PLC_SLOT=0`
+- PASS: `python/examples/collector_config.example.json` now uses the same validated `gTest*` tag set as the real-PLC smoke pass
+
+### C# Wrapper
+
+- PASS: `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 dotnet run --project examples/CSharpWrapperSmoke/CSharpWrapperSmoke.csproj`
+- PASS: `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 dotnet run --project examples/CSharpWrapperBenchmark/CSharpWrapperBenchmark.csproj -- --iterations 25`
+- PASS: `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 dotnet run --project examples/CSharpWrapperTest/CSharpWrapperTest.csproj`
+- PASS: temporary routed diagnostics probe reported `CheckHealth=True`, `CheckHealthDetailed=True`, `Passive` and `Verified` diagnostics snapshots, `Healthy` overall status, and `0` route-path errors
+- PASS WITH EXPECTED LIMITATIONS: when run in isolation, the routed full-tag validation app passed `333/392`; the `59` non-passes were limited to known firmware-limited STRING/UDT-array-member writes
+- PASS: benchmark at `25` iterations reported about `550` single reads/sec, `467` single writes/sec, `5484` batch-read logical ops/sec, `1008` batch-write logical ops/sec, and `1918` mixed logical ops/sec on the final serial pass
+- CONFIRMED: the earlier `gTestArray_DINT[5..7]` verify mismatches were caused by running the smoke, benchmark, and full validation app in parallel against the same live write targets; they do not reproduce when the full validation app is run alone
+
+### MQTT Publisher
+
+- PASS: a temporary Python virtualenv with `paho-mqtt 2.1.0` published one routed snapshot from the physical `1756-L81ES` target to a local Mosquitto broker
+- PASS: the broker-backed subscriber observed topic `factory/lab/plc/controllogix-l81es/snapshot`
+- PASS: the observed payload contained `timestamp_utc`, `plc_name`, `values`, and empty `errors`
+- PASS: the published values matched the live PLC read on this pass, including `gTestArray_DINT[0]=1000`, `gTestArray_REAL[0]=10.0`, `gTestArray_BOOL[0]=false`, and `gTestUDT.Member1_DINT=7777`
+
+### Optional In This Pass
+
+- Docker stack validation remains optional and is not treated as a release blocker for the core Rust/C#/Python libraries
+
+Blockers observed:
+- none on the exercised Rust/C#/Python routed ControlLogix paths; remaining non-passes in the full C# matrix are the expected PLC firmware limitations only
 
 ## Goals
 

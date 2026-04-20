@@ -1,6 +1,8 @@
-use crate::tag_manager::{TagMetadata, TagPermissions as MetadataPermissions, TagScope as MetadataScope};
-use crate::udt::{TagAttributes, TagPermissions, TagScope, UdtDefinition, UdtMember};
 use crate::RoutePath;
+use crate::tag_manager::{
+    TagMetadata, TagPermissions as MetadataPermissions, TagScope as MetadataScope,
+};
+use crate::udt::{TagAttributes, TagPermissions, TagScope, UdtDefinition, UdtMember};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,11 +90,10 @@ pub struct SchemaDataType {
 
 impl SchemaExport {
     pub fn new(route_path: Option<&RoutePath>) -> Self {
-        let mut warnings = Vec::new();
-        warnings.push(
+        let warnings = vec![
             "Target address is not currently retained on EipClient and is omitted from schema export."
                 .to_string(),
-        );
+        ];
 
         Self {
             schema_version: "0.1".to_string(),
@@ -170,7 +171,11 @@ impl SchemaUdt {
             name: definition.name.clone(),
             template_instance_id,
             size_bytes: source_tag_size,
-            members: definition.members.iter().map(SchemaUdtMember::from).collect(),
+            members: definition
+                .members
+                .iter()
+                .map(SchemaUdtMember::from)
+                .collect(),
         }
     }
 }
@@ -299,7 +304,7 @@ fn current_utc_timestamp_rfc3339() -> String {
         let written = libc::strftime(
             buffer.as_mut_ptr() as *mut libc::c_char,
             buffer.len(),
-            b"%Y-%m-%dT%H:%M:%SZ\0".as_ptr() as *const libc::c_char,
+            c"%Y-%m-%dT%H:%M:%SZ".as_ptr(),
             &tm as *const libc::tm,
         );
         if written > 0 {

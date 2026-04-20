@@ -7,11 +7,16 @@
     "max_retry_count": 3,
     "retry_delay_ms": 1000
   },
+  "route_path": {
+    "slots": [],
+    "ports": [],
+    "addresses": []
+  },
   "tags": [
-    "DINT_TAG",
-    "REAL_TAG",
-    "BOOL_TAG",
-    "STRING_TAG"
+    "gTestArray_DINT[0]",
+    "gTestArray_REAL[0]",
+    "gTestArray_BOOL[0]",
+    "gTestUDT.Member1_DINT"
   ],
   "sink": {
     "kind": "sqlite",

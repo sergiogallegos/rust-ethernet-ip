@@ -1,5 +1,5 @@
-use crate::error::{EtherNetIpError, Result};
 use crate::PlcValue;
+use crate::error::{EtherNetIpError, Result};
 use std::collections::HashMap;
 
 /// Definition of a User Defined Type
@@ -39,6 +39,13 @@ pub struct TagAttributes {
     pub scope: TagScope,
     pub template_instance_id: Option<u32>,
     pub size: u32,
+}
+
+#[derive(Clone, Copy)]
+struct RawMember {
+    info: u16,
+    raw_type: u16,
+    offset: u32,
 }
 
 /// Tag permissions
@@ -128,99 +135,134 @@ impl UdtManager {
         self.tag_attributes.clear();
     }
 
-    /// Parses UDT template data from CIP response
-    pub fn parse_udt_template(&self, template_id: u32, data: &[u8]) -> Result<UdtTemplate> {
-        if data.len() < 8 {
+    /// Parses UDT template data from the Template Read service payload.
+    pub fn parse_udt_template(
+        &self,
+        template_id: u32,
+        member_count: u16,
+        structure_size: u32,
+        data: &[u8],
+    ) -> Result<UdtTemplate> {
+        let member_section_len = member_count as usize * 8;
+        if data.len() < member_section_len {
             return Err(EtherNetIpError::Protocol(
                 "UDT template data too short".to_string(),
             ));
         }
 
-        let mut offset = 0;
+        let mut raw_members = Vec::with_capacity(member_count as usize);
+        for i in 0..member_count as usize {
+            let base = i * 8;
+            raw_members.push(RawMember {
+                info: u16::from_le_bytes([data[base], data[base + 1]]),
+                raw_type: u16::from_le_bytes([data[base + 2], data[base + 3]]),
+                offset: u32::from_le_bytes([
+                    data[base + 4],
+                    data[base + 5],
+                    data[base + 6],
+                    data[base + 7],
+                ]),
+            });
+        }
 
-        // Parse template header
-        let structure_size = u32::from_le_bytes([
-            data[offset],
-            data[offset + 1],
-            data[offset + 2],
-            data[offset + 3],
-        ]);
-        offset += 4;
+        let strings = self.parse_null_terminated_strings(&data[member_section_len..]);
+        let template_name = strings
+            .first()
+            .and_then(|value| value.split(';').next())
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| format!("Template_{}", template_id));
 
-        let member_count = u16::from_le_bytes([data[offset], data[offset + 1]]);
-        offset += 2;
-
-        // Skip reserved bytes
-        offset += 2;
-
+        let member_names = strings.into_iter().skip(1);
         let mut members = Vec::new();
-        let mut current_offset = 0u32;
 
-        // Parse each member
-        for i in 0..member_count {
-            if offset + 8 > data.len() {
-                return Err(EtherNetIpError::Protocol(format!(
-                    "UDT template member {} data incomplete",
-                    i
-                )));
+        for (raw_member, member_name) in raw_members.into_iter().zip(member_names) {
+            if member_name.is_empty() || member_name.starts_with("ZZZZZZZZZZ") {
+                continue;
             }
 
-            // Parse member info
-            let member_info = u32::from_le_bytes([
-                data[offset],
-                data[offset + 1],
-                data[offset + 2],
-                data[offset + 3],
-            ]);
-            offset += 4;
+            let normalized_type = self.normalize_member_data_type(raw_member.raw_type);
+            let member_size = self.estimate_member_size(
+                raw_member,
+                normalized_type,
+                &data[..member_section_len],
+                structure_size,
+            );
 
-            let member_name_length = u16::from_le_bytes([data[offset], data[offset + 1]]);
-            offset += 2;
-
-            // Skip reserved bytes
-            offset += 2;
-
-            // Extract member properties from member_info
-            let data_type = (member_info & 0xFFFF) as u16;
-            let _dimensions = ((member_info >> 16) & 0xFF) as u8;
-
-            // Read member name
-            if offset + member_name_length as usize > data.len() {
-                return Err(EtherNetIpError::Protocol(format!(
-                    "UDT template member {} name data incomplete",
-                    i
-                )));
-            }
-
-            let name_bytes = &data[offset..offset + member_name_length as usize];
-            let member_name = String::from_utf8_lossy(name_bytes).to_string();
-            offset += member_name_length as usize;
-
-            // Align to 4-byte boundary
-            offset = (offset + 3) & !3;
-
-            // Calculate member size based on data type
-            let member_size = self.get_data_type_size(data_type);
-
-            // Create member
-            let member = UdtMember {
+            members.push(UdtMember {
                 name: member_name,
-                data_type,
-                offset: current_offset,
+                data_type: normalized_type,
+                offset: raw_member.offset,
                 size: member_size,
-            };
-
-            members.push(member);
-            current_offset += member_size;
+            });
         }
 
         Ok(UdtTemplate {
             template_id,
-            name: format!("Template_{}", template_id),
+            name: template_name,
             size: structure_size,
             member_count,
             members,
         })
+    }
+
+    fn parse_null_terminated_strings(&self, data: &[u8]) -> Vec<String> {
+        data.split(|byte| *byte == 0)
+            .filter(|chunk| !chunk.is_empty())
+            .map(|chunk| String::from_utf8_lossy(chunk).to_string())
+            .collect()
+    }
+
+    fn normalize_member_data_type(&self, raw_type: u16) -> u16 {
+        let base_type = raw_type & 0x0FFF;
+        let is_structure = (raw_type & 0x8000) != 0;
+
+        if is_structure {
+            0x00A0
+        } else if base_type != 0 {
+            base_type
+        } else {
+            raw_type
+        }
+    }
+
+    fn estimate_member_size(
+        &self,
+        raw_member: RawMember,
+        normalized_type: u16,
+        member_section: &[u8],
+        structure_size: u32,
+    ) -> u32 {
+        let is_array = (raw_member.raw_type & 0x2000) != 0;
+        let is_structure = (raw_member.raw_type & 0x8000) != 0;
+
+        if normalized_type == 0x00C1 {
+            return 1;
+        }
+
+        if is_array {
+            let element_size = self.get_data_type_size(normalized_type);
+            return if normalized_type == 0x00D3 {
+                element_size
+            } else {
+                element_size.saturating_mul(raw_member.info as u32)
+            };
+        }
+
+        if is_structure {
+            let next_offset = member_section
+                .chunks_exact(8)
+                .filter_map(|chunk| {
+                    let offset = u32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]);
+                    (offset > raw_member.offset).then_some(offset)
+                })
+                .min()
+                .unwrap_or(structure_size);
+
+            return next_offset.saturating_sub(raw_member.offset).max(1);
+        }
+
+        self.get_data_type_size(normalized_type)
     }
 
     /// Gets the size of a data type in bytes
@@ -872,5 +914,37 @@ mod tests {
         assert!(result.is_err());
         let error_text = result.err().unwrap().to_string();
         assert!(error_text.contains("not implemented"));
+    }
+
+    #[test]
+    fn test_parse_udt_template_reads_live_style_member_records() {
+        let manager = UdtManager::new();
+        let data = vec![
+            0x00, 0x00, 0xC4, 0x00, 0x00, 0x00, 0x00, 0x00, // DINT @ 0
+            0x04, 0x00, 0xCA, 0x00, 0x04, 0x00, 0x00, 0x00, // REAL @ 4
+            0x08, 0x00, 0xC2, 0x00, 0x08, 0x00, 0x00, 0x00, // hidden SINT host @ 8
+            0x00, 0x00, 0xC1, 0x00, 0x08, 0x00, 0x00, 0x00, // BOOL @ 8
+            b'T', b'E', b'S', b'T', b'_', b'U', b'D', b'T', b';', b'n', 0x00, b'M', b'e', b'm',
+            b'b', b'e', b'r', b'1', 0x00, b'M', b'e', b'm', b'b', b'e', b'r', b'2', 0x00, b'Z',
+            b'Z', b'Z', b'Z', b'Z', b'Z', b'Z', b'Z', b'Z', b'Z', 0x00, b'F', b'l', b'a', b'g',
+            0x00,
+        ];
+
+        let template = manager
+            .parse_udt_template(123, 4, 12, &data)
+            .expect("template should parse");
+
+        assert_eq!(template.name, "TEST_UDT");
+        assert_eq!(template.members.len(), 3);
+        assert_eq!(template.members[0].name, "Member1");
+        assert_eq!(template.members[0].data_type, 0x00C4);
+        assert_eq!(template.members[0].offset, 0);
+        assert_eq!(template.members[1].name, "Member2");
+        assert_eq!(template.members[1].data_type, 0x00CA);
+        assert_eq!(template.members[1].offset, 4);
+        assert_eq!(template.members[2].name, "Flag");
+        assert_eq!(template.members[2].data_type, 0x00C1);
+        assert_eq!(template.members[2].offset, 8);
+        assert_eq!(template.members[2].size, 1);
     }
 }

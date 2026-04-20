@@ -541,3 +541,127 @@ Sources used:
 - `python/examples/collector_service.py`
 - `python/examples/mqtt_publisher_example.py`
 - `csharp/RustEtherNetIp.Tests/DiagnosticsSnapshotContractTests.cs`
+
+## [2026-04-20] query | validate pending 0.8.0 ControlLogix follow-up
+
+- Updated the real-PLC checklist and release-validation synthesis with the 2026-04-20 routed ControlLogix follow-up results.
+- Confirmed routed Rust and C# health/diagnostics paths are healthy on `1756-L81ES` via `1756-EN3TR` slot `0`.
+- Recorded that routed Rust `export_schema()` now succeeds after fixing the malformed request shape and adding paged Symbol Object discovery.
+- Recorded that routed schema export still produces warnings and `udts=0` because UDT definition resolution for discovered structured tags is not yet succeeding on this target.
+- Recorded that the Python wrapper needed a rebuilt cdylib to load diagnostics, then was extended with route-path support so routed reads, diagnostics, and collector validation now pass on valid `gTest*` tags.
+
+Sources used:
+
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+- `docs/release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- `wiki/releases/0.8.0-validation-synthesis.md`
+- `examples/readonly_plc_probe.rs`
+- `tests/health_check_tests.rs`
+- `src/lib.rs`
+- `src/ffi.rs`
+- `python/rust_ethernet_ip/client.py`
+- `python/examples/collector_service.py`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.Diagnostics.cs`
+
+## [2026-04-20] ingest | clear routed schema export blocker on ControlLogix
+
+- Updated the routed ControlLogix validation record after fixing Template Object attribute parsing, Template Read request framing, and paged Template Object reads in the Rust core.
+- Recorded that live routed schema export on `1756-L81ES` via `1756-EN3TR` slot `0` now returns `43` tags and `9` UDT definitions, with the remaining warning reduced to target-address omission in export metadata.
+- Recorded the durable protocol finding that Template Read on this target requires `offset:u32 + byte_count:u16` request data; size-only requests fail with `0x13 Not enough data`.
+- Updated the `0.8.0` draft release synthesis so schema export is no longer listed as the primary remaining real-PLC blocker.
+
+Sources used:
+
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+- `docs/release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- `wiki/releases/0.8.0-validation-synthesis.md`
+- `src/lib.rs`
+- `src/udt.rs`
+
+## [2026-04-20] ingest | validate mqtt publisher on routed controllogix
+
+- Validated the Python MQTT publisher end to end against `1756-L81ES` via `1756-EN3TR` slot `0` using a temporary virtualenv with `paho-mqtt 2.1.0` and a local Mosquitto broker.
+- Confirmed the published topic `factory/lab/plc/controllogix-l81es/snapshot` and observed a live payload containing `timestamp_utc`, `plc_name`, routed `gTest*` values, and empty `errors`.
+- Updated the 2026-04-20 validation checklist, `0.8.0` draft release notes, and release synthesis so MQTT is no longer listed as an unvalidated blocker.
+
+Sources used:
+
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+- `docs/release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- `wiki/releases/0.8.0-validation-synthesis.md`
+- `python/examples/mqtt_publisher_example.py`
+- `python/examples/mqtt_publisher_config.example.json`
+- `docker/python-stack/docker-compose.yml`
+- `docker/python-stack/mosquitto.conf`
+
+## [2026-04-20] ingest | rerun live controllogix regression and make docker optional
+
+- Re-ran the routed `1756-L81ES` matrix against the live PLC for Rust, C#, and Python with Docker treated as optional rather than release-blocking.
+- Recorded fresh Rust passes for `schema::`, `discovery_tests`, ignored health checks, and `route_path_operations_tests` on `192.168.0.101:44818` slot `0`.
+- Recorded fresh C# wrapper smoke, benchmark, and full validation-app results; the full matrix non-passes remained limited to expected STRING/UDT-array-member write constraints plus three tags whose live values no longer match the historical fixture baseline.
+- Recorded fresh Python routed health, diagnostics, single-read, batch-read, and collector results, updated the local collector example config to validated `gTest*` tags, and captured the remaining Python `STRING` decode gap.
+- Updated the release notes and validation synthesis so Docker example-stack smoke testing is explicitly optional for `0.8.0`.
+
+Sources used:
+
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+- `docs/release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- `wiki/releases/0.8.0-validation-synthesis.md`
+- `wiki/log.md`
+- `python/examples/collector_config.example.json`
+- `tests/health_check_tests.rs`
+- `tests/route_path_operations_tests.rs`
+- `examples/CSharpWrapperSmoke/Program.cs`
+- `examples/CSharpWrapperBenchmark/Program.cs`
+- `examples/CSharpWrapperTest/Program.cs`
+- `python/rust_ethernet_ip/client.py`
+
+## [2026-04-20] ingest | clear python controllogix string decode gap
+
+- Updated the Python wrapper decoder so live ControlLogix `STRING` tags returned through the raw `{symbol_id,data}` path are normalized back to plain text when the payload matches the known Logix `STRING` layout.
+- Added targeted Python tests for the raw-header Logix `STRING` shape and confirmed generic UDT payloads are still preserved.
+- Re-ran the Python unit suite, Python bytecode compile check, live routed `gTest_STRING` single/batch reads, and the one-shot collector against `192.168.0.101:44818` slot `0`.
+- Updated the validation checklist, `0.8.0` draft release notes, and release synthesis to remove the stale Python `STRING` decode blocker.
+
+Sources used:
+
+- `python/rust_ethernet_ip/client.py`
+- `python/tests/test_client_value_mapping.py`
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+- `docs/release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- `wiki/releases/0.8.0-validation-synthesis.md`
+
+## [2026-04-20] ingest | confirm csharp full-matrix mismatches were concurrency artifacts
+
+- Re-ran `examples/CSharpWrapperTest` by itself against `1756-L81ES` via `1756-EN3TR` slot `0` and confirmed the full validation app returns `333/392` with only the `59` documented firmware-limited write failures.
+- Recorded that the earlier `gTestArray_DINT[5..7]` mismatches were caused by running the smoke, benchmark, and full validation app in parallel against the same live write targets.
+- Updated the validation checklist, release notes draft, and release synthesis so the C# full-matrix result no longer claims live fixture drift on those tags.
+
+Sources used:
+
+- `examples/CSharpWrapperTest/Program.cs`
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+- `docs/release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- `wiki/releases/0.8.0-validation-synthesis.md`
+
+## [2026-04-20] ingest | capture final serial controllogix release-gate pass
+
+- Ran a final serial release-gate pass against `1756-L81ES` via `1756-EN3TR` slot `0` to avoid shared-tag interference between live write-heavy validations.
+- Reconfirmed Rust `schema::`, `discovery_tests`, ignored health checks, and route-path tests on the live target.
+- Reconfirmed C# smoke, benchmark, and full validation app results in serial order; the full matrix remained at `333/392` with only the `59` documented firmware-limited write failures.
+- Reconfirmed Python unit tests, bytecode compile checks, routed live reads including decoded `gTest_STRING="HELLO"`, and the one-shot collector writing `4` rows to SQLite.
+- Updated the release notes, validation checklist, and release synthesis to treat this serial pass as the consolidated `0.8.0` live release gate for the exercised surfaces.
+
+Sources used:
+
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+- `docs/release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- `wiki/releases/0.8.0-validation-synthesis.md`
+- `wiki/log.md`
+- `examples/CSharpWrapperSmoke/Program.cs`
+- `examples/CSharpWrapperBenchmark/Program.cs`
+- `examples/CSharpWrapperTest/Program.cs`
+- `python/rust_ethernet_ip/client.py`
+- `python/examples/collector_service.py`
+- `tests/health_check_tests.rs`
+- `tests/route_path_operations_tests.rs`

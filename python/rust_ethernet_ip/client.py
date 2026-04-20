@@ -1,7 +1,16 @@
 from __future__ import annotations
 
 import json
-from ctypes import byref, c_char_p, c_int, c_void_p, cast, create_string_buffer
+from ctypes import (
+    POINTER,
+    byref,
+    c_char_p,
+    c_int,
+    c_uint8,
+    c_void_p,
+    cast,
+    create_string_buffer,
+)
 
 from .bindings import READ_BUFFER_SIZE, RESULT_BUFFER_SIZE, load_native_library
 from .exceptions import BatchReadError, PlcConnectionError, PlcOperationError
@@ -13,6 +22,7 @@ from .types import (
     DiagnosticsOperationMetrics,
     DiagnosticsPerformanceMetrics,
     DiagnosticsSnapshot,
+    RoutePath,
     WriteResult,
 )
 
@@ -34,6 +44,39 @@ _PLC_VARIANTS = {
 }
 
 
+def _decode_logix_string_payload(payload: object) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    if set(payload.keys()) != {"symbol_id", "data"}:
+        return None
+
+    data = payload.get("data")
+    if not isinstance(data, list) or any(not isinstance(byte, int) for byte in data):
+        return None
+
+    buffer = bytes(data)
+    for header_size in (2, 0):
+        if header_size == 2:
+            if len(buffer) < 6 or buffer[:2] != b"\xCE\x0F":
+                continue
+        elif len(buffer) < 4:
+            continue
+
+        length_offset = header_size
+        length = int.from_bytes(
+            buffer[length_offset : length_offset + 4],
+            byteorder="little",
+            signed=False,
+        )
+        string_data = buffer[length_offset + 4 :]
+        if length > 82 or length > len(string_data):
+            continue
+
+        return string_data[:length].decode("utf-8", errors="replace")
+
+    return None
+
+
 def _decode_plc_value(value: object) -> object:
     if isinstance(value, dict) and len(value) == 1:
         key, payload = next(iter(value.items()))
@@ -53,6 +96,9 @@ def _decode_plc_value(value: object) -> object:
 
 def _decode_udt(payload: object) -> object:
     if isinstance(payload, dict):
+        decoded_string = _decode_logix_string_payload(payload)
+        if decoded_string is not None:
+            return decoded_string
         return {name: _decode_plc_value(value) for name, value in payload.items()}
     return payload
 
@@ -91,8 +137,15 @@ def _parse_diagnostics_snapshot(payload: dict[str, object]) -> DiagnosticsSnapsh
 
 
 class Client:
-    def __init__(self, address: str, *, auto_connect: bool = True):
+    def __init__(
+        self,
+        address: str,
+        *,
+        route_path: RoutePath | None = None,
+        auto_connect: bool = True,
+    ):
         self._address = address
+        self._route_path = route_path
         self._lib = load_native_library()
         self._client_id: int | None = None
         if auto_connect:
@@ -103,6 +156,10 @@ class Client:
         return self._address
 
     @property
+    def route_path(self) -> RoutePath | None:
+        return self._route_path
+
+    @property
     def is_connected(self) -> bool:
         return self._client_id is not None and self._client_id >= 0
 
@@ -110,10 +167,33 @@ class Client:
         if self.is_connected:
             return
 
-        client_id = self._lib.eip_connect(self._address.encode("utf-8"))
+        if self._route_path is None:
+            client_id = self._lib.eip_connect(self._address.encode("utf-8"))
+        else:
+            client_id = self._connect_with_route(self._route_path)
         if client_id < 0:
             raise PlcConnectionError(f"Failed to connect to PLC at {self._address}")
         self._client_id = int(client_id)
+
+    def _connect_with_route(self, route_path: RoutePath) -> int:
+        slots = route_path.slots or []
+        ports = route_path.ports or []
+        addresses = route_path.addresses or []
+
+        slot_array = (c_uint8 * len(slots))(*slots) if slots else None
+        port_array = (c_uint8 * len(ports))(*ports) if ports else None
+        address_bytes = [address.encode("utf-8") for address in addresses]
+        address_array = (c_char_p * len(address_bytes))(*address_bytes) if address_bytes else None
+
+        return self._lib.eip_connect_with_route(
+            self._address.encode("utf-8"),
+            cast(slot_array, POINTER(c_uint8)) if slot_array is not None else None,
+            len(slots),
+            cast(port_array, POINTER(c_uint8)) if port_array is not None else None,
+            len(ports),
+            cast(address_array, POINTER(c_char_p)) if address_array is not None else None,
+            len(addresses),
+        )
 
     def disconnect(self) -> None:
         if not self.is_connected:

@@ -43,9 +43,21 @@ def _candidate_paths() -> list[Path]:
 
 def _configure_function_signatures(lib: ctypes.CDLL) -> ctypes.CDLL:
     c_char_p_p = ctypes.POINTER(ctypes.c_char_p)
+    c_uint8_p = ctypes.POINTER(ctypes.c_uint8)
 
     lib.eip_connect.argtypes = [ctypes.c_char_p]
     lib.eip_connect.restype = ctypes.c_int
+
+    lib.eip_connect_with_route.argtypes = [
+        ctypes.c_char_p,
+        c_uint8_p,
+        ctypes.c_int,
+        c_uint8_p,
+        ctypes.c_int,
+        c_char_p_p,
+        ctypes.c_int,
+    ]
+    lib.eip_connect_with_route.restype = ctypes.c_int
 
     lib.eip_disconnect.argtypes = [ctypes.c_int]
     lib.eip_disconnect.restype = ctypes.c_int

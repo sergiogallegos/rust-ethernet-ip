@@ -1,5 +1,7 @@
 # Library Comparison and Improvement Analysis
 
+> Historical reference: this analysis reflects the repo state and roadmap assumptions from October 2025. Treat planned-version statements and wrapper references here as historical context, not current release guidance.
+
 **Date:** October 6, 2025  
 **Version:** v0.5.3  
 **Analysis Scope:** Rust EtherNet/IP vs libplctag vs pycomm3
@@ -709,4 +711,3 @@ pub enum TagScope {
 ---
 
 **End of Analysis**
-

@@ -59,9 +59,11 @@ Current release state:
 ## Historical / Deep-Dive Notes
 
 Some files in this folder are historical analyses from earlier release phases and may include old planning timelines.
+Some older files now include an explicit `Historical reference` banner near the top; when present, treat that file as traceability context rather than the current source of truth.
 
 Use them for context, but treat the following as authoritative for current behavior:
-- `README.md`
-- `CHANGELOG.md`
-- `0.7.0_HARDENING_GATE.md`
-- `audit/0.7.0_docs_api_audit.md`
+- `../README.md`
+- `programmer_manual.md`
+- `release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- current records in `validation/`
+- the maintainer wiki in `../wiki/`

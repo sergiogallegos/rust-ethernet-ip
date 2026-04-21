@@ -1,5 +1,7 @@
 # Wrapper Limitations Update Summary
 
+> Historical reference: this summary reflects an earlier wrapper layout and still references removed `gowrapper/` and `pywrapper/` trees. Use the current Rust, C#, and Python wrapper docs for active behavior.
+
 ## Overview
 
 All wrappers and examples have been updated to document and handle the known PLC firmware limitations. These limitations are **not library bugs** but rather restrictions imposed by the PLC firmware itself.
@@ -78,4 +80,3 @@ All wrappers and examples now:
 4. Display limitations notices in example applications (where applicable)
 
 Users should refer to the limitations documentation when encountering Error 0x2107.
-

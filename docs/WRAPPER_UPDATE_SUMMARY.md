@@ -1,5 +1,7 @@
 # Wrapper Update Summary
 
+> Historical reference: this document describes an earlier multi-wrapper layout and still references removed `gowrapper/` and `pywrapper/` trees. Do not treat it as the current maintained architecture.
+
 ## Overview
 Updated all language wrappers (C#, Go, Python) to support the new features implemented in the Rust library:
 - **RoutePath support** for ControlLogix backplane routing
@@ -278,4 +280,3 @@ All changes maintain backward compatibility:
 - `docs/UDT_IMPLEMENTATION_REVIEW.md` - UDT implementation details
 - `csharp/RustEtherNetIp/RoutePath.cs` - C# RoutePath implementation
 - `csharp/RustEtherNetIp/UdtData.cs` - C# UdtData implementation
-

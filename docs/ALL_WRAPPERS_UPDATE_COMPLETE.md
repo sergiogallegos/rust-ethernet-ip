@@ -1,5 +1,7 @@
 # All Wrappers Update Complete ✅
 
+> Historical reference: this document describes an earlier wrapper layout and still references removed `gowrapper/` and `pywrapper/` trees. Do not treat it as the current maintained architecture.
+
 ## Summary
 
 All three language wrappers (C#, Go, and Python) have been successfully updated to support the new features:
@@ -133,4 +135,3 @@ All wrappers maintain **100% backward compatibility**:
 ---
 
 **All wrappers are ready for production use!** 🎉
-

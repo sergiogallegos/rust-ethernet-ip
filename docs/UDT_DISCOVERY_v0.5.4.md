@@ -1,5 +1,7 @@
 # UDT Discovery and Enhanced Features - v0.5.4
 
+> Historical reference: this document records the `v0.5.4` feature state. Use current README/manual/release docs for the active library surface and release status.
+
 **Date:** October 6, 2025  
 **Version:** v0.5.4  
 **Status:** Production Ready

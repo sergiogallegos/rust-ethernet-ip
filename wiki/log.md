@@ -665,3 +665,47 @@ Sources used:
 - `python/examples/collector_service.py`
 - `tests/health_check_tests.rs`
 - `tests/route_path_operations_tests.rs`
+
+## [2026-04-20] lint | assess documentation state
+
+- Added a documentation-state investigation page capturing which current docs look healthy and which older docs are likely to confuse readers without historical framing.
+- Updated `wiki/index.md` to register the new investigation page.
+- Recorded that the main risk is not the active README/manual/wrapper/wiki surfaces, but older secondary docs that still describe pre-release `0.7.0` or removed `pywrapper/` / `gowrapper/` trees.
+
+Sources used:
+
+- `README.md`
+- `docs/programmer_manual.md`
+- `csharp/RustEtherNetIp/README.md`
+- `wiki/index.md`
+- `docs/validation/REAL_PLC_TESTING.md`
+- `docs/compat/0.7.0_plc_simulator_compatibility_matrix.md`
+- `docs/0.7.0_HARDENING_GATE.md`
+- `docs/audit/0.7.0_docs_api_audit.md`
+- `docs/ALL_WRAPPERS_UPDATE_COMPLETE.md`
+- `docs/WRAPPER_UPDATE_SUMMARY.md`
+- `docs/WRAPPER_LIMITATIONS_UPDATE_SUMMARY.md`
+- `docs/DLL_DEPLOYMENT.md`
+- `docs/LIBRARY_COMPARISON_AND_IMPROVEMENTS.md`
+- `docs/UDT_DISCOVERY_v0.5.4.md`
+- `docs/VERSION_0.6.0_CHANGELOG.md`
+
+## [2026-04-20] reframe | add historical-reference banners to legacy docs
+
+- Added a consistent historical-reference banner to older docs that still contain removed wrapper-tree references, earlier roadmap assumptions, or pre-release `0.7.0` wording.
+- Focused the pass on high-confusion files in `docs/` rather than rewriting their detailed historical content.
+- Left the active README/manual/wrapper docs untouched because they are part of the current surface, not the historical-reference cleanup set.
+
+Sources used:
+
+- `docs/ALL_WRAPPERS_UPDATE_COMPLETE.md`
+- `docs/WRAPPER_UPDATE_SUMMARY.md`
+- `docs/WRAPPER_LIMITATIONS_UPDATE_SUMMARY.md`
+- `docs/DLL_DEPLOYMENT.md`
+- `docs/LIBRARY_COMPARISON_AND_IMPROVEMENTS.md`
+- `docs/UDT_DISCOVERY_v0.5.4.md`
+- `docs/VERSION_0.6.0_CHANGELOG.md`
+- `docs/validation/REAL_PLC_TESTING.md`
+- `docs/compat/0.7.0_plc_simulator_compatibility_matrix.md`
+- `docs/0.7.0_HARDENING_GATE.md`
+- `docs/audit/0.7.0_docs_api_audit.md`

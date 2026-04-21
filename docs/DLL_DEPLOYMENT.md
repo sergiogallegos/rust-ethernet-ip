@@ -1,5 +1,7 @@
 # DLL Deployment Guide
 
+> Historical reference: this guide is Windows- and legacy-wrapper-centric and still references removed `gowrapper/` paths. Use the current packaging and wrapper docs for the active deployment story.
+
 ## Overview
 
 The `rust_ethernet_ip.dll` is the native Rust library compiled for Windows. This DLL must be present in the same directory as the executable or in a location where the .NET runtime can find it.

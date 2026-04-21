@@ -1,5 +1,7 @@
 # Version 0.6.0 Changelog
 
+> Historical reference: this changelog captures the `0.6.0` release state only. Do not treat its status language as the current repo or release state.
+
 **Release Date:** January 2026  
 **Status:** ✅ Production Ready
 
@@ -150,4 +152,3 @@ if let PlcValue::Udt(udt_data) = udt_value {
 - Continue improving UDT parsing performance
 - Add more comprehensive examples
 - Enhance error messages for UDT operations
-

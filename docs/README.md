@@ -11,6 +11,7 @@ Current release state:
 
 - [../README.md](../README.md): Project overview and quick start
 - [programmer_manual.md](programmer_manual.md): Programmer manual (Rust + C# integration tracks)
+- [INTEGRATION_AND_DEPLOYMENT.md](INTEGRATION_AND_DEPLOYMENT.md): Step-by-step integration and deployment guide for Rust, C#, and Python users
 - [SOFTWARE_ARCHITECTURE.md](SOFTWARE_ARCHITECTURE.md): Current architecture map, design boundaries, and refactor guidance
 - [PLATFORM_EXPANSION_BACKLOG.md](PLATFORM_EXPANSION_BACKLOG.md): Planned Python/data-platform expansion backlog and rationale
 - [CODEX_PYTHON_PLATFORM_EXPANSION_PROMPT.md](CODEX_PYTHON_PLATFORM_EXPANSION_PROMPT.md): Detailed Codex prompt for planning and implementing the Python/data-platform path
@@ -52,6 +53,7 @@ Current release state:
 
 ## Troubleshooting and Operations
 
+- [INTEGRATION_AND_DEPLOYMENT.md](INTEGRATION_AND_DEPLOYMENT.md)
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 - [VERSION_MANAGEMENT.md](VERSION_MANAGEMENT.md)
 - [DLL_DEPLOYMENT.md](DLL_DEPLOYMENT.md)

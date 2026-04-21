@@ -61,3 +61,34 @@ Iterations per scenario: 100
 ## Assessment
 
 The Rust library remains stable on the exercised routed ControlLogix feature set for the `0.8.0` draft line. The observed failures are unchanged controller firmware limitations, not new protocol regressions.
+
+## 2026-04-21 Rerun
+
+Date: 2026-04-21
+Tester: Codex + Sergio Gallegos
+
+### Commands Executed
+
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo test --test health_check_tests -- --ignored --nocapture`
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo test --test route_path_operations_tests -- --nocapture`
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo run --example readonly_plc_probe -- 192.168.0.101:44818`
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo test --test batch_operations_tests -- --ignored --nocapture`
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo test --test cache_management_tests -- --ignored --nocapture`
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo test --test subscription_tests -- --ignored --nocapture`
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo run --example test_comprehensive_arrays_udt`
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 cargo run --example test_plc_test_tag_definitions`
+
+### Result
+
+- PASS: Health-check tests passed `2/2`.
+- PASS: Route-path tests passed `5/5`.
+- PASS: Read-only probe again succeeded for `44/44` expected paths.
+- PASS: Batch operation tests passed `5/5`.
+- PASS: Cache-management tests passed `3/3`.
+- PASS: Subscription tests passed `4/4`, with the expected invalid-tag assertions still behaving correctly.
+- PASS WITH DOCUMENTED LIMITATIONS: `test_comprehensive_arrays_udt` again completed successfully and restored modified tags. The direct write to `gTestUDT_Array[3].Member1_DINT` again failed with the known extended status `0x2107`.
+- PASS WITH DOCUMENTED LIMITATIONS: `test_plc_test_tag_definitions` again produced `333 passed / 59 failed / 0 skipped`, with `333 restored / 0 failed` in the restore step.
+
+### Assessment
+
+This rerun reproduced the same routed ControlLogix behavior and the same documented limitation profile as the earlier record. No new Rust regression was observed on the exercised live target.

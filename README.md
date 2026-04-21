@@ -107,8 +107,23 @@ The Python wrapper is currently in-repo as a working `0.8.0` draft layer and is 
 See:
 
 - [python/README.md](python/README.md)
+- [Integration and deployment guide](docs/INTEGRATION_AND_DEPLOYMENT.md)
 - [docs/PYTHON_WRAPPER_STRATEGY.md](docs/PYTHON_WRAPPER_STRATEGY.md)
 - [docs/DOCKER_EXAMPLE_STACKS.md](docs/DOCKER_EXAMPLE_STACKS.md)
+
+## Integration and Deployment
+
+If you are evaluating the library for production use, start here:
+
+- [Integration and deployment guide](docs/INTEGRATION_AND_DEPLOYMENT.md)
+
+That guide covers:
+
+- when to use Rust vs C# vs Python
+- step-by-step integration into each stack
+- native runtime deployment expectations
+- routed ControlLogix usage
+- troubleshooting and rollout checks
 
 ## Quick Start (Rust)
 
@@ -274,6 +289,7 @@ docker compose -f docker/python-stack/docker-compose.yml up --build
 
 - [API docs (docs.rs)](https://docs.rs/rust-ethernet-ip)
 - [Programmer manual (Rust + C#)](docs/programmer_manual.md)
+- [Integration and deployment guide](docs/INTEGRATION_AND_DEPLOYMENT.md)
 - [Python wrapper guide](python/README.md)
 - [Official sources traceability](docs/OFFICIAL_SOURCES.md)
 - [PLC/simulator compatibility matrix (0.7.0)](docs/compat/0.7.0_plc_simulator_compatibility_matrix.md)
@@ -288,6 +304,21 @@ docker compose -f docker/python-stack/docker-compose.yml up --build
 - [GitHub Discussions](https://github.com/sergiogallegos/rust-ethernet-ip/discussions)
 - [Discord](https://discord.gg/uzaM3tua)
 - [Sponsor development](https://github.com/sponsors/sergiogallegos)
+
+Project collaboration is open for:
+
+- priority issue handling
+- priority feature sponsorship
+- integration support for real deployments
+- OEM and system-integrator feedback
+- companies willing to provide specific hardware access for validation
+
+If your team wants to collaborate on one of those paths, start with a GitHub Discussion or issue and describe:
+
+- controller model and firmware
+- direct vs routed topology
+- target application type
+- required feature set and timeline
 
 ## Contributing
 

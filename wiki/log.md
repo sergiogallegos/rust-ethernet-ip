@@ -724,3 +724,45 @@ Sources used:
 - `python/README.md`
 - `src/ffi.rs`
 - `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+
+## [2026-04-21] ingest | add python ControlLogix real-plc validation record
+
+- Added a dedicated Python wrapper real-PLC validation record for the routed `1756-L81ES` ControlLogix target used in the current validation line.
+- Recorded the commands executed, the live success surface, the write-status bug found and fixed during validation, and the remaining open follow-up on one routed BOOL write path.
+- Updated the active 2026-04-20 release-gate checklist so it points at the dedicated Python validation outcome.
+
+Sources used:
+
+- `docs/validation/2026-04-21_python_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+- `python/rust_ethernet_ip/client.py`
+- `python/README.md`
+
+## [2026-04-21] ingest | update Rust and C# ControlLogix rerun records
+
+- Updated the stable routed `1756-L81ES` Rust and C# validation records with a `2026-04-21` rerun section instead of creating duplicate per-target files.
+- Recorded that the Rust rerun reproduced the same `44/44` readonly probe, green live test suites, and `333 passed / 59 failed / 0 skipped` full-matrix result with successful restore.
+- Recorded that the C# rerun reproduced the same smoke + `333/392` full-matrix profile and captured the isolated `25`-iteration benchmark numbers from the rerun.
+- Noted that a concurrent C# benchmark/full-harness launch caused a local `.pdb` file-lock conflict and that rerunning the benchmark serially resolved it.
+- Updated the active 2026-04-20 validation checklist with the rerun outcomes for both Rust and C#.
+
+Sources used:
+
+- `docs/validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+- `docs/validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`
+
+## [2026-04-21] reframe | strengthen integration, deployment, and support docs
+
+- Added a new active integration/deployment guide that explains Rust, C#, and Python integration tracks, runtime artifact expectations, ControlLogix routing usage, and rollout checks.
+- Updated the root README, docs index, C# wrapper README, and Python wrapper README to point users at the active deployment story instead of scattered legacy DLL notes.
+- Clarified that the project is open to priority issue handling, feature sponsorship, integration support, and hardware-backed validation collaboration.
+
+Sources used:
+
+- `README.md`
+- `docs/README.md`
+- `docs/INTEGRATION_AND_DEPLOYMENT.md`
+- `docs/DLL_DEPLOYMENT.md`
+- `csharp/RustEtherNetIp/README.md`
+- `python/README.md`

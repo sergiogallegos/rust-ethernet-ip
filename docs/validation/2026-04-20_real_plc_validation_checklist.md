@@ -29,6 +29,7 @@ Target exercised on 2026-04-20:
 - PASS: routed `export_schema()` now succeeds after fixing the malformed request shape, adding paged Symbol Object discovery, and implementing paged Template Object reads for large UDT definitions
 - PASS WITH WARNINGS: the live schema export on this target returned `43` top-level tags, `9` UDTs, preserved `route_path=[0]`, and reduced the warning list to a single target-address omission note
 - CONFIRMED: routed Template Object reads on this target require `Template Read (0x4C)` request data in the form `offset:u32 + byte_count:u16`; size-only requests return `0x13 Not enough data`
+- PASS: the 2026-04-21 rerun again produced `44/44` on `readonly_plc_probe`, `2/2` health checks, `5/5` route-path tests, `5/5` batch tests, `3/3` cache tests, `4/4` subscription tests, and the same `333/392` full-matrix result with `333` restored / `0` restore failures
 
 ### Python Wrapper
 
@@ -40,6 +41,7 @@ Target exercised on 2026-04-20:
 - PASS: routed Python `STRING` reads now decode live Logix `STRING` payloads to plain text, including `gTest_STRING="HELLO"` in both single and batch reads
 - PASS: collector example wrote `4` rows to SQLite when run with `RUST_ETHERNET_IP_PLC_SLOT=0`
 - PASS: `python/examples/collector_config.example.json` now uses the same validated `gTest*` tag set as the real-PLC smoke pass
+- PASS AFTER FIX: the dedicated 2026-04-21 Python wrapper ControlLogix validation record confirmed the routed live write-status mismatch was fixed for the exercised `DINT` and `REAL` paths; one routed BOOL write path remains an explicit follow-up item
 
 ### C# Wrapper
 
@@ -50,6 +52,8 @@ Target exercised on 2026-04-20:
 - PASS WITH EXPECTED LIMITATIONS: when run in isolation, the routed full-tag validation app passed `333/392`; the `59` non-passes were limited to known firmware-limited STRING/UDT-array-member writes
 - PASS: benchmark at `25` iterations reported about `550` single reads/sec, `467` single writes/sec, `5484` batch-read logical ops/sec, `1008` batch-write logical ops/sec, and `1918` mixed logical ops/sec on the final serial pass
 - CONFIRMED: the earlier `gTestArray_DINT[5..7]` verify mismatches were caused by running the smoke, benchmark, and full validation app in parallel against the same live write targets; they do not reproduce when the full validation app is run alone
+- PASS: the 2026-04-21 rerun again produced smoke pass + `333/392` full-matrix pass profile; the isolated benchmark rerun at `25` iterations reported about `673` single reads/sec, `493` single writes/sec, `5903` batch-read logical ops/sec, `1055` batch-write logical ops/sec, and `1993` mixed logical ops/sec
+- INFO: launching the benchmark and full validation harness concurrently on 2026-04-21 caused a local `.pdb` file-lock conflict in `obj/Debug/net10.0`; rerunning the benchmark by itself resolved it
 
 ### MQTT Publisher
 

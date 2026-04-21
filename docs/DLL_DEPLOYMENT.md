@@ -1,6 +1,6 @@
 # DLL Deployment Guide
 
-> Historical reference: this guide is Windows- and legacy-wrapper-centric and still references removed `gowrapper/` paths. Use the current packaging and wrapper docs for the active deployment story.
+> Historical reference: this guide is Windows- and legacy-wrapper-centric and still references removed `gowrapper/` paths. Use [INTEGRATION_AND_DEPLOYMENT.md](INTEGRATION_AND_DEPLOYMENT.md), the root [README.md](../README.md), and the active wrapper READMEs for the current deployment story.
 
 ## Overview
 

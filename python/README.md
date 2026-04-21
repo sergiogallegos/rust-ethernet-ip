@@ -11,6 +11,10 @@ Current scope:
 
 It is intentionally light and keeps Rust as the protocol and performance core.
 
+If you are integrating this into a project, also read:
+
+- [root integration and deployment guide](../docs/INTEGRATION_AND_DEPLOYMENT.md)
+
 ## Local Development
 
 Build the native library first from the repo root:
@@ -152,3 +156,17 @@ The Rust library remains the source of truth for:
 - simulator-backed tests are skipped automatically when `SIM_PLC_ADDRESS` is not set
 - integration tests can auto-launch the in-repo simulator with `RUST_ETHERNET_IP_START_SIM=1`
 - simulator-backed batch coverage includes mixed `DINT`, `REAL`, `BOOL`, and `STRING` flows
+
+## Support and Collaboration
+
+For bugs and integration questions:
+
+- use [GitHub Issues](https://github.com/sergiogallegos/rust-ethernet-ip/issues) for reproducible defects
+- use [GitHub Discussions](https://github.com/sergiogallegos/rust-ethernet-ip/discussions) for usage and architecture questions
+
+The project is also open to:
+
+- priority issue handling
+- priority feature sponsorship
+- integration support for real deployments
+- companies willing to provide specific PLC hardware for validation

@@ -61,3 +61,37 @@ Iterations per scenario: 100
 ## Assessment
 
 The C# wrapper remains stable on the exercised routed ControlLogix feature set for the `0.8.0` draft line. The validation example project portability issue was fixed, and the remaining matrix failures are unchanged controller firmware limitations.
+
+## 2026-04-21 Rerun
+
+Date: 2026-04-21
+Tester: Codex + Sergio Gallegos
+
+### Commands Executed
+
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 dotnet run --project examples/CSharpWrapperSmoke/CSharpWrapperSmoke.csproj`
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 dotnet run --project examples/CSharpWrapperBenchmark/CSharpWrapperBenchmark.csproj -- --iterations 25`
+- `TEST_PLC_ADDRESS=192.168.0.101:44818 TEST_PLC_SLOT=0 dotnet run --project examples/CSharpWrapperTest/CSharpWrapperTest.csproj`
+
+### Result
+
+- PASS: C# wrapper smoke validation passed again.
+- PASS WITH DOCUMENTED LIMITATIONS: Comprehensive wrapper matrix again produced `333 passed / 59 failed / 0 skipped`, matching the established ControlLogix limitation profile.
+- PASS: isolated benchmark rerun completed successfully at `25` iterations.
+- INFO: an initial benchmark attempt collided with the full validation harness in the local `obj/Debug/net10.0` output tree and failed with a `.pdb` file lock. Rerunning the benchmark by itself resolved the issue.
+
+### Hardware Benchmark
+
+Iterations per scenario: `25`
+
+| Metric | Total ms | Avg call ms | Logical ops/sec |
+|---|---:|---:|---:|
+| `single_read` | 37.1383 | 1.485532 | 673.1595145712108 |
+| `single_write` | 50.7358 | 2.029432 | 492.7487099838773 |
+| `batch_read` | 42.3508 | 1.694032 | 5903.076211075116 |
+| `batch_write` | 71.0676 | 2.842704 | 1055.333232021343 |
+| `mixed_execute` | 50.1701 | 2.006804 | 1993.2190687281866 |
+
+### Assessment
+
+This rerun reproduced the same routed ControlLogix behavior and the same documented limitation profile as the earlier record. No new C# wrapper regression was observed; the only issue was a local build-output lock caused by launching the benchmark and full harness concurrently.

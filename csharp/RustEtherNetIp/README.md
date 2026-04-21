@@ -1,43 +1,79 @@
 # Rust EtherNet/IP C# Wrapper
 
-A high-performance C# wrapper for the Rust EtherNet/IP library, enabling communication with Allen-Bradley CompactLogix and ControlLogix PLCs. This wrapper provides both traditional individual tag operations and native batch operations for industrial automation applications.
+`RustEtherNetIp` is the C# wrapper and NuGet package for the `rust-ethernet-ip` native core.
 
-## 🚀 **New: Batch Operations**
+It is intended for `.NET` applications that need direct communication with Allen-Bradley CompactLogix and ControlLogix controllers without OPC or RSLinx.
 
-Batch operations can substantially reduce round trips for multi-tag scenarios, but the actual gain depends on controller model, route path, packet sizing, and tag mix.
+Validated scope today:
 
-Implementation note for `0.7.0`:
-- `WriteTagsBatch(...)` and `ExecuteBatch(...)` use native typed FFI batch paths.
-- `ReadTagsBatch(...)` uses the native batch-read path first, with fallback only when needed.
+- individual reads and writes
+- route-path access for ControlLogix
+- batch read, batch write, and mixed execute
+- subscriptions and tag-group polling
+- UDT access
+- health checks and diagnostics
 
-### Key Benefits
+## Package Status
 
-- **🚀 Performance**: Fewer round trips and better throughput for multi-tag workloads
-- **📡 Network Efficiency**: 1 packet instead of N packets (50x reduction in network traffic)
-- **💪 PLC Efficiency**: Lower CPU usage on the PLC
-- **⚡ Throughput**: Perfect for data acquisition and coordinated control
-- **🔧 Flexibility**: Mixed read/write operations in a single batch
+- current published package: `0.7.0`
+- current validated wrapper line in this repo: `0.8.0` draft work on `main`
+- current published package target: `.NET 10`
+- current packaged native runtime focus: Windows `win-x64`
 
-## Features
+If you are evaluating deployment, read:
 
-### Core Capabilities
-- **Complete Data Type Support**: All Allen-Bradley data types (BOOL, SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL, STRING, UDT)
-- **Advanced Tag Addressing**: Program-scoped tags, arrays, bit operations, UDT members
-- **High Performance**: 1,500+ reads/sec, 800+ writes/sec for individual operations
-- **Batch Operations**: Native multi-tag read/write/mixed execution paths
-- **Cross-Platform**: Windows, Linux, macOS support
-- **Type Safety**: Strongly-typed API with comprehensive error handling
+- [root integration and deployment guide](../../docs/INTEGRATION_AND_DEPLOYMENT.md)
+- [programmer manual](../../docs/programmer_manual.md)
 
-### Supported PLCs
-- **CompactLogix**: L1x, L2x, L3x, L4x, L5x series
-- **ControlLogix**: L6x, L7x, L8x series
+## Installation
+
+### NuGet
+
+```bash
+dotnet add package RustEtherNetIp --version 0.7.0
+```
+
+Or:
+
+```xml
+<PackageReference Include="RustEtherNetIp" Version="0.7.0" />
+```
+
+### Source-based builds
+
+If you are building from this repository instead of consuming the published package:
+
+1. build the native Rust library with `cargo build --release`
+2. build your `.NET` project
+3. ensure the native library is copied beside your app output
+
+Expected native library names:
+
+- Windows: `rust_ethernet_ip.dll`
+- macOS: `librust_ethernet_ip.dylib`
+- Linux: `librust_ethernet_ip.so`
+
+## Why Use It
+
+- full Allen-Bradley primitive type coverage plus `STRING` and `UDT`
+- program-scoped tags, arrays, bit access, and UDT member paths
+- route-path support for routed ControlLogix targets
+- native batch read/write/mixed execution paths
+- tag-group polling and subscriptions
+- health and diagnostics surfaces
+- real-PLC validation evidence for both CompactLogix and ControlLogix targets
+
+## Supported PLC Focus
+
+- CompactLogix
+- ControlLogix
+
+Current real-hardware validation references:
+
+- [CompactLogix Rust/C# validation](../../docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md)
+- [ControlLogix C# validation](../../docs/validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 
 ## Quick Start
-
-### Installation
-
-1. Add the `RustEtherNetIp.dll` and `rust_ethernet_ip.dll` to your project
-2. Reference the wrapper in your C# application
 
 ### Basic Usage
 
@@ -477,9 +513,19 @@ This project is licensed under the MIT License. See the LICENSE file for details
 ## Support
 
 For issues and questions:
-- Check the troubleshooting section above
-- Review the examples in `Program.cs`
-- File issues on the GitHub repository
+
+- check the troubleshooting and limitation sections above
+- review the example projects in `examples/`
+- use [GitHub Issues](https://github.com/sergiogallegos/rust-ethernet-ip/issues) for reproducible bugs
+- use [GitHub Discussions](https://github.com/sergiogallegos/rust-ethernet-ip/discussions) for integration questions
+
+The project is also open to:
+
+- priority issue handling
+- priority feature sponsorship
+- integration support for real deployments
+- OEM or system-integrator deployment feedback
+- companies willing to provide specific hardware for validation
 
 ## Version History
 

@@ -48,7 +48,7 @@ pub enum TagPath {
     /// String length access: "MyString.LEN"
     StringLength { base_path: Box<TagPath> },
 
-    /// String data access: "MyString.DATA[5]"
+    /// String data access: `"MyString.DATA[5]"`
     StringData { base_path: Box<TagPath>, index: u32 },
 }
 

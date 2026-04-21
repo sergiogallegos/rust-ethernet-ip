@@ -176,6 +176,10 @@ let ops = vec![
 let mixed_results = client.execute_batch(&ops).await?;
 ```
 
+Notes:
+- `read_tags_batch(...)` and `write_tags_batch(...)` preserve tag association in their return values.
+- `execute_batch(...)` may regroup mixed operations for packet optimization, so correlate results by the returned operation metadata rather than assuming strict mixed-input ordering.
+
 ## Tag Group Event Handling
 
 ### Rust

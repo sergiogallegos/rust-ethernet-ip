@@ -212,12 +212,13 @@ if (client.Connect("192.168.1.100:44818"))
 | Subscriptions | `SubscribeToTag`, `UnsubscribeFromTag`, `UnsubscribeFromAllTags` |
 | Health / Utility | `CheckHealth`, `CheckHealthDetailed`, `SetMaxPacketSize` |
 
-### Batch Notes (Current 0.7.0 Hardening Line)
+### Batch Notes (`0.7.0` Release Line)
 
 - `WriteTagsBatch(...)` and `ExecuteBatch(...)` are native typed FFI-backed.
-- `ReadTagsBatch(...)` now uses native batch-read FFI on the current `0.7.0` hardening line.
+- `ReadTagsBatch(...)` uses the native batch-read FFI path first on the released `0.7.0` line.
 - On the validated CompactLogix `5069-L320ERMS3` / firmware `35`, mixed native batch reads now include controller BOOL array elements correctly.
 - `ConfigureBatchOperations(...)` and `GetBatchConfig()` are intentionally unsupported in wrapper/runtime right now.
+- Rust `execute_batch(...)` may regroup mixed operations for packet optimization, so callers should correlate results by operation metadata rather than assuming strict mixed-input ordering.
 
 ### CompactLogix Validation Snapshot
 
@@ -381,4 +382,4 @@ Recommended workaround pattern in both Rust and C#: read full UDT/element, modif
 - Run sustained read/write soak tests in your target network topology.
 - Capture error handling for disconnects, timeouts, and type mismatches.
 - Lock down network access (firewall/VLAN) because EtherNet/IP has limited built-in security.
-- Pin stable crate versions in production deployments (`0.6.3` currently published).
+- Pin stable crate versions in production deployments (`0.7.0` currently published).

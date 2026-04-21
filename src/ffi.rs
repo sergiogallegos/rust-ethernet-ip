@@ -1372,7 +1372,7 @@ pub unsafe extern "C" fn eip_write_string(
 ///
 /// This function reads any tag type and returns it as JSON, allowing the caller
 /// to determine the type dynamically. This is useful for complex paths like
-/// UDT array element members (e.g., "gTestUDT_Array[0].Member1_DINT").
+/// UDT array element members (e.g., `"gTestUDT_Array[0].Member1_DINT"`).
 ///
 /// # Safety
 ///

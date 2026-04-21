@@ -1,341 +1,65 @@
-// lib.rs - Rust EtherNet/IP Driver Library with Comprehensive Documentation
-// =========================================================================
-//
-// # Rust EtherNet/IP Driver Library
-//
-// A high-performance, production-ready EtherNet/IP communication library for
-// Allen-Bradley CompactLogix and ControlLogix PLCs, written in pure Rust with
-// comprehensive C# language bindings.
-//
-// ## Overview
-//
-// This library provides a complete implementation of the EtherNet/IP protocol
-// and Common Industrial Protocol (CIP) for communicating with Allen-Bradley
-// CompactLogix and ControlLogix series PLCs. It offers native Rust APIs, comprehensive
-// language bindings, and production-ready features for enterprise deployment.
-//
-// ## Architecture
-//
-// ```text
-// ┌─────────────────────────────────────────────────────────────────────────────────┐
-// │                              Application Layer                                  │
-// │  ┌─────────────┐  ┌─────────────────────────────────────────────────────────┐  │
-// │  │    Rust     │  │                    C# Ecosystem                         │  │
-// │  │   Native    │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │  │
-// │  │             │  │  │     WPF     │  │  WinForms   │  │   ASP.NET Core  │  │  │
-// │  │             │  │  │  Desktop    │  │  Desktop    │  │    Web API      │  │  │
-// │  │             │  │  └─────────────┘  └─────────────┘  └─────────┬───────┘  │  │
-// │  │             │  │                                               │           │  │
-// │  │             │  │                                    ┌─────────┴───────┐  │  │
-// │  │             │  │                                    │  TypeScript +   │  │  │
-// │  │             │  │                                    │  React Frontend │  │  │
-// │  │             │  │                                    │  (HTTP/REST)    │  │  │
-// │  │             │  │                                    └─────────────────┘  │  │
-// │  └─────────────┘  └─────────────────────────────────────────────────────────┘  │
-// └─────────────────────┬─────────────────────────────────────────────────────────┘
-//                       │
-// ┌─────────────────────┴─────────────────────────────────────────────────────────┐
-// │                        Language Wrappers                                      │
-// │  ┌─────────────┐                                                              │
-// │  │   C# FFI    │                                                              │
-// │  │  Wrapper    │                                                              │
-// │  │             │                                                              │
-// │  │ • 22 funcs  │                                                              │
-// │  │ • Type-safe │                                                              │
-// │  │ • Cross-plat│                                                              │
-// │  └─────────────┘                                                              │
-// └─────────────────────┬─────────────────────────────────────────────────────────┘
-//                       │
-// ┌─────────────────────┴─────────────────────────────────────────────────────────┐
-// │                         Core Rust Library                                     │
-// │  ┌─────────────────────────────────────────────────────────────────────────┐  │
-// │  │                           EipClient                                     │  │
-// │  │  • Connection Management & Session Handling                            │  │
-// │  │  • Advanced Tag Operations & Program-Scoped Tag Support                │  │
-// │  │  • Complete Data Type Support (13 Allen-Bradley types)                 │  │
-// │  │  • Advanced Tag Path Parsing (arrays, bits, UDTs, strings)             │  │
-// │  │  • Real-Time Subscriptions with Event-Driven Notifications             │  │
-// │  │  • High-Performance Batch Operations (2,000+ ops/sec)                  │  │
-// │  └─────────────────────────────────────────────────────────────────────────┘  │
-// │  ┌─────────────────────────────────────────────────────────────────────────┐  │
-// │  │                    Protocol Implementation                              │  │
-// │  │  • EtherNet/IP Encapsulation Protocol                                  │  │
-// │  │  • CIP (Common Industrial Protocol)                                    │  │
-// │  │  • Symbolic Tag Addressing with Advanced Parsing                       │  │
-// │  │  • Comprehensive CIP Error Code Mapping                                │  │
-// │  └─────────────────────────────────────────────────────────────────────────┘  │
-// │  ┌─────────────────────────────────────────────────────────────────────────┐  │
-// │  │                        Network Layer                                    │  │
-// │  │  • TCP Socket Management with Connection Pooling                       │  │
-// │  │  • Async I/O with Tokio Runtime                                        │  │
-// │  │  • Robust Error Handling & Network Resilience                          │  │
-// │  │  • Session Management & Automatic Reconnection                         │  │
-// │  └─────────────────────────────────────────────────────────────────────────┘  │
-// └─────────────────────────────────────────────────────────────────────────────────┘
-// ```
-//
-// ## Integration Paths
-//
-// ### 🦀 **Native Rust Applications**
-// Direct library usage with full async support and zero-overhead abstractions.
-// Perfect for high-performance applications and embedded systems.
-//
-// ### 🖥️ **Desktop Applications (C#)**
-// - **WPF**: Modern desktop applications with MVVM architecture
-// - **WinForms**: Traditional Windows applications with familiar UI patterns
-// - Uses C# FFI wrapper for seamless integration
-//
-// ### 🌐 **Web Applications**
-// - **ASP.NET Core Web API**: RESTful backend service
-// - **Scalable Architecture**: Backend handles PLC communication, frontend provides UI
-//
-// ### 🔧 **System Integration**
-// - **C/C++ Applications**: Direct FFI integration
-// - **Other .NET Languages**: VB.NET, F#, etc. via C# wrapper
-// - **Microservices**: ASP.NET Core API as a service component
-//
-// ## Features
-//
-// ### Core Capabilities
-// - **High Performance**: 2,000+ operations per second with batch operations
-// - **Real-Time Subscriptions**: Event-driven notifications with 1ms-10s intervals
-// - **Complete Data Types**: All Allen-Bradley native data types with type-safe operations
-// - **Advanced Tag Addressing**: Program-scoped, arrays, bits, UDTs, strings
-// - **Batch Operations**: High-performance multi-tag read/write with 2,000+ ops/sec
-// - **Async I/O**: Built on Tokio for excellent concurrency and performance
-// - **Error Handling**: Comprehensive CIP error code mapping and reporting
-// - **Memory Safe**: Zero-copy operations where possible, proper resource cleanup
-// - **Production Ready**: Enterprise-grade monitoring, health checks, and configuration
-//
-// ### Supported PLCs
-// - **CompactLogix L1x, L2x, L3x, L4x, L5x series** (Primary focus)
-// - **ControlLogix L6x, L7x, L8x series** (Full support)
-// - Optimized for PC applications (Windows, Linux, macOS)
-//
-// ### Advanced Tag Addressing
-// - **Program-scoped tags**: `Program:MainProgram.Tag1`
-// - **Array element access**: `MyArray[5]`, `MyArray[1,2,3]`
-// - **Bit-level operations**: `MyDINT.15` (access individual bits)
-// - **UDT member access**: `MyUDT.Member1.SubMember`
-// - **String operations**: `MyString.LEN`, `MyString.DATA[5]`
-// - **Complex nested paths**: `Program:Production.Lines[2].Stations[5].Motor.Status.15`
-//
-// ### Complete Data Type Support
-// - **BOOL**: Boolean values
-// - **SINT, INT, DINT, LINT**: Signed integers (8, 16, 32, 64-bit)
-// - **USINT, UINT, UDINT, ULINT**: Unsigned integers (8, 16, 32, 64-bit)
-// - **REAL, LREAL**: Floating point (32, 64-bit IEEE 754)
-// - **STRING**: Variable-length strings
-// - **UDT**: User Defined Types with full nesting support
-//
-// ### Protocol Support
-// - **EtherNet/IP**: Complete encapsulation protocol implementation
-// - **CIP**: Common Industrial Protocol for tag operations
-// - **Symbolic Addressing**: Direct tag name resolution with advanced parsing
-// - **Session Management**: Proper registration/unregistration sequences
-//
-// ### Integration Options
-// - **Native Rust**: Direct library usage with full async support
-// - **C# Desktop Applications**: WPF and WinForms via C# FFI wrapper
-// - **Web Applications**: ASP.NET Core API + TypeScript/React/Vue frontend
-// - **C/C++ Integration**: Direct FFI functions for system integration
-// - **Cross-Platform**: Windows, Linux, macOS support
-//
-// ## Performance Characteristics
-//
-// Benchmarked on typical industrial hardware:
-//
-// | Operation | Performance | Notes |
-// |-----------|-------------|-------|
-// | Read BOOL | 1,500+ ops/sec | Single tag operations |
-// | Read DINT | 1,400+ ops/sec | 32-bit integer tags |
-// | Read REAL | 1,300+ ops/sec | Floating point tags |
-// | Write BOOL | 800+ ops/sec | Single tag operations |
-// | Write DINT | 750+ ops/sec | 32-bit integer tags |
-// | Write REAL | 700+ ops/sec | Floating point tags |
-// | **Batch Read** | **2,000+ ops/sec** | **Multi-tag operations** |
-// | **Batch Write** | **1,500+ ops/sec** | **Multi-tag operations** |
-// | **Real-Time Subscriptions** | **1ms-10s intervals** | **Event-driven** |
-// | Connection | <1 second | Initial session setup |
-// | Tag Path Parsing | 10,000+ ops/sec | Advanced addressing |
-//
-// ## Security Considerations
-//
-// - **No Authentication**: EtherNet/IP protocol has limited built-in security
-// - **Network Level**: Implement firewall rules and network segmentation
-// - **PLC Protection**: Use PLC safety locks and access controls
-// - **Data Validation**: Always validate data before writing to PLCs
-//
-// ## Thread Safety
-//
-// The `EipClient` struct is **NOT** thread-safe. For multi-threaded applications:
-// - Use one client per thread, OR
-// - Implement external synchronization (Mutex/RwLock), OR
-// - Use a connection pool pattern
-//
-// ## Memory Usage
-//
-// - **Per Connection**: ~8KB base memory footprint
-// - **Network Buffers**: ~2KB per active connection
-// - **Tag Cache**: Minimal (tag names only when needed)
-// - **Total Typical**: <10MB for most applications
-//
-// ## Error Handling Philosophy
-//
-// This library follows Rust's error handling principles:
-// - All fallible operations return `Result<T, EtherNetIpError>`
-// - Errors are propagated rather than panicking
-// - Detailed error messages with CIP status code mapping
-// - Network errors are distinguished from protocol errors
-//
-// ## Known Limitations
-//
-// The following operations are not supported due to PLC firmware restrictions.
-// These limitations are inherent to the Allen-Bradley PLC firmware and cannot be
-// bypassed at the library level.
-//
-// ### STRING Tag Writing
-//
-// **Cannot write directly to STRING tags** (e.g., `gTest_STRING`).
-//
-// **Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC rejects
-// direct write operations to STRING tags, regardless of the communication method used.
-//
-// **What Works:**
-// - Reading STRING tags: `gTest_STRING` (read successfully)
-// - Reading STRING members in UDTs: `gTestUDT.Member5_String` (read successfully)
-//
-// **What Doesn't Work:**
-// - Writing simple STRING tags: `gTest_STRING` (write fails - PLC limitation)
-// - Writing program-scoped STRING tags: `Program:TestProgram.gTest_STRING` (write fails)
-// - Writing STRING members in UDTs directly: `gTestUDT.Member5_String` (write fails)
-//
-// **Workaround for STRING Members in UDTs:**
-// If the STRING is part of a UDT structure, read the entire UDT, modify the STRING
-// member in memory, then write the entire UDT back. For standalone STRING tags,
-// there is no workaround at the communication library level.
-//
-// ### UDT Array Element Member Writing
-//
-// **Cannot write directly to members of UDT array elements** (e.g., `gTestUDT_Array[0].Member1_DINT`).
-//
-// **Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC does not
-// support direct write operations to individual members within UDT array elements.
-//
-// **What Works:**
-// - Reading UDT array element members: `gTestUDT_Array[0].Member1_DINT` (read successfully)
-// - Writing entire UDT array elements: `gTestUDT_Array[0]` (write full UDT structure)
-// - Writing UDT members (non-array): `gTestUDT.Member1_DINT` (write individual members)
-// - Writing simple array elements: `gArray[5]` (write elements of simple arrays)
-//
-// **What Doesn't Work:**
-// - Writing UDT array element members: `gTestUDT_Array[0].Member1_DINT` (write fails)
-// - Writing program-scoped UDT array element members: `Program:TestProgram.gTestUDT_Array[0].Member1_DINT` (write fails)
-//
-// **Workaround:**
-// Use a read-modify-write pattern: Read the entire UDT array element, modify the
-// member in memory, then write the entire UDT array element back.
-//
-// **Important Notes:**
-// - These limitations are PLC firmware restrictions, not library bugs
-// - The library correctly implements the EtherNet/IP and CIP protocols
-// - All read operations work correctly for all tag types
-// - Workarounds are available for UDT array element members and STRING members in UDTs
-//
-// ## Examples
-//
-// See the `examples/` directory for comprehensive usage examples, including:
-// - Advanced tag addressing demonstrations
-// - Complete data type showcase
-// - Real-world industrial automation scenarios
-// - Professional HMI/SCADA dashboard
-// - Multi-language integration examples (C#)
-//
-// ## Changelog
-//
-// ### v0.6.3 (March 2026) - **CURRENT STABLE**
-// - Critical protocol and type-system reliability fixes
-// - Broader test coverage including simulator-backed scenarios
-// - C# wrapper reliability fixes for route path + datatype handling
-//
-// ### v0.6.2 (January 2026)
-// - **NEW: Stream Injection API** - `connect_with_stream()` for custom TCP transport
-//   - Enables wrapping streams for metrics/observability (bytes in/out)
-//   - Supports custom socket options (keepalive, timeouts, bind local address)
-//   - Allows reusing pre-established tunnels/connections
-//   - Supports in-memory streams for deterministic testing
-// - **NEW: Test Configuration** - Environment variable support for PLC testing
-//   - `TEST_PLC_ADDRESS` - Set PLC IP address for tests
-//   - `TEST_PLC_SLOT` - Set CPU slot number
-//   - `SKIP_PLC_TESTS` - Skip PLC-dependent tests
-// - **FIXED: Nested UDT Member Access** - Fixed reading nested UDT members from array elements
-//   - Correctly handles paths like `Cell_NestData[90].PartData.Member`
-//   - Fixed array element detection to use TagPath::parse() for complex paths
-//   - Now correctly builds full CIP paths instead of using array workaround
-
-// ### v0.6.1 (January 2026)
-// - **Repository Cleanup**: Removed Go and Python wrappers to focus on Rust library and C# integration
-// - **Streamlined Examples**: Focused on Microsoft stack (WinForms, WPF, ASP.NET) and Rust native examples
-
-// ### v0.6.0 (January 2026)
-// - **NEW: Generic UDT Format** - `UdtData` struct with `symbol_id` and raw bytes
-//   - Works with any UDT without requiring prior knowledge of member structure
-//   - Enables parsing UDT members using UDT definitions when needed
-//   - Supports reading and writing UDTs generically
-// - **NEW: Library Health** - All 31 unit tests passing, production-ready core
-// - **NEW: Comprehensive Examples** - All examples updated for new UDT API
-// - **NEW: Integration Tests** - All tests updated for new UDT format
-// - Enhanced UDT documentation with usage examples
-// - Improved code quality and consistency
-
-// ### v0.5.5 (December 2025)
-// - **NEW: Array Element Access** - Full read/write support for array elements
-// - **NEW: Array Element Writing** - Write individual array elements with automatic array modification
-// - **NEW: BOOL Array Support** - Automatic DWORD bit extraction for BOOL arrays
-
-// ### v0.5.4 (October 2025)
-// - **NEW: UDT Definition Discovery from PLC** - Automatic UDT structure detection
-// - **NEW: Enhanced Tag Discovery** - Full attribute support with permissions and scope
-// - **NEW: Packet Size Negotiation** - Dynamic negotiation with firmware 20+
-// - **NEW: Route Path Support** - Slot configuration and multi-hop routing
-// - **NEW: CIP Service 0x03** - Get Attribute List implementation
-// - **NEW: CIP Service 0x4C** - Read Tag Fragmented for large data
-// - **NEW: UDT Template Management** - Caching and parsing of UDT templates
-// - **NEW: Tag Attributes API** - Comprehensive tag metadata discovery
-// - **NEW: Program-Scoped Tag Discovery** - Discover tags within specific programs
-// - **NEW: Route Path API** - Support for remote racks and complex topologies
-// - **NEW: Cache Management** - Clear and manage UDT/tag caches
-// - **NEW: Comprehensive Unit Tests** - 15+ new test cases for UDT discovery
-// - **NEW: UDT Discovery Demo** - Complete example showcasing new features
-// - **NEW: Enhanced FFI Functions** - 3 new C# wrapper functions
-// - Enhanced error handling for UDT operations
-// - Improved performance with packet size optimization
-// - Production-ready UDT support for industrial applications
-
-// ### v0.5.3 (January 2025)
-// - Enhanced safety documentation for all FFI functions
-// - Comprehensive clippy optimizations and code quality improvements
-// - Improved memory management and connection pool handling
-// - Enhanced C# wrapper stability
-// - Production-ready code quality with 0 warnings
-//
-// ### v0.5.0 (January 2025)
-// - Professional HMI/SCADA production dashboard
-// - Enterprise-grade monitoring and health checks
-// - Production-ready configuration management
-// - Comprehensive metrics collection and reporting
-// - Enhanced error handling and recovery mechanisms
-//
-// ### v0.4.0 (January 2025)
-// - Real-time subscriptions with event-driven notifications
-// - High-performance batch operations (2,000+ ops/sec)
-// - Complete data type support for all Allen-Bradley types
-// - Advanced tag path parsing (program-scoped, arrays, bits, UDTs)
-// - Enhanced error handling and documentation
-// - Comprehensive test coverage (47+ tests)
-// - Production-ready stability and performance
-//
-// =========================================================================
+//! EtherNet/IP client library for Allen-Bradley CompactLogix and ControlLogix PLCs.
+//!
+//! `rust-ethernet-ip` provides async Rust APIs for explicit EtherNet/IP and CIP
+//! tag operations, plus FFI surfaces used by the repository's .NET wrapper.
+//! The current released crate line is `0.7.0`.
+//!
+//! ## Highlights
+//!
+//! - Async client API via [`EipClient`]
+//! - Symbolic tag addressing, including program-scoped tags, array indexing, and nested UDT paths
+//! - Batch reads, writes, and mixed execution with [`BatchOperation`]
+//! - Route-path support for backplane and routed topologies via [`RoutePath`]
+//! - UDT discovery, schema export, diagnostics, subscriptions, and tag-group polling
+//!
+//! ## Quick Start
+//!
+//! ```no_run
+//! use rust_ethernet_ip::{EipClient, PlcValue};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let mut client = EipClient::connect("192.168.1.100:44818").await?;
+//!     let running = client.read_tag("Program:Main.MotorRunning").await?;
+//!     client
+//!         .write_tag("Program:Main.SetPoint", PlcValue::Dint(1500))
+//!         .await?;
+//!
+//!     println!("running={running:?}");
+//!     Ok(())
+//! }
+//! ```
+//!
+//! Routed example:
+//!
+//! ```no_run
+//! use rust_ethernet_ip::{EipClient, RoutePath};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let route = RoutePath::new().add_slot(0);
+//!     let _client = EipClient::with_route_path("192.168.1.100:44818", route).await?;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Known PLC/Firmware Limits
+//!
+//! Real-hardware validation for the `0.7.0` release line confirmed that some
+//! direct write shapes are controller/firmware limitations rather than library
+//! protocol defects:
+//!
+//! - Direct writes to standalone `STRING` tags can fail
+//! - Direct writes to `STRING` members inside UDTs can fail
+//! - Direct writes to members of UDT array elements can fail
+//!
+//! On the validated CompactLogix `5069-L320ERMS3` firmware `35` and
+//! ControlLogix `1756-L81ES` firmware `37` targets, these failures surfaced as
+//! `0x2107` and, for some batch STRING cases, batch-level `0x1E` embedded
+//! service errors.
+//!
+//! Recommended pattern for restricted cases: read-modify-write the full UDT or
+//! UDT array element instead of directly writing the nested restricted member.
 
 use crate::udt::UdtManager;
 use std::collections::HashMap;
@@ -738,10 +462,12 @@ impl Default for BatchConfig {
     }
 }
 
-/// Connected session information for Class 3 explicit messaging
+/// Connected session information for Class 3 explicit messaging.
 ///
-/// Allen-Bradley PLCs often require connected sessions for certain operations
-/// like STRING writes. This structure maintains the connection state.
+/// This structure tracks the state needed for connected-message flows used by
+/// some internal operations and experiments. It does not imply that connected
+/// messaging bypasses documented PLC firmware restrictions such as direct
+/// standalone `STRING` writes.
 #[derive(Debug, Clone)]
 pub struct ConnectedSession {
     /// Connection ID assigned by the PLC
@@ -1020,21 +746,20 @@ pub enum PlcValue {
     /// Range: ±2.23 × 10^-308 to ±1.80 × 10^308
     Lreal(f64),
 
-    /// String value
+    /// String value.
     ///
-    /// Maps to CIP type 0x00DA. Variable-length string data
-    /// commonly used for product names, status messages, and text data.
+    /// The library uses Allen-Bradley `STRING` encoding (`0x00CE`) for normal tag
+    /// operations. Some controller responses may surface related string
+    /// encodings, but callers should treat this variant as the standard Logix
+    /// `STRING` representation.
     String(String),
 
-    /// User Defined Type instance
+    /// User Defined Type instance.
     ///
-    /// Maps to CIP type 0x00A0. Structured data type containing
-    /// multiple members of different types.
-    ///
-    /// **v0.6.0**: Uses `UdtData` which stores the symbol_id (template instance ID)
-    /// and raw bytes. This generic format works for any UDT without requiring
-    /// knowledge of member names ahead of time. The raw bytes can be parsed
-    /// into member values when the UDT definition is available using `UdtData::parse()`.
+    /// The public API represents UDT values as [`UdtData`], which carries the
+    /// template instance ID (`symbol_id`) plus the raw bytes required for
+    /// read-modify-write flows. The raw bytes can be parsed once a UDT
+    /// definition is available via [`UdtData::parse`].
     ///
     /// # Example
     ///
@@ -1060,11 +785,11 @@ pub enum PlcValue {
 }
 
 impl UdtData {
-    /// Parses the raw UDT data into a HashMap of member values using the UDT definition
+    /// Parses raw UDT bytes into member values using a UDT definition.
     ///
-    /// **v0.6.0**: This method converts the generic `UdtData` format into a structured
-    /// HashMap of member names to values. This requires a UDT definition to know the
-    /// structure of the data.
+    /// This method converts generic `UdtData` bytes into a structured map of
+    /// member names to values. It requires a UDT definition to interpret the
+    /// layout correctly.
     ///
     /// Use `EipClient::get_udt_definition()` to obtain the definition from the PLC first.
     ///
@@ -1106,11 +831,11 @@ impl UdtData {
         definition.to_hash_map(&self.data)
     }
 
-    /// Creates UdtData from a HashMap of member values and a UDT definition
+    /// Creates `UdtData` from member values and a UDT definition.
     ///
-    /// **v0.6.0**: This method serializes member values back into raw bytes according
-    /// to the UDT definition. This is useful when you need to modify UDT members and
-    /// write them back to the PLC.
+    /// This method serializes member values back into raw bytes according to
+    /// the supplied UDT definition. It is intended for read-modify-write flows
+    /// where you need to update members and then write the whole UDT value back.
     ///
     /// # Arguments
     ///
@@ -1849,8 +1574,9 @@ impl EipClient {
         self.udt_manager.lock().await.list_tag_attributes()
     }
 
-    /// Clears all caches (UDT definitions, templates, tag attributes)
+    /// Clears cached tag metadata and UDT-related caches.
     pub async fn clear_caches(&mut self) {
+        self.tag_manager.lock().await.clear_cache().await;
         self.udt_manager.lock().await.clear_cache();
     }
 
@@ -2662,7 +2388,7 @@ impl EipClient {
     ///
     /// # Arguments
     ///
-    /// * `base_array_name` - Base name of the array (e.g., "MyArray" for "MyArray[10]")
+    /// * `base_array_name` - Base name of the array (e.g., `"MyArray"` for `"MyArray[10]"`)
     /// * `index` - Element index to write (0-based)
     /// * `value` - The value to write
     async fn write_array_element_workaround(
@@ -2882,7 +2608,7 @@ impl EipClient {
     ///
     /// # Arguments
     ///
-    /// * `base_array_name` - Base name of the array (e.g., "MyArray" for "MyArray[10]")
+    /// * `base_array_name` - Base name of the array (e.g., `"MyArray"` for `"MyArray[10]"`)
     /// * `start_index` - Starting element index (0-based)
     /// * `element_count` - Number of elements to write
     /// * `data_type` - CIP data type code (e.g., 0x00C4 for DINT)
@@ -5959,7 +5685,7 @@ impl EipClient {
 
     /// Builds base tag path without array element addressing
     ///
-    /// Extracts the base tag name from array notation (e.g., "MyArray[5]" -> "MyArray")
+    /// Extracts the base tag name from array notation (e.g., `"MyArray[5]" -> "MyArray"`)
     /// Reference: 1756-PM020, Page 894-909 (ANSI Extended Symbol Segment Construction)
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn build_base_tag_path(&self, tag_name: &str) -> Vec<u8> {
@@ -6011,7 +5737,7 @@ impl EipClient {
     ///
     /// # Arguments
     ///
-    /// * `base_array_name` - Base name of the array (e.g., "MyArray" for "MyArray[10]")
+    /// * `base_array_name` - Base name of the array (e.g., `"MyArray"` for `"MyArray[10]"`)
     /// * `start_index` - Starting element index (0-based)
     /// * `element_count` - Number of elements to read
     ///
@@ -6027,8 +5753,8 @@ impl EipClient {
     /// ```
     ///
     /// This generates:
-    /// - Request Path: [0x91] "MyArray" [0x28] [0x0A] (element 10)
-    /// - Request Data: [0x05 0x00] (5 elements)
+    /// - Request Path: `0x91 "MyArray" 0x28 0x0A` (element 10)
+    /// - Request Data: `0x05 0x00` (5 elements)
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn build_read_array_request(
         &self,
@@ -6091,11 +5817,11 @@ impl EipClient {
         cip_request
     }
 
-    /// Builds the correct path for a tag name
-    /// Uses TagPath parser to properly handle arrays, bits, UDTs, etc.
+    /// Builds the symbolic CIP path for a tag name.
+    /// Uses [`TagPath`] parsing to handle arrays, bits, UDTs, and program scope.
     ///
-    /// For ControlLogix, prepends the route path (backplane routing) if configured.
-    /// Reference: EtherNetIP_Connection_Paths_and_Routing.md
+    /// Route-path bytes are not added here; routed requests carry the route path
+    /// in the outer Unconnected Send wrapper.
     fn build_tag_path(&self, tag_name: &str) -> Vec<u8> {
         // Build the application path (tag name)
         // NOTE: Route path does NOT go here - it goes at the end of Unconnected Send message
@@ -6161,14 +5887,19 @@ impl EipClient {
     ///
     /// # Returns
     ///
-    /// A vector of `BatchResult` items, one for each input operation.
-    /// Results are returned in the same order as the input operations.
+    /// A vector of [`BatchResult`] items, one per executed operation.
+    ///
+    /// When `optimize_packet_packing` is enabled, operations may be regrouped
+    /// by type for execution, so result order is not guaranteed to match the
+    /// original mixed-operation input order. Use [`BatchResult::operation`] to
+    /// correlate each result.
     ///
     /// # Performance
     ///
-    /// - **Throughput**: 5,000-15,000+ operations/second (vs 1,500 individual)
-    /// - **Latency**: 5-20ms per batch (vs 1-3ms per individual operation)
-    /// - **Network efficiency**: 1-5 packets vs N packets for N operations
+    /// Batch execution primarily reduces round trips by combining multiple
+    /// operations into fewer requests. Observed throughput varies significantly
+    /// between simulator and real hardware, and also depends on packet sizing,
+    /// controller model, route path, and tag mix.
     ///
     /// # Examples
     ///

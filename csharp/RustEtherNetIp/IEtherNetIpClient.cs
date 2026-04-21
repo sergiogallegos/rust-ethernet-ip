@@ -73,7 +73,7 @@ namespace RustEtherNetIp
         
         /// <summary>
         /// Read multiple tags in a single optimized batch operation.
-        /// Provides 3-10x performance improvement over individual reads.
+        /// Primarily reduces round trips for multi-tag reads.
         /// </summary>
         /// <param name="tagNames">Array of tag names to read</param>
         /// <returns>Dictionary of tag names to read results</returns>
@@ -81,7 +81,7 @@ namespace RustEtherNetIp
         
         /// <summary>
         /// Write multiple tags in a single optimized batch operation.
-        /// Provides 3-10x performance improvement over individual writes.
+        /// Primarily reduces round trips for multi-tag writes.
         /// </summary>
         /// <param name="tagValues">Dictionary of tag names to values to write</param>
         /// <returns>Dictionary of tag names to write results</returns>
@@ -90,6 +90,7 @@ namespace RustEtherNetIp
         /// <summary>
         /// Execute a mixed batch of read and write operations in optimized packets.
         /// Ideal for coordinated control operations and data collection.
+        /// Mixed operations may be regrouped natively for packet optimization.
         /// </summary>
         /// <param name="operations">Array of batch operations to execute</param>
         /// <returns>Array of batch operation results</returns>

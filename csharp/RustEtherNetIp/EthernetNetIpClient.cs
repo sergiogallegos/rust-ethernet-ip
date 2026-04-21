@@ -1834,7 +1834,7 @@ namespace RustEtherNetIp
                         catch (Exception ex) 
                         { 
                             lastException = ex;
-                            // STRING operations are fully supported in the Rust library
+                            // STRING reads are supported, but direct STRING writes are limited by PLC firmware.
                         }
                     }
 

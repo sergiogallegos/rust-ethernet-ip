@@ -1,10 +1,10 @@
 # Rust EtherNet/IP C# Wrapper
 
-A high-performance C# wrapper for the Rust EtherNet/IP library, enabling communication with Allen-Bradley CompactLogix and ControlLogix PLCs. This wrapper provides both traditional individual tag operations and revolutionary **high-performance batch operations** for industrial automation applications.
+A high-performance C# wrapper for the Rust EtherNet/IP library, enabling communication with Allen-Bradley CompactLogix and ControlLogix PLCs. This wrapper provides both traditional individual tag operations and native batch operations for industrial automation applications.
 
 ## 🚀 **New: Batch Operations**
 
-**3-10x faster than individual operations!** The latest version introduces powerful batch operations that dramatically improve performance for multi-tag scenarios.
+Batch operations can substantially reduce round trips for multi-tag scenarios, but the actual gain depends on controller model, route path, packet sizing, and tag mix.
 
 Implementation note for `0.7.0`:
 - `WriteTagsBatch(...)` and `ExecuteBatch(...)` use native typed FFI batch paths.
@@ -12,7 +12,7 @@ Implementation note for `0.7.0`:
 
 ### Key Benefits
 
-- **🚀 Performance**: 3-10x faster than individual tag operations
+- **🚀 Performance**: Fewer round trips and better throughput for multi-tag workloads
 - **📡 Network Efficiency**: 1 packet instead of N packets (50x reduction in network traffic)
 - **💪 PLC Efficiency**: Lower CPU usage on the PLC
 - **⚡ Throughput**: Perfect for data acquisition and coordinated control
@@ -24,7 +24,7 @@ Implementation note for `0.7.0`:
 - **Complete Data Type Support**: All Allen-Bradley data types (BOOL, SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL, STRING, UDT)
 - **Advanced Tag Addressing**: Program-scoped tags, arrays, bit operations, UDT members
 - **High Performance**: 1,500+ reads/sec, 800+ writes/sec for individual operations
-- **Batch Operations**: Up to 10x performance improvement for multi-tag operations
+- **Batch Operations**: Native multi-tag read/write/mixed execution paths
 - **Cross-Platform**: Windows, Linux, macOS support
 - **Type Safety**: Strongly-typed API with comprehensive error handling
 
@@ -155,7 +155,13 @@ Default native batch behavior is still available through:
 - `WriteTagsBatch(...)`
 - `ExecuteBatch(...)`
 
+Ordering note:
+- `ReadTagsBatch(...)` and `WriteTagsBatch(...)` preserve per-tag association in their dictionary results.
+- `ExecuteBatch(...)` returns per-operation results, but mixed operations may be regrouped natively for packet optimization, so callers should match on `TagName` and operation type rather than assuming strict mixed-input ordering.
+
 ## Performance Comparison
+
+Illustrative only: actual timings depend on hardware, network, route path, and workload shape.
 
 | Operation Type | Individual | Batch | Improvement |
 |----------------|------------|-------|-------------|

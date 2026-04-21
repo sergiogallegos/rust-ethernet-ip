@@ -136,6 +136,40 @@ def _parse_diagnostics_snapshot(payload: dict[str, object]) -> DiagnosticsSnapsh
     )
 
 
+def _normalize_write_request(item: BatchWriteItem | dict[str, object]) -> dict[str, object]:
+    if isinstance(item, BatchWriteItem):
+        tag_name = item.tag_name
+        value = item.value
+        value_type = item.value_type
+    else:
+        tag_name = str(item["tag_name"])
+        value = item["value"]
+        value_type = item.get("value_type")
+
+    return {
+        "tag_name": tag_name,
+        "value": value,
+        "value_type": value_type or _infer_value_type(value),
+    }
+
+
+def _parse_write_results(payload: object) -> dict[str, WriteResult]:
+    if not isinstance(payload, list):
+        raise PlcOperationError("Invalid JSON returned for batch write")
+
+    results: dict[str, WriteResult] = {}
+    for item in payload:
+        if not isinstance(item, dict):
+            raise PlcOperationError("Invalid JSON returned for batch write")
+        tag_name = item["tag_name"]
+        results[tag_name] = WriteResult(
+            tag_name=tag_name,
+            success=bool(item["success"]),
+            error=item.get("error"),
+        )
+    return results
+
+
 class Client:
     def __init__(
         self,
@@ -234,8 +268,10 @@ class Client:
         return _decode_plc_value(decoded)
 
     def write_tag(self, tag_name: str, value: object, *, value_type: str | None = None) -> None:
-        item = BatchWriteItem(tag_name=tag_name, value=value, value_type=value_type)
-        results = self.write_tags([item])
+        item = _normalize_write_request(
+            BatchWriteItem(tag_name=tag_name, value=value, value_type=value_type)
+        )
+        results = self._execute_write_operations([item])
         result = results[tag_name]
         if not result.success:
             raise PlcOperationError(result.error or f"Failed to write tag '{tag_name}'")
@@ -275,29 +311,41 @@ class Client:
         if not items:
             return {}
 
+        normalized = [_normalize_write_request(item) for item in items]
+        return self._execute_write_operations(normalized, sequential=True)
+
+    def _execute_write_operations(
+        self,
+        normalized: list[dict[str, object]],
+        *,
+        sequential: bool = False,
+    ) -> dict[str, WriteResult]:
         client_id = self._require_client_id()
-        normalized: list[dict[str, object]] = []
-        for item in items:
-            if isinstance(item, BatchWriteItem):
-                tag_name = item.tag_name
-                value = item.value
-                value_type = item.value_type
-            else:
-                tag_name = str(item["tag_name"])
-                value = item["value"]
-                value_type = item.get("value_type")
+        if sequential:
+            results: dict[str, WriteResult] = {}
+            for item in normalized:
+                results.update(self._execute_write_operations([item], sequential=False))
+            return results
 
-            normalized.append(
-                {
-                    "tag_name": tag_name,
-                    "value": value,
-                    "value_type": value_type or _infer_value_type(value),
-                }
-            )
+        operations = [
+            {
+                "tag_name": item["tag_name"],
+                "is_write": True,
+                "value_type": item["value_type"],
+                "value": item["value"],
+            }
+            for item in normalized
+        ]
 
-        payload = json.dumps(normalized).encode("utf-8")
+        payload = json.dumps(operations).encode("utf-8")
         buffer = create_string_buffer(RESULT_BUFFER_SIZE)
-        rc = self._lib.eip_write_tags_batch(client_id, payload, len(normalized), buffer, RESULT_BUFFER_SIZE)
+        rc = self._lib.eip_execute_batch(
+            client_id,
+            payload,
+            len(operations),
+            buffer,
+            RESULT_BUFFER_SIZE,
+        )
         if rc != 0 and not buffer.value:
             raise PlcOperationError("Batch write call failed")
 
@@ -306,15 +354,7 @@ class Client:
         except json.JSONDecodeError as exc:
             raise PlcOperationError("Invalid JSON returned for batch write") from exc
 
-        results: dict[str, WriteResult] = {}
-        for item in result_items:
-            results[item["tag_name"]] = WriteResult(
-                tag_name=item["tag_name"],
-                success=bool(item["success"]),
-                error=item.get("error"),
-            )
-
-        return results
+        return _parse_write_results(result_items)
 
     def check_health(self) -> bool:
         client_id = self._require_client_id()

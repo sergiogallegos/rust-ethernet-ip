@@ -71,6 +71,9 @@ def _configure_function_signatures(lib: ctypes.CDLL) -> ctypes.CDLL:
     lib.eip_write_tags_batch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
     lib.eip_write_tags_batch.restype = ctypes.c_int
 
+    lib.eip_execute_batch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    lib.eip_execute_batch.restype = ctypes.c_int
+
     lib.eip_check_health.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
     lib.eip_check_health.restype = ctypes.c_int
 

@@ -709,3 +709,18 @@ Sources used:
 - `docs/compat/0.7.0_plc_simulator_compatibility_matrix.md`
 - `docs/0.7.0_HARDENING_GATE.md`
 - `docs/audit/0.7.0_docs_api_audit.md`
+
+## [2026-04-21] query | fix python live write status mismatch on routed ControlLogix
+
+- Validated the routed `1756-L81ES` target at `192.168.0.101:44818` / slot `0` across Rust, C#, and Python live paths.
+- Confirmed a Python wrapper mismatch where some successful live writes were reported as `0x1E` failures when routed through the native multi-write helper.
+- Updated the Python wrapper to execute `write_tag()` through `eip_execute_batch` and `write_tags()` sequentially per tag so per-tag live results remain accurate on the validated ControlLogix path.
+- Documented the current Python `write_tags(...)` behavior in `python/README.md`.
+
+Sources used:
+
+- `python/rust_ethernet_ip/client.py`
+- `python/rust_ethernet_ip/bindings.py`
+- `python/README.md`
+- `src/ffi.rs`
+- `docs/validation/2026-04-20_real_plc_validation_checklist.md`

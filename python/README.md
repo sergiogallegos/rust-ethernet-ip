@@ -77,6 +77,8 @@ Diagnostics snapshots are exposed as thin Python dataclasses with nested metrics
 
 For routed ControlLogix access, pass `route_path=RoutePath(slots=[cpu_slot])`.
 
+On validated ControlLogix hardware, `write_tags(...)` currently executes writes sequentially in the Python wrapper so per-tag success and error reporting stays accurate on live PLCs.
+
 ## Examples
 
 - `python/examples/read_single_tag.py`

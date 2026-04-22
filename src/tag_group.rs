@@ -1,8 +1,8 @@
 use crate::PlcValue;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::SystemTime;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 /// Defines a named tag group with a polling interval.
 #[derive(Debug, Clone)]

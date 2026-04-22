@@ -1,5 +1,5 @@
-use rust_ethernet_ip::error::EtherNetIpError;
 use rust_ethernet_ip::EipClient;
+use rust_ethernet_ip::error::EtherNetIpError;
 use std::io;
 use std::time::Duration;
 
@@ -157,9 +157,11 @@ fn is_retriable_identifies_retriable_errors() {
 
     assert!(!EtherNetIpError::TagNotFound("X".to_string()).is_retriable());
     assert!(!EtherNetIpError::Protocol("bad".to_string()).is_retriable());
-    assert!(!EtherNetIpError::CipError {
-        code: 0x16,
-        message: "object does not exist".to_string(),
-    }
-    .is_retriable());
+    assert!(
+        !EtherNetIpError::CipError {
+            code: 0x16,
+            message: "object does not exist".to_string(),
+        }
+        .is_retriable()
+    );
 }

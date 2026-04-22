@@ -100,7 +100,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     drop(client);
                 }
                 Err(e) => {
-                    tracing::warn!("⚠️  Custom stream connection failed: {} (this is expected if PLC is not available)", e);
+                    tracing::warn!(
+                        "⚠️  Custom stream connection failed: {} (this is expected if PLC is not available)",
+                        e
+                    );
                 }
             }
         }

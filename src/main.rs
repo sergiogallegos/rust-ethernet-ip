@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 // Data type constants for CompactLogix
 #[derive(Debug, Clone, PartialEq)]

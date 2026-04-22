@@ -15,7 +15,7 @@
 mod tests {
     use rust_ethernet_ip::{EipClient, PlcValue};
     use std::env;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
     // Helper function to get test PLC address from environment or use default
     fn get_test_plc_address() -> String {
         env::var("TEST_PLC_ADDRESS").unwrap_or_else(|_| "192.168.0.1:44818".to_string())

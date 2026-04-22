@@ -368,10 +368,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let base = &tag[..bracket_pos];
                             let member = &tag[bracket_pos + dot_pos..];
                             let pattern = format!("{}[*]{}", base, member);
-                            pattern_groups
-                                .entry(pattern)
-                                .or_default()
-                                .push(tag.clone());
+                            pattern_groups.entry(pattern).or_default().push(tag.clone());
                         } else {
                             pattern_groups
                                 .entry(tag.clone())
@@ -434,10 +431,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             > = std::collections::HashMap::new();
             for (tag_name, error, expected, actual) in &verify_failures {
                 let error_key = error.clone();
-                error_groups
-                    .entry(error_key)
-                    .or_default()
-                    .push((tag_name.clone(), expected.clone(), actual.clone()));
+                error_groups.entry(error_key).or_default().push((
+                    tag_name.clone(),
+                    expected.clone(),
+                    actual.clone(),
+                ));
             }
 
             for (error, tags) in &error_groups {

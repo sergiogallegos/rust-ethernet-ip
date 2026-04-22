@@ -23,6 +23,8 @@ Target next release: `0.8.0`.
 - **NuGet publish package lookup**: Hardened the Windows release workflow so NuGet publishing resolves the generated package path explicitly instead of relying on wildcard expansion in `dotnet nuget push`.
 - **C# package metadata/runtime packaging**: Adjusted the wrapper project to package as a library, align the NuGet license metadata with the repository MIT license, include the package README, and mark native runtime libraries as package content.
 - **C# validation examples on macOS**: Fixed wrapper smoke/benchmark/matrix example projects so they copy `librust_ethernet_ip.dylib` on macOS and `rust_ethernet_ip.dll` on Windows using `MSBuild::IsOSPlatform(...)`.
+- **Python routed ControlLogix support**: Fixed the Python wrapper ControlLogix route-path path so routed connections and routed live validation work on `1756-L81ES` via `1756-EN3TR` slot `0`.
+- **Python live write result handling**: Fixed the Python wrapper so routed live `write_tag()` and the exercised `write_tags()` paths no longer misreport successful ControlLogix writes as failures for the validated `DINT` and `REAL` cases.
 - **Rust 1.95 Clippy cleanup**: Removed new Clippy warnings in FFI write helpers and packed BOOL-array decoding without changing runtime behavior.
 - **crates.io README logo rendering**: Switched README logo image URLs from relative paths to absolute GitHub raw URLs so the crate page can render the logo outside the GitHub repository context.
 - **Rust 2024 migration without wrapper breakage**: Moved the repo to Rust `2024` / `1.95`, updated FFI exports to Rust 2024 `#[unsafe(no_mangle)]`, refreshed dependency baselines, and verified that Rust tests plus C# wrapper build/tests still pass against the updated native library.
@@ -36,7 +38,7 @@ Target next release: `0.8.0`.
 
 ### 🧹 Cleanup
 - **Repository ignore rules**: Added Obsidian workspace ignore coverage.
-- **Example formatting**: Applied `cargo fmt` cleanup to touched Rust example files.
+- **Rust formatting pass**: Applied `cargo fmt` across the Rust tree to clear the pre-release formatter drift before tagging `0.8.0`.
 
 ### ✅ Verification
 - `cargo clippy --lib -p rust-ethernet-ip --` passes on Rust `1.95.0`.

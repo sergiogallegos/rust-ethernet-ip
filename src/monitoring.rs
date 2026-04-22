@@ -359,12 +359,22 @@ impl ProductionMonitor {
             EtherNetIpError::TagNotFound(_) => ErrorCategory::NotFound,
             EtherNetIpError::DataTypeMismatch { .. } => ErrorCategory::DataType,
             EtherNetIpError::CipError { code, message }
-            | EtherNetIpError::ReadError { status: code, message }
-            | EtherNetIpError::WriteError { status: code, message }
-            | EtherNetIpError::StringWriteError { status: code, message }
-            | EtherNetIpError::StringReadError { status: code, message } => {
-                Self::classify_status_and_message(Some(*code), message)
+            | EtherNetIpError::ReadError {
+                status: code,
+                message,
             }
+            | EtherNetIpError::WriteError {
+                status: code,
+                message,
+            }
+            | EtherNetIpError::StringWriteError {
+                status: code,
+                message,
+            }
+            | EtherNetIpError::StringReadError {
+                status: code,
+                message,
+            } => Self::classify_status_and_message(Some(*code), message),
             EtherNetIpError::Protocol(message)
             | EtherNetIpError::InvalidResponse { reason: message }
             | EtherNetIpError::InvalidStringResponse { reason: message }
@@ -424,7 +434,9 @@ impl ProductionMonitor {
         if lower.contains("tag not found") {
             return ErrorCategory::NotFound;
         }
-        if lower.contains("data type") || lower.contains("invalid string") || lower.contains("utf-8")
+        if lower.contains("data type")
+            || lower.contains("invalid string")
+            || lower.contains("utf-8")
         {
             return ErrorCategory::DataType;
         }

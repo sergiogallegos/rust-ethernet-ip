@@ -6,7 +6,7 @@ members = [
 
 [package]
 name = "rust-ethernet-ip"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 authors = ["Sergio Gallegos <sergio@example.com>"]
 description = "High-performance EtherNet/IP communication library for Allen-Bradley CompactLogix and ControlLogix PLCs"

@@ -17,7 +17,7 @@
 
 use rust_ethernet_ip::{EipClient, PlcValue};
 use std::env;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -30,7 +30,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Usage: cargo run --example test_array_members -- <PLC_IP:PORT> [ARRAY_TAG_NAME]");
         println!("\nExamples:");
         println!("  cargo run --example test_array_members -- 192.168.1.100:44818 MyArray");
-        println!("  cargo run --example test_array_members -- 192.168.1.100:44818 Program:MainProgram.DataArray");
+        println!(
+            "  cargo run --example test_array_members -- 192.168.1.100:44818 Program:MainProgram.DataArray"
+        );
         return Ok(());
     }
 

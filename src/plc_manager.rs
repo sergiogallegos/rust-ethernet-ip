@@ -1,5 +1,5 @@
-use crate::error::{EtherNetIpError, Result};
 use crate::EipClient;
+use crate::error::{EtherNetIpError, Result};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
@@ -211,7 +211,6 @@ impl PlcManager {
             .map_err(|_| EtherNetIpError::Connection("Invalid address format".to_string()))?;
         self.get_connection(addr).await
     }
-
 }
 
 #[cfg(test)]

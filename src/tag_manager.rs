@@ -1,6 +1,6 @@
+use crate::EipClient;
 use crate::error::{EtherNetIpError, Result};
 use crate::udt::{UdtDefinition, UdtMember};
-use crate::EipClient;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
@@ -230,13 +230,11 @@ impl TagManager {
                                     self.discover_udt_members(client, &full_name).await
                             {
                                 for (nested_name, nested_metadata) in nested_members {
-                                    let nested_full_name =
-                                        format!("{}.{}", full_name, nested_name);
+                                    let nested_full_name = format!("{}.{}", full_name, nested_name);
                                     if self.validate_tag_name(&nested_full_name)
                                         && !tag_names.contains(&nested_full_name)
                                     {
-                                        all_tags
-                                            .push((nested_full_name.clone(), nested_metadata));
+                                        all_tags.push((nested_full_name.clone(), nested_metadata));
                                         tag_names.insert(nested_full_name);
                                     }
                                 }
@@ -538,7 +536,10 @@ impl TagManager {
             if service_reply != 0xD5 && service_reply != 0x55 {
                 // Might be a different service code, but if status is 0x00, try to parse anyway
                 if general_status == 0x00 {
-                    tracing::warn!("Unexpected service reply 0x{:02X}, but status is 0x00, attempting to parse", service_reply);
+                    tracing::warn!(
+                        "Unexpected service reply 0x{:02X}, but status is 0x00, attempting to parse",
+                        service_reply
+                    );
                 }
             }
         }

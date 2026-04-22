@@ -3805,14 +3805,9 @@ impl EipClient {
         })?;
         let mut request = vec![
             // Service: Get Instance Attribute List (0x55)
-            0x55,
-            // Path size: 3 words (6 bytes)
-            0x03,
-            // Path: Symbol Object (Class 0x6B), start instance
-            0x20,
-            0x6B,
-            0x25,
-            0x00,
+            0x55, // Path size: 3 words (6 bytes)
+            0x03, // Path: Symbol Object (Class 0x6B), start instance
+            0x20, 0x6B, 0x25, 0x00,
         ];
         request.extend_from_slice(&start_instance.to_le_bytes());
 
@@ -3832,13 +3827,9 @@ impl EipClient {
     fn build_program_tag_list_request(&self, _program_name: &str) -> crate::error::Result<Vec<u8>> {
         let mut request = vec![
             // Service: Get Instance Attribute List (0x55)
-            0x55,
-            // Path size: 3 words (6 bytes)
-            0x03,
-            // Path: Program Object (Class 0x6C), instance 0 placeholder.
-            0x20,
-            0x6C,
-            0x25,
+            0x55, // Path size: 3 words (6 bytes)
+            0x03, // Path: Program Object (Class 0x6C), instance 0 placeholder.
+            0x20, 0x6C, 0x25,
         ];
         request.extend_from_slice(&[0x00, 0x00, 0x00]);
 

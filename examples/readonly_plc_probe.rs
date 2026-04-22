@@ -1,6 +1,6 @@
 use rust_ethernet_ip::{EipClient, RoutePath};
 use std::env;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

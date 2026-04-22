@@ -4,7 +4,7 @@
 // This file contains performance benchmarks for the UDT discovery and
 // hierarchical tag access features of the Rust EtherNet/IP library.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rust_ethernet_ip::{TagMetadata, TagPermissions, TagScope, UdtDefinition, UdtMember};
 use std::collections::HashMap;
 use std::time::Instant;

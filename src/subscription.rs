@@ -1,10 +1,10 @@
-use crate::error::{EtherNetIpError, Result};
 use crate::PlcValue;
-use std::sync::atomic::AtomicBool;
+use crate::error::{EtherNetIpError, Result};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use std::sync::atomic::AtomicBool;
+use tokio::sync::{Mutex, mpsc};
 
-use futures::{stream, Stream};
+use futures::{Stream, stream};
 
 /// Configuration options for tag subscriptions
 #[derive(Debug, Clone)]

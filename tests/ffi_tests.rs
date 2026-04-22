@@ -3,7 +3,7 @@ mod plc_sim;
 use plc_sim::SimulatedPlc;
 use rust_ethernet_ip::ffi;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::ptr;
@@ -222,11 +222,13 @@ fn ffi_execute_batch_mixed_contract_keeps_parse_errors_isolated() {
     assert!(output[1].is_write);
     assert!(!output[1].success);
     assert!(output[1].value.is_none());
-    assert!(output[1]
-        .error
-        .as_deref()
-        .unwrap_or("")
-        .contains("Missing value_type for write operation"));
+    assert!(
+        output[1]
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Missing value_type for write operation")
+    );
 }
 
 #[test]
@@ -302,11 +304,12 @@ fn ffi_write_tags_batch_reports_per_item_parse_errors() {
         .find(|x| x.tag_name == "DINT_TAG" && x.error.is_some())
         .expect("bad parse result");
     assert!(!bad.success);
-    assert!(bad
-        .error
-        .as_deref()
-        .unwrap_or("")
-        .contains("Unsupported value_type"));
+    assert!(
+        bad.error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Unsupported value_type")
+    );
 
     let ok = output
         .iter()

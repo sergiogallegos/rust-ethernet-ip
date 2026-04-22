@@ -114,8 +114,9 @@ impl MockEipClient {
                     "Member not found",
                 )));
             }
-            udt.read_member(&self.udt_data, member_name)
-                .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error>)
+            udt.read_member(&self.udt_data, member_name).map_err(|e| {
+                Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error>
+            })
         } else {
             Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -374,7 +375,10 @@ async fn test_udt_hash_map_conversion() {
     // Verify some key members
     assert_eq!(hash_map.get("bool1"), Some(&PlcValue::Bool(true)));
     assert_eq!(hash_map.get("int1"), Some(&PlcValue::Int(1234)));
-    assert_eq!(hash_map.get("real1"), Some(&PlcValue::Real(TEST_REAL_VALUE)));
+    assert_eq!(
+        hash_map.get("real1"),
+        Some(&PlcValue::Real(TEST_REAL_VALUE))
+    );
     assert_eq!(
         hash_map.get("string1"),
         Some(&PlcValue::String("Hello UDT!".to_string()))
@@ -503,7 +507,8 @@ async fn test_udt_error_handling() {
         offset: 0,
         size: 1,
     };
-    let result = udt.serialize_member_value(&bool_member, &PlcValue::Real(TEST_NON_BOOL_REAL_VALUE));
+    let result =
+        udt.serialize_member_value(&bool_member, &PlcValue::Real(TEST_NON_BOOL_REAL_VALUE));
     assert!(result.is_err());
 
     // Test insufficient data

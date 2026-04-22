@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rust_ethernet_ip::PlcValue;
 
 fn bench_single_read(c: &mut Criterion) {

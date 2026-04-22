@@ -100,7 +100,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "   ❌ Both scopes failed. Controller: {}, Program: {}",
                         e, e2
                     );
-                    return Err("Failed to read array element from either scope".to_string().into());
+                    return Err("Failed to read array element from either scope"
+                        .to_string()
+                        .into());
                 }
             }
         }

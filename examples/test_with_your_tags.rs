@@ -99,7 +99,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("   ✅ Read back: {:?}", read_back);
                                 if let PlcValue::Dint(v) = read_back {
                                     if v == 999 {
-                                        println!("   ✅✅✅ VERIFICATION PASSED! Array element addressing works!");
+                                        println!(
+                                            "   ✅✅✅ VERIFICATION PASSED! Array element addressing works!"
+                                        );
                                     } else {
                                         println!("   ⚠️  Value mismatch: expected 999, got {}", v);
                                     }

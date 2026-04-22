@@ -211,8 +211,7 @@ async fn test_tag_discovery(
                     println!("    Tag: {}", tag.name);
                     println!(
                         "      Type: {} (0x{:04X})",
-                        tag.data_type_name,
-                        tag.data_type
+                        tag.data_type_name, tag.data_type
                     );
                     println!("      Size: {} bytes", tag.size);
                     println!("      Scope: {:?}", tag.scope);
@@ -745,7 +744,9 @@ async fn test_advanced_addressing(
     }
 
     // Complex nested path
-    print!("\nTest complex path? (Enter path like 'Program:TestProgram.gTestArray_DINT[5]' or 'gTestUDT.Array_DINT[5]' or 'skip'): ");
+    print!(
+        "\nTest complex path? (Enter path like 'Program:TestProgram.gTestArray_DINT[5]' or 'gTestUDT.Array_DINT[5]' or 'skip'): "
+    );
     io::stdout().flush()?;
     let mut complex_input = String::new();
     io::stdin().read_line(&mut complex_input)?;

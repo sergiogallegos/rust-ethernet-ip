@@ -1,5 +1,5 @@
-use rust_ethernet_ip::error::EtherNetIpError;
 use rust_ethernet_ip::EipClient;
+use rust_ethernet_ip::error::EtherNetIpError;
 
 #[tokio::test]
 async fn connect_invalid_format_fails_fast() {

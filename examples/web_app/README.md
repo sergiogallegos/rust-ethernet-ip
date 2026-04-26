@@ -53,11 +53,8 @@ web_app/
 │   ├── tsconfig.json    # TypeScript configuration
 │   └── src/
 │       ├── App.tsx      # Main application component
-│       ├── types.ts     # TypeScript type definitions
-│       └── components/  # React components
-│           ├── ConnectionPanel.tsx
-│           ├── TagOperations.tsx
-│           └── StatusBar.tsx
+│       ├── App.css      # Dashboard styles
+│       └── types.ts     # TypeScript type definitions
 └── README.md            # This file
 ```
 
@@ -84,7 +81,7 @@ Or run directly in development mode:
 cargo run
 ```
 
-The backend server will start on `http://localhost:3000`.
+The backend server will start on `http://localhost:4000`. Override the bind address with `PLC_WEB_BIND_ADDR`, for example `PLC_WEB_BIND_ADDR=0.0.0.0:4001 cargo run`.
 
 ### 2. Frontend Setup
 
@@ -101,7 +98,7 @@ Start the development server:
 npm start
 ```
 
-The frontend will start on `http://localhost:3000` (or another port if 3000 is taken).
+The frontend will start on `http://localhost:3000` and call the backend at `http://localhost:4000` by default. Override the API URL with `REACT_APP_API_URL`.
 
 ## API Endpoints
 
@@ -280,7 +277,7 @@ The current dashboard is designed to support a live demo flow like this:
 5. Run the benchmark panel to compare single operations with batch operations in real time.
 6. Save a traceability event to simulate a part-tracking / production-history workflow.
 
-Traceability persistence is currently local JSON storage under `backend/data/traceability.json`. This keeps the demo self-contained. If the example later needs multi-user durability or query-heavy history, SQLite is the next reasonable upgrade.
+Traceability persistence is currently local JSON storage under `backend/data/traceability.json`. Override the path with `PLC_WEB_TRACEABILITY_PATH`. This keeps the demo self-contained. If the example later needs multi-user durability or query-heavy history, SQLite is the next reasonable upgrade.
 
 ## Usage Example
 
@@ -334,7 +331,7 @@ The frontend uses:
 - **TypeScript**: Type safety
 - **Create React App**: Build tooling
 
-To modify the UI, edit the components in `frontend/src/components/`.
+To modify the UI, edit `frontend/src/App.tsx`, `frontend/src/App.css`, and `frontend/src/types.ts`.
 
 ## Production Deployment
 
@@ -362,6 +359,8 @@ The static files will be in `frontend/build/`. You can serve them with any stati
 
 ### CORS Configuration
 
+The example uses permissive CORS in development so the React dev server can call the Rust API from a different port.
+
 For production, update the CORS configuration in `backend/src/main.rs` to only allow your frontend domain:
 
 ```rust
@@ -383,9 +382,9 @@ For production, update the CORS configuration in `backend/src/main.rs` to only a
 
 ### Frontend Can't Connect to Backend
 
-- Ensure the backend is running on port 3000
+- Ensure the backend is running on port 4000
 - Check CORS settings if accessing from a different origin
-- Verify the `API_BASE` environment variable in the frontend
+- Verify the `REACT_APP_API_URL` environment variable in the frontend
 
 ### Tag Read/Write Errors
 

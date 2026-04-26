@@ -96,7 +96,7 @@ These are Allen-Bradley restrictions, not library bugs:
 
 ## Workspace Layout
 
-The root `Cargo.toml` defines a workspace containing `.` (main crate) and `examples/desktop_app`. The crate produces both `rlib` and `cdylib` outputs. Rust MSRV is 1.70.
+The root `Cargo.toml` defines a workspace containing `.` (main crate) and `examples/desktop_app`. The crate produces both `rlib` and `cdylib` outputs. Rust MSRV is 1.95.
 
 ## CI
 

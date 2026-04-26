@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::State,
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
 use rust_ethernet_ip::{BatchOperation, EipClient, EtherNetIpError, PlcValue, RoutePath};
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Mutex;
-use tower_http::cors::CorsLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 #[derive(Clone)]
 struct AppState {
@@ -315,6 +315,8 @@ async fn connect(
     State(state): State<AppState>,
     Json(payload): Json<ConnectRequest>,
 ) -> Result<Json<ConnectResponse>, (StatusCode, Json<serde_json::Value>)> {
+    validate_plc_address(&payload.address).map_err(bad_request)?;
+
     let use_route_path = payload.use_route_path.unwrap_or(false);
     let slot = payload.slot.unwrap_or(0);
 
@@ -505,7 +507,9 @@ async fn write_tag(
     }
 }
 
-async fn snapshot(State(state): State<AppState>) -> Result<Json<SnapshotResponse>, (StatusCode, Json<serde_json::Value>)> {
+async fn snapshot(
+    State(state): State<AppState>,
+) -> Result<Json<SnapshotResponse>, (StatusCode, Json<serde_json::Value>)> {
     ensure_connected(&state).await?;
 
     let configs = demo_signal_configs();
@@ -520,7 +524,10 @@ async fn snapshot(State(state): State<AppState>) -> Result<Json<SnapshotResponse
         )
     })?;
 
-    let results = client.read_tags_batch(&tag_names).await.map_err(internal_error)?;
+    let results = client
+        .read_tags_batch(&tag_names)
+        .await
+        .map_err(internal_error)?;
     let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
 
     let mut signals = Vec::with_capacity(configs.len());
@@ -804,7 +811,11 @@ async fn health() -> Json<serde_json::Value> {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let trace_path = PathBuf::from("examples/web_app/backend/data/traceability.json");
+    let trace_path = std::env::var("PLC_WEB_TRACEABILITY_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/traceability.json")
+        });
     let state = AppState {
         client: Arc::new(Mutex::new(None)),
         connection: Arc::new(Mutex::new(ConnectionState::default())),
@@ -821,15 +832,21 @@ async fn main() {
         .route("/api/write", post(write_tag))
         .route("/api/demo/snapshot", get(snapshot))
         .route("/api/demo/benchmark", post(benchmark))
-        .route("/api/traceability", get(list_traceability).post(create_traceability))
+        .route(
+            "/api/traceability",
+            get(list_traceability).post(create_traceability),
+        )
         .layer(CorsLayer::permissive())
+        .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+    let bind_addr =
+        std::env::var("PLC_WEB_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:4000".to_string());
+    let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
-        .expect("Failed to bind to 0.0.0.0:3000");
+        .unwrap_or_else(|error| panic!("Failed to bind to {bind_addr}: {error}"));
 
-    println!("PLC dashboard backend running on http://0.0.0.0:3000");
+    println!("PLC dashboard backend running on http://{bind_addr}");
 
     axum::serve(listener, app)
         .await
@@ -993,6 +1010,15 @@ fn internal_error<E: std::fmt::Display>(error: E) -> (StatusCode, Json<serde_jso
     )
 }
 
+fn bad_request<E: std::fmt::Display>(error: E) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "error": error.to_string()
+        })),
+    )
+}
+
 async fn fetch_identity(
     client: &EipClient,
     address: &str,
@@ -1062,7 +1088,12 @@ fn is_plausible_identity(identity: &PlcIdentity) -> bool {
 }
 
 fn fallback_identity(address: &str, use_route_path: bool, slot: u8) -> Option<PlcIdentity> {
-    if address.starts_with("192.168.0.101") && use_route_path && slot == 0 {
+    let host = address
+        .rsplit_once(':')
+        .map(|(host, _)| host)
+        .unwrap_or(address);
+
+    if host == "192.168.0.101" && use_route_path && slot == 0 {
         return Some(PlcIdentity {
             vendor_id: 1,
             vendor_name: "Rockwell / Allen-Bradley".to_string(),
@@ -1078,7 +1109,7 @@ fn fallback_identity(address: &str, use_route_path: bool, slot: u8) -> Option<Pl
         });
     }
 
-    if address.starts_with("192.168.0.1") {
+    if host == "192.168.0.1" {
         return Some(PlcIdentity {
             vendor_id: 1,
             vendor_name: "Rockwell / Allen-Bradley".to_string(),
@@ -1095,6 +1126,27 @@ fn fallback_identity(address: &str, use_route_path: bool, slot: u8) -> Option<Pl
     }
 
     None
+}
+
+fn validate_plc_address(address: &str) -> Result<(), String> {
+    let address = address.trim();
+    let (host, port) = address.rsplit_once(':').ok_or_else(|| {
+        "PLC address must be in host:port format, for example 192.168.0.101:44818".to_string()
+    })?;
+
+    if host.trim().is_empty() {
+        return Err("PLC address host cannot be empty".to_string());
+    }
+
+    let port = port
+        .parse::<u16>()
+        .map_err(|_| "PLC address port must be a number between 1 and 65535".to_string())?;
+
+    if port == 0 {
+        return Err("PLC address port must be between 1 and 65535".to_string());
+    }
+
+    Ok(())
 }
 
 fn vendor_name(vendor_id: u16) -> &'static str {
@@ -1115,7 +1167,9 @@ fn parse_ab_string_from_udt(data: &[u8]) -> Option<String> {
     }
 
     let string_bytes = &data[4..4 + length];
-    let parsed = std::str::from_utf8(string_bytes).ok()?.trim_end_matches('\0');
+    let parsed = std::str::from_utf8(string_bytes)
+        .ok()?
+        .trim_end_matches('\0');
     if parsed.is_empty() {
         return None;
     }
@@ -1125,9 +1179,7 @@ fn parse_ab_string_from_udt(data: &[u8]) -> Option<String> {
 
 fn looks_like_string_tag(tag_name: &str) -> bool {
     let lower = tag_name.to_ascii_lowercase();
-    lower.ends_with("_string")
-        || lower.ends_with(".member5_string")
-        || lower.contains(".string")
+    lower.ends_with("_string") || lower.ends_with(".member5_string") || lower.contains(".string")
 }
 
 async fn read_logix_string(
@@ -1143,15 +1195,30 @@ async fn read_logix_string(
             return Err(rust_ethernet_ip::EtherNetIpError::DataTypeMismatch {
                 expected: "LEN integer".to_string(),
                 actual: format!("{other:?}"),
-            })
+            });
         }
     }
     .min(82);
 
+    if length == 0 {
+        return Ok(String::new());
+    }
+
+    let data_tags: Vec<String> = (0..length)
+        .map(|index| format!("{tag_name}.DATA[{index}]"))
+        .collect();
+    let data_tag_refs: Vec<&str> = data_tags.iter().map(String::as_str).collect();
+    let data_results = client.read_tags_batch(&data_tag_refs).await?;
+
     let mut bytes = Vec::with_capacity(length);
-    for index in 0..length {
-        let data_tag = format!("{tag_name}.DATA[{index}]");
-        let byte = match client.read_tag(&data_tag).await? {
+    for (data_tag, value_result) in data_results {
+        let value = value_result.map_err(|error| {
+            rust_ethernet_ip::EtherNetIpError::Other(format!(
+                "Batch read failed for {data_tag}: {error}"
+            ))
+        })?;
+
+        let byte = match value {
             PlcValue::Sint(value) => value as u8,
             PlcValue::Usint(value) => value,
             PlcValue::Int(value) => value as u8,
@@ -1159,7 +1226,7 @@ async fn read_logix_string(
                 return Err(rust_ethernet_ip::EtherNetIpError::DataTypeMismatch {
                     expected: "DATA byte".to_string(),
                     actual: format!("{other:?}"),
-                })
+                });
             }
         };
         bytes.push(byte);
@@ -1191,7 +1258,7 @@ async fn read_original_dints(
                     "Expected DINT for benchmark restore on {}, got {}",
                     tag,
                     plc_value_type_name(&other)
-                )))
+                )));
             }
         }
     }

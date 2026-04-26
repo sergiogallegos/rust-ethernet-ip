@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import {
   BenchmarkResponse,
@@ -13,7 +13,7 @@ import {
   TraceabilityResponse,
 } from './types';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:4000';
 
 const emptyStatus: ConnectionStatus = {
   connected: false,
@@ -38,6 +38,11 @@ type OpsAlert = {
   tone: 'good' | 'watch' | 'bad';
 };
 
+type ActivityItem = {
+  id: number;
+  message: string;
+};
+
 function App() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(emptyStatus);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
@@ -45,8 +50,9 @@ function App() {
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [benchmark, setBenchmark] = useState<BenchmarkResponse | null>(null);
   const [traceability, setTraceability] = useState<TraceabilityRecord[]>([]);
-  const [activity, setActivity] = useState<string[]>([
-    'Dashboard initialized. Waiting for PLC session.',
+  const activityId = useRef(1);
+  const [activity, setActivity] = useState<ActivityItem[]>([
+    { id: 0, message: 'Dashboard initialized. Waiting for PLC session.' },
   ]);
   const [address, setAddress] = useState('192.168.0.101:44818');
   const [useRoutePath, setUseRoutePath] = useState(true);
@@ -75,7 +81,7 @@ function App() {
   });
 
   const pushActivity = (message: string) => {
-    setActivity((current) => [message, ...current].slice(0, 10));
+    setActivity((current) => [{ id: activityId.current++, message }, ...current].slice(0, 10));
   };
 
   const fetchStatus = async () => {
@@ -92,11 +98,7 @@ function App() {
     return data as OverviewResponse;
   };
 
-  const fetchSnapshot: () => Promise<void> = async () => {
-    if (!connectionStatus.connected) {
-      return;
-    }
-
+  const refreshSnapshot = async () => {
     setSnapshotLoading(true);
     try {
       const response = await fetch(`${API_BASE}/api/demo/snapshot`);
@@ -111,6 +113,14 @@ function App() {
     } finally {
       setSnapshotLoading(false);
     }
+  };
+
+  const fetchSnapshot = async (connected = connectionStatus.connected) => {
+    if (!connected) {
+      return;
+    }
+
+    await refreshSnapshot();
   };
 
   const fetchTraceability = async () => {
@@ -137,23 +147,6 @@ function App() {
     if (!connectionStatus.connected) {
       return;
     }
-
-    const refreshSnapshot = async () => {
-      setSnapshotLoading(true);
-      try {
-        const response = await fetch(`${API_BASE}/api/demo/snapshot`);
-        const data = await response.json();
-        if (response.ok) {
-          setSnapshot(data);
-        } else {
-          throw new Error(data.error || 'Failed to refresh snapshot');
-        }
-      } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : 'Snapshot failed');
-      } finally {
-        setSnapshotLoading(false);
-      }
-    };
 
     refreshSnapshot();
     const interval = setInterval(refreshSnapshot, 3000);
@@ -252,7 +245,7 @@ function App() {
       setConnectionStatus(data.status);
       pushActivity(`Connected to ${data.status.address}${data.status.use_route_path ? ` via slot ${data.status.slot}` : ''}.`);
       await fetchOverview();
-      await fetchSnapshot();
+      await fetchSnapshot(data.status.connected);
     } catch (connectError) {
       setError(connectError instanceof Error ? connectError.message : 'Connection failed');
     } finally {
@@ -772,8 +765,8 @@ function App() {
             </div>
 
             <ul className="activity-list compact">
-              {activity.map((item, index) => (
-                <li key={`${item}-${index}`}>{item}</li>
+              {activity.map((item) => (
+                <li key={item.id}>{item.message}</li>
               ))}
             </ul>
           </article>

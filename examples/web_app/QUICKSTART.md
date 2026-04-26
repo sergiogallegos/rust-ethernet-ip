@@ -17,7 +17,7 @@ cargo run
 
 You should see:
 ```
-🚀 PLC Web Backend server running on http://0.0.0.0:3000
+PLC dashboard backend running on http://0.0.0.0:4000
 ```
 
 ## Step 2: Start the Frontend (New Terminal)
@@ -28,7 +28,7 @@ npm install  # First time only
 npm start
 ```
 
-The browser should open automatically to `http://localhost:3000` (or another port).
+The browser should open automatically to `http://localhost:3000`.
 
 ## Step 3: Connect to Your PLC
 
@@ -51,11 +51,11 @@ The browser should open automatically to `http://localhost:3000` (or another por
 ## Troubleshooting
 
 **Backend won't start?**
-- Check if port 3000 is already in use
+- Check if port 4000 is already in use, or set `PLC_WEB_BIND_ADDR=0.0.0.0:4001`
 - Ensure Rust is properly installed
 
 **Frontend can't connect?**
-- Verify backend is running on port 3000
+- Verify backend is running on port 4000
 - Check browser console for errors
 
 **Can't connect to PLC?**
@@ -67,6 +67,5 @@ The browser should open automatically to `http://localhost:3000` (or another por
 
 - Read the full [README.md](README.md) for detailed documentation
 - Explore the API endpoints
-- Customize the UI in `frontend/src/components/`
+- Customize the UI in `frontend/src/App.tsx` and `frontend/src/App.css`
 - Add new endpoints in `backend/src/main.rs`
-

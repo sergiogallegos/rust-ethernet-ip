@@ -55,7 +55,7 @@ export interface KpiCard {
   key: string;
   label: string;
   value: string;
-  tone: 'good' | 'watch' | 'bad' | 'neutral' | string;
+  tone: 'good' | 'watch' | 'bad' | 'neutral';
   detail: string;
 }
 
@@ -66,7 +66,7 @@ export interface SignalReading {
   data_type: string | null;
   unit: string | null;
   value_text: string | null;
-  quality: 'good' | 'bad' | string;
+  quality: 'good' | 'bad';
   emphasis: string;
   error: string | null;
 }

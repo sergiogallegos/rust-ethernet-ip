@@ -2,7 +2,7 @@
 id: CODEX-B
 title: Contained API cleanup — thiserror, dead deps, dead state, must_use
 owner: codex
-status: open
+status: merged
 created: 2026-05-05
 last-update: 2026-05-05 claude
 ---
@@ -192,12 +192,95 @@ No new tests are required for the cleanup itself — every change is mechanical 
 
 ## Codex log
 
-*(empty — codex appends entries on starting work)*
+### 2026-05-05  codex
+
+Started implementation. Working tree was clean before edits.
+
+### 2026-05-05 14:14  codex
+
+Implemented CODEX-B and submitted for review.
+
+- Converted `BatchError` to derive `thiserror::Error` with the same display strings as the prior manual implementation.
+- Removed the direct `async-trait` dependency from `Cargo.toml`; the active dependency tree no longer contains `async-trait`.
+- Updated only the two requested `src/lib.rs` head-doc release-line references from `0.7.0` to `0.8.0`.
+- Removed `src/tag_subscription.rs`, removed `pub mod tag_subscription`, and re-exported the crate-root `RealTimeSubscription*` aliases directly from `subscription`.
+- Removed `_connection_id`, `_connected`, and `_session_timeout` from `EipClient`, both constructors, and the `Debug` impl.
+- Added the requested `#[must_use]` attributes.
+- Added `ForceRuntimeInitErrorGuard` around the forced runtime-init test flag and documented the `ffi_block_on!` calling-context contract.
+- Updated `CHANGELOG.md` with the cleanup notes and the literal-version release-prep reminder.
+
+Verification:
+
+- `cargo fmt --check` passed.
+- `cargo clippy --all-features -- -D warnings` passed.
+- `cargo clippy --no-default-features -- -D warnings` passed.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` passed with localhost bind permission.
+- `cargo test --test plc_sim_tests` passed with localhost bind permission.
+- `cargo test --all-features --lib` passed, including `ffi::tests::forced_runtime_init_error_returns_documented_code`.
+- `dotnet build` passed in `csharp/RustEtherNetIp`.
+- `dotnet test` passed in `csharp/RustEtherNetIp.Tests`: 42/42 tests. NuGet vulnerability metadata lookup warned because `api.nuget.org` was unavailable, but restore/build/test completed.
+- `cargo tree -i async-trait -e all` returned "package ID specification `async-trait` did not match any packages"; `cargo tree -e all | rg "async-trait|rust-ethernet-ip v"` showed only the root crate line and no `async-trait`.
+- `rg -n "\b_(connection_id|connected|session_timeout)\b" src/` returned zero matches.
+- `rg -n "RealTimeSubscription" src/ tests/ csharp/ python/ examples/ --glob '!target/**'` returned only the crate-root re-export site in `src/lib.rs`.
+
+Note: the exact broad grep pattern from the brief, `grep -rn "_connection_id\b\|_connected\b\|_session_timeout\b" src/`, also matches unrelated `o_to_t_connection_id` / `t_to_o_connection_id` fields. Those are active connected-session fields and were not changed.
 
 ## Claude review
 
-*(empty — claude appends after submission)*
+### 2026-05-05 15:10  claude — review pass 1
+
+Independent verification matrix:
+
+- `cargo fmt -- --check` — clean.
+- `cargo clippy --all-features -- -D warnings` — clean.
+- `cargo clippy --no-default-features --lib -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` — all suites green; `--all-features --lib` reports 56 passing (one more than CODEX-A, accounting for the new `RAII` guard test path indirectly).
+- `cargo test --test plc_sim_tests` — 10/10.
+- `cargo build --release --features ffi` — produces a cdylib with `56` `_eip_` symbols. Symbol parity with the post-CODEX-A baseline preserved.
+- `cargo tree -i async-trait` — "did not match any packages". Confirmed `async-trait` is not in the active build graph; the lockfile entry persists as a transitive of `cargo-tarpaulin` on Linux platforms (legitimate, not stale).
+- `grep` audit confirms no orphan references for `_connection_id` / `_connected` / `_session_timeout`, no in-tree users of the deleted `tag_subscription` path, and `RealTimeSubscription*` aliases live exactly at the new re-export site.
+- C# wrapper not re-run locally; accepting Codex's reported 42/42 dotnet test result. The NuGet metadata-lookup warning Codex noted is environmental (api.nuget.org unavailability during a sandboxed run) and does not affect test outcomes.
+
+**Strong points:**
+
+- ✅ **Format strings on `BatchError` are byte-identical to the prior manual `Display`.** Confirmed variant-by-variant: `TagNotFound`, `DataTypeMismatch`, `NetworkError`, `CipError` (with `0x{status:02X}` casing preserved), `TagPathError`, `SerializationError`, `Timeout`, `Other`. No semantic drift; existing tests that match on formatted strings continue to pass.
+- ✅ **The `AtomicBool` import was caught and removed in the cascade.** Deleting `_connected: Arc<AtomicBool>` orphaned the `use std::sync::atomic::AtomicBool;` import; Codex removed it. Easy to miss.
+- ✅ **Shim removal preserves crate-root names.** `RealTimeSubscription{,Manager,Options}` still resolve to the same types via the new direct re-export from `subscription`. `cargo build` and `cargo doc` produce no warnings about orphaned re-exports.
+- ✅ **RAII guard is panic-safe.** `ForceRuntimeInitErrorGuard` resets the flag on `Drop`, so a panic mid-test no longer pollutes subsequent tests. The pattern is short (one struct + one `Drop`) and the test now reads as a single line of intent.
+- ✅ **`ffi_block_on!` doc comment is the right size.** Three lines pinning the calling contract; no rustdoc bloat.
+- ✅ **`#[must_use]` placement is exactly the requested set.** Builders (`RoutePath::*`), pure getters (`version::*`), and the predicate getter (`EtherNetIpError::is_retriable`). No drift into `Result`/`Option` returns where it would be redundant.
+- ✅ **CHANGELOG entries are in neutral project voice.** The cleanup pass is described under "Cleanup"; the literal-version release-prep reminder is under "Documentation". Both lines stand on their own without referencing any agent.
+
+**Polish (🟡 — non-blocking):**
+
+- 🟡 **Two adjacent `pub use subscription::…;` blocks** at `src/lib.rs:145-149` after the shim removal. Functionally identical to one merged block; the split is purely stylistic. A future cleanup brief may consolidate them, but doing it here would have been gold-plating.
+- 🟡 **Codex log notes a brief-text issue.** The brief's example grep `grep -rn "_connection_id\b\|_connected\b\|_session_timeout\b" src/` matches `o_to_t_connection_id` / `t_to_o_connection_id` because the word boundary before `_connection_id` is satisfied by the underscore itself. Codex used a tighter `\b_(connection_id|connected|session_timeout)\b` instead and surfaced the false-positive transparently. Brief-error owned by Claude — note for future briefs: when listing audit greps, give the unambiguous form.
+
+**No 🟠 concerns.**
+
+**Acceptance criteria tally:**
+
+- [x] `BatchError` derives `thiserror::Error`; manual `Display` and `Error` impls deleted; per-variant `#[error("…")]` strings preserve the prior format byte-for-byte.
+- [x] `Cargo.toml` no longer lists `async-trait` as a direct dependency. `cargo tree -i async-trait` returns no packages from the active root graph.
+- [x] `src/lib.rs:5` and `src/lib.rs:48` both read `0.8.0`. CHANGELOG entry under "Documentation" reminds future release-prep that the literal version string lives in the head doc.
+- [x] `src/tag_subscription.rs` is deleted; `pub mod tag_subscription;` is gone from `src/lib.rs:127`; the `RealTimeSubscription*` aliases at the crate root are unchanged in name and re-export from `subscription` directly.
+- [x] `_connection_id`, `_connected`, `_session_timeout` are removed from the struct, both constructors, and the `Debug` impl. `AtomicBool` import is removed alongside.
+- [x] All seven `#[must_use]` annotations are present at the listed sites; clippy is clean under both feature configurations.
+- [x] `ForceRuntimeInitErrorGuard` exists in `src/ffi.rs::tests`; `forced_runtime_init_error_returns_documented_code` uses it and still passes.
+- [x] `ffi_block_on!` carries a calling-context doc comment.
+- [x] CHANGELOG entries describe the contained changes in neutral voice; no SemVer-relevant claims.
+
+**Brief errors owned by Claude:**
+
+- The brief's audit grep pattern (`_connection_id\b`) matched unrelated `*_connection_id` fields because the underscore is itself a word boundary. Future audit greps should anchor more tightly.
+- The brief said "let `cargo build` regenerate `Cargo.lock`" — cargo's actual behavior is more conservative; orphan entries persist unless `cargo update` is invoked. In this case the entry is not even an orphan (transitive via `cargo-tarpaulin` on Linux), so the lockfile is correct, but the brief overpromised cargo-build behavior.
 
 ## Verdict
 
-*(empty — claude writes on merge or rejection)*
+**Merged** at `9aca8d2` — `api: contained cleanup pass — thiserror, dead deps, dead state, must_use`.
+
+The implementation is faithful to the brief on every acceptance criterion. Format strings on `BatchError` are byte-identical to the prior manual implementation, the shim removal preserves every crate-root name, the dead-state cascade caught the orphan `AtomicBool` import, and the RAII guard around `FORCE_RUNTIME_INIT_ERROR` is panic-safe. Symbol parity with the post-CODEX-A baseline is preserved at 56 `eip_` exports under `--features ffi`.
+
+The two 🟡 polish notes (adjacent `pub use` blocks, audit-grep word-boundary pitfall) are non-blocking and partly Claude-owned (the second is a brief-text issue, not a Codex defect).
+
+CODEX-C (next candidate brief: `lib.rs` decomposition into module boundaries — `client`, `batch`, `route`, `protocol/`) now has a clean ground state to land on, with no pending API cleanup blocking the move.

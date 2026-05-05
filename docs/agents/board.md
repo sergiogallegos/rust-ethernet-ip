@@ -4,15 +4,17 @@
 
 ## Open
 
+*(no open tasks)*
+
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-| CODEX-B | Contained API cleanup — thiserror, dead deps, dead state, must_use | codex | open | 2026-05-05 claude | [tasks/CODEX-B-contained-api-cleanup.md](tasks/CODEX-B-contained-api-cleanup.md) |
 
 ## Done
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
 | CODEX-A | FFI safety, runtime hardening, and lint baseline | codex | `3d98abf` |
+| CODEX-B | Contained API cleanup — thiserror, dead deps, dead state, must_use | codex | `9aca8d2` |
 
 ## Project context
 

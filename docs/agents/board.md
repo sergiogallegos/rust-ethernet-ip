@@ -4,10 +4,9 @@
 
 ## Open
 
-*(no open tasks — protocol just bootstrapped)*
-
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
+| CODEX-A | FFI safety, runtime hardening, and lint baseline | codex | open | 2026-05-05 claude | [tasks/CODEX-A-ffi-runtime-lint-safety.md](tasks/CODEX-A-ffi-runtime-lint-safety.md) |
 
 ## Done
 

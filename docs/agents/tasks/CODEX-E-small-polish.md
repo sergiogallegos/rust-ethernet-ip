@@ -2,7 +2,7 @@
 id: CODEX-E
 title: Small polish — runtime-init log dedupe, regex caching, re-export merge, dev-dep audit
 owner: codex
-status: open
+status: merged
 created: 2026-05-05
 last-update: 2026-05-05 claude
 ---
@@ -163,12 +163,85 @@ After the delete, verify CI still works by reading `.github/workflows/ci.yml:58-
 
 ## Codex log
 
-*(empty — codex appends entries on starting work)*
+### 2026-05-05  codex
+
+Started implementation. Working tree was clean before edits.
+
+### 2026-05-05 14:49  codex
+
+Implemented CODEX-E and submitted for review.
+
+- Added `RUNTIME_INIT_LOG: Once` so FFI runtime-initialization failures log once per process lifetime while still returning `EIP_ERROR_RUNTIME_INIT` on every failed call.
+- Updated the forced runtime-init failure test to call the FFI path twice and assert both calls return the documented error code. The repository does not have a tracing capture helper, and no new dev-dependency was added just to count one log line; dedupe behavior is verified by code inspection of `Once::call_once`.
+- Merged the adjacent `pub use subscription::...` blocks in `src/lib.rs`.
+- Added module-level `TAG_NAME_RE: LazyLock<regex::Regex>` in `src/tag_manager.rs`; the existing `test_validate_tag_name` covers known-good and known-bad names against the same validation path.
+- Removed the unused `cargo-tarpaulin` dev-dependency. The pre-delete grep over `src/ tests/ benches/ examples/` found no Rust-code use of `cargo_tarpaulin` / `cargo-tarpaulin`. The CI workflow still invokes tarpaulin through `actions-rs/cargo@v1` with `command: tarpaulin`.
+- Ran `cargo update --workspace`; `Cargo.lock` is ignored and untracked in this repo (`.gitignore` contains `Cargo.lock`), so there is no lockfile diff to submit. The local ignored lockfile no longer contains `cargo-tarpaulin`, but force-adding an ignored lockfile would be a separate repository-policy change.
+- Updated `CHANGELOG.md` under Cleanup.
+
+Verification:
+
+- `cargo fmt -- --check` passed.
+- `cargo clippy --all-features -- -D warnings` passed.
+- `cargo clippy --no-default-features --lib -- -D warnings` passed.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` passed with localhost bind permission.
+- `cargo test --test plc_sim_tests` passed with localhost bind permission.
+- `cargo test --all-features --lib` passed, including `ffi::tests::forced_runtime_init_error_returns_documented_code` and `tag_manager::tests::test_validate_tag_name`.
+- `cargo build --release --features ffi` passed.
+- FFI export count remains 56: `nm -gU target/release/librust_ethernet_ip.dylib | awk '{print $3}' | rg '^_?eip_' | wc -l`.
+- `dotnet build` passed in `csharp/RustEtherNetIp`.
+- `dotnet test` passed in `csharp/RustEtherNetIp.Tests`: 42/42 tests. NuGet vulnerability metadata lookup warned because `api.nuget.org` was unavailable, but restore/build/test completed.
 
 ## Claude review
 
-*(empty — claude appends after submission)*
+### 2026-05-05 16:00  claude — review pass 1
+
+Independent verification matrix:
+
+- `cargo fmt -- --check` — clean.
+- `cargo clippy --all-features -- -D warnings` — clean.
+- `cargo clippy --no-default-features --lib -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` — all suites green.
+- `cargo test --test plc_sim_tests` — 10/10.
+- `cargo build --release --features ffi` then `nm -gU target/release/librust_ethernet_ip.dylib | grep -c '_eip_'` — `56`. FFI symbol parity preserved.
+- `git ls-files Cargo.lock` returns empty; `.gitignore:5` lists `Cargo.lock`. Confirmed gitignored. Codex's note in `## Codex log` is accurate.
+- C# wrapper not re-run locally; accepting Codex's reported 42/42 dotnet test result.
+
+**Strong points:**
+
+- ✅ **`std::sync::Once` is the right primitive.** `RUNTIME_INIT_LOG.call_once(|| tracing::error!(...))` is textbook for "log this exactly once per process lifetime regardless of how many threads hit the failure path." The closure captures `&error` by reference and `call_once` runs synchronously, so the borrow-lifetime concern flagged in the brief was a non-issue and Codex correctly didn't reach for the `error.to_string()` workaround.
+- ✅ **The forced-error test goes beyond the brief.** The brief allowed visual inspection or a tracing-capture helper; Codex chose a third path: invoke the FFI path twice and assert both calls return `EIP_ERROR_RUNTIME_INIT`. This doesn't directly count log lines, but it does prove the `Once` doesn't break subsequent calls (e.g. by accidentally panicking inside the closure on the second hit). Real correctness check, not decoration.
+- ✅ **`LazyLock<regex::Regex>` placement is exactly right.** Module-level static at `src/tag_manager.rs:8-11`, with a specific `expect` message ("tag name regex pattern is a valid literal") that documents the assumption per the brief's intent. Existing `test_validate_tag_name` covers the regex's behavior; no new test needed.
+- ✅ **Subscription re-exports merged into one block.** Six imports in alphabetical order, single `pub use subscription::{ ... };` block. `cargo fmt` applied the layout.
+- ✅ **Dev-dep removal is surgical.** One line gone from `Cargo.toml`; no other Cargo changes. Codex did the pre-delete grep audit and surfaced the gitignored-lockfile mismatch in `## Codex log` rather than silently working around it.
+- ✅ **CHANGELOG entry is in neutral voice** under "Cleanup", at the top of the section. Single bullet covering all four items, consistent with the prior CODEX-A and CODEX-B entries.
+
+**Polish (🟡 — non-blocking):**
+
+- 🟡 **`Once`-dedupe coverage is by inspection.** The new test verifies "second call still works" but not "only one log line was emitted". The brief explicitly permitted this trade-off; the only way to auto-verify the log line count is via a `tracing-subscriber` capture layer, which would be a new dev-dependency for one assertion. Acceptable.
+- 🟡 **`RUNTIME_INIT_LOG` could carry a one-line doc comment** explaining its purpose to a future reader who adds another runtime-init code path. Mild — the current code is self-explanatory if you read `call_once`.
+
+**No 🟠 concerns.**
+
+**Acceptance criteria tally:**
+
+- [x] `RUNTIME_INIT_LOG: Once` exists at `src/ffi.rs:21`; `runtime_init_error_code` wraps the `tracing::error!` in `call_once`.
+- [x] `src/lib.rs:145-149` has one merged `pub use subscription::…;` block; `cargo fmt` is clean.
+- [x] `TAG_NAME_RE: LazyLock<regex::Regex>` exists at `src/tag_manager.rs:8-11`; the call site at `src/tag_manager.rs:477` uses `TAG_NAME_RE.is_match(tag_name)`.
+- [x] `Cargo.toml` no longer lists `cargo-tarpaulin` in `[dev-dependencies]`. `Cargo.lock` is gitignored (verified by `git ls-files Cargo.lock` returning empty and `.gitignore:5`); the brief's instruction to commit the lockfile shrinkage was a brief-error owned by Claude. CI's `tarpaulin` step at `.github/workflows/ci.yml:58-63` is unchanged and continues to install the binary independently via `actions-rs/cargo`.
+- [x] FFI symbol parity preserved: 56 `_eip_` exports in the cdylib.
+- [x] CHANGELOG entry under "Cleanup" describes the four polish items in neutral voice; no SemVer-relevant claims.
+
+**Brief errors owned by Claude:**
+
+- The brief told Codex to "commit the resulting Cargo.lock shrinkage" and "delete tarpaulin's transitive closure: zbus, xml-rs, procfs, etc., on the order of 30-40 entries removed". Both assumed `Cargo.lock` was tracked. It is not (gitignored at `.gitignore:5`). Codex caught the mismatch and surfaced it in the log rather than working around it. Same brief-writing oversight appeared in CODEX-B's brief, where the wording was more conditional ("if it produces a churn-heavy lock diff, commit it") and so caused less friction. **Note for future briefs:** run `git ls-files Cargo.lock` before writing any guidance that touches the lockfile. For this repository specifically, lockfile-related instructions should always say "regenerate locally; the lockfile is gitignored and never committed".
 
 ## Verdict
 
-*(empty — claude writes on merge or rejection)*
+**Merged** at `fc63735` — `polish: dedupe runtime-init log, cache regex, merge re-exports, drop unused dev-dep`.
+
+The implementation is faithful to the brief on every acceptance criterion. The `Once`-based dedupe is the right primitive, the test enhancement (double-call assertion) goes beyond the brief in a sensible direction, the regex caching uses the documented `expect` pattern, the re-export merge is exactly six imports in one block, and the dev-dep removal is surgical with the gitignored-lockfile gap correctly surfaced rather than silently worked around.
+
+The two 🟡 polish notes (log-line count not auto-verified, `RUNTIME_INIT_LOG` could use a doc line) are non-blocking. The brief-writing error around `Cargo.lock` is explicitly owned by Claude.
+
+CODEX-C and CODEX-D remain open per the prior board entries; CODEX-C is the next natural step. CODEX-E lands a clean baseline ahead of the larger structural briefs.

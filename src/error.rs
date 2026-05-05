@@ -104,6 +104,7 @@ pub enum EtherNetIpError {
 impl EtherNetIpError {
     /// Returns true if the error is likely retriable (e.g. timeout, connection lost).
     /// Use this to decide whether to retry an operation or reconnect.
+    #[must_use]
     pub fn is_retriable(&self) -> bool {
         matches!(
             self,

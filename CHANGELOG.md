@@ -31,6 +31,7 @@ Target next release: `0.8.0`.
 - **Rust 2024 migration without wrapper breakage**: Moved the repo to Rust `2024` / `1.95`, updated FFI exports to Rust 2024 `#[unsafe(no_mangle)]`, refreshed dependency baselines, and verified that Rust tests plus C# wrapper build/tests still pass against the updated native library.
 
 ### 📚 Documentation
+- **Release-prep version reminder**: Updated the literal `src/lib.rs` head-doc release-line references to `0.8.0`; future release prep should keep those literal strings in sync with `Cargo.toml`.
 - **Main README NuGet guidance**: Documented the published `RustEtherNetIp` NuGet package, CLI install command, `.NET 10` target, and current Windows `win-x64` native runtime focus.
 - **Release process docs**: Updated version-management guidance to use the Windows-first NuGet pack/publish flow.
 - **Official Rockwell source check**: Rechecked official Rockwell EtherNet/IP/data-access publications on 2026-04-16. The repository already tracks the current `1756-PM020I-EN-P` September 2025 data-access manual; `ENET-UM006C-EN-P` September 2025 was added to the traceability matrix as a relevant network-device reference for EtherNet/IP connection/message behavior.
@@ -38,6 +39,8 @@ Target next release: `0.8.0`.
 - **Toolchain baseline docs**: Updated build/readme/wiki references to the current Rust `1.95` / Rust 2024 baseline and current `.NET 10` wrapper outputs.
 
 ### 🧹 Cleanup
+- **Contained Rust API cleanup**: Derived `thiserror::Error` for `BatchError`, removed unused `EipClient` fields and the unused direct `async-trait` dependency, and added selected `#[must_use]` annotations for builder/getter APIs.
+- **Consolidated subscription re-exports**: Removed the one-line `tag_subscription` module shim; crate-root `RealTimeSubscription*` aliases now re-export directly from `subscription`.
 - **Repository ignore rules**: Added Obsidian workspace ignore coverage.
 - **Rust formatting pass**: Applied `cargo fmt` across the Rust tree to clear the pre-release formatter drift before tagging `0.8.0`.
 

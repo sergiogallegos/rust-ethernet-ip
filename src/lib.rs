@@ -2,7 +2,7 @@
 //!
 //! `rust-ethernet-ip` provides async Rust APIs for explicit EtherNet/IP and CIP
 //! tag operations, plus FFI surfaces used by the repository's .NET wrapper.
-//! The current released crate line is `0.7.0`.
+//! The current released crate line is `0.8.0`.
 //!
 //! ## Highlights
 //!
@@ -45,7 +45,7 @@
 //!
 //! ## Known PLC/Firmware Limits
 //!
-//! Real-hardware validation for the `0.7.0` release line confirmed that some
+//! Real-hardware validation for the `0.8.0` release line confirmed that some
 //! direct write shapes are controller/firmware limitations rather than library
 //! protocol defects:
 //!
@@ -70,7 +70,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 #[cfg(feature = "ffi")]
 use std::sync::LazyLock;
-use std::sync::atomic::AtomicBool;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -124,7 +123,6 @@ pub mod subscription;
 pub mod tag_group;
 pub mod tag_manager;
 pub mod tag_path;
-pub mod tag_subscription; // Real-time subscription management
 pub mod udt;
 pub mod version;
 
@@ -145,16 +143,16 @@ pub use schema::{
     SchemaScope, SchemaTag, SchemaTargetInfo, SchemaUdt, SchemaUdtMember,
 };
 pub use subscription::{SubscriptionManager, SubscriptionOptions, TagSubscription};
+pub use subscription::{
+    SubscriptionManager as RealTimeSubscriptionManager,
+    SubscriptionOptions as RealTimeSubscriptionOptions, TagSubscription as RealTimeSubscription,
+};
 pub use tag_group::{
     TagGroupConfig, TagGroupEvent, TagGroupEventKind, TagGroupFailureCategory,
     TagGroupFailureDiagnostic, TagGroupSnapshot, TagGroupSubscription, TagGroupValueResult,
 };
 pub use tag_manager::{TagCache, TagManager, TagMetadata, TagPermissions, TagScope};
 pub use tag_path::TagPath;
-pub use tag_subscription::{
-    SubscriptionManager as RealTimeSubscriptionManager,
-    SubscriptionOptions as RealTimeSubscriptionOptions, TagSubscription as RealTimeSubscription,
-};
 pub use udt::{TagAttributes, UdtDefinition, UdtMember, UdtTemplate};
 
 /// Initialize tracing subscriber with environment-based filtering
@@ -247,6 +245,7 @@ struct TemplateAttributes {
 
 impl RoutePath {
     /// Creates a new route path
+    #[must_use]
     pub fn new() -> Self {
         Self {
             slots: Vec::new(),
@@ -256,18 +255,21 @@ impl RoutePath {
     }
 
     /// Adds a backplane slot to the route
+    #[must_use]
     pub fn add_slot(mut self, slot: u8) -> Self {
         self.slots.push(slot);
         self
     }
 
     /// Adds a network port to the route
+    #[must_use]
     pub fn add_port(mut self, port: u8) -> Self {
         self.ports.push(port);
         self
     }
 
     /// Adds a network address to the route
+    #[must_use]
     pub fn add_address(mut self, address: String) -> Self {
         self.addresses.push(address);
         self
@@ -282,6 +284,7 @@ impl RoutePath {
     ///   - Slot 0: `01 00`
     ///   - Slot 1: `01 01`
     ///   - Slot 2: `01 02`
+    #[must_use]
     pub fn to_cip_bytes(&self) -> Vec<u8> {
         let mut path = Vec::new();
 
@@ -372,53 +375,40 @@ pub struct BatchResult {
 ///
 /// This enum provides detailed error information for batch operations,
 /// allowing for better error handling and diagnostics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum BatchError {
     /// Tag was not found in the PLC
+    #[error("Tag not found: {0}")]
     TagNotFound(String),
 
     /// Data type mismatch between expected and actual
+    #[error("Data type mismatch: expected {expected}, got {actual}")]
     DataTypeMismatch { expected: String, actual: String },
 
     /// Network communication error
+    #[error("Network error: {0}")]
     NetworkError(String),
 
     /// CIP protocol error with status code
+    #[error("CIP error (0x{status:02X}): {message}")]
     CipError { status: u8, message: String },
 
     /// Tag name parsing error
+    #[error("Tag path error: {0}")]
     TagPathError(String),
 
     /// Value serialization/deserialization error
+    #[error("Serialization error: {0}")]
     SerializationError(String),
 
     /// Operation timeout
+    #[error("Operation timeout")]
     Timeout,
 
     /// Generic error for unexpected issues
+    #[error("Error: {0}")]
     Other(String),
 }
-
-impl std::fmt::Display for BatchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BatchError::TagNotFound(tag) => write!(f, "Tag not found: {tag}"),
-            BatchError::DataTypeMismatch { expected, actual } => {
-                write!(f, "Data type mismatch: expected {expected}, got {actual}")
-            }
-            BatchError::NetworkError(msg) => write!(f, "Network error: {msg}"),
-            BatchError::CipError { status, message } => {
-                write!(f, "CIP error (0x{status:02X}): {message}")
-            }
-            BatchError::TagPathError(msg) => write!(f, "Tag path error: {msg}"),
-            BatchError::SerializationError(msg) => write!(f, "Serialization error: {msg}"),
-            BatchError::Timeout => write!(f, "Operation timeout"),
-            BatchError::Other(msg) => write!(f, "Error: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for BatchError {}
 
 /// Configuration for batch operations
 ///
@@ -1156,22 +1146,16 @@ pub struct EipClient {
     stream: Arc<Mutex<Box<dyn EtherNetIpStream>>>,
     /// Session handle for the connection
     session_handle: u32,
-    /// Connection ID for the session
-    _connection_id: u32,
     /// Tag manager for handling tag operations
     tag_manager: Arc<Mutex<TagManager>>,
     /// UDT manager for handling UDT operations
     udt_manager: Arc<Mutex<UdtManager>>,
     /// Route path for PLC communication
     route_path: Option<RoutePath>,
-    /// Whether the client is connected
-    _connected: Arc<AtomicBool>,
     /// Maximum packet size for communication
     max_packet_size: u32,
     /// Last activity timestamp
     last_activity: Arc<Mutex<Instant>>,
-    /// Session timeout duration
-    _session_timeout: Duration,
     /// Configuration for batch operations
     batch_config: BatchConfig,
     /// Connected session management for Class 3 operations
@@ -1190,7 +1174,6 @@ impl std::fmt::Debug for EipClient {
             .field("session_handle", &self.session_handle)
             .field("route_path", &self.route_path)
             .field("max_packet_size", &self.max_packet_size)
-            .field("_session_timeout", &self._session_timeout)
             .field("batch_config", &self.batch_config)
             .field("stream", &"<stream>")
             .field("tag_manager", &"<tag_manager>")
@@ -1212,14 +1195,11 @@ impl EipClient {
         let mut client = Self {
             stream: Arc::new(Mutex::new(Box::new(stream))),
             session_handle: 0,
-            _connection_id: 0,
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
             route_path: None,
-            _connected: Arc::new(AtomicBool::new(false)),
             max_packet_size: 4000,
             last_activity: Arc::new(Mutex::new(Instant::now())),
-            _session_timeout: Duration::from_secs(120),
             batch_config: BatchConfig::default(),
             connected_sessions: Arc::new(Mutex::new(HashMap::new())),
             connection_sequence: Arc::new(Mutex::new(1)),
@@ -1250,14 +1230,11 @@ impl EipClient {
         Self {
             stream: Arc::new(Mutex::new(Box::new(stream))),
             session_handle: 0,
-            _connection_id: 0,
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
             route_path: None,
-            _connected: Arc::new(AtomicBool::new(false)),
             max_packet_size: 4000,
             last_activity: Arc::new(Mutex::new(Instant::now())),
-            _session_timeout: Duration::from_secs(120),
             batch_config: BatchConfig::default(),
             connected_sessions: Arc::new(Mutex::new(HashMap::new())),
             connection_sequence: Arc::new(Mutex::new(1)),

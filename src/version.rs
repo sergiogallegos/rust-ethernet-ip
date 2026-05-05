@@ -28,16 +28,19 @@ pub const GIT_COMMIT_DATE: &str = env!("VERGEN_GIT_COMMIT_TIMESTAMP");
 pub const GIT_BRANCH: &str = env!("VERGEN_GIT_BRANCH");
 
 /// Get the library version as a string
+#[must_use]
 pub fn get_version() -> &'static str {
     VERSION
 }
 
 /// Get the library name
+#[must_use]
 pub fn get_name() -> &'static str {
     NAME
 }
 
 /// Get the library description
+#[must_use]
 pub fn get_description() -> &'static str {
     DESCRIPTION
 }

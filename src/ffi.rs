@@ -40,6 +40,9 @@ fn runtime() -> Result<&'static tokio::runtime::Runtime, c_int> {
     }
 }
 
+/// Awaits a future on the FFI Tokio runtime, early-returning
+/// `EIP_ERROR_RUNTIME_INIT` if the runtime is unavailable. Only call
+/// from inside an `unsafe extern "C" fn ... -> c_int` body.
 macro_rules! ffi_block_on {
     ($future:expr) => {{
         let runtime = match runtime() {
@@ -2809,12 +2812,26 @@ mod tests {
     use super::*;
     use std::ffi::CString;
 
+    struct ForceRuntimeInitErrorGuard;
+
+    impl ForceRuntimeInitErrorGuard {
+        fn enable() -> Self {
+            FORCE_RUNTIME_INIT_ERROR.store(true, std::sync::atomic::Ordering::SeqCst);
+            Self
+        }
+    }
+
+    impl Drop for ForceRuntimeInitErrorGuard {
+        fn drop(&mut self) {
+            FORCE_RUNTIME_INIT_ERROR.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
     #[test]
     fn forced_runtime_init_error_returns_documented_code() {
-        FORCE_RUNTIME_INIT_ERROR.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _guard = ForceRuntimeInitErrorGuard::enable();
         let address = CString::new("127.0.0.1:44818").expect("test address should be valid");
         let rc = unsafe { eip_connect(address.as_ptr()) };
-        FORCE_RUNTIME_INIT_ERROR.store(false, std::sync::atomic::Ordering::SeqCst);
 
         assert_eq!(rc, EIP_ERROR_RUNTIME_INIT);
     }

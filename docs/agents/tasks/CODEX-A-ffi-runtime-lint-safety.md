@@ -2,7 +2,7 @@
 id: CODEX-A
 title: FFI safety, runtime hardening, and lint baseline
 owner: codex
-status: open
+status: merged
 created: 2026-05-05
 last-update: 2026-05-05 claude
 ---
@@ -159,12 +159,84 @@ If the native artifact location changed (it should not — `cdylib` output path 
 
 ## Codex log
 
-*(empty — codex appends entries on starting work)*
+### 2026-05-05 13:06  codex
+
+Implemented CODEX-A and submitted for review.
+
+- Gated `src/ffi.rs` behind the existing `ffi` Cargo feature and moved the global Tokio runtime behind the same feature.
+- Replaced runtime initialization panic with `LazyLock<std::io::Result<Runtime>>` and a documented FFI return code, `-2`.
+- Added `From<PoisonError<_>> for EtherNetIpError`, converted the listed poisoned-lock panic paths, and defended the connected-session lookup.
+- Added the conservative crate lint baseline and fixed the one surfaced `print!` site by switching it to tracing.
+- Updated FFI-producing build scripts/workflows, C# native constants, changelog, and the default-feature `ffi_tests` compile gate.
+- No standalone public C header exists in this repository; the runtime-init code is documented in Rust FFI constants and the C# native wrapper constant.
+
+Verification:
+
+- `cargo fmt --check` passed.
+- `cargo clippy --all-features -- -D warnings` passed.
+- `cargo clippy --no-default-features -- -D warnings` passed.
+- `cargo build` passed; `nm target/debug/librust_ethernet_ip.rlib | grep -ci eip_` returned `0`.
+- `cargo build --release --features ffi` passed.
+- `cargo test --all-features --lib` passed, including the forced runtime-init error test and poison conversion test.
+- FFI symbol parity passed against temporary worktree at `59d267f`: 56 `eip_` symbols before and after, empty diff.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` passed after rerunning with localhost bind permission for simulator tests.
+- `cargo test --test plc_sim_tests` passed after rerunning with localhost bind permission.
+- `dotnet build` passed in `csharp/RustEtherNetIp`.
+- `dotnet test` passed in `csharp/RustEtherNetIp.Tests`: 42/42 tests. The first sandboxed run failed because VSTest could not open its local socket; rerun with permission passed.
 
 ## Claude review
 
-*(empty — claude appends after submission)*
+### 2026-05-05 14:30  claude — review pass 1
+
+Independent verification matrix (run locally before reading the diff):
+
+- `cargo fmt -- --check` — clean.
+- `cargo clippy --all-features -- -D warnings` — clean.
+- `cargo clippy --no-default-features --lib -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` — all suites green; no failures across unit, integration, or doctest runs.
+- `cargo test --test plc_sim_tests` — 10/10 pass.
+- Symbol parity (independent): `cargo build --release --features ffi` then `nm -gU target/release/librust_ethernet_ip.dylib | grep -c '_eip_'` returns `56`. `cargo build` (default features) then `nm target/debug/librust_ethernet_ip.rlib | grep -ci 'eip_'` returns `0`. Matches Codex's report.
+- C# wrapper not re-run locally; accepting Codex's reported 42/42 dotnet test result. Maintainer to re-validate on the .NET-primary environment if a regression is suspected.
+
+**Strong points:**
+
+- ✅ **Lint baseline placement is correct.** `#![deny(...)]` and `#![cfg_attr(not(test), warn(...))]` sit at `src/lib.rs:64-65`, after the head doc-comment and before `use` declarations — matches the convention used in tokio and axum.
+- ✅ **Feature gating is consistent and complete.** `pub mod ffi;`, `static RUNTIME`, `use tokio::runtime::Runtime`, and `use std::sync::LazyLock` are all gated together. No half-gating that would leave the default rlib carrying inert FFI scaffolding.
+- ✅ **`runtime()` accessor + `ffi_block_on!` macro is the right shape.** Every prior `RUNTIME.block_on(...)` callsite in `src/ffi.rs` is mechanically converted to `ffi_block_on!(...)`, producing a uniform error-handling pattern across all 30-plus FFI entry points. The two `RUNTIME.handle().clone(); rt.block_on(...)` sites at the original `eip_get_udt_definition`, `eip_get_tag_attributes`, and `eip_discover_tags_detailed` are simplified to the same macro — semantically equivalent (`Handle::block_on` and `Runtime::block_on` behave the same here) and easier to read.
+- ✅ **The `#[cfg(test)] FORCE_RUNTIME_INIT_ERROR` shim was the optional ask in the brief — Codex chose to write it.** The resulting `forced_runtime_init_error_returns_documented_code` test in `src/ffi.rs::tests` exercises the full FFI error path end-to-end and asserts the documented `-2` return code. This is a genuinely better outcome than the brief's fallback ("document the gap and skip").
+- ✅ **`From<PoisonError<_>>` impl is one-line and the test triggers real poisoning** via `std::thread::scope` with a panicking inner thread. The test does not synthesize a `PoisonError`; it provokes one. Robust against future refactors.
+- ✅ **Signature ripple handled cleanly.** `TagManager::get_metadata` → `Result<Option<TagMetadata>>` propagates through `validate_tag` and the concurrency test (`tests/concurrency_tests.rs:60-68`). `clear_caches` and `get_tag_metadata` on `EipClient` deliberately swallow errors via `tracing::warn!` to preserve their existing public signatures (unit and `Option`); that is the correct trade-off for this brief's "no public API change" constraint.
+- ✅ **`tests/ffi_tests.rs` is now `#![cfg(feature = "ffi")]`.** Without this, `cargo clippy --no-default-features` would have failed to compile the integration test against the gone-missing FFI symbols. Easy to forget; not forgotten.
+- ✅ **CHANGELOG entry is in neutral project voice** under "Fixed", with no agent attribution. The C# `EipErrorRuntimeInit = -2` constant lands in the same change.
+
+**Polish (🟡 — non-blocking, candidates for CODEX-B or later):**
+
+- 🟡 **`FORCE_RUNTIME_INIT_ERROR` test hygiene.** `src/ffi.rs::tests::forced_runtime_init_error_returns_documented_code` does `store(true)` → call → `store(false)`. If the test panics between the two stores, the flag stays on and pollutes other tests in the same process. A scoped guard (RAII reset) would be safer. Single-test impact today; foot-gun for the future.
+- 🟡 **`ffi_block_on!` macro early-returns from inside an expression.** The macro contains `return code;` which only makes sense in a function returning `c_int`. Every current caller satisfies that contract, but a one-line doc comment on the macro pinning the contract would help future-codex.
+- 🟡 **Repeated runtime-init log on every FFI call after a failure.** `runtime_init_error_code` logs once per call; if a host invokes 1000 FFI functions after a failed init, that's 1000 identical `tracing::error!` lines. A `Once`-based dedupe is a future improvement, not a blocker.
+- 🟡 **`get_tag_metadata` swallowing of poison.** Returning `None` on poison hides a soundness-relevant condition behind what looks like a normal "tag not in cache" miss. Logging via `tracing::warn!` is present, but the public API may want a `Result<Option<_>>` form in a future SemVer-major release.
+
+**No 🟠 concerns.**
+
+**Acceptance criteria tally:**
+
+- [x] `cargo build` produces an `rlib` without `eip_` symbols. Verified independently: `0` matches.
+- [x] `cargo build --release --features ffi` cdylib symbol parity. Verified independently: `56` matches; sample symbols (`_eip_check_health`, `_eip_connect`, `_eip_connect_with_route`, …) are visible.
+- [x] All four cargo build invocations pass `--features ffi` (`build.bat:7`, `build-all.bat:15`, `.github/workflows/ci.yml:90`, `.github/workflows/release.yml:34`).
+- [x] `RUNTIME` initialization failure surfaces as `EIP_ERROR_RUNTIME_INIT = -2` in `src/ffi.rs:16` and as `EipErrorRuntimeInit = -2` in `csharp/RustEtherNetIp/EthernetNetIpClient.NativeMethods.cs:8`. The brief asked for an FFI header entry; this repository ships no standalone C header (Codex flagged this in the log), so the C# constant is the canonical wrapper-side declaration.
+- [x] All seven sites listed in section 3 of the brief are converted, plus a poison-recovery test in `src/error.rs::tests`.
+- [x] Lint attributes present at `src/lib.rs:64-65`; clippy clean under both feature configurations.
+- [x] C# wrapper build/test reported green by Codex (42/42); maintainer to re-validate on the .NET-primary environment.
+- [x] `CHANGELOG.md` gets a "Fixed" entry in neutral voice; no SemVer-relevant claims made (none should exist — the public Rust and C ABI surfaces are unchanged).
+
+**Brief errors owned by Claude:** none discovered during review. The brief's "if the test shim is intrusive, document and skip" hedge turned out to be unnecessary — the implementation is small. Note for future briefs: the `FORCE_*_ERROR` `AtomicBool` pattern is a clean way to expose injection points across an FFI boundary and could be templated for similar tasks.
 
 ## Verdict
 
-*(empty — claude writes on merge or rejection)*
+**Merged** at `3d98abf` — `ffi: gate behind feature flag, surface runtime init failure, harden locks`.
+
+The implementation is faithful to the brief on every acceptance criterion, with the optional `FORCE_RUNTIME_INIT_ERROR` test shim chosen over the documented fallback. Symbol parity preserved at 56 `eip_` exports under `--features ffi`; default rlib carries zero FFI symbols. Both clippy variants are clean, full test matrix is green, and the C# wrapper test report is accepted pending maintainer re-validation on the .NET-primary environment.
+
+The four 🟡 polish notes (test-flag hygiene, macro contract doc, runtime-init log dedupe, `get_tag_metadata` swallowing) are non-blocking and are candidates for a future cleanup brief — they do not justify rejecting an otherwise faithful implementation.
+
+CODEX-B (contained API cleanup — `BatchError` to thiserror, `async-trait` dep removal, `0.7.0` docstring rot, `tag_subscription.rs` shim, underscore-field cleanup, selected `#[must_use]`) is the natural next brief and now has a clean ground state to land on.

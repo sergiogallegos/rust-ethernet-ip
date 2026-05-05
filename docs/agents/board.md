@@ -4,16 +4,16 @@
 
 ## Open
 
+*(no open tasks)*
+
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-| CODEX-A | FFI safety, runtime hardening, and lint baseline | codex | open | 2026-05-05 claude | [tasks/CODEX-A-ffi-runtime-lint-safety.md](tasks/CODEX-A-ffi-runtime-lint-safety.md) |
 
 ## Done
 
-*(no merged tasks tracked through this protocol yet — work prior to bootstrap is in git history)*
-
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-A | FFI safety, runtime hardening, and lint baseline | codex | `3d98abf` |
 
 ## Project context
 

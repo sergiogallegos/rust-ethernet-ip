@@ -4,10 +4,13 @@
 
 ## Open
 
-*(no open tasks)*
-
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
+| CODEX-C | Decompose lib.rs into route, batch, types, and client modules | codex | open | 2026-05-05 claude | [tasks/CODEX-C-lib-decomposition.md](tasks/CODEX-C-lib-decomposition.md) |
+| CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | open | 2026-05-05 claude | [tasks/CODEX-D-codec-boundary.md](tasks/CODEX-D-codec-boundary.md) |
+| CODEX-E | Small polish — runtime-init log dedupe, regex caching, re-export merge, dev-dep audit | codex | open | 2026-05-05 claude | [tasks/CODEX-E-small-polish.md](tasks/CODEX-E-small-polish.md) |
+
+> **Suggested ordering:** CODEX-E first (smallest, independent), then CODEX-C (gating step), then CODEX-D (depends on CODEX-C). CODEX-D's `depends-on` frontmatter is enforced by the reviewer at submission time.
 
 ## Done
 

@@ -2,9 +2,14 @@ use crate::EipClient;
 use crate::error::{EtherNetIpError, Result};
 use crate::udt::{UdtDefinition, UdtMember};
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, Instant};
 use tracing;
+
+static TAG_NAME_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"^[a-zA-Z][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*$")
+        .expect("tag name regex pattern is a valid literal")
+});
 
 /// Represents the scope of a tag in the PLC
 #[derive(Debug, Clone, PartialEq)]
@@ -469,10 +474,7 @@ impl TagManager {
         }
 
         // Check for valid characters: alphanumeric, dots, underscores
-        let valid_tag_name_regex =
-            regex::Regex::new(r"^[a-zA-Z][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*$").unwrap();
-
-        if !valid_tag_name_regex.is_match(tag_name) {
+        if !TAG_NAME_RE.is_match(tag_name) {
             return false;
         }
 

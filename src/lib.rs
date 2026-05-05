@@ -142,10 +142,10 @@ pub use schema::{
     SchemaCapabilities, SchemaDataType, SchemaExport, SchemaLibraryInfo, SchemaRoutePath,
     SchemaScope, SchemaTag, SchemaTargetInfo, SchemaUdt, SchemaUdtMember,
 };
-pub use subscription::{SubscriptionManager, SubscriptionOptions, TagSubscription};
 pub use subscription::{
-    SubscriptionManager as RealTimeSubscriptionManager,
-    SubscriptionOptions as RealTimeSubscriptionOptions, TagSubscription as RealTimeSubscription,
+    SubscriptionManager, SubscriptionManager as RealTimeSubscriptionManager, SubscriptionOptions,
+    SubscriptionOptions as RealTimeSubscriptionOptions, TagSubscription,
+    TagSubscription as RealTimeSubscription,
 };
 pub use tag_group::{
     TagGroupConfig, TagGroupEvent, TagGroupEventKind, TagGroupFailureCategory,

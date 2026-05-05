@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_short, c_void};
 use std::ptr;
-use std::sync::{LazyLock, Mutex, MutexGuard};
+use std::sync::{LazyLock, Mutex, MutexGuard, Once};
 use tracing;
 
 // FFI-specific client manager using synchronous mutex
@@ -18,12 +18,15 @@ const EIP_ERROR_RUNTIME_INIT: c_int = -2;
 static FFI_CLIENTS: LazyLock<Mutex<HashMap<i32, EipClient>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static FFI_NEXT_ID: LazyLock<Mutex<i32>> = LazyLock::new(|| Mutex::new(1));
+static RUNTIME_INIT_LOG: Once = Once::new();
 #[cfg(test)]
 static FORCE_RUNTIME_INIT_ERROR: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 fn runtime_init_error_code(error: &std::io::Error) -> c_int {
-    tracing::error!("[FFI] Failed to initialize Tokio runtime: {}", error);
+    RUNTIME_INIT_LOG.call_once(|| {
+        tracing::error!("[FFI] Failed to initialize Tokio runtime: {}", error);
+    });
     EIP_ERROR_RUNTIME_INIT
 }
 
@@ -2832,7 +2835,9 @@ mod tests {
         let _guard = ForceRuntimeInitErrorGuard::enable();
         let address = CString::new("127.0.0.1:44818").expect("test address should be valid");
         let rc = unsafe { eip_connect(address.as_ptr()) };
+        let rc_again = unsafe { eip_connect(address.as_ptr()) };
 
         assert_eq!(rc, EIP_ERROR_RUNTIME_INIT);
+        assert_eq!(rc_again, EIP_ERROR_RUNTIME_INIT);
     }
 }

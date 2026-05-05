@@ -39,6 +39,7 @@ Target next release: `0.8.0`.
 - **Toolchain baseline docs**: Updated build/readme/wiki references to the current Rust `1.95` / Rust 2024 baseline and current `.NET 10` wrapper outputs.
 
 ### 🧹 Cleanup
+- **Small Rust polish**: Deduplicated FFI runtime-initialization failure logging, cached tag-name validation regex compilation, merged subscription re-exports, and removed the unused `cargo-tarpaulin` dev-dependency.
 - **Contained Rust API cleanup**: Derived `thiserror::Error` for `BatchError`, removed unused `EipClient` fields and the unused direct `async-trait` dependency, and added selected `#[must_use]` annotations for builder/getter APIs.
 - **Consolidated subscription re-exports**: Removed the one-line `tag_subscription` module shim; crate-root `RealTimeSubscription*` aliases now re-export directly from `subscription`.
 - **Repository ignore rules**: Added Obsidian workspace ignore coverage.

@@ -31,7 +31,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Build Windows native library
-        run: cargo build --release
+        run: cargo build --release --features ffi
 
       - name: Pack NuGet package
         shell: pwsh

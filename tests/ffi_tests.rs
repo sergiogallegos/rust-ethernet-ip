@@ -1,3 +1,5 @@
+#![cfg(feature = "ffi")]
+
 mod plc_sim;
 
 use plc_sim::SimulatedPlc;

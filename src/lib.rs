@@ -61,11 +61,16 @@
 //! Recommended pattern for restricted cases: read-modify-write the full UDT or
 //! UDT array element instead of directly writing the nested restricted member.
 
+#![deny(unused_must_use, unsafe_op_in_unsafe_fn)]
+#![cfg_attr(not(test), warn(clippy::print_stdout, clippy::dbg_macro))]
+
 use crate::udt::UdtManager;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
+#[cfg(feature = "ffi")]
+use std::sync::LazyLock;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, LazyLock};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -103,12 +108,14 @@ use tokio::net::TcpStream;
 pub trait EtherNetIpStream: AsyncRead + AsyncWrite + Unpin + Send {}
 
 impl<S> EtherNetIpStream for S where S: AsyncRead + AsyncWrite + Unpin + Send {}
+#[cfg(feature = "ffi")]
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant, timeout};
 
 pub mod config; // Production-ready configuration management
 pub mod error;
+#[cfg(feature = "ffi")]
 pub mod ffi;
 pub mod monitoring; // Enterprise-grade monitoring and health checks
 pub mod plc_manager;
@@ -315,7 +322,8 @@ impl Default for RoutePath {
 }
 
 /// Global Tokio runtime for handling async operations in FFI context
-static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| Runtime::new().unwrap());
+#[cfg(feature = "ffi")]
+static RUNTIME: LazyLock<std::io::Result<Runtime>> = LazyLock::new(Runtime::new);
 
 // =========================================================================
 // BATCH OPERATIONS DATA STRUCTURES
@@ -1393,7 +1401,7 @@ impl EipClient {
 
         {
             let tag_manager = self.tag_manager.lock().await;
-            let mut cache = tag_manager.cache.write().unwrap();
+            let mut cache = tag_manager.cache.write()?;
             for (name, metadata) in hierarchical_tags {
                 cache.insert(name, metadata);
             }
@@ -1424,7 +1432,7 @@ impl EipClient {
         // Cache the definition
         {
             let tag_manager = self.tag_manager.lock().await;
-            let mut definitions = tag_manager.udt_definitions.write().unwrap();
+            let mut definitions = tag_manager.udt_definitions.write()?;
             definitions.insert(udt_name.to_string(), definition.clone());
         }
 
@@ -1576,7 +1584,9 @@ impl EipClient {
 
     /// Clears cached tag metadata and UDT-related caches.
     pub async fn clear_caches(&mut self) {
-        self.tag_manager.lock().await.clear_cache().await;
+        if let Err(error) = self.tag_manager.lock().await.clear_cache().await {
+            tracing::warn!("failed to clear tag metadata cache: {error}");
+        }
         self.udt_manager.lock().await.clear_cache();
     }
 
@@ -1646,8 +1656,13 @@ impl EipClient {
     /// Gets metadata for a tag
     pub async fn get_tag_metadata(&self, tag_name: &str) -> Option<TagMetadata> {
         let tag_manager = self.tag_manager.lock().await;
-        let cache = tag_manager.cache.read().unwrap();
-        cache.get(tag_name).cloned()
+        match tag_manager.cache.read() {
+            Ok(cache) => cache.get(tag_name).cloned(),
+            Err(_) => {
+                tracing::warn!("failed to read tag metadata cache: lock poisoned");
+                None
+            }
+        }
     }
 
     /// Exports a stable schema view built from the current discovery APIs.
@@ -6835,7 +6850,7 @@ impl EipClient {
                 .write_tag(&data_element, PlcValue::Sint(byte as i8))
                 .await
             {
-                Ok(_) => print!("."),
+                Ok(_) => tracing::trace!("wrote STRING byte at position {}", i),
                 Err(e) => {
                     tracing::error!("Failed to write byte {} to position {}: {}", byte, i, e);
                     return Err(e);
@@ -7222,7 +7237,11 @@ impl EipClient {
             sessions = self.connected_sessions.lock().await;
         }
 
-        let session = sessions.get(&session_name).unwrap().clone();
+        let session = sessions.get(&session_name).cloned().ok_or_else(|| {
+            crate::error::EtherNetIpError::Connection(format!(
+                "connected session '{session_name}' was not available after establishment"
+            ))
+        })?;
         let request = self.build_connected_string_write_request(tag_name, value, &session)?;
 
         drop(sessions); // Release the lock before sending the request

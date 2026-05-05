@@ -5,6 +5,8 @@ namespace RustEtherNetIp
 {
     public partial class EtherNetIpClient
     {
+        internal const int EipErrorRuntimeInit = -2;
+
         // These are the low-level FFI calls to the Rust library.
         // Public APIs should route through the wrapper methods instead.
 

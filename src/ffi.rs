@@ -13,9 +13,42 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 use tracing;
 
 // FFI-specific client manager using synchronous mutex
+const EIP_ERROR_RUNTIME_INIT: c_int = -2;
+
 static FFI_CLIENTS: LazyLock<Mutex<HashMap<i32, EipClient>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static FFI_NEXT_ID: LazyLock<Mutex<i32>> = LazyLock::new(|| Mutex::new(1));
+#[cfg(test)]
+static FORCE_RUNTIME_INIT_ERROR: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn runtime_init_error_code(error: &std::io::Error) -> c_int {
+    tracing::error!("[FFI] Failed to initialize Tokio runtime: {}", error);
+    EIP_ERROR_RUNTIME_INIT
+}
+
+fn runtime() -> Result<&'static tokio::runtime::Runtime, c_int> {
+    #[cfg(test)]
+    if FORCE_RUNTIME_INIT_ERROR.load(std::sync::atomic::Ordering::SeqCst) {
+        let error = std::io::Error::other("forced runtime initialization failure");
+        return Err(runtime_init_error_code(&error));
+    }
+
+    match &*RUNTIME {
+        Ok(runtime) => Ok(runtime),
+        Err(error) => Err(runtime_init_error_code(error)),
+    }
+}
+
+macro_rules! ffi_block_on {
+    ($future:expr) => {{
+        let runtime = match runtime() {
+            Ok(runtime) => runtime,
+            Err(code) => return code,
+        };
+        runtime.block_on($future)
+    }};
+}
 
 fn to_c_string_owned(value: &str) -> Result<*mut c_char, ()> {
     CString::new(value).map(|s| s.into_raw()).map_err(|_| ())
@@ -269,7 +302,7 @@ pub unsafe extern "C" fn eip_connect(ip_address: *const c_char) -> c_int {
         return -1;
     };
 
-    let Ok(client) = RUNTIME.block_on(EipClient::new(ip_str)) else {
+    let Ok(client) = ffi_block_on!(EipClient::new(ip_str)) else {
         return -1;
     };
 
@@ -355,7 +388,7 @@ pub unsafe extern "C" fn eip_connect_with_route(
         }
     }
 
-    let Ok(client) = RUNTIME.block_on(crate::EipClient::with_route_path(ip_str, route_path)) else {
+    let Ok(client) = ffi_block_on!(crate::EipClient::with_route_path(ip_str, route_path)) else {
         return -1;
     };
 
@@ -494,7 +527,7 @@ pub unsafe extern "C" fn eip_read_bool(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Bool(value)) => {
             unsafe {
                 *result = i32::from(value);
@@ -533,10 +566,7 @@ pub unsafe extern "C" fn eip_write_bool(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    if RUNTIME
-        .block_on(client.write_tag(tag_name_str, PlcValue::Bool(bool_value)))
-        .is_ok()
-    {
+    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Bool(bool_value))).is_ok() {
         0
     } else {
         -1
@@ -571,7 +601,7 @@ pub unsafe extern "C" fn eip_read_sint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Sint(value)) => {
             unsafe {
                 *result = value;
@@ -608,10 +638,7 @@ pub unsafe extern "C" fn eip_write_sint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    if RUNTIME
-        .block_on(client.write_tag(tag_name_str, PlcValue::Sint(value)))
-        .is_ok()
-    {
+    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Sint(value))).is_ok() {
         0
     } else {
         -1
@@ -637,7 +664,7 @@ pub unsafe extern "C" fn eip_read_int(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Int(value)) => {
             unsafe {
                 *result = value;
@@ -666,7 +693,7 @@ pub unsafe extern "C" fn eip_write_int(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Int(value))) {
+    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Int(value))) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -694,7 +721,7 @@ pub unsafe extern "C" fn eip_read_dint(
             return -1;
         }
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Dint(value)) => {
             unsafe {
                 *result = value;
@@ -731,7 +758,7 @@ pub unsafe extern "C" fn eip_write_dint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Dint(value))) {
+    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Dint(value))) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -756,7 +783,7 @@ pub unsafe extern "C" fn eip_read_lint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Lint(value)) => {
             unsafe {
                 *result = value;
@@ -785,7 +812,7 @@ pub unsafe extern "C" fn eip_write_lint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Lint(value))) {
+    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Lint(value))) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -810,7 +837,7 @@ pub unsafe extern "C" fn eip_read_usint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Usint(value)) => {
             unsafe {
                 *result = value;
@@ -839,7 +866,7 @@ pub unsafe extern "C" fn eip_write_usint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Usint(value))) {
+    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Usint(value))) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -864,7 +891,7 @@ pub unsafe extern "C" fn eip_read_uint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Uint(value)) => {
             unsafe {
                 *result = value;
@@ -893,7 +920,7 @@ pub unsafe extern "C" fn eip_write_uint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Uint(value))) {
+    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Uint(value))) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -918,7 +945,7 @@ pub unsafe extern "C" fn eip_read_udint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Udint(value)) => {
             unsafe {
                 *result = value;
@@ -947,7 +974,7 @@ pub unsafe extern "C" fn eip_write_udint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Udint(value))) {
+    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Udint(value))) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -972,7 +999,7 @@ pub unsafe extern "C" fn eip_read_ulint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Ulint(value)) => {
             unsafe {
                 *result = value;
@@ -1001,10 +1028,7 @@ pub unsafe extern "C" fn eip_write_ulint(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    if RUNTIME
-        .block_on(client.write_tag(tag_name_str, PlcValue::Ulint(value)))
-        .is_ok()
-    {
+    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Ulint(value))).is_ok() {
         0
     } else {
         -1
@@ -1030,7 +1054,7 @@ pub unsafe extern "C" fn eip_read_real(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Real(value)) => {
             unsafe {
                 *result = f64::from(value);
@@ -1060,7 +1084,7 @@ pub unsafe extern "C" fn eip_write_real(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.write_tag(tag_name_str, PlcValue::Real(value as f32))) {
+    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Real(value as f32))) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -1085,7 +1109,7 @@ pub unsafe extern "C" fn eip_read_lreal(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::Lreal(value)) => {
             unsafe {
                 *result = value;
@@ -1114,10 +1138,7 @@ pub unsafe extern "C" fn eip_write_lreal(
         Ok(client) => client,
         Err(_) => return -1,
     };
-    if RUNTIME
-        .block_on(client.write_tag(tag_name_str, PlcValue::Lreal(value)))
-        .is_ok()
-    {
+    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Lreal(value))).is_ok() {
         0
     } else {
         -1
@@ -1154,7 +1175,7 @@ pub unsafe extern "C" fn eip_read_string(
         Err(_) => return -1,
     };
 
-    let value = match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    let value = match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(PlcValue::String(value)) => {
             tracing::info!(
                 "[FFI] Read STRING tag '{}' succeeded: '{}'",
@@ -1358,8 +1379,7 @@ pub unsafe extern "C" fn eip_write_string(
         Err(_) => return -1,
     };
 
-    if RUNTIME
-        .block_on(client.write_tag(tag_name_str, PlcValue::String(value_str.to_string())))
+    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::String(value_str.to_string())))
         .is_ok()
     {
         0
@@ -1403,7 +1423,7 @@ pub unsafe extern "C" fn eip_read_tag(
             return -1;
         }
     };
-    let value = match RUNTIME.block_on(client.read_tag(tag_name_str)) {
+    let value = match ffi_block_on!(client.read_tag(tag_name_str)) {
         Ok(value) => {
             tracing::info!(
                 "[FFI] Read tag '{}' succeeded, type: {:?}",
@@ -1491,7 +1511,7 @@ pub unsafe extern "C" fn eip_read_array_range(
         Err(_) => return -1,
     };
 
-    let values = match RUNTIME.block_on(client.read_array_range(
+    let values = match ffi_block_on!(client.read_array_range(
         base_array_name_str,
         start_index as u32,
         element_count as u32,
@@ -1541,7 +1561,7 @@ pub unsafe extern "C" fn eip_read_udt(
         Err(_) => return -1,
     };
 
-    let value = match RUNTIME.block_on(client.read_udt_chunked(tag_name_str)) {
+    let value = match ffi_block_on!(client.read_udt_chunked(tag_name_str)) {
         Ok(PlcValue::Udt(udt_data)) => udt_data,
         Ok(_) => return -1,  // Wrong data type
         Err(_) => return -1, // Error reading tag
@@ -1600,7 +1620,7 @@ pub unsafe extern "C" fn eip_write_udt(
 
     // Convert HashMap to UdtData format
     // First, read the tag to get symbol_id and UDT definition
-    let udt_data = match RUNTIME.block_on(async {
+    let udt_data = match ffi_block_on!(async {
         // Read tag to get symbol_id
         let read_value = client.read_tag(tag_name_str).await?;
         let existing_udt = if let PlcValue::Udt(data) = read_value {
@@ -1633,10 +1653,7 @@ pub unsafe extern "C" fn eip_write_udt(
         }
     };
 
-    if RUNTIME
-        .block_on(client.write_tag(tag_name_str, PlcValue::Udt(udt_data)))
-        .is_ok()
-    {
+    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Udt(udt_data))).is_ok() {
         0
     } else {
         -1
@@ -1684,7 +1701,7 @@ pub unsafe extern "C" fn eip_check_health(client_id: c_int, is_healthy: *mut c_i
         }
     };
 
-    let is_ok = RUNTIME.block_on(client.check_health());
+    let is_ok = ffi_block_on!(client.check_health());
     unsafe {
         *is_healthy = if is_ok { 1 } else { 0 };
     }
@@ -1710,9 +1727,7 @@ pub unsafe extern "C" fn eip_check_health_detailed(
         }
     };
 
-    let is_ok = RUNTIME
-        .block_on(client.check_health_detailed())
-        .unwrap_or_default();
+    let is_ok = ffi_block_on!(client.check_health_detailed()).unwrap_or_default();
 
     if store_client(client_id, client).is_err() {
         unsafe {
@@ -1743,12 +1758,12 @@ pub unsafe extern "C" fn eip_get_diagnostics_json(
     };
 
     let snapshot = if detailed != 0 {
-        match RUNTIME.block_on(client.get_diagnostics_snapshot_detailed()) {
+        match ffi_block_on!(client.get_diagnostics_snapshot_detailed()) {
             Ok(snapshot) => snapshot,
             Err(_) => return -1,
         }
     } else {
-        RUNTIME.block_on(client.get_diagnostics_snapshot())
+        ffi_block_on!(client.get_diagnostics_snapshot())
     };
 
     if detailed != 0 && store_client(client_id, client).is_err() {
@@ -1804,7 +1819,7 @@ pub unsafe extern "C" fn eip_read_tags_batch(
     }
 
     // Execute batch read
-    let batch_results = RUNTIME.block_on(async { client.read_tags_batch(&tag_name_strs).await });
+    let batch_results = ffi_block_on!(async { client.read_tags_batch(&tag_name_strs).await });
 
     let results_data = match batch_results {
         Ok(results) => {
@@ -1891,7 +1906,7 @@ pub unsafe extern "C" fn eip_write_tags_batch(
             .map(|(name, value)| (name.as_str(), value.clone()))
             .collect();
 
-        match RUNTIME.block_on(client.write_tags_batch(&write_refs)) {
+        match ffi_block_on!(client.write_tags_batch(&write_refs)) {
             Ok(results_vec) => {
                 for (tag_name, result) in results_vec {
                     match result {
@@ -2034,7 +2049,7 @@ pub unsafe extern "C" fn eip_execute_batch(
     let batch_exec_result = if valid_operations.is_empty() {
         Ok(Vec::new())
     } else {
-        RUNTIME.block_on(client.execute_batch(&valid_operations))
+        ffi_block_on!(client.execute_batch(&valid_operations))
     };
 
     // Restore caller's batch config to avoid side effects from this FFI call.
@@ -2166,7 +2181,7 @@ pub unsafe extern "C" fn eip_read_udt_chunked(
         Err(_) => return -1,
     };
 
-    let value = match RUNTIME.block_on(client.read_udt_chunked(tag_name_str)) {
+    let value = match ffi_block_on!(client.read_udt_chunked(tag_name_str)) {
         Ok(PlcValue::Udt(udt_data)) => udt_data,
         Ok(_) => return -1,
         Err(_) => return -1,
@@ -2221,7 +2236,7 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
         Err(_) => return -1,
     };
 
-    let value = match RUNTIME.block_on(client.read_udt_member_by_offset(
+    let value = match ffi_block_on!(client.read_udt_member_by_offset(
         udt_name_str,
         member_offset as usize,
         member_size as usize,
@@ -2285,7 +2300,7 @@ pub unsafe extern "C" fn eip_write_udt_member_by_offset(
         Err(_) => return -1,
     };
 
-    match RUNTIME.block_on(client.write_udt_member_by_offset(
+    match ffi_block_on!(client.write_udt_member_by_offset(
         udt_name_str,
         member_offset as usize,
         member_size as usize,
@@ -2457,9 +2472,8 @@ pub unsafe extern "C" fn eip_get_udt_definition(
     };
 
     let client = unsafe { &mut *client_ptr };
-    let rt = RUNTIME.handle().clone();
 
-    match rt.block_on(client.get_udt_definition(udt_name_str)) {
+    match ffi_block_on!(client.get_udt_definition(udt_name_str)) {
         Ok(definition) => {
             unsafe {
                 (*result_ptr).success = true;
@@ -2587,9 +2601,8 @@ pub unsafe extern "C" fn eip_get_tag_attributes(
     };
 
     let client = unsafe { &mut *client_ptr };
-    let rt = RUNTIME.handle().clone();
 
-    match rt.block_on(client.get_tag_attributes(tag_name_str)) {
+    match ffi_block_on!(client.get_tag_attributes(tag_name_str)) {
         Ok(attributes) => {
             unsafe {
                 (*result_ptr).success = true;
@@ -2681,9 +2694,8 @@ pub unsafe extern "C" fn eip_discover_tags_detailed(
     }
 
     let client = unsafe { &mut *client_ptr };
-    let rt = RUNTIME.handle().clone();
 
-    match rt.block_on(client.discover_tags_detailed()) {
+    match ffi_block_on!(client.discover_tags_detailed()) {
         Ok(tags) => {
             unsafe {
                 (*result_ptr).success = true;
@@ -2790,4 +2802,20 @@ pub unsafe extern "C" fn eip_discover_tags_detailed_by_id(
     };
 
     unsafe { eip_discover_tags_detailed(&mut client, result_ptr) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+
+    #[test]
+    fn forced_runtime_init_error_returns_documented_code() {
+        FORCE_RUNTIME_INIT_ERROR.store(true, std::sync::atomic::Ordering::SeqCst);
+        let address = CString::new("127.0.0.1:44818").expect("test address should be valid");
+        let rc = unsafe { eip_connect(address.as_ptr()) };
+        FORCE_RUNTIME_INIT_ERROR.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        assert_eq!(rc, EIP_ERROR_RUNTIME_INIT);
+    }
 }

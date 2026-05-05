@@ -125,19 +125,20 @@ impl TagManager {
         }
     }
 
-    pub async fn get_metadata(&self, tag_name: &str) -> Option<TagMetadata> {
-        let cache = self.cache.read().unwrap();
-        cache.get(tag_name).and_then(|metadata| {
+    pub async fn get_metadata(&self, tag_name: &str) -> Result<Option<TagMetadata>> {
+        let cache = self.cache.read()?;
+        Ok(cache.get(tag_name).and_then(|metadata| {
             if metadata.last_updated.elapsed() < self.cache_duration {
                 Some(metadata.clone())
             } else {
                 None
             }
-        })
+        }))
     }
 
-    pub async fn update_metadata(&self, tag_name: String, metadata: TagMetadata) {
-        self.cache.write().unwrap().insert(tag_name, metadata);
+    pub async fn update_metadata(&self, tag_name: String, metadata: TagMetadata) -> Result<()> {
+        self.cache.write()?.insert(tag_name, metadata);
+        Ok(())
     }
 
     pub async fn validate_tag(
@@ -145,7 +146,7 @@ impl TagManager {
         tag_name: &str,
         required_permissions: &TagPermissions,
     ) -> Result<()> {
-        if let Some(metadata) = self.get_metadata(tag_name).await {
+        if let Some(metadata) = self.get_metadata(tag_name).await? {
             if !metadata.permissions.readable && required_permissions.readable {
                 return Err(EtherNetIpError::Permission(format!(
                     "Tag '{tag_name}' is not readable"
@@ -162,15 +163,16 @@ impl TagManager {
         }
     }
 
-    pub async fn clear_cache(&self) {
-        self.cache.write().unwrap().clear();
+    pub async fn clear_cache(&self) -> Result<()> {
+        self.cache.write()?.clear();
+        Ok(())
     }
 
-    pub async fn remove_stale_entries(&self) {
+    pub async fn remove_stale_entries(&self) -> Result<()> {
         self.cache
-            .write()
-            .unwrap()
+            .write()?
             .retain(|_, metadata| metadata.last_updated.elapsed() < self.cache_duration);
+        Ok(())
     }
 
     pub async fn discover_tags(&self, client: &mut EipClient) -> Result<()> {
@@ -188,7 +190,7 @@ impl TagManager {
         // Discover nested tags for structures
         let hierarchical_tags = self.discover_hierarchical_tags(client, &all_tags).await?;
 
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = self.cache.write()?;
         for (name, metadata) in hierarchical_tags {
             cache.insert(name, metadata);
         }

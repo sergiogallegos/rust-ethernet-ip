@@ -20,6 +20,7 @@ Target next release: `0.8.0`.
 - **Collector, MQTT, and Docker examples**: Added Python collector, MQTT publisher, FastAPI service, and Docker-based example stacks for local service packaging.
 
 ### 🐛 Fixed
+- **FFI runtime hardening**: Gated the Rust FFI module behind the existing `ffi` Cargo feature, required FFI-producing build paths to enable it, and converted Tokio runtime initialization failure into a documented native return code instead of a process abort.
 - **NuGet publish package lookup**: Hardened the Windows release workflow so NuGet publishing resolves the generated package path explicitly instead of relying on wildcard expansion in `dotnet nuget push`.
 - **C# package metadata/runtime packaging**: Adjusted the wrapper project to package as a library, align the NuGet license metadata with the repository MIT license, include the package README, and mark native runtime libraries as package content.
 - **C# validation examples on macOS**: Fixed wrapper smoke/benchmark/matrix example projects so they copy `librust_ethernet_ip.dylib` on macOS and `rust_ethernet_ip.dll` on Windows using `MSBuild::IsOSPlatform(...)`.

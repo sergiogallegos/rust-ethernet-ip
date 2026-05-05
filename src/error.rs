@@ -114,3 +114,35 @@ impl EtherNetIpError {
         )
     }
 }
+
+impl<T> From<std::sync::PoisonError<T>> for EtherNetIpError {
+    fn from(_: std::sync::PoisonError<T>) -> Self {
+        EtherNetIpError::Other("lock poisoned".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    fn convert_poison_error() -> Result<()> {
+        let lock = Mutex::new(());
+        std::thread::scope(|scope| {
+            let handle = scope.spawn(|| {
+                let _guard = lock.lock().expect("test lock should not be poisoned yet");
+                panic!("poison test mutex");
+            });
+            assert!(handle.join().is_err());
+        });
+
+        let _guard = lock.lock()?;
+        Ok(())
+    }
+
+    #[test]
+    fn poison_error_converts_to_other_variant() {
+        let err = convert_poison_error().expect_err("poisoned mutex should convert into an error");
+        assert!(matches!(err, EtherNetIpError::Other(message) if message == "lock poisoned"));
+    }
+}

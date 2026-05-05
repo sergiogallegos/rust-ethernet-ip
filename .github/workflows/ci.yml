@@ -87,7 +87,7 @@ jobs:
         override: true
 
     - name: Build Rust library
-      run: cargo build --release
+      run: cargo build --release --features ffi
 
     - name: Build C# library
       if: matrix.os == 'ubuntu-latest'

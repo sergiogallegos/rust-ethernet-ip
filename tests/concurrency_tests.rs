@@ -58,8 +58,14 @@ async fn tag_manager_cache_is_concurrent_safe() {
             };
 
             let tag_name = format!("Tag{i}");
-            manager.update_metadata(tag_name.clone(), metadata).await;
-            let cached = manager.get_metadata(&tag_name).await;
+            manager
+                .update_metadata(tag_name.clone(), metadata)
+                .await
+                .expect("metadata update should succeed");
+            let cached = manager
+                .get_metadata(&tag_name)
+                .await
+                .expect("metadata read should succeed");
             assert!(cached.is_some());
         }));
     }

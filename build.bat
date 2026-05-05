@@ -4,7 +4,7 @@ echo =============================================
 
 echo.
 echo [1/4] Building Rust library (release)...
-cargo build --release --lib
+cargo build --release --lib --features ffi
 if %errorlevel% neq 0 (
     echo ❌ Rust build failed!
     exit /b %errorlevel%

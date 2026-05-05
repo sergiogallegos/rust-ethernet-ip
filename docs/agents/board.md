@@ -4,10 +4,9 @@
 
 ## Open
 
-*(no open tasks)*
-
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
+| CODEX-B | Contained API cleanup — thiserror, dead deps, dead state, must_use | codex | open | 2026-05-05 claude | [tasks/CODEX-B-contained-api-cleanup.md](tasks/CODEX-B-contained-api-cleanup.md) |
 
 ## Done
 

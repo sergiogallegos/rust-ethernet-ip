@@ -6,10 +6,9 @@
 
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-| CODEX-C | Decompose lib.rs into route, batch, types, and client modules | codex | open | 2026-05-05 claude | [tasks/CODEX-C-lib-decomposition.md](tasks/CODEX-C-lib-decomposition.md) |
 | CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | open | 2026-05-05 claude | [tasks/CODEX-D-codec-boundary.md](tasks/CODEX-D-codec-boundary.md) |
 
-> **Suggested ordering:** CODEX-C (gating step) before CODEX-D (depends on CODEX-C). CODEX-D's `depends-on` frontmatter is enforced by the reviewer at submission time.
+> CODEX-C merged. CODEX-D is now unblocked.
 
 ## Done
 
@@ -18,6 +17,7 @@
 | CODEX-A | FFI safety, runtime hardening, and lint baseline | codex | `3d98abf` |
 | CODEX-B | Contained API cleanup — thiserror, dead deps, dead state, must_use | codex | `9aca8d2` |
 | CODEX-E | Small polish — runtime-init log dedupe, regex caching, re-export merge, dev-dep audit | codex | `fc63735` |
+| CODEX-C | Decompose lib.rs into route, batch, types, and client modules | codex | `476f21c` |
 
 ## Project context
 

@@ -2,7 +2,7 @@
 id: CODEX-C
 title: Decompose lib.rs into route, batch, types, and client modules
 owner: codex
-status: open
+status: merged
 created: 2026-05-05
 last-update: 2026-05-05 claude
 ---
@@ -138,12 +138,77 @@ No new tests are required. If a moved test's `mod tests` block has private-helpe
 
 ## Codex log
 
-*(empty — codex appends entries on starting work)*
+### 2026-05-05  codex
+
+Started implementation. Working tree was clean before edits. Chosen shape: land all four extraction phases in one submission, keeping module moves mechanical and using the test matrix once at the end.
+
+### 2026-05-05  codex
+
+Submitted implementation. `src/lib.rs` is now 221 lines; moved route, batch, type, and client implementation blocks into `src/route.rs`, `src/batch.rs`, `src/types.rs`, and `src/client.rs`. Verification passed: `cargo fmt -- --check`, both required Clippy variants, `SKIP_PLC_TESTS=1 cargo test --workspace --locked`, `cargo test --test plc_sim_tests`, `cargo test --all-features --lib`, `cargo build --release --features ffi` with 56 `_eip_` exports, `cargo doc --no-deps --all-features`, `dotnet build`, and `dotnet test` (42/42). `dotnet test` emitted NU1900 vulnerability-feed warnings because network access to nuget.org was unavailable, but restore used cached packages and tests passed.
 
 ## Claude review
 
-*(empty — claude appends after submission)*
+### 2026-05-05 17:30  claude — review pass 1
+
+Independent verification matrix:
+
+- `cargo fmt -- --check` — clean.
+- `cargo clippy --all-features -- -D warnings` — clean.
+- `cargo clippy --no-default-features --lib -- -D warnings` — clean. Confirms no leftover feature-gated imports in `lib.rs` after `RUNTIME` and friends moved.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` — every suite green; no failures across unit, integration, doctest runs.
+- `cargo test --test plc_sim_tests` — 10/10.
+- `cargo build --release --features ffi` then `nm -gU target/release/librust_ethernet_ip.dylib | grep -c '_eip_'` — `56`. FFI symbol parity preserved.
+- `cargo doc --no-deps --all-features` — zero warnings, zero broken intra-doc links. The brief's risk note (relative `[BatchError]` shorthand needing `[crate::BatchError]` after moves) did not materialize because the pre-move docs already used names that resolve from any module within the crate.
+- C# wrapper not re-run locally; accepting Codex's reported 42/42 dotnet test result.
+
+**File-shape audit:**
+
+- `src/lib.rs`: 221 lines (target ≤300). Contains exactly what the brief specified: head doc, lint attributes, `EtherNetIpStream` trait + blanket impl, `pub mod` declaration block, `pub use` re-export block, `pub(crate) use client::RUNTIME;` re-export for the FFI module, and the two `init_tracing` helpers. No more, no less.
+- `src/route.rs`: 88 lines. `RoutePath` struct, `impl RoutePath`, `impl Default for RoutePath`. The `#[must_use]` attributes from CODEX-B carried over correctly.
+- `src/batch.rs`: 133 lines. `BatchOperation`, `BatchResult`, `BatchError` (with the `thiserror::Error` derive from CODEX-B), `BatchConfig`, and `impl Default for BatchConfig`.
+- `src/types.rs`: 510 lines. `ConnectedSession`, `ConnectionParameters`, `UdtData`, `PlcValue`, and their impls.
+- `src/client.rs`: 7464 lines. Private `TagListPage` / `TemplateAttributes`, the `#[cfg(feature = "ffi")] pub(crate) static RUNTIME`, the `EipClient` struct, its manual `Debug` impl, and a single consolidated `impl EipClient` block carrying every method that was previously spread across multiple `impl EipClient` blocks. Consolidation into one block is semantically identical to multiple blocks (Rust treats them the same) and is within the spirit of "pure mechanical move".
+
+**Public API parity:**
+
+Every `pub use` re-export at `src/lib.rs:122-153` matches the pre-CODEX-C set, with only the *source paths* changing:
+- `EipClient`, `BatchOperation`, `BatchResult`, `BatchError`, `BatchConfig`, `RoutePath`, `PlcValue`, `UdtData`, `ConnectedSession`, `ConnectionParameters` now come from the new submodules.
+- All other re-exports (`config::*`, `error::*`, `monitoring::*`, `plc_manager::*`, `schema::*`, `subscription::*`, `tag_group::*`, `tag_manager::*`, `tag_path::TagPath`, `udt::*`) are unchanged.
+- `EtherNetIpStream` stays defined in `lib.rs` itself (the brief specified this — it's the public type interface that submodules consume).
+
+**Strong points:**
+
+- ✅ **Visibility cascade handled correctly via `pub(crate) use`.** `RUNTIME` moves to `client.rs` as `pub(crate) static` and the crate root carries `pub(crate) use client::RUNTIME;` so the FFI module's existing `use crate::RUNTIME;` import keeps working without modification. This is the textbook way to relocate a crate-private static across modules.
+- ✅ **Lint baseline relocated correctly.** The `#![deny(...)]` and `#![cfg_attr(not(test), warn(...))]` attributes stayed in `lib.rs` (they are crate-level and must), and the move did not introduce any new lint surfaces — `cargo clippy --no-default-features` is clean, proving no orphan feature-gated imports.
+- ✅ **`use` blocks at the head of each new module are minimal.** No reaching across module boundaries unnecessarily; `client.rs`'s `use` block accurately reflects exactly which names from sibling modules it consumes.
+- ✅ **No drive-by edits.** Reviewing the diff stat (8208 inserts, 8180 deletes, net +28 lines) the deltas are accounted for almost entirely by the new `use` blocks at the head of each file. No method body changed; no signature changed; no comment removed mid-move.
+- ✅ **CHANGELOG entry under "Cleanup"** describing the decomposition in neutral voice; no SemVer-relevant claims, no agent attribution.
+- ✅ **Single-submission landing was the right choice.** The brief allowed either four phases or one bundled submission. The implementation delivered all four in one submission with mechanical moves, which makes review tractable as a single before-and-after diff rather than four sequential reviews. Documentation in `## Codex log` records the choice transparently.
+
+**Polish (🟡 — non-blocking):**
+
+- 🟡 **`use crate::{TagPath, schema, udt};` in `client.rs:14`** mixes a crate-root re-exported type (`TagPath`) with two submodule namespaces (`schema`, `udt`). Other imports in the same `use` block use module-rooted paths (`crate::tag_manager::TagManager`, `crate::types::PlcValue`). Mild style inconsistency; using `crate::tag_path::TagPath` would match the rest of the block. Cosmetic only.
+- 🟡 **`client.rs` at 7464 lines is the next decomposition target.** The brief explicitly ruled this out for CODEX-C ("acceptable as an interim state") and pinned the next sub-split to follow CODEX-D's codec boundaries. Recording here for future scope tracking.
+
+**No 🟠 concerns.**
+
+**Acceptance criteria tally:**
+
+- [x] `src/route.rs`, `src/batch.rs`, `src/types.rs`, and `src/client.rs` exist and contain the moved code as described.
+- [x] `src/lib.rs` is 221 lines (≤300) and contains exactly the specified items: head doc, lint attributes, `use` block, `EtherNetIpStream` trait, `pub mod` declarations, `pub use` re-exports, and the two tracing helpers. Plus a `pub(crate) use client::RUNTIME;` to preserve the FFI's `crate::RUNTIME` import path — a legitimate addition not anticipated in the brief but necessary to satisfy the visibility-cascade risk the brief flagged.
+- [x] Every `pub` item at the crate root pre-CODEX-C still resolves at the same path post-CODEX-C. Verified by reading the full re-export block.
+- [x] FFI symbol parity preserved: 56 `_eip_` exports in the cdylib.
+- [x] `cargo doc --no-deps --all-features` warnings: zero (none added, none removed).
+- [x] CHANGELOG entry under "Cleanup" describing the decomposition; no SemVer-relevant claims.
+
+**Brief errors owned by Claude:** none discovered during review. The brief's risk-flagged scenarios (doc-link breakage, test-module imports breaking, leftover feature-gated imports) all did not materialize, because the pre-move code was already structured cleanly enough that moves preserved every relationship.
 
 ## Verdict
 
-*(empty — claude writes on merge or rejection)*
+**Merged** at `476f21c` — `lib: decompose lib.rs into route, batch, types, and client modules`.
+
+The implementation is faithful to the brief on every acceptance criterion. `lib.rs` shrinks from 8389 to 221 lines while every public name continues to resolve at the same crate-root path. The `pub(crate) use client::RUNTIME;` line at `lib.rs:156` is the cleanest possible solution to the FFI visibility-cascade challenge the brief named, and it's the right shape for the future work that CODEX-D will do on top of this decomposition.
+
+The two 🟡 polish notes (mixed-style `use` block in client.rs, `client.rs` size as the next decomposition target) are non-blocking. The cosmetic `use` style is genuinely cosmetic; the `client.rs` size is explicitly a future-brief item per the original CODEX-C scope.
+
+CODEX-D (codec boundary extraction) is now unblocked. The `pub(crate)` `Encode` / `Decode` traits the brief defines will live in a new `src/protocol/` directory, and the inline byte arithmetic currently in `client.rs` will move to `src/protocol/values.rs`, `src/protocol/encap.rs`, and `src/protocol/cip.rs` per the CODEX-D brief. The pre-CODEX-D ground state is clean.

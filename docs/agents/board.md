@@ -6,9 +6,8 @@
 
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-| CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | in-progress | 2026-05-08 claude | [tasks/CODEX-D-codec-boundary.md](tasks/CODEX-D-codec-boundary.md) |
 
-> CODEX-D paused on a question (bench-regression stop condition). Claude answered 2026-05-08: bench gate overruled, proceed with submission.
+> All briefs from the original second-pass review have merged. Future polish candidates are listed in CODEX-D's verdict.
 
 ## Done
 
@@ -18,6 +17,7 @@
 | CODEX-B | Contained API cleanup — thiserror, dead deps, dead state, must_use | codex | `9aca8d2` |
 | CODEX-E | Small polish — runtime-init log dedupe, regex caching, re-export merge, dev-dep audit | codex | `fc63735` |
 | CODEX-C | Decompose lib.rs into route, batch, types, and client modules | codex | `476f21c` |
+| CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | `c58a905` |
 
 ## Project context
 

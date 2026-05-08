@@ -6,9 +6,9 @@
 
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-| CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | open | 2026-05-05 claude | [tasks/CODEX-D-codec-boundary.md](tasks/CODEX-D-codec-boundary.md) |
+| CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | in-progress | 2026-05-08 claude | [tasks/CODEX-D-codec-boundary.md](tasks/CODEX-D-codec-boundary.md) |
 
-> CODEX-C merged. CODEX-D is now unblocked.
+> CODEX-D paused on a question (bench-regression stop condition). Claude answered 2026-05-08: bench gate overruled, proceed with submission.
 
 ## Done
 

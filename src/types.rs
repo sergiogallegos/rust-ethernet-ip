@@ -1,3 +1,4 @@
+use bytes::BytesMut;
 use std::collections::HashMap;
 use tokio::time::Instant;
 
@@ -446,40 +447,9 @@ impl PlcValue {
     ///
     /// A vector of bytes ready for transmission to the PLC
     pub fn to_bytes(&self) -> Vec<u8> {
-        match self {
-            PlcValue::Bool(val) => vec![if *val { 0xFF } else { 0x00 }],
-            PlcValue::Sint(val) => val.to_le_bytes().to_vec(),
-            PlcValue::Int(val) => val.to_le_bytes().to_vec(),
-            PlcValue::Dint(val) => val.to_le_bytes().to_vec(),
-            PlcValue::Lint(val) => val.to_le_bytes().to_vec(),
-            PlcValue::Usint(val) => val.to_le_bytes().to_vec(),
-            PlcValue::Uint(val) => val.to_le_bytes().to_vec(),
-            PlcValue::Udint(val) => val.to_le_bytes().to_vec(),
-            PlcValue::Ulint(val) => val.to_le_bytes().to_vec(),
-            PlcValue::Real(val) => val.to_le_bytes().to_vec(),
-            PlcValue::Lreal(val) => val.to_le_bytes().to_vec(),
-            PlcValue::String(val) => {
-                // Try minimal approach - just length + data without padding
-                // Testing if the PLC accepts a simpler format
-
-                let mut bytes = Vec::new();
-
-                // Length field (4 bytes as DINT) - number of characters currently used
-                let length = val.len().min(82) as u32;
-                bytes.extend_from_slice(&length.to_le_bytes());
-
-                // String data - just the actual characters, no padding
-                let string_bytes = val.as_bytes();
-                let data_len = string_bytes.len().min(82);
-                bytes.extend_from_slice(&string_bytes[..data_len]);
-
-                bytes
-            }
-            PlcValue::Udt(udt_data) => {
-                // Return the raw UDT data bytes
-                udt_data.data.clone()
-            }
-        }
+        let mut bytes = BytesMut::new();
+        crate::protocol::values::encode_payload(self, &mut bytes);
+        bytes.to_vec()
     }
 
     /// Returns the CIP data type code for this value

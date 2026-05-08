@@ -1,6 +1,12 @@
 use crate::EtherNetIpStream;
 use crate::batch::{BatchConfig, BatchError, BatchOperation, BatchResult};
 use crate::error::{EtherNetIpError, Result};
+use crate::protocol::cip::{CipRequest, CipResponse, READ_TAG, SendDataRequest, WRITE_TAG};
+use crate::protocol::encap::{
+    EncapsulationHeader, REGISTER_SESSION, SEND_RR_DATA, UNREGISTER_SESSION,
+};
+use crate::protocol::values;
+use crate::protocol::{Decode, Encode};
 use crate::route::RoutePath;
 use crate::schema::SchemaExport;
 use crate::subscription::{SubscriptionOptions, TagSubscription};
@@ -12,6 +18,7 @@ use crate::tag_manager::{TagManager, TagMetadata, TagPermissions, TagScope};
 use crate::types::{ConnectedSession, ConnectionParameters, PlcValue, UdtData};
 use crate::udt::{TagAttributes, UdtDefinition, UdtManager};
 use crate::{TagPath, schema, udt};
+use bytes::BytesMut;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -341,16 +348,10 @@ impl EipClient {
     /// - PLC rejection (status code non-zero)
     async fn register_session(&mut self) -> crate::error::Result<()> {
         tracing::debug!("Starting session registration...");
-        let packet: [u8; 28] = [
-            0x65, 0x00, // Command: Register Session (0x0065)
-            0x04, 0x00, // Length: 4 bytes
-            0x00, 0x00, 0x00, 0x00, // Session Handle: 0 (will be assigned)
-            0x00, 0x00, 0x00, 0x00, // Status: 0
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Sender Context (8 bytes)
-            0x00, 0x00, 0x00, 0x00, // Options: 0
-            0x01, 0x00, // Protocol Version: 1
-            0x00, 0x00, // Option Flags: 0
-        ];
+        let mut packet = BytesMut::with_capacity(28);
+        EncapsulationHeader::new(REGISTER_SESSION, 4, 0).encode(&mut packet);
+        packet.extend_from_slice(&[0x01, 0x00]); // Protocol Version: 1
+        packet.extend_from_slice(&[0x00, 0x00]); // Option Flags: 0
 
         tracing::trace!("Sending Register Session packet: {:02X?}", packet);
         self.stream
@@ -390,12 +391,15 @@ impl EipClient {
             return Err(EtherNetIpError::Protocol("Response too short".to_string()));
         }
 
+        let mut response = &buf[..n];
+        let header = EncapsulationHeader::decode(&mut response)?;
+
         // Extract session handle from response
-        self.session_handle = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
+        self.session_handle = header.session_handle;
         tracing::debug!("Session handle: 0x{:08X}", self.session_handle);
 
         // Check status
-        let status = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        let status = header.status;
         tracing::trace!("Status code: 0x{:08X}", status);
 
         if status != 0 {
@@ -1359,33 +1363,7 @@ impl EipClient {
 
         let mut values = Vec::with_capacity(bytes.len() / element_size);
         for chunk in bytes.chunks_exact(element_size) {
-            let value = match data_type {
-                0x00C1 => PlcValue::Bool(chunk[0] != 0),
-                0x00C2 => PlcValue::Sint(chunk[0] as i8),
-                0x00C3 => PlcValue::Int(i16::from_le_bytes([chunk[0], chunk[1]])),
-                0x00C4 => {
-                    PlcValue::Dint(i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-                }
-                0x00C5 => PlcValue::Lint(i64::from_le_bytes([
-                    chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
-                ])),
-                0x00C6 => PlcValue::Usint(chunk[0]),
-                0x00C7 => PlcValue::Uint(u16::from_le_bytes([chunk[0], chunk[1]])),
-                0x00C8 => {
-                    PlcValue::Udint(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-                }
-                0x00C9 => PlcValue::Ulint(u64::from_le_bytes([
-                    chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
-                ])),
-                0x00CA => {
-                    PlcValue::Real(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-                }
-                0x00CB => PlcValue::Lreal(f64::from_le_bytes([
-                    chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
-                ])),
-                _ => unreachable!("validated by array_element_size"),
-            };
-            values.push(value);
+            values.push(values::decode_array_element(data_type, chunk)?);
         }
 
         Ok(values)
@@ -3302,42 +3280,24 @@ impl EipClient {
     ) -> crate::error::Result<Vec<u8>> {
         tracing::debug!("Building write request for tag: '{}'", tag_name);
 
-        // Use Connected Explicit Messaging for consistency
-        let mut cip_request = Vec::new();
-
-        // Service: Write Tag Service (0x4D)
-        cip_request.push(0x4D);
-
         // Use the same path building logic as read operations
         let path = self.build_tag_path(tag_name);
 
-        // Request Path Size (in words)
-        cip_request.push((path.len() / 2) as u8);
+        let mut data = BytesMut::new();
+        data.extend_from_slice(&values::write_data_type(value).to_le_bytes());
+        data.extend_from_slice(&[0x01, 0x00]); // Element count: 1
+        values::encode_payload(value, &mut data);
 
-        // Request Path: Use the same path building as read operations
-        cip_request.extend_from_slice(&path);
-
-        // Add data type and element count
-        // For UDTs, use Structure Tag Type (0x02A0 + Structure Handle) per 1756-PM020, Page 1080
-        let data_type = if let PlcValue::Udt(udt_data) = value {
-            // Structure Tag Type = 0x02A0 + Structure Handle (template_instance_id)
-            // Reference: 1756-PM020, Page 1080 (UDT Data Layout Considerations)
-            0x02A0u16.wrapping_add(udt_data.symbol_id as u16)
-        } else {
-            value.get_data_type()
-        };
-        let value_bytes = value.to_bytes();
-
-        cip_request.extend_from_slice(&data_type.to_le_bytes()); // Data type
-        cip_request.extend_from_slice(&[0x01, 0x00]); // Element count: 1
-        cip_request.extend_from_slice(&value_bytes); // Value data
+        let request = CipRequest::new(WRITE_TAG, path, data.to_vec());
+        let mut cip_request = BytesMut::new();
+        request.encode(&mut cip_request);
 
         tracing::trace!(
             "Built CIP write request ({} bytes): {:02X?}",
             cip_request.len(),
             cip_request
         );
-        Ok(cip_request)
+        Ok(cip_request.to_vec())
     }
 
     /// Builds a raw write request with pre-serialized data
@@ -3365,77 +3325,9 @@ impl EipClient {
     /// Serializes a `PlcValue` into bytes for transmission
     #[allow(dead_code)]
     fn serialize_value(&self, value: &PlcValue) -> crate::error::Result<Vec<u8>> {
-        let mut data = Vec::new();
-
-        match value {
-            PlcValue::Bool(v) => {
-                data.extend(&0x00C1u16.to_le_bytes()); // Data type
-                data.push(if *v { 0xFF } else { 0x00 });
-            }
-            PlcValue::Sint(v) => {
-                data.extend(&0x00C2u16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::Int(v) => {
-                data.extend(&0x00C3u16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::Dint(v) => {
-                data.extend(&0x00C4u16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::Lint(v) => {
-                data.extend(&0x00C5u16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::Usint(v) => {
-                data.extend(&0x00C6u16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::Uint(v) => {
-                data.extend(&0x00C7u16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::Udint(v) => {
-                data.extend(&0x00C8u16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::Ulint(v) => {
-                data.extend(&0x00C9u16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::Real(v) => {
-                data.extend(&0x00CAu16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::Lreal(v) => {
-                data.extend(&0x00CBu16.to_le_bytes()); // Data type
-                data.extend(&v.to_le_bytes());
-            }
-            PlcValue::String(v) => {
-                data.extend(&0x00CEu16.to_le_bytes()); // Data type - correct Allen-Bradley STRING CIP type
-
-                // Length field (4 bytes as DINT) - number of characters currently used
-                let length = v.len().min(82) as u32;
-                data.extend_from_slice(&length.to_le_bytes());
-
-                // String data - the actual characters (no MaxLen field)
-                let string_bytes = v.as_bytes();
-                let data_len = string_bytes.len().min(82);
-                data.extend_from_slice(&string_bytes[..data_len]);
-
-                // Padding to make total data area exactly 82 bytes after length
-                let remaining_chars = 82 - data_len;
-                data.extend(vec![0u8; remaining_chars]);
-            }
-            PlcValue::Udt(_) => {
-                // UDT serialization is handled by the UdtManager
-                // For now, just add placeholder data
-                data.extend(&0x00A0u16.to_le_bytes()); // UDT type code
-            }
-        }
-
-        Ok(data)
+        let mut data = BytesMut::new();
+        value.encode(&mut data);
+        Ok(data.to_vec())
     }
 
     pub fn build_list_tags_request(&self) -> Vec<u8> {
@@ -4094,33 +3986,13 @@ impl EipClient {
     }
 
     async fn send_rr_data_item(&self, item_data: &[u8]) -> Result<Vec<u8>> {
-        // Calculate total packet size
-        let item_data_size = item_data.len();
-        let total_data_len = 4 + 2 + 2 + 8 + item_data_size; // Interface + Timeout + Count + Items + Data
-
-        let mut packet = Vec::new();
-
-        // EtherNet/IP header (24 bytes)
-        packet.extend_from_slice(&[0x6F, 0x00]); // Command: Send RR Data (0x006F)
-        packet.extend_from_slice(&(total_data_len as u16).to_le_bytes()); // Length
-        packet.extend_from_slice(&self.session_handle.to_le_bytes()); // Session handle
-        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Status
-        packet.extend_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]); // Context
-        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Options
-
-        // CPF (Common Packet Format) data
-        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Interface handle
-        packet.extend_from_slice(&[0x05, 0x00]); // Timeout (5 seconds)
-        packet.extend_from_slice(&[0x02, 0x00]); // Item count: 2
-
-        // Item 1: Null Address Item (0x0000)
-        packet.extend_from_slice(&[0x00, 0x00]); // Type: Null Address
-        packet.extend_from_slice(&[0x00, 0x00]); // Length: 0
-
-        // Item 2: Unconnected Data Item (0x00B2)
-        packet.extend_from_slice(&[0xB2, 0x00]); // Type: Unconnected Data
-        packet.extend_from_slice(&(item_data_size as u16).to_le_bytes()); // Length
-        packet.extend_from_slice(item_data);
+        let send_data = SendDataRequest::unconnected(item_data);
+        let mut packet = BytesMut::new();
+        let mut cpf = BytesMut::new();
+        send_data.encode(&mut cpf);
+        EncapsulationHeader::send_rr_data(cpf.len() as u16, self.session_handle)
+            .encode(&mut packet);
+        packet.extend_from_slice(&cpf);
 
         tracing::trace!(
             "Built packet ({} bytes): {:02X?}",
@@ -4144,15 +4016,17 @@ impl EipClient {
         }
 
         // Check EtherNet/IP command status
-        let cmd_status = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
-        if cmd_status != 0 {
+        let mut header_bytes = &header[..];
+        let response_header = EncapsulationHeader::decode(&mut header_bytes)?;
+        if response_header.status != 0 {
             return Err(EtherNetIpError::Protocol(format!(
-                "EIP Command failed. Status: 0x{cmd_status:08X}"
+                "EIP Command failed. Status: 0x{:08X}",
+                response_header.status
             )));
         }
 
         // Parse response length
-        let response_length = u16::from_le_bytes([header[2], header[3]]) as usize;
+        let response_length = response_header.length as usize;
         if response_length == 0 {
             return Ok(Vec::new());
         }
@@ -4183,42 +4057,14 @@ impl EipClient {
     }
 
     fn extract_unconnected_data_item(&self, response: &[u8]) -> crate::error::Result<Vec<u8>> {
-        // Parse CPF (Common Packet Format) structure directly from response data
-        // Response format: [Interface(4)] [Timeout(2)] [ItemCount(2)] [Items...]
-        if response.len() < 8 {
-            return Err(EtherNetIpError::Protocol(
-                "Response too short for CPF header".to_string(),
-            ));
-        }
-
-        // Skip interface handle (4 bytes) and timeout (2 bytes)
-        let mut pos = 6;
-        let item_count = u16::from_le_bytes([response[pos], response[pos + 1]]);
-        pos += 2;
-
-        for _ in 0..item_count {
-            if pos + 4 > response.len() {
-                return Err(EtherNetIpError::Protocol(
-                    "Response truncated while parsing items".to_string(),
-                ));
-            }
-
-            let item_type = u16::from_le_bytes([response[pos], response[pos + 1]]);
-            let item_length = u16::from_le_bytes([response[pos + 2], response[pos + 3]]) as usize;
-            pos += 4;
-
-            if pos
-                .checked_add(item_length)
-                .is_none_or(|end| end > response.len())
-            {
-                return Err(EtherNetIpError::Protocol("Data item truncated".to_string()));
-            }
-
-            if item_type == 0x00B2 {
-                return Ok(response[pos..pos + item_length].to_vec());
-            }
-
-            pos += item_length;
+        let mut response = response;
+        let send_data = SendDataRequest::decode(&mut response)?;
+        if let Some(item) = send_data
+            .items
+            .into_iter()
+            .find(|item| item.type_id == 0x00B2)
+        {
+            return Ok(item.data);
         }
 
         Err(EtherNetIpError::Protocol(
@@ -4285,338 +4131,37 @@ impl EipClient {
             cip_response
         );
 
-        if cip_response.len() < 4 {
-            return Err(EtherNetIpError::Protocol(
-                "CIP response too short".to_string(),
-            ));
-        }
-
-        let service_reply = cip_response[0]; // Should be 0xCC (0x4C + 0x80) for Read Tag reply
-        let general_status = cip_response[2]; // CIP status code
-
-        tracing::trace!(
-            "Service reply: 0x{:02X}, Status: 0x{:02X}",
-            service_reply,
-            general_status
-        );
-
-        // Check for CIP errors (including extended errors)
         if let Err(e) = self.check_cip_error(cip_response) {
             tracing::error!("CIP Error: {}", e);
             return Err(e);
         }
 
-        // For read operations, parse the returned data
-        if service_reply == 0xCC {
-            // Read Tag reply
-            if cip_response.len() < 6 {
+        let mut response_bytes = cip_response;
+        let response = CipResponse::decode(&mut response_bytes)?;
+
+        if response.service == 0xCC {
+            if response.data.len() < 2 {
                 return Err(EtherNetIpError::Protocol(
                     "Read response too short for data".to_string(),
                 ));
             }
 
-            let data_type = u16::from_le_bytes([cip_response[4], cip_response[5]]);
-            let value_data = &cip_response[6..];
-
+            let data_type = u16::from_le_bytes([response.data[0], response.data[1]]);
+            let value_data = &response.data[2..];
             tracing::trace!(
                 "Data type: 0x{:04X}, Value data ({} bytes): {:02X?}",
                 data_type,
                 value_data.len(),
                 value_data
             );
-
-            // Parse based on data type
-            match data_type {
-                0x00C1 => {
-                    // BOOL
-                    if value_data.is_empty() {
-                        return Err(EtherNetIpError::Protocol(
-                            "No data for BOOL value".to_string(),
-                        ));
-                    }
-                    let value = value_data[0] != 0;
-                    tracing::trace!("Parsed BOOL: {}", value);
-                    Ok(PlcValue::Bool(value))
-                }
-                0x00C2 => {
-                    // SINT
-                    if value_data.is_empty() {
-                        return Err(EtherNetIpError::Protocol(
-                            "No data for SINT value".to_string(),
-                        ));
-                    }
-                    let value = value_data[0] as i8;
-                    tracing::trace!("Parsed SINT: {}", value);
-                    Ok(PlcValue::Sint(value))
-                }
-                0x00C3 => {
-                    // INT
-                    if value_data.len() < 2 {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for INT value".to_string(),
-                        ));
-                    }
-                    let value = i16::from_le_bytes([value_data[0], value_data[1]]);
-                    tracing::trace!("Parsed INT: {}", value);
-                    Ok(PlcValue::Int(value))
-                }
-                0x00C4 => {
-                    // DINT
-                    if value_data.len() < 4 {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for DINT value".to_string(),
-                        ));
-                    }
-                    let value = i32::from_le_bytes([
-                        value_data[0],
-                        value_data[1],
-                        value_data[2],
-                        value_data[3],
-                    ]);
-                    tracing::trace!("Parsed DINT: {}", value);
-                    Ok(PlcValue::Dint(value))
-                }
-                0x00C5 => {
-                    // LINT (64-bit signed integer)
-                    if value_data.len() < 8 {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for LINT value".to_string(),
-                        ));
-                    }
-                    let value = i64::from_le_bytes([
-                        value_data[0],
-                        value_data[1],
-                        value_data[2],
-                        value_data[3],
-                        value_data[4],
-                        value_data[5],
-                        value_data[6],
-                        value_data[7],
-                    ]);
-                    tracing::trace!("Parsed LINT: {}", value);
-                    Ok(PlcValue::Lint(value))
-                }
-                0x00C6 => {
-                    // USINT (8-bit unsigned integer)
-                    if value_data.is_empty() {
-                        return Err(EtherNetIpError::Protocol(
-                            "No data for USINT value".to_string(),
-                        ));
-                    }
-                    let value = value_data[0];
-                    tracing::trace!("Parsed USINT: {}", value);
-                    Ok(PlcValue::Usint(value))
-                }
-                0x00C7 => {
-                    // UINT (16-bit unsigned integer)
-                    if value_data.len() < 2 {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for UINT value".to_string(),
-                        ));
-                    }
-                    let value = u16::from_le_bytes([value_data[0], value_data[1]]);
-                    tracing::trace!("Parsed UINT: {}", value);
-                    Ok(PlcValue::Uint(value))
-                }
-                0x00C8 => {
-                    // UDINT (32-bit unsigned integer)
-                    if value_data.len() < 4 {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for UDINT value".to_string(),
-                        ));
-                    }
-                    let value = u32::from_le_bytes([
-                        value_data[0],
-                        value_data[1],
-                        value_data[2],
-                        value_data[3],
-                    ]);
-                    tracing::trace!("Parsed UDINT: {}", value);
-                    Ok(PlcValue::Udint(value))
-                }
-                0x00C9 => {
-                    // ULINT (64-bit unsigned integer)
-                    if value_data.len() < 8 {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for ULINT value".to_string(),
-                        ));
-                    }
-                    let value = u64::from_le_bytes([
-                        value_data[0],
-                        value_data[1],
-                        value_data[2],
-                        value_data[3],
-                        value_data[4],
-                        value_data[5],
-                        value_data[6],
-                        value_data[7],
-                    ]);
-                    tracing::trace!("Parsed ULINT: {}", value);
-                    Ok(PlcValue::Ulint(value))
-                }
-                0x00CA => {
-                    // REAL
-                    if value_data.len() < 4 {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for REAL value".to_string(),
-                        ));
-                    }
-                    let value = f32::from_le_bytes([
-                        value_data[0],
-                        value_data[1],
-                        value_data[2],
-                        value_data[3],
-                    ]);
-                    tracing::trace!("Parsed REAL: {}", value);
-                    Ok(PlcValue::Real(value))
-                }
-                0x00CB => {
-                    // LREAL (64-bit float)
-                    if value_data.len() < 8 {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for LREAL value".to_string(),
-                        ));
-                    }
-                    let value = f64::from_le_bytes([
-                        value_data[0],
-                        value_data[1],
-                        value_data[2],
-                        value_data[3],
-                        value_data[4],
-                        value_data[5],
-                        value_data[6],
-                        value_data[7],
-                    ]);
-                    tracing::trace!("Parsed LREAL: {}", value);
-                    Ok(PlcValue::Lreal(value))
-                }
-                0x00CE => {
-                    // Allen-Bradley STRING type (0x00CE)
-                    // STRING format: 4-byte length (DINT) followed by string data (up to 82 bytes)
-                    if value_data.len() < 4 {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for STRING length field".to_string(),
-                        ));
-                    }
-                    let length = u32::from_le_bytes([
-                        value_data[0],
-                        value_data[1],
-                        value_data[2],
-                        value_data[3],
-                    ]) as usize;
-
-                    if value_data.len() < 4 || value_data.len() - 4 < length {
-                        return Err(EtherNetIpError::Protocol(format!(
-                            "Insufficient data for STRING value: need {} bytes, have {} bytes",
-                            4 + length,
-                            value_data.len()
-                        )));
-                    }
-                    let string_data = &value_data[4..4 + length];
-                    let value = String::from_utf8_lossy(string_data).to_string();
-                    tracing::trace!(
-                        "Parsed STRING (0x00CE): length={}, value='{}'",
-                        length,
-                        value
-                    );
-                    Ok(PlcValue::String(value))
-                }
-                0x00DA => {
-                    // Alternative STRING format (0x00DA) - single byte length
-                    if value_data.is_empty() {
-                        return Ok(PlcValue::String(String::new()));
-                    }
-                    let length = value_data[0] as usize;
-                    if value_data.len() < 1 + length {
-                        return Err(EtherNetIpError::Protocol(
-                            "Insufficient data for STRING value".to_string(),
-                        ));
-                    }
-                    let string_data = &value_data[1..1 + length];
-                    let value = String::from_utf8_lossy(string_data).to_string();
-                    tracing::trace!("Parsed STRING (0x00DA): '{}'", value);
-                    Ok(PlcValue::String(value))
-                }
-                0x02A0 => {
-                    // Allen-Bradley UDT type (0x02A0)
-                    // Note: symbol_id not available in parse_cip_response context
-                    // For proper UDT handling with symbol_id, use read_tag() which gets tag attributes
-                    tracing::trace!(
-                        "Detected UDT structure (0x02A0) with {} bytes",
-                        value_data.len()
-                    );
-                    Ok(PlcValue::Udt(UdtData {
-                        symbol_id: 0, // Not available in this context
-                        data: value_data.to_vec(),
-                    }))
-                }
-                0x00D3 => {
-                    // ULINT (64-bit unsigned integer) - sometimes returned for BOOL arrays
-                    // BOOL arrays in Allen-Bradley are stored as DWORD arrays (32 bits per DWORD)
-                    // The PLC may return 4 bytes (DWORD) for BOOL arrays
-                    if value_data.len() >= 4 {
-                        // Parse as DWORD (4 bytes) - BOOL arrays are often returned as DWORD
-                        let dword_value = u32::from_le_bytes([
-                            value_data[0],
-                            value_data[1],
-                            value_data[2],
-                            value_data[3],
-                        ]);
-                        tracing::trace!(
-                            "Parsed 0x00D3 as DWORD (BOOL array): {} (0x{:08X})",
-                            dword_value,
-                            dword_value
-                        );
-                        // Return as UDINT (DWORD) - this represents the first 32 BOOLs
-                        Ok(PlcValue::Udint(dword_value))
-                    } else if value_data.len() >= 8 {
-                        // If we have 8 bytes, parse as ULINT
-                        let value = u64::from_le_bytes([
-                            value_data[0],
-                            value_data[1],
-                            value_data[2],
-                            value_data[3],
-                            value_data[4],
-                            value_data[5],
-                            value_data[6],
-                            value_data[7],
-                        ]);
-                        tracing::trace!("Parsed ULINT: {}", value);
-                        Ok(PlcValue::Ulint(value))
-                    } else {
-                        Err(EtherNetIpError::Protocol(
-                            "Insufficient data for ULINT/DWORD value".to_string(),
-                        ))
-                    }
-                }
-                0x00A0 => {
-                    // UDT (User Defined Type)
-                    // Note: symbol_id will be 0 here since we don't have tag context
-                    // For proper UDT handling with symbol_id, use read_tag() which
-                    // gets tag attributes first
-                    tracing::trace!(
-                        "Parsed UDT ({} bytes) - note: symbol_id not available in this context",
-                        value_data.len()
-                    );
-                    Ok(PlcValue::Udt(UdtData {
-                        symbol_id: 0, // Will need to be set by caller if available
-                        data: value_data.to_vec(),
-                    }))
-                }
-                _ => {
-                    tracing::warn!("Unknown data type: 0x{:04X}", data_type);
-                    Err(EtherNetIpError::Protocol(format!(
-                        "Unsupported data type: 0x{data_type:04X}"
-                    )))
-                }
-            }
-        } else if service_reply == 0xCD {
-            // Write Tag reply - no data to parse
+            values::decode_payload(data_type, value_data)
+        } else if response.service == 0xCD {
             tracing::debug!("Write operation successful");
-            Ok(PlcValue::Bool(true)) // Indicate success
+            Ok(PlcValue::Bool(true))
         } else {
             Err(EtherNetIpError::Protocol(format!(
-                "Unknown service reply: 0x{service_reply:02X}"
+                "Unknown service reply: 0x{:02X}",
+                response.service
             )))
         }
     }
@@ -4628,15 +4173,8 @@ impl EipClient {
         // Close all connected sessions first
         let _ = self.close_all_connected_sessions().await;
 
-        let mut packet = Vec::new();
-
-        // EtherNet/IP encapsulation header (24 bytes, no command-specific data)
-        packet.extend_from_slice(&[0x66, 0x00]); // Command: Unregister Session
-        packet.extend_from_slice(&[0x00, 0x00]); // Length: 0 (no data payload)
-        packet.extend_from_slice(&self.session_handle.to_le_bytes()); // Session handle
-        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Status
-        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // Sender context
-        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Options
+        let mut packet = BytesMut::with_capacity(24);
+        EncapsulationHeader::new(UNREGISTER_SESSION, 0, self.session_handle).encode(&mut packet);
 
         self.stream
             .lock()
@@ -4664,12 +4202,6 @@ impl EipClient {
             element_count
         );
 
-        let mut cip_request = Vec::new();
-
-        // Service: Read Tag Service (0x4C)
-        // Reference: 1756-PM020, Page 220
-        cip_request.push(0x4C);
-
         // Build the path based on tag name format
         let path = self.build_tag_path(tag_name);
 
@@ -4681,21 +4213,6 @@ impl EipClient {
             path_size_words,
             tag_name
         );
-        cip_request.push(path_size_words);
-
-        // Request Path
-        cip_request.extend_from_slice(&path);
-
-        // Element count (little-endian)
-        // Reference: 1756-PM020, Page 241 (Request Data: Number of elements to read)
-        cip_request.extend_from_slice(&element_count.to_le_bytes());
-
-        tracing::debug!(
-            "Built CIP read request ({} bytes) for tag '{}': {:02X?}",
-            cip_request.len(),
-            tag_name,
-            cip_request
-        );
         tracing::debug!(
             "Path bytes ({} bytes, {} words) for tag '{}': {:02X?}",
             path.len(),
@@ -4703,8 +4220,17 @@ impl EipClient {
             tag_name,
             path
         );
+        let request = CipRequest::new(READ_TAG, path, element_count.to_le_bytes().to_vec());
+        let mut cip_request = BytesMut::new();
+        request.encode(&mut cip_request);
 
-        cip_request
+        tracing::debug!(
+            "Built CIP read request ({} bytes) for tag '{}': {:02X?}",
+            cip_request.len(),
+            tag_name,
+            cip_request
+        );
+        cip_request.to_vec()
     }
 
     /// Builds an Element ID segment for array element addressing
@@ -5608,258 +5134,39 @@ impl EipClient {
                     value_data
                 );
 
-                // Parse based on data type
-                match data_type {
-                    0x00C1 => {
-                        // BOOL
-                        if value_data.is_empty() {
-                            return Err(BatchError::SerializationError(
-                                "Missing BOOL value".to_string(),
-                            ));
-                        }
-                        Ok(Some(PlcValue::Bool(value_data[0] != 0)))
+                if data_type == values::BOOL_ARRAY_DWORD {
+                    if value_data.len() < 4 {
+                        return Err(BatchError::SerializationError(
+                            "Missing packed BOOL array DWORD value".to_string(),
+                        ));
                     }
-                    0x00D3 => {
-                        // CompactLogix BOOL arrays are often returned as packed DWORDs in batch reads.
-                        if value_data.len() < 4 {
-                            return Err(BatchError::SerializationError(
-                                "Missing packed BOOL array DWORD value".to_string(),
-                            ));
-                        }
 
-                        let packed_value = u32::from_le_bytes([
-                            value_data[0],
-                            value_data[1],
-                            value_data[2],
-                            value_data[3],
-                        ]);
+                    let packed_value = u32::from_le_bytes([
+                        value_data[0],
+                        value_data[1],
+                        value_data[2],
+                        value_data[3],
+                    ]);
 
-                        if let BatchOperation::Read { tag_name } = operation
-                            && let Some((_base_name, index)) =
-                                self.parse_array_element_access(tag_name)
-                        {
-                            let bit_index = index % 32;
-                            let value = (packed_value >> bit_index) & 1 != 0;
-                            tracing::trace!(
-                                "Parsed packed BOOL array element '{}' from DWORD 0x{:08X} using bit {} -> {}",
-                                tag_name,
-                                packed_value,
-                                bit_index,
-                                value
-                            );
-                            return Ok(Some(PlcValue::Bool(value)));
-                        }
-
+                    if let BatchOperation::Read { tag_name } = operation
+                        && let Some((_base_name, index)) = self.parse_array_element_access(tag_name)
+                    {
+                        let bit_index = index % 32;
+                        let value = (packed_value >> bit_index) & 1 != 0;
                         tracing::trace!(
-                            "Parsed 0x00D3 batch read as UDINT fallback: {} (0x{:08X})",
+                            "Parsed packed BOOL array element '{}' from DWORD 0x{:08X} using bit {} -> {}",
+                            tag_name,
                             packed_value,
-                            packed_value
-                        );
-                        Ok(Some(PlcValue::Udint(packed_value)))
-                    }
-                    0x00C2 => {
-                        // SINT
-                        if value_data.is_empty() {
-                            return Err(BatchError::SerializationError(
-                                "Missing SINT value".to_string(),
-                            ));
-                        }
-                        Ok(Some(PlcValue::Sint(value_data[0] as i8)))
-                    }
-                    0x00C3 => {
-                        // INT
-                        if value_data.len() < 2 {
-                            return Err(BatchError::SerializationError(
-                                "Missing INT value".to_string(),
-                            ));
-                        }
-                        let value = i16::from_le_bytes([value_data[0], value_data[1]]);
-                        Ok(Some(PlcValue::Int(value)))
-                    }
-                    0x00C4 => {
-                        // DINT
-                        if value_data.len() < 4 {
-                            return Err(BatchError::SerializationError(
-                                "Missing DINT value".to_string(),
-                            ));
-                        }
-                        let value = i32::from_le_bytes([
-                            value_data[0],
-                            value_data[1],
-                            value_data[2],
-                            value_data[3],
-                        ]);
-                        tracing::trace!("Parsed DINT: {}", value);
-                        Ok(Some(PlcValue::Dint(value)))
-                    }
-                    0x00C5 => {
-                        // LINT
-                        if value_data.len() < 8 {
-                            return Err(BatchError::SerializationError(
-                                "Missing LINT value".to_string(),
-                            ));
-                        }
-                        let value = i64::from_le_bytes([
-                            value_data[0],
-                            value_data[1],
-                            value_data[2],
-                            value_data[3],
-                            value_data[4],
-                            value_data[5],
-                            value_data[6],
-                            value_data[7],
-                        ]);
-                        Ok(Some(PlcValue::Lint(value)))
-                    }
-                    0x00C6 => {
-                        // USINT
-                        if value_data.is_empty() {
-                            return Err(BatchError::SerializationError(
-                                "Missing USINT value".to_string(),
-                            ));
-                        }
-                        Ok(Some(PlcValue::Usint(value_data[0])))
-                    }
-                    0x00C7 => {
-                        // UINT
-                        if value_data.len() < 2 {
-                            return Err(BatchError::SerializationError(
-                                "Missing UINT value".to_string(),
-                            ));
-                        }
-                        let value = u16::from_le_bytes([value_data[0], value_data[1]]);
-                        Ok(Some(PlcValue::Uint(value)))
-                    }
-                    0x00C8 => {
-                        // UDINT
-                        if value_data.len() < 4 {
-                            return Err(BatchError::SerializationError(
-                                "Missing UDINT value".to_string(),
-                            ));
-                        }
-                        let value = u32::from_le_bytes([
-                            value_data[0],
-                            value_data[1],
-                            value_data[2],
-                            value_data[3],
-                        ]);
-                        Ok(Some(PlcValue::Udint(value)))
-                    }
-                    0x00C9 => {
-                        // ULINT
-                        if value_data.len() < 8 {
-                            return Err(BatchError::SerializationError(
-                                "Missing ULINT value".to_string(),
-                            ));
-                        }
-                        let value = u64::from_le_bytes([
-                            value_data[0],
-                            value_data[1],
-                            value_data[2],
-                            value_data[3],
-                            value_data[4],
-                            value_data[5],
-                            value_data[6],
-                            value_data[7],
-                        ]);
-                        Ok(Some(PlcValue::Ulint(value)))
-                    }
-                    0x00CA => {
-                        // REAL
-                        if value_data.len() < 4 {
-                            return Err(BatchError::SerializationError(
-                                "Missing REAL value".to_string(),
-                            ));
-                        }
-                        let bytes = [value_data[0], value_data[1], value_data[2], value_data[3]];
-                        let value = f32::from_le_bytes(bytes);
-                        tracing::trace!("Parsed REAL: {}", value);
-                        Ok(Some(PlcValue::Real(value)))
-                    }
-                    0x00CB => {
-                        // LREAL
-                        if value_data.len() < 8 {
-                            return Err(BatchError::SerializationError(
-                                "Missing LREAL value".to_string(),
-                            ));
-                        }
-                        let bytes = [
-                            value_data[0],
-                            value_data[1],
-                            value_data[2],
-                            value_data[3],
-                            value_data[4],
-                            value_data[5],
-                            value_data[6],
-                            value_data[7],
-                        ];
-                        let value = f64::from_le_bytes(bytes);
-                        Ok(Some(PlcValue::Lreal(value)))
-                    }
-                    0x00DA => {
-                        // STRING
-                        if value_data.is_empty() {
-                            return Ok(Some(PlcValue::String(String::new())));
-                        }
-                        let length = value_data[0] as usize;
-                        if value_data.len() < 1 + length {
-                            return Err(BatchError::SerializationError(
-                                "Insufficient data for STRING value".to_string(),
-                            ));
-                        }
-                        let string_data = &value_data[1..1 + length];
-                        let value = String::from_utf8_lossy(string_data).to_string();
-                        tracing::trace!("Parsed STRING: '{}'", value);
-                        Ok(Some(PlcValue::String(value)))
-                    }
-                    0x00CE => {
-                        // Allen-Bradley STRING type (4-byte DINT length followed by data)
-                        if value_data.len() < 4 {
-                            return Err(BatchError::SerializationError(
-                                "Insufficient data for STRING length field".to_string(),
-                            ));
-                        }
-
-                        let length = u32::from_le_bytes([
-                            value_data[0],
-                            value_data[1],
-                            value_data[2],
-                            value_data[3],
-                        ]) as usize;
-
-                        if value_data.len() - 4 < length {
-                            return Err(BatchError::SerializationError(format!(
-                                "Insufficient data for STRING value: need {} bytes, have {} bytes",
-                                4 + length,
-                                value_data.len()
-                            )));
-                        }
-
-                        let string_data = &value_data[4..4 + length];
-                        let value = String::from_utf8_lossy(string_data).to_string();
-                        tracing::trace!(
-                            "Parsed batch STRING (0x00CE): length={}, value='{}'",
-                            length,
+                            bit_index,
                             value
                         );
-                        Ok(Some(PlcValue::String(value)))
+                        return Ok(Some(PlcValue::Bool(value)));
                     }
-                    0x02A0 => {
-                        // Allen-Bradley UDT type (0x02A0) for batch operations
-                        // Note: symbol_id not available in batch read context
-                        tracing::trace!(
-                            "Detected UDT structure (0x02A0) with {} bytes",
-                            value_data.len()
-                        );
-                        Ok(Some(PlcValue::Udt(UdtData {
-                            symbol_id: 0, // Not available in batch context
-                            data: value_data.to_vec(),
-                        })))
-                    }
-                    _ => Err(BatchError::SerializationError(format!(
-                        "Unsupported data type: 0x{data_type:04X}"
-                    ))),
                 }
+
+                values::decode_payload(data_type, value_data)
+                    .map(Some)
+                    .map_err(|e| BatchError::SerializationError(e.to_string()))
             }
         }
     }
@@ -6397,16 +5704,8 @@ impl EipClient {
             session.t_to_o_connection_id
         );
 
-        // Build EtherNet/IP header for connected data (Send RR Data)
-        let mut packet = Vec::new();
-
-        // EtherNet/IP Header
-        packet.extend_from_slice(&[0x6F, 0x00]); // Command: Send RR Data (0x006F) - correct for connected messaging
-        packet.extend_from_slice(&[0x00, 0x00]); // Length (fill in later)
-        packet.extend_from_slice(&self.session_handle.to_le_bytes()); // Session handle
-        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Status
-        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // Context
-        packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Options
+        let mut packet = BytesMut::new();
+        EncapsulationHeader::new(SEND_RR_DATA, 0, self.session_handle).encode(&mut packet);
 
         // CPF (Common Packet Format) data starts here
         let cpf_start = packet.len();
@@ -6478,15 +5777,17 @@ impl EipClient {
             .map_err(EtherNetIpError::Io)?;
 
         // Check EtherNet/IP command status
-        let cmd_status = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
-        if cmd_status != 0 {
+        let mut header_bytes = &header[..];
+        let response_header = EncapsulationHeader::decode(&mut header_bytes)?;
+        if response_header.status != 0 {
             return Err(EtherNetIpError::Protocol(format!(
-                "Connected message failed with status: 0x{cmd_status:08X}"
+                "Connected message failed with status: 0x{:08X}",
+                response_header.status
             )));
         }
 
         // Read response data
-        let response_length = u16::from_le_bytes([header[2], header[3]]) as usize;
+        let response_length = response_header.length as usize;
         let mut response_data = vec![0u8; response_length];
         stream
             .read_exact(&mut response_data)

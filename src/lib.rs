@@ -109,6 +109,7 @@ pub mod error;
 pub mod ffi;
 pub mod monitoring; // Enterprise-grade monitoring and health checks
 pub mod plc_manager;
+pub(crate) mod protocol;
 pub mod route;
 pub mod schema;
 pub mod subscription;

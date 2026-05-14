@@ -7,7 +7,7 @@
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
 
-> All briefs from the original second-pass review have merged. Future polish candidates are listed in CODEX-D's verdict.
+> All briefs from the original second-pass review have merged. Future polish candidates are listed in CODEX-D's verdict, and the SemVer-major release-window items are tracked in CODEX-F's verdict.
 
 ## Done
 
@@ -18,6 +18,7 @@
 | CODEX-E | Small polish — runtime-init log dedupe, regex caching, re-export merge, dev-dep audit | codex | `fc63735` |
 | CODEX-C | Decompose lib.rs into route, batch, types, and client modules | codex | `476f21c` |
 | CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | `c58a905` |
+| CODEX-F | RoutePath ordered hops + ASCII ethernet link-address encoding | codex | `9a3d192` |
 
 ## Project context
 

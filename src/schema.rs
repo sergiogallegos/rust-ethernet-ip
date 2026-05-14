@@ -1,8 +1,8 @@
-use crate::RoutePath;
 use crate::tag_manager::{
     TagMetadata, TagPermissions as MetadataPermissions, TagScope as MetadataScope,
 };
 use crate::udt::{TagAttributes, TagPermissions, TagScope, UdtDefinition, UdtMember};
+use crate::{RouteHop, RoutePath};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +36,14 @@ pub struct SchemaRoutePath {
     pub slots: Vec<u8>,
     pub ports: Vec<u8>,
     pub addresses: Vec<String>,
+    pub hops: Vec<SchemaRouteHop>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SchemaRouteHop {
+    Backplane { port: u8, slot: u8 },
+    Ethernet { port: u8, address: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,6 +135,22 @@ impl From<&RoutePath> for SchemaRoutePath {
             slots: value.slots.clone(),
             ports: value.ports.clone(),
             addresses: value.addresses.clone(),
+            hops: value.hops.iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<&RouteHop> for SchemaRouteHop {
+    fn from(value: &RouteHop) -> Self {
+        match value {
+            RouteHop::Backplane { port, slot } => Self::Backplane {
+                port: *port,
+                slot: *slot,
+            },
+            RouteHop::Ethernet { port, address } => Self::Ethernet {
+                port: *port,
+                address: address.clone(),
+            },
         }
     }
 }

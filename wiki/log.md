@@ -766,3 +766,19 @@ Sources used:
 - `docs/DLL_DEPLOYMENT.md`
 - `csharp/RustEtherNetIp/README.md`
 - `python/README.md`
+
+## [2026-05-14] query | ordered route-hop review for 0.8.0 draft
+
+- Updated `wiki/protocol/route-path-behavior.md`.
+- Confirmed a user-reported design gap: grouped route fields could not faithfully represent mixed CIP route order such as backplane -> Ethernet -> backplane.
+- Captured that the Rust `0.8.0` draft now has ordered `RouteHop` storage while preserving legacy grouped fields.
+- Captured that Ethernet route hops now use extended ASCII/NUL link-address encoding, and that complex multi-hop hardware validation remains pending.
+- Captured the legacy grouped-field fallback for empty ordered-hop lists to avoid silently breaking direct public-field construction.
+
+Sources used:
+
+- `src/route.rs`
+- `src/client.rs`
+- `src/schema.rs`
+- `tests/udt_discovery_tests.rs`
+- `wiki/protocol/route-path-behavior.md`

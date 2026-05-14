@@ -1,5 +1,5 @@
 use rust_ethernet_ip::udt::{TagPermissions, TagScope};
-use rust_ethernet_ip::{RoutePath, TagAttributes, UdtDefinition, UdtMember, UdtTemplate};
+use rust_ethernet_ip::{RouteHop, RoutePath, TagAttributes, UdtDefinition, UdtMember, UdtTemplate};
 use std::collections::HashMap;
 /// Mock EipClient for testing UDT discovery functionality
 struct MockEipClient {
@@ -194,11 +194,89 @@ fn test_route_path_cip_bytes() {
 
     let cip_bytes = route.to_cip_bytes();
 
-    // Should contain backplane slot (0x01, 0x00) and IP address
-    // Format: [0x01, slot] where 0x01 = Port Segment (8-bit link) for Port 1 (backplane)
-    assert!(cip_bytes.len() >= 6); // 2 bytes for slot + 4 bytes for IP
-    assert_eq!(cip_bytes[0], 0x01); // Port Segment for Port 1 (backplane)
-    assert_eq!(cip_bytes[1], 0x00); // Slot 0
+    assert_eq!(
+        cip_bytes,
+        vec![
+            0x01, 0x00, 0x12, 0x0E, b'1', b'9', b'2', b'.', b'1', b'6', b'8', b'.', b'1', b'.',
+            b'1', b'0', b'0', 0x00
+        ]
+    );
+}
+
+#[test]
+fn test_route_path_preserves_mixed_hop_order() {
+    let route = RoutePath::new()
+        .add_slot(0)
+        .add_ethernet("192.168.1.5")
+        .add_slot(3);
+
+    assert_eq!(
+        route.hops,
+        vec![
+            RouteHop::Backplane { port: 1, slot: 0 },
+            RouteHop::Ethernet {
+                port: 2,
+                address: "192.168.1.5".to_string()
+            },
+            RouteHop::Backplane { port: 1, slot: 3 },
+        ]
+    );
+    assert_eq!(
+        route.to_cip_bytes(),
+        vec![
+            0x01, 0x00, 0x12, 0x0C, b'1', b'9', b'2', b'.', b'1', b'6', b'8', b'.', b'1', b'.',
+            b'5', 0x00, 0x01, 0x03
+        ]
+    );
+}
+
+#[test]
+fn test_route_path_uses_explicit_ethernet_port() {
+    let route = RoutePath::new()
+        .add_slot(1)
+        .add_ethernet_with_port(3, "10.20.30.40");
+
+    assert_eq!(
+        route.to_cip_bytes(),
+        vec![
+            0x01, 0x01, 0x13, 0x0C, b'1', b'0', b'.', b'2', b'0', b'.', b'3', b'0', b'.', b'4',
+            b'0', 0x00
+        ]
+    );
+}
+
+#[test]
+fn test_legacy_port_address_pairing_still_works_when_port_is_added_late() {
+    let route = RoutePath::new()
+        .add_slot(0)
+        .add_address("192.168.1.100".to_string())
+        .add_port(3);
+
+    assert_eq!(
+        route.to_cip_bytes(),
+        vec![
+            0x01, 0x00, 0x13, 0x0E, b'1', b'9', b'2', b'.', b'1', b'6', b'8', b'.', b'1', b'.',
+            b'1', b'0', b'0', 0x00
+        ]
+    );
+}
+
+#[test]
+fn test_legacy_public_field_construction_still_encodes_route() {
+    let route = RoutePath {
+        slots: vec![0],
+        ports: vec![3],
+        addresses: vec!["10.20.30.40".to_string()],
+        hops: Vec::new(),
+    };
+
+    assert_eq!(
+        route.to_cip_bytes(),
+        vec![
+            0x01, 0x00, 0x13, 0x0C, b'1', b'0', b'.', b'2', b'0', b'.', b'3', b'0', b'.', b'4',
+            b'0', 0x00
+        ]
+    );
 }
 
 #[test]

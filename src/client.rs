@@ -669,14 +669,11 @@ impl EipClient {
     ///
     /// ```no_run
     /// use rust_ethernet_ip::EipClient;
-    /// use std::net::SocketAddr;
-    /// use tokio::net::TcpStream;
+    /// use std::io::Cursor;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// // Create a custom stream with socket options
-    /// let addr: SocketAddr = "192.168.1.100:44818".parse()?;
-    /// let stream = TcpStream::connect(addr).await?;
-    /// stream.set_nodelay(true)?;
+    /// // Any AsyncRead + AsyncWrite + Unpin + Send stream can be injected.
+    /// let stream = Cursor::new(Vec::<u8>::new());
     ///
     /// // Connect using the custom stream
     /// let client = EipClient::connect_with_stream(stream, None).await?;

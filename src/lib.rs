@@ -134,7 +134,7 @@ pub use monitoring::{
     ProductionMonitor,
 };
 pub use plc_manager::{PlcConfig, PlcConnection, PlcManager};
-pub use route::RoutePath;
+pub use route::{RouteHop, RoutePath};
 pub use schema::{
     SchemaCapabilities, SchemaDataType, SchemaExport, SchemaLibraryInfo, SchemaRoutePath,
     SchemaScope, SchemaTag, SchemaTargetInfo, SchemaUdt, SchemaUdtMember,

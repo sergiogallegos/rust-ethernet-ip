@@ -55,12 +55,15 @@ jobs:
       run: |
         dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj
 
+    - name: Install cargo-tarpaulin
+      if: matrix.coverage
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-tarpaulin
+
     - name: Generate code coverage
       if: matrix.coverage
-      uses: actions-rs/cargo@v1
-      with:
-        command: tarpaulin
-        args: --out Html
+      run: cargo tarpaulin --out Xml --out Html
 
     - name: Upload coverage to Codecov
       if: matrix.coverage

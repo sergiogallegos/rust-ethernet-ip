@@ -315,28 +315,35 @@ fn data_type_name(cip_code: u16) -> &'static str {
 }
 
 fn current_utc_timestamp_rfc3339() -> String {
-    let mut now: libc::time_t = 0;
-    // SAFETY: `libc::tm` is a plain old data struct and zero initialization is valid.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    let mut buffer = [0u8; 32];
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    format_unix_seconds_as_rfc3339(secs)
+}
 
-    // SAFETY: libc fills the provided out-pointers and the buffer is large enough for the
-    // fixed-format UTC timestamp `%Y-%m-%dT%H:%M:%SZ`.
-    unsafe {
-        libc::time(&mut now as *mut libc::time_t);
-        libc::gmtime_r(&now as *const libc::time_t, &mut tm as *mut libc::tm);
-        let written = libc::strftime(
-            buffer.as_mut_ptr() as *mut libc::c_char,
-            buffer.len(),
-            c"%Y-%m-%dT%H:%M:%SZ".as_ptr(),
-            &tm as *const libc::tm,
-        );
-        if written > 0 {
-            String::from_utf8_lossy(&buffer[..written]).to_string()
-        } else {
-            "1970-01-01T00:00:00Z".to_string()
-        }
-    }
+// Howard Hinnant's civil-from-days algorithm; valid for any i64 Unix second.
+// Avoids platform libc divergence (gmtime_r/gmtime_s/strftime).
+fn format_unix_seconds_as_rfc3339(secs: i64) -> String {
+    let days = secs.div_euclid(86_400);
+    let tod = secs.rem_euclid(86_400);
+    let hour = (tod / 3600) as u32;
+    let minute = ((tod % 3600) / 60) as u32;
+    let second = (tod % 60) as u32;
+
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let year = if m <= 2 { y + 1 } else { y };
+
+    format!("{year:04}-{m:02}-{d:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
 
 #[cfg(test)]
@@ -359,6 +366,20 @@ mod tests {
         assert_eq!(&timestamp[4..5], "-");
         assert_eq!(&timestamp[7..8], "-");
         assert_eq!(&timestamp[10..11], "T");
+    }
+
+    #[test]
+    fn rfc3339_format_matches_known_unix_seconds() {
+        assert_eq!(format_unix_seconds_as_rfc3339(0), "1970-01-01T00:00:00Z");
+        assert_eq!(
+            format_unix_seconds_as_rfc3339(1_700_000_000),
+            "2023-11-14T22:13:20Z"
+        );
+        // 2024-02-29T12:34:56Z — leap year boundary.
+        assert_eq!(
+            format_unix_seconds_as_rfc3339(1_709_210_096),
+            "2024-02-29T12:34:56Z"
+        );
     }
 
     #[test]

@@ -44,12 +44,14 @@ cd csharp/RustEtherNetIp.Tests && dotnet test
 
 ### Core Design
 
-The library is built around `EipClient` (in `src/lib.rs`, ~7500 lines), which implements the EtherNet/IP encapsulation protocol and CIP (Common Industrial Protocol) over async TCP via Tokio. It is the single entry point for all PLC communication.
+The library is built around `EipClient` (in `src/client.rs`, ~6.7k lines), which implements the EtherNet/IP encapsulation protocol and CIP (Common Industrial Protocol) over async TCP via Tokio. It is the single entry point for all PLC communication. `src/lib.rs` (~220 lines) is a thin crate-root that re-exports the public API; the post-CODEX-C/D layout splits the implementation into `route.rs`, `batch.rs`, `types.rs`, `client.rs`, and `protocol/{mod,encap,cip,values,tests}.rs`.
 
 ```
 Rust/C# Application
         |
-   EipClient (src/lib.rs) -- async TCP via Box<dyn EtherNetIpStream>
+   EipClient (src/client.rs) -- async TCP via Box<dyn EtherNetIpStream>
+        |
+   protocol/ (src/protocol/) -- Encode/Decode boundary for encap, CIP, PlcValue
         |
    FFI layer (src/ffi.rs) -- #[no_mangle] extern "C", global Tokio runtime
         |
@@ -60,14 +62,19 @@ Rust/C# Application
 
 | Module | Responsibility |
 |---|---|
-| `lib.rs` | `EipClient`, `PlcValue` enum (13 AB data types), `BatchOperation`, `RoutePath`, `UdtData`, protocol encoding/decoding, session management |
-| `error.rs` | `EtherNetIpError` enum with `is_retriable()` for retry vs reconnect decisions |
-| `tag_path.rs` | `TagPath` parser for complex addressing: arrays, bits, program-scoped, UDT members, nested paths |
-| `udt.rs` | `UdtDefinition`, `UdtManager`, `UserDefinedType` for UDT discovery and serialization |
-| `ffi.rs` | C FFI exports using `lazy_static` global `RUNTIME` and `FFI_CLIENTS: Mutex<HashMap<i32, EipClient>>` |
-| `subscription.rs` | `TagSubscription`, `SubscriptionManager` with mpsc channels |
-| `monitoring.rs` | `ProductionMonitor`, health checks, metrics collection |
-| `config.rs` | `ProductionConfig` with connection/performance/monitoring sub-configs |
+| `lib.rs` | Thin crate root — public re-exports, `try_init_tracing`, version string. ~220 lines. |
+| `client.rs` | `EipClient`: session management, tag reads/writes, batch execution, UDT/STRING paths, diagnostics, subscriptions. ~6.7k lines. |
+| `route.rs` | `RoutePath` and `RouteHop` (`Backplane` / `Ethernet`) — ordered CIP route hops with ASCII ethernet link-address encoding. |
+| `batch.rs` | `BatchOperation`, `BatchError`, `BatchConfig` — batch read/write/execute data model. |
+| `types.rs` | `PlcValue` (13 AB types), `UdtData`, `ConnectedSession`, `ConnectionParameters` — shared data model. |
+| `protocol/` | Wire codec boundary — `Encode`/`Decode` traits, encapsulation framing (`encap.rs`), CIP framing (`cip.rs`), `PlcValue` codecs (`values.rs`), pinned-byte tests (`tests.rs`). |
+| `error.rs` | `EtherNetIpError` enum with `is_retriable()` for retry vs reconnect decisions. |
+| `tag_path.rs` | `TagPath` parser for complex addressing: arrays, bits, program-scoped, UDT members, nested paths. |
+| `udt.rs` | `UdtDefinition`, `UdtManager`, `UserDefinedType` for UDT discovery and serialization. |
+| `ffi.rs` | C FFI exports using `lazy_static` global `RUNTIME` and `FFI_CLIENTS: Mutex<HashMap<i32, EipClient>>`. Gated behind the `ffi` Cargo feature. |
+| `subscription.rs` | `TagSubscription`, `SubscriptionManager` with mpsc channels. |
+| `monitoring.rs` | `ProductionMonitor`, health checks, metrics collection. |
+| `config.rs` | `ProductionConfig` with connection/performance/monitoring sub-configs. |
 
 ### Key Types
 
@@ -162,11 +169,13 @@ title: <short title>
 owner: codex
 status: open
 created: YYYY-MM-DD
-last-update: YYYY-MM-DD claude
+last-update: YYYY-MM-DD claude [Opus 4.7]
 ---
 ```
 
-Then sections: `## Brief` with goal + context to read first + files to create + behavior + test requirements + acceptance criteria + out of scope + risks/gotchas. Plus empty `## Codex log`, `## Claude review`, `## Verdict`.
+The `last-update` field carries the underlying model in square brackets (e.g. `claude [Opus 4.7]`, `codex [gpt-5.5]`) so the maintainer can audit model-vs-quality over time.
+
+Then sections: `## Brief` with goal + context to read first + files to create + behavior + test requirements + acceptance criteria + out of scope + risks/gotchas. Plus empty `## Codex log`, `## Claude review`, `## Verdict`. Entry headers inside `## Codex log` and `## Claude review` also carry the model tag — `### YYYY-MM-DD HH:MM  <author> [<model>]` — same format as `log.md` lines.
 
 When the task is opened, also: add a row to `board.md`, append a one-line entry to `log.md`, commit.
 
@@ -177,6 +186,7 @@ Use neutral framing in everything written into this directory and into project d
 - **No first-person.** Write "Codex implemented X" / "Claude-authored brief" / "the original brief" / "brief error owned by Claude". Not "I added X" / "my brief".
 - **No maintainer profiling.** Write "the maintainer requested" / "per maintainer direction". Not "the user wants X" / direct quotes of maintainer chat.
 - **No agent attribution in commit messages or PR descriptions.** Public artifacts read as the project's own voice; agent identity belongs in `docs/agents/`, not in git history surfaced to crates.io / NuGet consumers.
+- **Agent + model tags belong only in `docs/agents/`.** Log entries, task section headers, verdicts, and frontmatter `last-update` carry the agent's underlying model — `claude [Opus 4.7]`, `codex [gpt-5.5]`, etc. This gives the maintainer a model-vs-quality audit trail without leaking it into public git history.
 - **End-user references are fine when domain-relevant.** "the user's PLC tag", "the integrator's HMI", "calling code" are correct when they refer to actual end-users of the library.
 - **Paraphrase, don't quote.** If a maintainer message defines a project convention, restate it neutrally as the convention. Don't embed the original message verbatim.
 

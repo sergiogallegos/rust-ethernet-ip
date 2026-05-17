@@ -2,9 +2,9 @@
 
 Append-only chronological transcript of cross-agent activity. One line per event. Newest at bottom.
 
-Format: `YYYY-MM-DD HH:MM  <author>  <task-id-or-->  <event>`
+Format: `YYYY-MM-DD HH:MM  <author>  [<model>]  <task-id-or-->  <event>`
 
-Use `--` for task-id when the event is project-wide (protocol bootstrap, etc).
+Use `--` for task-id when the event is project-wide (protocol bootstrap, etc). The `[<model>]` tag identifies the underlying model that produced the entry — e.g. `[Opus 4.7]`, `[Sonnet 4.6]`, `[gpt-5.5]`. Convention introduced 2026-05-17; entries above this note predate the convention and stay as-is (the log is append-only).
 
 ---
 
@@ -34,3 +34,5 @@ Use `--` for task-id when the event is project-wide (protocol bootstrap, etc).
 2026-05-14  codex   CODEX-F   Follow-up fixes addressed all three blockers: replaced manual mod-2 with is_multiple_of, doctest now uses std::io::Cursor instead of TcpStream, ethernet hops emit `[0x10|port, ascii_len+1, ascii…, 0x00, optional_pad]`. Added five pinned-byte tests including the legacy-public-field fallback path. Status: submitted.
 2026-05-14  claude  CODEX-F   Brief authored retroactively. Merged at `9a3d192`. Independent verification: cargo fmt clean, both clippy feature variants clean, full test matrix green (udt_discovery_tests 11 → 18 with 5 new pinned-byte tests), FFI symbol parity preserved at 56 eip_ exports. Dual-state hazard from initial submission mitigated via `if hops.is_empty()` fallback; legacy fields preserved for non-breaking 0.8.0 ship. Process note recorded in verdict: this is the first off-protocol submission of the session — Codex acted on the GitHub issue without a brief; review caught two real defects plus an architectural concern; retroactive brief authoring is the agreed cleanup. SemVer-major private-storage RoutePath reshape tracked for the 1.0.0 release-window brief. Hardware validation against a real multi-hop topology still pending; wiki marks ethernet encoding correctness as `likely` rather than `confirmed`. Status: merged.
 2026-05-14  --      --        Session paused at maintainer request. All work pushed to origin. Forward agenda durably recorded in `board.md` under "Next agenda": gating items (hardware validation, CHANGELOG roll), 0.9.0 release cut, architecture doc refresh, CODEX-G through CODEX-J non-breaking polish briefs, and CODEX-K release-window brief bundling every deferred SemVer-major item for the 1.0.0 cut. Next session reads `board.md` first per protocol; the "Next agenda" section is self-contained and does not require chat history to act on.
+2026-05-17  claude  [Opus 4.7]  --        Convention: agent + model tag added to log entries, task section headers, and frontmatter `last-update` (e.g. `claude [Opus 4.7]`, `codex [gpt-5.5]`). Format documented in `docs/agents/README.md` and `CLAUDE.md`; entries before this line predate the convention.
+2026-05-17  claude  [Opus 4.7]  --        v0.8.0 state clarified: per maintainer direction, all CODEX-A→F merges belong to the v0.8.0 draft (sits on `main`, no tag, no publish), held pending hardware validation. Board "Project context" corrected (last released = v0.7.0), "Next agenda" reframed (drop v0.9.0 plan, gating items now target v0.8.0 cut). CHANGELOG `[Unreleased]` gained the missing CODEX-F `RouteHop` entry. Architecture doc rot fixed in `CLAUDE.md` and `docs/SOFTWARE_ARCHITECTURE.md` (lib.rs description, module table, design-debt list).

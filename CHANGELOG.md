@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Target next release: `0.8.0`.
 
 ### ✨ Added
+- **Ordered route hops with explicit `RouteHop` variants**: `RoutePath` now stores an ordered `Vec<RouteHop>` (`Backplane { slot }` / `Ethernet { port, address }`) with builder methods `add_backplane`, `add_ethernet`, and `add_ethernet_with_port`. The new `RouteHop::Ethernet` variant emits the spec-correct ASCII extended link-address encoding (`[0x10 | port, ascii_len + 1, ascii…, 0x00, optional_pad]`) instead of raw IPv4 octets. The legacy `pub slots` / `pub ports` / `pub addresses` fields and `add_slot` / `add_port` / `add_address` builders are preserved for non-breaking 0.8.0 ship; private-storage migration is tracked for the 1.0.0 SemVer-major brief.
 - **Windows-first NuGet release workflow**: Added a GitHub Actions release workflow that builds the Rust native library on `windows-latest`, packs the C# wrapper, uploads the `.nupkg` artifact, and publishes to NuGet on version tags when `NUGET_API_KEY` is configured.
 - **NuGet packing scripts**: Added `scripts/pack-nuget.ps1` for Windows `win-x64` native runtime packaging and `scripts/pack-nuget.sh` for local macOS package staging.
 - **Maintainer wiki**: Added `AGENTS.md` workflow instructions plus a `wiki/` synthesis layer for controller behavior, route-path behavior, wrapper parity, limitations, release validation, and investigation notes.

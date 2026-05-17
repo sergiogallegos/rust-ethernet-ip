@@ -47,7 +47,12 @@ The intended direction is:
 
 ## Core Rust Modules
 
-- [src/lib.rs](../src/lib.rs): protocol orchestration, client API, batch operations, tag reads/writes, and shared data model types
+- [src/lib.rs](../src/lib.rs): thin crate root — public re-exports, `try_init_tracing`, version string
+- [src/client.rs](../src/client.rs): `EipClient` — session management, tag reads/writes, batch execution, UDT/STRING paths, diagnostics, subscriptions
+- [src/route.rs](../src/route.rs): `RoutePath` and `RouteHop` (`Backplane` / `Ethernet`) — ordered CIP route hops with ASCII ethernet link-address encoding
+- [src/batch.rs](../src/batch.rs): `BatchOperation`, `BatchError`, `BatchConfig` — batch read/write/execute data model
+- [src/types.rs](../src/types.rs): `PlcValue`, `UdtData`, and shared connection/session types
+- [src/protocol/](../src/protocol/): wire codec boundary — `Encode`/`Decode` traits, encapsulation framing, CIP framing, `PlcValue` codecs, pinned-byte tests
 - [src/tag_path.rs](../src/tag_path.rs): parses symbolic paths, array access, bit access, and nested UDT addressing
 - [src/tag_manager.rs](../src/tag_manager.rs): tag metadata, discovery, cache-oriented tag support
 - [src/udt.rs](../src/udt.rs): UDT metadata and payload representation
@@ -57,7 +62,7 @@ The intended direction is:
 - [src/monitoring.rs](../src/monitoring.rs): health checks, metrics, and diagnostics-oriented state
 - [src/config.rs](../src/config.rs): runtime configuration types
 - [src/error.rs](../src/error.rs): project error taxonomy and conversion boundary
-- [src/ffi.rs](../src/ffi.rs): C ABI surface for non-Rust consumers
+- [src/ffi.rs](../src/ffi.rs): C ABI surface for non-Rust consumers (gated behind the `ffi` Cargo feature)
 
 ## Wrapper Layer
 
@@ -151,7 +156,8 @@ If new functionality crosses more than one of these seams, document the ownershi
 - keep duplicate protocol logic out of the C# wrapper
 - avoid creating parallel subscription implementations
 - avoid adding new global locks in the FFI boundary
-- prefer targeted module responsibilities over growth of `lib.rs` as a grab-bag
+- keep `client.rs` from becoming the next `lib.rs` grab-bag — prefer extracting cohesive submodules (`client::tag_io`, `client::udt`, etc.) as it grows
+- keep wire-codec logic inside `protocol/`; don't inline new encode/decode paths in `client.rs`
 - keep examples aligned with the real supported architecture, not as one-off prototypes
 
 ## Recommended Refactor Posture

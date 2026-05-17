@@ -32,7 +32,7 @@ docs/agents/
 ```
 
 - **`board.md`** — single table summarizing every task: id, title, owner, status, last update. Kanban-style snapshot.
-- **`log.md`** — append-only one-liners. Format: `YYYY-MM-DD HH:MM <author> <task-id> <event>`. Newest at bottom. Never edit prior entries.
+- **`log.md`** — append-only one-liners. Format: `YYYY-MM-DD HH:MM <author> [<model>] <task-id> <event>`. Newest at bottom. Never edit prior entries. The `[<model>]` tag identifies which underlying model produced the entry (e.g. `[Opus 4.7]`, `[gpt-5.5]`); use `--` for `<task-id>` on project-wide events.
 - **`tasks/<id>.md`** — full lifecycle for one task: the brief, Codex's working notes, Claude's review, the verdict. Each task gets one file. Don't split a task across files.
 
 ## Task lifecycle
@@ -67,7 +67,7 @@ All three are part of the same edit.
 
 Every task file has these sections, in this order:
 
-1. **Frontmatter** (yaml). Fields: `id`, `title`, `owner`, `status`, `created`, `last-update`.
+1. **Frontmatter** (yaml). Fields: `id`, `title`, `owner`, `status`, `created`, `last-update`. The `last-update` field has the form `YYYY-MM-DD <author> [<model>]` (e.g. `2026-05-17 claude [Opus 4.7]`).
 2. **Brief** — written once by claude. Codex must not edit this. If the brief is wrong, codex appends a question in `## Codex log` rather than editing.
 3. **Codex log** — append-only by codex. Each entry is timestamped and signed.
 4. **Claude review** — append-only by claude after submission.
@@ -75,15 +75,17 @@ Every task file has these sections, in this order:
 
 ### Entry format
 
-Within `## Codex log` and `## Claude review`, each entry starts with a header line:
+Within `## Codex log` and `## Claude review`, each entry starts with a header line that includes the agent's underlying model in square brackets:
 
 ```markdown
-### 2026-05-01 14:30  codex
+### 2026-05-01 14:30  codex [gpt-5.5]
 <content>
 
-### 2026-05-01 15:10  claude — review pass 1
+### 2026-05-01 15:10  claude [Opus 4.7] — review pass 1
 <content>
 ```
+
+The model tag lets the maintainer trace which model produced which decision over time. Use the model name as it surfaces in your runtime context (Claude reports its model in the harness banner; Codex reports the gpt-N variant it's running). If the model isn't known, write `[unknown]` rather than omitting the tag — never leave it blank.
 
 Entries are appended, never edited. If something written earlier was wrong, write a new entry that supersedes it; don't edit the old one.
 
@@ -117,6 +119,7 @@ Use neutral framing in everything written into this directory and into project d
 - **No first-person.** Write "Codex implemented X" / "Claude-authored brief" / "the original brief" / "brief error owned by Claude". Not "I added X" / "my brief".
 - **No maintainer profiling.** Write "the maintainer requested" / "per maintainer direction". Not "the user wants X" / direct quotes of maintainer chat.
 - **No agent attribution in commit messages or PR descriptions.** Public artifacts read as the project's own voice.
+- **Agent + model tags belong only in `docs/agents/`.** Log entries, task file section headers, verdicts, and frontmatter `last-update` carry the agent's underlying model (e.g. `claude [Opus 4.7]`, `codex [gpt-5.5]`). This gives the maintainer a model-vs-quality audit trail without leaking it into public git history.
 - **End-user references are fine when domain-relevant.** "the user's PLC tag", "the integrator's calling code" are correct when they refer to actual library users.
 - **Paraphrase, don't quote.** If a maintainer message defines a project convention, restate it neutrally.
 

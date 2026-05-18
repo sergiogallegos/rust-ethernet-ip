@@ -129,3 +129,6 @@ coverage/
 
 # Reference material kept locally; not part of the published project
 wiki/books/
+
+# Claude Code per-machine settings (settings.json itself can be shared if needed)
+.claude/settings.local.json

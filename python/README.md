@@ -17,10 +17,10 @@ If you are integrating this into a project, also read:
 
 ## Local Development
 
-Build the native library first from the repo root:
+Build the native library first from the repo root. The Python wrapper requires the FFI exports, so include the `ffi` feature:
 
 ```bash
-cargo build --release
+cargo build --features ffi
 ```
 
 Run the lightweight Python tests from the repo root:
@@ -41,10 +41,16 @@ Or ask the Python tests to launch the in-repo simulator example automatically:
 RUST_ETHERNET_IP_START_SIM=1 PYTHONPATH=python python3 -m unittest discover -s python/tests
 ```
 
+The auto-launch path prefers a prebuilt simulator binary at `target/debug/examples/python_test_simulator` (or `.exe` on Windows), then falls back to building it. To prebuild both the native FFI library and simulator:
+
+```bash
+cargo build --features ffi --example python_test_simulator
+```
+
 You can also launch the simulator example directly and point tests or examples at it:
 
 ```bash
-cargo run --quiet --example python_test_simulator
+cargo run --features ffi --quiet --example python_test_simulator
 ```
 
 Load the package directly from the repo during development:

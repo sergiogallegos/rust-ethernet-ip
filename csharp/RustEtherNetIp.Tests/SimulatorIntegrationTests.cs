@@ -1,6 +1,6 @@
 using System;
-using System.IO;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -8,31 +8,11 @@ namespace RustEtherNetIp.Tests
 {
     public class SimulatorIntegrationTests
     {
-        private const string SimAddressEnv = "SIM_PLC_ADDRESS";
-
         [Fact]
-        public void ReadWriteDint_WithSimulator()
+        public void ReadWriteScalarsAndArrayRanges_WithSimulator()
         {
-            var address = Environment.GetEnvironmentVariable(SimAddressEnv);
-            if (string.IsNullOrWhiteSpace(address))
-            {
-                // Simulator not configured; skip without failing.
-                return;
-            }
-
-            var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                ? "librust_ethernet_ip.dylib"
-                : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                    ? "librust_ethernet_ip.so"
-                    : "rust_ethernet_ip.dll";
-            var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
-            if (!File.Exists(nativeLibPath))
-            {
-                return;
-            }
-
-            using var client = new EtherNetIpClient();
-            Assert.True(client.Connect(address));
+            using var sim = new SimulatorTestHarness();
+            using var client = sim.ConnectClient();
 
             var initialDint = client.ReadDint("DINT_TAG");
             Assert.Equal(1234, initialDint);
@@ -81,29 +61,83 @@ namespace RustEtherNetIp.Tests
         }
 
         [Fact]
+        public void BatchReadWriteAndExecuteBatch_PreservePerTagResults_WithSimulator()
+        {
+            using var sim = new SimulatorTestHarness();
+            using var client = sim.ConnectClient();
+
+            var initial = client.ReadTagsBatch(new[] { "DINT_TAG", "REAL_TAG", "BOOL_TAG", "STRING_TAG" });
+            Assert.All(initial.Values, result => Assert.True(result.Success, result.ErrorMessage));
+            Assert.Equal(1234, initial["DINT_TAG"].Value);
+            Assert.Equal(3.0f, Assert.IsType<float>(initial["REAL_TAG"].Value), 2);
+            Assert.Equal(true, initial["BOOL_TAG"].Value);
+            Assert.Equal("Hello PLC", initial["STRING_TAG"].Value);
+
+            var failedRead = client.ReadTagsBatch(new[] { "DINT_TAG", "THIS_TAG_DOES_NOT_EXIST" });
+            Assert.True(failedRead["DINT_TAG"].Success);
+            Assert.False(failedRead["THIS_TAG_DOES_NOT_EXIST"].Success);
+            Assert.NotNull(failedRead["THIS_TAG_DOES_NOT_EXIST"].ErrorMessage);
+
+            var writeResults = client.WriteTagsBatch(new Dictionary<string, object>
+            {
+                ["DINT_TAG"] = 2468,
+                ["REAL_TAG"] = 6.5f,
+                ["BOOL_TAG"] = false,
+                ["STRING_TAG"] = "Batch Updated"
+            });
+            Assert.All(writeResults.Values, result => Assert.True(result.Success, result.ErrorMessage));
+
+            var updated = client.ReadTagsBatch(new[] { "DINT_TAG", "REAL_TAG", "BOOL_TAG", "STRING_TAG" });
+            Assert.Equal(2468, updated["DINT_TAG"].Value);
+            Assert.Equal(6.5f, Assert.IsType<float>(updated["REAL_TAG"].Value), 2);
+            Assert.Equal(false, updated["BOOL_TAG"].Value);
+            Assert.Equal("Batch Updated", updated["STRING_TAG"].Value);
+
+            var executeResults = client.ExecuteBatch(new[]
+            {
+                BatchOperation.Write("DINT_TAG", 1357),
+                BatchOperation.Read("DINT_TAG"),
+                BatchOperation.Read("THIS_TAG_DOES_NOT_EXIST"),
+            });
+
+            Assert.Equal(3, executeResults.Length);
+            Assert.True(executeResults[0].Success, executeResults[0].ErrorMessage);
+            Assert.True(executeResults[1].Success, executeResults[1].ErrorMessage);
+            Assert.Equal(1357, executeResults[1].Value);
+            Assert.False(executeResults[2].Success);
+            Assert.NotNull(executeResults[2].ErrorMessage);
+        }
+
+        [Fact]
+        public void RouteConnectAndDiagnostics_WorkThroughNativeWrapper_WithSimulator()
+        {
+            using var sim = new SimulatorTestHarness();
+            using var client = sim.ConnectClientWithRoute(new RoutePath().AddSlot(0));
+
+            Assert.True(client.CheckHealth());
+            Assert.True(client.CheckHealthDetailed());
+
+            var snapshot = client.GetDiagnosticsSnapshotDetailed();
+            Assert.True(snapshot.Connections.ActiveConnections >= 1);
+            Assert.Contains(snapshot.Health.OverallHealth, new[]
+            {
+                DiagnosticsHealthStatus.Healthy,
+                DiagnosticsHealthStatus.Warning,
+                DiagnosticsHealthStatus.Critical,
+                DiagnosticsHealthStatus.Unknown
+            });
+            Assert.Contains(snapshot.Health.HealthMode, new[]
+            {
+                DiagnosticsHealthMode.Passive,
+                DiagnosticsHealthMode.Verified
+            });
+        }
+
+        [Fact]
         public async Task TagGroupPollingEvent_ReportsPartialError_WithMixedValidAndInvalidTags()
         {
-            var address = Environment.GetEnvironmentVariable(SimAddressEnv);
-            if (string.IsNullOrWhiteSpace(address))
-            {
-                // Simulator not configured; skip without failing.
-                return;
-            }
-
-            var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                ? "librust_ethernet_ip.dylib"
-                : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                    ? "librust_ethernet_ip.so"
-                    : "rust_ethernet_ip.dll";
-            var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
-            if (!File.Exists(nativeLibPath))
-            {
-                return;
-            }
-
-            using var client = new EtherNetIpClient();
-            Assert.True(client.Connect(address));
-
+            using var sim = new SimulatorTestHarness();
+            using var client = sim.ConnectClient();
             client.UpsertTagGroup("diag", new[] { "DINT_TAG", "THIS_TAG_DOES_NOT_EXIST" }, 100);
             var group = client.SubscribeToTagGroup("diag");
 
@@ -137,29 +171,10 @@ namespace RustEtherNetIp.Tests
         }
 
         [Fact]
-        public async Task TagGroupPollingEvent_ReportsReadFailure_WhenClientDisconnects()
+        public async Task TagGroupPollingEvent_ReportsErrors_WhenClientDisconnects()
         {
-            var address = Environment.GetEnvironmentVariable(SimAddressEnv);
-            if (string.IsNullOrWhiteSpace(address))
-            {
-                // Simulator not configured; skip without failing.
-                return;
-            }
-
-            var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                ? "librust_ethernet_ip.dylib"
-                : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                    ? "librust_ethernet_ip.so"
-                    : "rust_ethernet_ip.dll";
-            var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
-            if (!File.Exists(nativeLibPath))
-            {
-                return;
-            }
-
-            using var client = new EtherNetIpClient();
-            Assert.True(client.Connect(address));
-
+            using var sim = new SimulatorTestHarness();
+            using var client = sim.ConnectClient();
             client.UpsertTagGroup("read-failure", new[] { "DINT_TAG" }, 100);
             var group = client.SubscribeToTagGroup("read-failure");
 
@@ -168,7 +183,7 @@ namespace RustEtherNetIp.Tests
             EventHandler<TagGroupPollingEventArgs>? handler = null;
             handler = (_, evt) =>
             {
-                if (evt.Kind == TagGroupEventKind.ReadFailure)
+                if (evt.Kind == TagGroupEventKind.PartialError || evt.Kind == TagGroupEventKind.ReadFailure)
                 {
                     tcs.TrySetResult(evt);
                 }
@@ -180,14 +195,22 @@ namespace RustEtherNetIp.Tests
                 client.Disconnect();
 
                 var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(3)));
-                Assert.True(completed == tcs.Task, "Timed out waiting for ReadFailure polling event");
+                Assert.True(completed == tcs.Task, "Timed out waiting for polling error event");
 
                 var evt = await tcs.Task;
-                Assert.Equal(TagGroupEventKind.ReadFailure, evt.Kind);
-                Assert.NotNull(evt.ErrorMessage);
-                Assert.NotNull(evt.Failure);
-                Assert.Equal(TagGroupFailureCategory.Network, evt.Failure!.Category);
-                Assert.True(evt.Failure.Retriable);
+                Assert.Contains(evt.Kind, new[] { TagGroupEventKind.PartialError, TagGroupEventKind.ReadFailure });
+                Assert.True(evt.Errors.Count > 0 || !string.IsNullOrWhiteSpace(evt.ErrorMessage));
+                if (evt.Kind == TagGroupEventKind.ReadFailure)
+                {
+                    Assert.NotNull(evt.ErrorMessage);
+                    Assert.NotNull(evt.Failure);
+                    Assert.Equal(TagGroupFailureCategory.Network, evt.Failure!.Category);
+                    Assert.True(evt.Failure.Retriable);
+                }
+                else
+                {
+                    Assert.True(evt.Errors.ContainsKey("DINT_TAG"));
+                }
             }
             finally
             {

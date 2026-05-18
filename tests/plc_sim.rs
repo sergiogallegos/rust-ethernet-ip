@@ -283,10 +283,9 @@ fn build_read_response_from_cip_request(
 
     let requested_count = parse_read_element_count(cip_request).unwrap_or(1) as usize;
     let tags_guard = tags.lock().expect("tag lock");
-    let value = tags_guard
-        .get(&tag_name)
-        .cloned()
-        .unwrap_or(TagValue::Dint(0));
+    let Some(value) = tags_guard.get(&tag_name).cloned() else {
+        return build_cip_error_reply(CIP_REPLY_READ, CIP_STATUS_PATH_SEGMENT_ERROR);
+    };
     build_value_response(value, element_index, requested_count)
 }
 

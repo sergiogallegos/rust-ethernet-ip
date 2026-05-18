@@ -5,6 +5,7 @@ import signal
 import shutil
 import subprocess
 import sys
+import unittest
 from pathlib import Path
 
 
@@ -22,13 +23,10 @@ class SimulatorHarness:
                 "SIM_PLC_ADDRESS is not configured and RUST_ETHERNET_IP_START_SIM is not enabled"
             )
 
-        cargo = shutil.which("cargo")
-        if cargo is None:
-            raise unittest.SkipTest("cargo is not available to launch the in-repo simulator")
-
         repo_root = Path(__file__).resolve().parents[2]
+        simulator = self._resolve_simulator_binary(repo_root)
         self._proc = subprocess.Popen(
-            [cargo, "run", "--quiet", "--example", "python_test_simulator"],
+            [str(simulator)],
             cwd=repo_root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -46,6 +44,37 @@ class SimulatorHarness:
 
         self.address = line
         return self.address
+
+    def _resolve_simulator_binary(self, repo_root: Path) -> Path:
+        configured = os.environ.get("RUST_ETHERNET_IP_SIM_BIN")
+        if configured:
+            path = Path(configured)
+            if path.exists():
+                return path
+            raise unittest.SkipTest(f"Configured simulator binary does not exist: {path}")
+
+        binary_name = "python_test_simulator.exe" if sys.platform == "win32" else "python_test_simulator"
+        default_path = repo_root / "target" / "debug" / "examples" / binary_name
+        if default_path.exists():
+            return default_path
+
+        cargo = shutil.which("cargo")
+        if cargo is None:
+            raise unittest.SkipTest("cargo is not available to build the in-repo simulator")
+
+        build = subprocess.run(
+            [cargo, "build", "--quiet", "--example", "python_test_simulator"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if build.returncode != 0:
+            details = (build.stderr or build.stdout).strip()
+            raise unittest.SkipTest(f"Could not build in-repo simulator. {details}".strip())
+        if not default_path.exists():
+            raise unittest.SkipTest(f"Simulator binary was not produced at {default_path}")
+        return default_path
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self._terminate()
@@ -71,6 +100,3 @@ class SimulatorHarness:
             proc.stdout.close()
         if proc.stderr is not None:
             proc.stderr.close()
-
-
-import unittest

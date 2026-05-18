@@ -782,3 +782,101 @@ Sources used:
 - `src/schema.rs`
 - `tests/udt_discovery_tests.rs`
 - `wiki/protocol/route-path-behavior.md`
+
+## [2026-05-18] query | assess Rust C# Python test coverage strength
+
+- Added `wiki/investigations/test-coverage-strength-2026-05-18.md`.
+- Updated `wiki/index.md` to register the new investigation page.
+- Recorded that Rust automated coverage is strong, while C# and Python wrapper coverage need clearer simulator/native execution and broader parity coverage.
+- Recorded local command results for `cargo test`, `dotnet test`, Python pure tests, and the failing Python auto-start simulator path.
+
+Sources used:
+
+- `Cargo.toml`
+- `src/`
+- `tests/`
+- `csharp/RustEtherNetIp.Tests/`
+- `python/tests/`
+- `python/rust_ethernet_ip/`
+- `docs/validation/2026-04-21_python_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md`
+
+## [2026-05-18] reframe | strengthen Python simulator-backed tests
+
+- Updated the Python simulator harness to prefer the prebuilt `python_test_simulator` binary instead of invoking `cargo run` for each integration test.
+- Added Python simulator-backed checks for partial batch read failure preservation and native diagnostics snapshot retrieval.
+- Tightened the Rust deterministic simulator so unknown reads return a CIP path error instead of silently returning `DINT(0)`.
+- Updated the Python README to document the `--features ffi` build requirement for wrapper integration testing.
+- Updated the test coverage strength investigation to mark the Python simulator auto-start blocker as resolved locally.
+
+Sources used:
+
+- `python/tests/sim_harness.py`
+- `python/tests/test_integration.py`
+- `python/rust_ethernet_ip/bindings.py`
+- `python/README.md`
+- `tests/plc_sim.rs`
+- `wiki/investigations/test-coverage-strength-2026-05-18.md`
+
+## [2026-05-18] reframe | strengthen C# simulator-backed tests
+
+- Added a C# simulator test harness that stages an FFI-enabled native library, verifies required exports, and auto-starts the deterministic Rust simulator when `SIM_PLC_ADDRESS` is not provided.
+- Disabled C# test parallelization to avoid native-library staging and load races.
+- Expanded C# simulator-backed coverage for scalar read/write, array ranges, batch read/write, mixed execute batch, route connect/diagnostics, and tag-group error events.
+- Updated the native-load smoke test to verify key FFI exports instead of only checking that a DLL can be loaded.
+- Updated the test coverage strength investigation to record the new `44/44` C# test result and the remaining Moq-based integration-test naming concern.
+
+Sources used:
+
+- `csharp/RustEtherNetIp.Tests/SimulatorTestHarness.cs`
+- `csharp/RustEtherNetIp.Tests/SimulatorIntegrationTests.cs`
+- `csharp/RustEtherNetIp.Tests/MinimalLoadTest.cs`
+- `csharp/RustEtherNetIp.Tests/AssemblyInfo.cs`
+- `wiki/investigations/test-coverage-strength-2026-05-18.md`
+
+## [2026-05-18] reframe | add C# wrapper contract unit tests
+
+- Added C# wrapper-only tests for `PlcValue` JSON parsing, simple fallback values, raw UDT data, nested UDT dictionaries, invalid payloads, and type-safe access defaults.
+- Added route-path contract tests for grouped field preservation, invalid address input, and FFI preparation of pinned address strings.
+- Added client contract tests for not-connected behavior, disposed-client behavior, route argument validation, batch input validation, and safe pre-connection statistics.
+- Added batch operation/result DTO contract tests.
+- Re-ran the C# test project and recorded the suite at `75/75` passing.
+
+Sources used:
+
+- `csharp/RustEtherNetIp/PlcValue.cs`
+- `csharp/RustEtherNetIp/RoutePath.cs`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.cs`
+- `csharp/RustEtherNetIp.Tests/PlcValueContractTests.cs`
+- `csharp/RustEtherNetIp.Tests/RoutePathContractTests.cs`
+- `csharp/RustEtherNetIp.Tests/EtherNetIpClientContractTests.cs`
+- `csharp/RustEtherNetIp.Tests/BatchOperationContractTests.cs`
+- `wiki/investigations/test-coverage-strength-2026-05-18.md`
+
+## [2026-05-18] reframe | add Python wrapper contract unit tests
+
+- Added fake-native Python wrapper tests for `Client` lifecycle, route-path argument forwarding, read-tag decoding, batch partial errors, write failure reporting, sequential write behavior, diagnostics retrieval, and unconnected-operation errors.
+- Added helper-contract tests for write-request normalization and write-result parsing.
+- Added binding-loader tests to ensure missing native symbols are reported through `NativeLibraryLoadError` with candidate-path detail.
+- Re-ran Python tests without simulator (`21 passed, 5 skipped`) and with simulator auto-start (`26 passed`).
+
+Sources used:
+
+- `python/rust_ethernet_ip/client.py`
+- `python/rust_ethernet_ip/bindings.py`
+- `python/rust_ethernet_ip/types.py`
+- `python/rust_ethernet_ip/exceptions.py`
+- `python/tests/test_client_contract.py`
+- `python/tests/test_bindings.py`
+- `wiki/investigations/test-coverage-strength-2026-05-18.md`
+
+## [2026-05-18] query | book-derived architecture documentation check
+
+- Confirmed the post-books architecture synthesis is documented in `wiki/investigations/architecture-review-2026-05-18.md`.
+- Added the missing wiki index entry for that synthesis page.
+- Linked the post-books synthesis from the authoritative software architecture document.
+
+Sources used:
+
+- `wiki/investigations/architecture-review-2026-05-18.md`
+- `wiki/index.md`
+- `docs/SOFTWARE_ARCHITECTURE.md`

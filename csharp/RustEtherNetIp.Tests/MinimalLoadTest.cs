@@ -19,10 +19,13 @@ namespace RustEtherNetIp.Tests
         [Fact]
         public void CanLoadNativeLibrary()
         {
-            // Check if the native library exists
-            var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX) 
-                ? "librust_ethernet_ip.dylib" 
-                : "rust_ethernet_ip.dll";
+            SimulatorTestHarness.StageNativeLibrary();
+
+            var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                ? "librust_ethernet_ip.dylib"
+                : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                    ? "librust_ethernet_ip.so"
+                    : "rust_ethernet_ip.dll";
             
             var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
             if (!File.Exists(nativeLibPath))
@@ -32,10 +35,17 @@ namespace RustEtherNetIp.Tests
 
             // Try to load the native library
             var handle = NativeLibrary.Load(nativeLibPath);
-            Assert.True(handle != IntPtr.Zero, "Failed to load native library");
-            
-            // Clean up
-            NativeLibrary.Free(handle);
+            try
+            {
+                Assert.True(handle != IntPtr.Zero, "Failed to load native library");
+                Assert.NotEqual(IntPtr.Zero, NativeLibrary.GetExport(handle, "eip_connect"));
+                Assert.NotEqual(IntPtr.Zero, NativeLibrary.GetExport(handle, "eip_get_diagnostics_json"));
+                Assert.NotEqual(IntPtr.Zero, NativeLibrary.GetExport(handle, "eip_execute_batch"));
+            }
+            finally
+            {
+                NativeLibrary.Free(handle);
+            }
         }
     }
 } 

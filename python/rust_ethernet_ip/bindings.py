@@ -97,7 +97,7 @@ def load_native_library() -> ctypes.CDLL:
             continue
         try:
             return _configure_function_signatures(ctypes.CDLL(str(path)))
-        except OSError as exc:
+        except (AttributeError, OSError) as exc:
             errors.append(f"{path}: {exc}")
 
     tried = "\n".join(str(path) for path in _candidate_paths())

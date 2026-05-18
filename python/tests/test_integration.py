@@ -2,6 +2,7 @@ import os
 import unittest
 
 from rust_ethernet_ip import BatchWriteItem, Client, RoutePath
+from rust_ethernet_ip.exceptions import BatchReadError
 
 try:
     from .sim_harness import SimulatorHarness
@@ -57,6 +58,25 @@ class SimulatorIntegrationTests(unittest.TestCase):
             with Client(address, route_path=RoutePath(slots=[0])) as plc:
                 self.assertTrue(plc.check_health())
                 self.assertEqual(plc.read_tag("DINT_TAG"), 1234)
+
+    def test_batch_read_partial_failure_preserves_successful_values(self) -> None:
+        with SimulatorHarness() as address:
+            with Client(address) as plc:
+                with self.assertRaises(BatchReadError) as ctx:
+                    plc.read_tags(["DINT_TAG", "THIS_TAG_DOES_NOT_EXIST"])
+
+                self.assertEqual(ctx.exception.partial_values["DINT_TAG"], 1234)
+                self.assertIn("THIS_TAG_DOES_NOT_EXIST", ctx.exception.errors)
+
+    def test_diagnostics_snapshot_maps_native_payload(self) -> None:
+        with SimulatorHarness() as address:
+            with Client(address) as plc:
+                snapshot = plc.get_diagnostics_snapshot(detailed=True)
+
+                self.assertIsNotNone(snapshot.captured_at_unix_ms)
+                self.assertGreaterEqual(snapshot.connections.active_connections, 1)
+                self.assertIn(snapshot.health.overall_health, {"Healthy", "Warning", "Critical", "Unknown"})
+                self.assertIn(snapshot.health.health_mode, {"Passive", "Verified"})
 
 
 if __name__ == "__main__":

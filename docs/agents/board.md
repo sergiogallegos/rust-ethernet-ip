@@ -6,8 +6,13 @@
 
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
+| CODEX-L | FFI ABI version + capability handshake | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-L-ffi-abi-version-handshake.md`](tasks/CODEX-L-ffi-abi-version-handshake.md) |
+| CODEX-M | FFI registry clone-semantics audit and fix | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-M-ffi-registry-clone-audit.md`](tasks/CODEX-M-ffi-registry-clone-audit.md) |
+| CODEX-N | CIP path encoding hard validation | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-N-cip-path-encoding-validation.md`](tasks/CODEX-N-cip-path-encoding-validation.md) |
 
-> No tasks in flight. Six briefs merged (CODEX-A → CODEX-F). All six belong to the **v0.8.0 draft**, which sits on `main` unreleased — no `v0.8.0` tag, no NuGet/crates.io publish. Per maintainer direction (2026-05-17), v0.8.0 is held back until real-hardware validation passes; there is no v0.9.0 plan yet. The listed post-0.8.0 polish entries (formerly CODEX-G…K) are roadmap candidates, not authored briefs — turn them into briefs only after 0.8.0 ships.
+> CODEX-L / M / N were authored 2026-05-18 from the post-books architecture review at [`wiki/investigations/architecture-review-2026-05-18.md`](../../wiki/investigations/architecture-review-2026-05-18.md). They are **queued for post-0.8.0 activation**; brief content is finalized but the maintainer's standing direction (2026-05-17) holds all post-0.8.0 work until hardware validation of CODEX-F passes and the v0.8.0 tag ships. CODEX-L must run *first* of the three so the ABI baseline pin protects CODEX-M's restructuring.
+>
+> Six earlier briefs merged (CODEX-A → CODEX-F). All six belong to the **v0.8.0 draft**, which sits on `main` unreleased — no `v0.8.0` tag, no NuGet/crates.io publish.
 
 ## Next agenda
 
@@ -29,7 +34,7 @@ These are non-breaking improvements deferred until after v0.8.0 ships. They are 
    - Nine `#[allow(dead_code)]` annotations in `src/client.rs` (lines 1617, 2112, 2163, 3326, 3837, 6486, 6597, 6607, 6628). Per-method audit needed; most are unused FFI helpers or half-finished features.
    - `BOOL_ARRAY_DWORD` dead `else if` branch at `src/protocol/values.rs:158-176` — preserved from pre-CODEX-D inline code, but `len >= 4` always matches before `len >= 8`. Tidy.
    - Leftover `#[allow(dead_code)] fn serialize_value` at `src/client.rs:3326` — pre-existing dead method.
-   - Add a `debug_assert!(self.path.len() % 2 == 0)` to `CipRequest::encode` in `src/protocol/cip.rs` so caller bugs surface in dev builds.
+   - ~~Add a `debug_assert!(self.path.len() % 2 == 0)` to `CipRequest::encode`~~ — superseded by CODEX-N which does hard validation returning `Result`. Drop this item from CODEX-H when briefed.
 
    Note: removing `TagCache` from the public re-export at `src/lib.rs:150` (`pub use tag_manager::{TagCache, ...}`) is technically a SemVer-major change — verify it's actually re-exported and decide whether to defer that one item to the 1.0.0 brief.
 3. **CODEX-I — real codec benchmarks.** Replace the placeholder `benches/performance_benchmark.rs` (three mock functions that don't exercise the codec at all — `black_box(PlcValue::Dint(42))`, `Vec<PlcValue>` push, no-op) with benchmarks that actually call `PlcValue::encode`, `PlcValue::decode`, `EncapsulationHeader::encode`, and a realistic batch-request build via `BytesMut`. Closes the brief-error gap from CODEX-D where the `>5%` regression gate was a sub-nanosecond noise check.
@@ -57,6 +62,24 @@ These are non-breaking improvements deferred until after v0.8.0 ships. They are 
     - **`EipClient: Clone` semantics.** Either add a doc comment now (cheaper, non-breaking) or hide `Clone` at the major boundary in favour of an explicit `EipClient::handle()` method that returns a cheap clone. Decide during brief authoring.
     - **FFI ordered-hop shape.** `eip_connect_with_route` currently takes flat `slots[]` + `ports[]` + `addresses[]` arrays from the C# wrapper. After private-storage `RoutePath`, the FFI needs a parallel ordered-hop API. Coordinate with the wrapper change; bump the FFI return code namespace if needed.
     - **C# / Python wrapper sync.** Mirror the new `RouteHop` shape in `csharp/RustEtherNetIp/` and `python/` so downstream users get the same API.
+
+### Post-books-review roadmap (Phase 2 — behavioral refactors, brief on activation)
+
+These items came from the 2026-05-18 architecture review at [`wiki/investigations/architecture-review-2026-05-18.md`](../../wiki/investigations/architecture-review-2026-05-18.md). They change observable behavior (request ordering, cancellation, clone semantics, event surface) and must be treated as semver-meaningful, *not* internal refactors. Each requires its own wrapper-level compatibility test pass.
+
+6. **CODEX-O — `PlcValue::Udt::get_data_type()` placeholder honesty.** Currently returns `0x00A0` placeholder (`src/types.rs:463,478`). Either: (a) return `Option<u16>` / `Result` instead of synthesizing a fake type code, or (b) capture the real type code in `UdtData` at parse time and propagate it. Verify via test that the placeholder never escapes through the FFI as a misleading real CIP type. Small, contained brief; can run any time after CODEX-L.
+7. **CODEX-P — Request-correlator actor + cloneable `Client` handle.** Internal worker task owns the TCP stream; the public `Client` becomes a cheap-clone handle that sends `(request_bytes, oneshot::Sender<response_bytes>)` over an mpsc to the actor. Solves the cancellation-safety issue (a dropped future no longer leaves half-read response bytes on the wire) and removes the documented "wrap me in `Arc<Mutex<EipClient>>`" pattern. **Behaviorally breaking** — request ordering, cancellation, clone-share semantics are observable contract. Requires C# and Python wrapper smoke tests as part of acceptance. Runs after CODEX-J (mechanical split) so the actor lives in its own submodule.
+8. **CODEX-R — `Client::events()` connection state stream.** Public method returning a `Stream<ConnectionEvent>` (Connected, Reconnecting, Disconnected, SessionRecycled). Today consumers learn about connection loss only by getting `ConnectionLost` back from a *next* operation; HMIs need a push notification. Sourced from the actor — depends on CODEX-P.
+
+### Post-books-review roadmap (Phase 3 — bundle into the 1.0.0 release window)
+
+9. **CODEX-Q — Service Layer for restricted writes.** Add `Client::write_udt_member`, `Client::write_string_tag`, `Client::write_udt_array_member` methods that internally implement the read-modify-write dance for the documented firmware limitations (see `lib.rs:46-62` and the 20-line doctest at `client.rs:131-150`). Removes the workaround ritual from consumer code. Stay concrete to the Logix STRING / UDT-array-member-write quirks; do not generalize into a broader pattern framework.
+10. **CODEX-S — `RetryPolicy` primitive.** Builder + decorator combinator: `client.with_retry(policy).read_tag(...).await`. Backoff (constant / exponential / decorrelated jitter), max attempts, per-error-class predicate (already have `EtherNetIpError::is_retriable` at `src/error.rs:104`). Each consumer currently writes its own retry loop; centralizing prevents policy drift across the C# and Python wrappers.
+
+### Post-books-review roadmap (Phase 4 — scale and extensibility, post-1.0)
+
+11. **CODEX-T — `Fleet<PlcId, Client>` multi-PLC pool.** Today `PlcManager` (242 LOC) hints at this. Make it an explicit per-PLC actor pool with fleet-level health check and a fleet-level event stream. Industrial deployments routinely talk to N PLCs at once; per-PLC backpressure and shared metrics collection belong in the library, not in every consumer.
+12. **CODEX-U — Promote `protocol`, `tag_path`, `udt` to sibling workspace crates.** Once their APIs stabilize after 1.0. Cargo features in the main crate let consumers pay only for what they use (an HMI that doesn't need UDT discovery shouldn't link `udt.rs`). Long-term modularity payoff; no short-term value.
 
 ## Done
 

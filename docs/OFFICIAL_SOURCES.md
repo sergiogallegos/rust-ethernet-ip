@@ -33,6 +33,22 @@ This page tracks the **official technical documentation** used to design, valida
   - `1756-PM012`
   - `TypeEncode_CIPRW.pdf`
 
+## Feature Traceability Notes
+
+The official-source set is considered sufficient for the current `0.8.0` scope. The primary implementation authority is Rockwell `1756-PM020I-EN-P` for Logix tag data access, supported by ODVA and Rockwell EtherNet/IP networking references for protocol and routing context.
+
+| Library Area | Primary Source | Repo Surface | Validation Evidence |
+|---|---|---|---|
+| Scalar tag read/write | `1756-PM020I-EN-P` | `src/client.rs`, `src/protocol/`, `src/types.rs` | Rust unit tests, simulator tests, real PLC validation |
+| Symbolic tag paths, arrays, bits | `1756-PM020I-EN-P` | `src/tag_path.rs`, `src/protocol/`, `src/client.rs` | Codec/tag-path tests, simulator tests, real PLC validation |
+| UDT discovery and UDT payload behavior | `1756-PM020I-EN-P`, `TypeEncode_CIPRW.pdf` | `src/udt.rs`, `src/types.rs`, `src/client.rs` | UDT tests, wrapper tests, real PLC validation |
+| STRING and restricted write behavior | `1756-PM020I-EN-P`, `TypeEncode_CIPRW.pdf` | [`docs/AB_String_UDT_Write_Limitations.md`](AB_String_UDT_Write_Limitations.md), `src/client.rs` | CompactLogix and ControlLogix validation records |
+| Multiple Service Packet / batch reads | `1756-PM020I-EN-P`, ODVA EtherNet/IP guide | `src/batch.rs`, `src/protocol/`, `src/client.rs` | Rust tests, simulator tests, C# and Python wrapper tests |
+| ControlLogix routing / route paths | Rockwell EtherNet/IP networking docs, ODVA guide | `src/route.rs`, [`docs/CONTROLLOGIX_ROUTING_IMPLEMENTATION.md`](CONTROLLOGIX_ROUTING_IMPLEMENTATION.md) | Routed ControlLogix validation records |
+| FFI and wrapper behavior | Project ABI contract, not Rockwell-defined | `src/ffi.rs`, `csharp/`, `python/` | C# and Python contract tests |
+
+The FFI, C#, and Python wrapper surfaces are project-defined compatibility contracts. They are validated against the Rust implementation and real PLC behavior, but they are not specified by Rockwell documentation.
+
 ## 2026-04-16 Official Publication Check
 
 Rockwell's currently discoverable official material relevant to this library still points to `1756-PM020I-EN-P` (September 2025) as the primary Logix data-access reference. That revision is already tracked in-repo and remains the correct basis for CIP services, symbolic path encoding, tag reads/writes, Multiple Service Packet behavior, UDT access, and BOOL handling.

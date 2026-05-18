@@ -126,3 +126,6 @@ coverage/
 .dotnet_home/
 .dotnet/
 .perf_worktrees/
+
+# Reference material kept locally; not part of the published project
+wiki/books/

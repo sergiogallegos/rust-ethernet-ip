@@ -1,0 +1,20 @@
+# cargo-audit advisory configuration
+#
+# All four ignored advisories below are maintenance flags (unmaintained or
+# minor unsoundness in custom-logger code paths) that reach the build only
+# through `examples/desktop_app` — the GUI example crate that depends on
+# eframe 0.27 and its accesskit/wgpu/zbus transitives. None of them affect
+# the main `rust-ethernet-ip` library, the FFI cdylib, or the C# / Python
+# wrappers.
+#
+# Lifting these requires an eframe upgrade in the example, which is tracked
+# separately. Ignoring here lets the security advisory job stay green so it
+# can still fail loudly on advisories that actually affect the main crate.
+
+[advisories]
+ignore = [
+    "RUSTSEC-2024-0388",  # derivative unmaintained — via desktop_app → eframe → accesskit_unix → atspi → zbus
+    "RUSTSEC-2024-0384",  # instant unmaintained — via desktop_app → eframe → accesskit_unix → fastrand/futures-lite
+    "RUSTSEC-2024-0436",  # paste unmaintained — via desktop_app → eframe → wgpu/accesskit_windows
+    "RUSTSEC-2026-0097",  # rand unsoundness with custom logger — via desktop_app → eframe → accesskit_unix → zbus
+]

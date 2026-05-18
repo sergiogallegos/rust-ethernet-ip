@@ -76,9 +76,21 @@ All Phase 3 items are bundled into the 1.0.0 release window so the breakage happ
 | CODEX-T | `Fleet<PlcId, Client>` for multi-PLC deployments | roadmap | (brief on activation) |
 | CODEX-U | Promote `protocol`, `tag_path`, `udt` to sibling workspace crates | roadmap | (brief on activation) |
 
-## Activation gate
+## Scope decision — all in v0.8.0
 
-Per maintainer standing direction (2026-05-17, recorded in `board.md`), all post-0.8.0 work is held pending real-hardware validation of CODEX-F (ethernet routing) and the v0.8.0 release tag. The three Phase 0 briefs (CODEX-L, M, N) are authored at `status: open` so they are ready to run, but should not be activated until that gate passes. CODEX-L specifically should run *first* of the three — establishing the ABI baseline before the FFI clone audit (CODEX-M) potentially restructures FFI internals.
+Per maintainer directive (2026-05-18): every brief in this plan (CODEX-L through CODEX-V) ships as part of the v0.8.0 release. The earlier "queued for post-0.8.0 activation" gate is lifted. Sequencing inside v0.8.0:
+
+1. **CODEX-L runs first** — ABI baseline must be in place before any FFI internals move.
+2. **CODEX-M and CODEX-N run in parallel** after L lands.
+3. **CODEX-O** (placeholder honesty) is parallel-safe with M and N.
+4. **CODEX-J** (mechanical split) runs after the Phase 0 quartet settles.
+5. **CODEX-P** (actor) runs after J on the cleaner module boundaries.
+6. **CODEX-R, Q, S** (events, service layer, retry) run after P.
+7. **CODEX-K** (release-window bundle) runs last in the v0.8.0 cycle so it captures every accumulated breaking change in one SemVer-major step.
+8. **CODEX-T, U** (fleet, sibling crates) are still v0.8.0 scope per the directive, but are the largest items; if the release window is squeezed, these are the natural deferrals to v0.9.0.
+9. **CODEX-V** (cargo-semver-checks in CI) is parallel-safe with everything and should land early so it gates the bigger changes.
+
+**Honest scope note for the maintainer:** the bundle above is effectively a 1.0.0-shape release. It includes (a) the existing release-window bundle in CODEX-K, (b) a behavioral refactor (CODEX-P), (c) new public API surface (CODEX-Q, R, S), (d) the structural split (CODEX-J), (e) the FFI contract pin (CODEX-L), (f) the FFI internals fix (CODEX-M), (g) codec correctness fixes (CODEX-N, O), (h) optional scale work (CODEX-T, U). The current draft version is `0.8.0`. If everything in this plan ships in one version, calling it `1.0.0` instead of `0.8.0` is a defensible move that signals the stability story to NuGet/PyPI/crates.io consumers. The decision is the maintainer's; this document does not assume one or the other.
 
 ## What was deliberately not included
 

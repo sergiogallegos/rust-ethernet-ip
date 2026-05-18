@@ -9,10 +9,13 @@
 | CODEX-L | FFI ABI version + capability handshake | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-L-ffi-abi-version-handshake.md`](tasks/CODEX-L-ffi-abi-version-handshake.md) |
 | CODEX-M | FFI registry clone-semantics audit and fix | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-M-ffi-registry-clone-audit.md`](tasks/CODEX-M-ffi-registry-clone-audit.md) |
 | CODEX-N | CIP path encoding hard validation | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-N-cip-path-encoding-validation.md`](tasks/CODEX-N-cip-path-encoding-validation.md) |
+| CODEX-V | Add cargo-semver-checks to CI as the SemVer gate | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-V-cargo-semver-checks-ci.md`](tasks/CODEX-V-cargo-semver-checks-ci.md) |
 
-> CODEX-L / M / N were authored 2026-05-18 from the post-books architecture review at [`wiki/investigations/architecture-review-2026-05-18.md`](../../wiki/investigations/architecture-review-2026-05-18.md). They are **queued for post-0.8.0 activation**; brief content is finalized but the maintainer's standing direction (2026-05-17) holds all post-0.8.0 work until hardware validation of CODEX-F passes and the v0.8.0 tag ships. CODEX-L must run *first* of the three so the ABI baseline pin protects CODEX-M's restructuring.
+> Per maintainer directive (2026-05-18), all post-books briefs (CODEX-L through CODEX-V) are **in scope for v0.8.0** alongside the pre-existing v0.8.0 draft work and the existing CODEX-G through CODEX-K agenda. The full plan and per-book lesson extraction live at [`wiki/investigations/architecture-review-2026-05-18.md`](../../wiki/investigations/architecture-review-2026-05-18.md) and [`wiki/investigations/books-lessons-2026-05-18.md`](../../wiki/investigations/books-lessons-2026-05-18.md). Sequencing: CODEX-L first (ABI baseline); then M, N, O in parallel; then J (mechanical split); then P (actor); then R/Q/S (events, service layer, retry); CODEX-K (release-window) last; CODEX-V (semver-checks CI) runs parallel-safe from the start. CODEX-T (fleet) and CODEX-U (sibling crates) are the largest items and the natural v0.9.0 deferrals if scope tightens.
 >
-> Six earlier briefs merged (CODEX-A → CODEX-F). All six belong to the **v0.8.0 draft**, which sits on `main` unreleased — no `v0.8.0` tag, no NuGet/crates.io publish.
+> Scope note: the v0.8.0 bundle is effectively a 1.0.0-shape release (FFI contract pin + behavioral refactor + new public API + structural split + release-window break sweep). Renaming the version to `1.0.0` is defensible and would signal the stability story to NuGet/PyPI/crates.io consumers; left to maintainer decision.
+>
+> Six earlier briefs merged (CODEX-A → CODEX-F). All belong to the v0.8.0 draft, which sits on `main` unreleased — no `v0.8.0` tag, no NuGet/crates.io publish.
 
 ## Next agenda
 

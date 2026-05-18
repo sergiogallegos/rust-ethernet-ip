@@ -2,7 +2,6 @@
 /target/
 **/target/
 **/*.rs.bk
-Cargo.lock
 target/doc/
 
 # C# / .NET

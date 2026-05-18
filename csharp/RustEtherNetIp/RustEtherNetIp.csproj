@@ -32,6 +32,9 @@
   <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <NativeLibraryFileName>rust_ethernet_ip.dll</NativeLibraryFileName>
   </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <NativeLibraryFileName>librust_ethernet_ip.so</NativeLibraryFileName>
+  </PropertyGroup>
 
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <Content Include="../../target/release/librust_ethernet_ip.dylib">
@@ -45,6 +48,12 @@
       <Link>rust_ethernet_ip.dll</Link>
     </Content>
   </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <Content Include="../../target/release/librust_ethernet_ip.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>librust_ethernet_ip.so</Link>
+    </Content>
+  </ItemGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
@@ -53,6 +62,7 @@
   <Target Name="CopyNativeLibrary" AfterTargets="Build">
     <Copy SourceFiles="../../target/release/librust_ethernet_ip.dylib" DestinationFolder="$(OutputPath)" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
     <Copy SourceFiles="../../target/release/rust_ethernet_ip.dll" DestinationFolder="$(OutputPath)" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+    <Copy SourceFiles="../../target/release/librust_ethernet_ip.so" DestinationFolder="$(OutputPath)" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
     <Message Text="Copying native library to $(OutputPath)" Importance="high" />
   </Target>
 </Project>

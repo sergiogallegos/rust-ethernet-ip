@@ -8,12 +8,14 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  SKIP_PLC_TESTS: '1'
 
 jobs:
   test:
-    name: Test
+    name: Test (${{ matrix.os }} / ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         rust: [stable, beta]
@@ -39,21 +41,28 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Check formatting
       run: cargo fmt -- --check
 
     - name: Clippy
-      run: cargo clippy -- -D warnings
+      run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --workspace --all-features --locked --verbose
+
+    - name: Build release cdylib for C# tests
+      run: cargo build --release --workspace --all-features --locked
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+        dotnet-quality: 'preview'
 
     - name: Run C# tests
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj
+      run: dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release
 
     - name: Install cargo-tarpaulin
       if: matrix.coverage
@@ -63,14 +72,15 @@ jobs:
 
     - name: Generate code coverage
       if: matrix.coverage
-      run: cargo tarpaulin --out Xml --out Html
+      run: cargo tarpaulin --workspace --all-features --out Xml --out Html
 
     - name: Upload coverage to Codecov
       if: matrix.coverage
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
-        file: ./cobertura.xml
-        fail_ci_if_error: true
+        files: ./cobertura.xml
+        fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   build:
     name: Build
@@ -90,12 +100,18 @@ jobs:
         override: true
 
     - name: Build Rust library
-      run: cargo build --release --features ffi
+      run: cargo build --release --features ffi --locked
+
+    - name: Setup .NET
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+        dotnet-quality: 'preview'
 
     - name: Build C# library
       if: matrix.os == 'ubuntu-latest'
-      run: |
-        dotnet build csharp/RustEtherNetIp/RustEtherNetIp.csproj -c Release
+      run: dotnet build csharp/RustEtherNetIp/RustEtherNetIp.csproj -c Release
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
@@ -103,4 +119,5 @@ jobs:
         name: ${{ matrix.os }}-build
         path: |
           target/release/librust_ethernet_ip.*
+          target/release/rust_ethernet_ip.dll
           csharp/RustEtherNetIp/bin/Release/

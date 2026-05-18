@@ -22,7 +22,9 @@ namespace RustEtherNetIp.Tests
 
             var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                 ? "librust_ethernet_ip.dylib"
-                : "rust_ethernet_ip.dll";
+                : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                    ? "librust_ethernet_ip.so"
+                    : "rust_ethernet_ip.dll";
             var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
             if (!File.Exists(nativeLibPath))
             {
@@ -90,7 +92,9 @@ namespace RustEtherNetIp.Tests
 
             var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                 ? "librust_ethernet_ip.dylib"
-                : "rust_ethernet_ip.dll";
+                : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                    ? "librust_ethernet_ip.so"
+                    : "rust_ethernet_ip.dll";
             var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
             if (!File.Exists(nativeLibPath))
             {
@@ -144,7 +148,9 @@ namespace RustEtherNetIp.Tests
 
             var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                 ? "librust_ethernet_ip.dylib"
-                : "rust_ethernet_ip.dll";
+                : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                    ? "librust_ethernet_ip.so"
+                    : "rust_ethernet_ip.dll";
             var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
             if (!File.Exists(nativeLibPath))
             {

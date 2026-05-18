@@ -107,6 +107,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e .
 
+    - name: Compile-check Python sources
+      working-directory: python
+      run: python -m compileall -q rust_ethernet_ip tests
+
     - name: Run Python tests
       working-directory: python
       env:
@@ -136,9 +140,61 @@ jobs:
         tool: cargo-audit
     - run: cargo audit
 
+  version-check:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Verify version consistency across manifests
+      run: python .github/scripts/check_versions.py
+
+  package:
+    name: Package validation
+    needs: [test, python]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: dtolnay/rust-toolchain@stable
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: package
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+        dotnet-quality: 'preview'
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: cargo package (validates publishable crate)
+      run: cargo package --locked
+
+    - name: Build release cdylib (NuGet bundles it)
+      run: cargo build --release --features ffi --locked
+
+    - name: dotnet pack
+      run: dotnet pack csharp/RustEtherNetIp/RustEtherNetIp.csproj -c Release -o dist-nuget
+
+    - name: python -m build + wheel install smoke test
+      working-directory: python
+      run: |
+        python -m pip install --upgrade pip build
+        python -m build
+        pip install dist/*.whl
+        python -c "import rust_ethernet_ip; print('imported', rust_ethernet_ip.__name__)"
+
   build:
     name: Build
-    needs: [test, python]
+    needs: [test, python, msrv, audit, package, version-check]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

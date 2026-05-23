@@ -25,6 +25,12 @@ docs/agents/
 ├── README.md                       # this file — the protocol
 ├── board.md                        # status of every task at a glance
 ├── log.md                          # append-only chronological transcript
+├── notes/                          # per-surface maintainer decisions (load on demand)
+│   ├── README.md
+│   ├── ab-firmware-quirks.md
+│   ├── cip-framing.md
+│   ├── ffi-safety.md
+│   └── unconnected-send.md
 └── tasks/
     ├── CODEX-A-<slug>.md
     ├── CODEX-B-<slug>.md
@@ -33,6 +39,7 @@ docs/agents/
 
 - **`board.md`** — single table summarizing every task: id, title, owner, status, last update. Kanban-style snapshot.
 - **`log.md`** — append-only one-liners. Format: `YYYY-MM-DD HH:MM <author> [<model>] <task-id> <event>`. Newest at bottom. Never edit prior entries. The `[<model>]` tag identifies which underlying model produced the entry (e.g. `[Opus 4.7]`, `[gpt-5.5]`); use `--` for `<task-id>` on project-wide events.
+- **`notes/<surface>.md`** — durable per-surface decisions (e.g. AB firmware quirks, FFI safety invariants, CIP framing boundary, Unconnected Send wrapping). Read before reviewing or modifying the matching surface. See [`notes/README.md`](notes/README.md) for format. These pages are the single source of truth — `CLAUDE.md` and task files should point at them rather than duplicate their content.
 - **`tasks/<id>.md`** — full lifecycle for one task: the brief, Codex's working notes, Claude's review, the verdict. Each task gets one file. Don't split a task across files.
 
 ## Task lifecycle

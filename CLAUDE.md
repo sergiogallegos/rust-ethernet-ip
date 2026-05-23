@@ -71,7 +71,7 @@ Rust/C# Application
 | `error.rs` | `EtherNetIpError` enum with `is_retriable()` for retry vs reconnect decisions. |
 | `tag_path.rs` | `TagPath` parser for complex addressing: arrays, bits, program-scoped, UDT members, nested paths. |
 | `udt.rs` | `UdtDefinition`, `UdtManager`, `UserDefinedType` for UDT discovery and serialization. |
-| `ffi.rs` | C FFI exports using `lazy_static` global `RUNTIME` and `FFI_CLIENTS: Mutex<HashMap<i32, EipClient>>`. Gated behind the `ffi` Cargo feature. |
+| `ffi.rs` | C FFI exports using `LazyLock` globals: shared Tokio `RUNTIME`, `FFI_CLIENTS: Mutex<HashMap<i32, EipClient>>`, and `FFI_NEXT_ID: Mutex<i32>`. Gated behind the `ffi` Cargo feature. See [`docs/agents/notes/ffi-safety.md`](docs/agents/notes/ffi-safety.md). |
 | `subscription.rs` | `TagSubscription`, `SubscriptionManager` with mpsc channels. |
 | `monitoring.rs` | `ProductionMonitor`, health checks, metrics collection. |
 | `config.rs` | `ProductionConfig` with connection/performance/monitoring sub-configs. |
@@ -82,7 +82,7 @@ Rust/C# Application
 - **`PlcValue`**: Tagged enum covering all 13 AB types: `Bool`, `Sint`, `Int`, `Dint`, `Lint`, `Usint`, `Uint`, `Udint`, `Ulint`, `Real`, `Lreal`, `String`, `Udt(UdtData)`.
 - **`UdtData`**: Opaque `{ symbol_id: i32, data: Vec<u8> }`. Must be parsed with a `UdtDefinition` obtained from the PLC. Always read before write to capture the `symbol_id`.
 - **`EtherNetIpError`**: All operations return `Result<T, EtherNetIpError>`. Use `is_retriable()` to distinguish transient errors (timeout, connection lost) from permanent ones (protocol, CIP).
-- **`RoutePath`**: Slot/port routing for ControlLogix backplane. When set, CIP messages are wrapped in Unconnected Send (service 0x52).
+- **`RoutePath`**: Slot/port routing for ControlLogix backplane. All CIP requests are wrapped in Unconnected Send (service `0x52`) regardless; `RoutePath`, when set, appends route hop bytes at the end of the envelope. See [`docs/agents/notes/unconnected-send.md`](docs/agents/notes/unconnected-send.md).
 
 ### Tag Path Addressing
 
@@ -97,9 +97,9 @@ The library handles full Allen-Bradley tag path syntax internally:
 
 ### PLC Firmware Limitations
 
-These are Allen-Bradley restrictions, not library bugs:
-1. **Cannot write STRING tags directly** — CIP Error 0x2107. Workaround: write the entire containing UDT.
-2. **Cannot write individual UDT array element members** — CIP Error 0x2107. Workaround: read entire UDT element, modify in memory, write back the whole element.
+Allen-Bradley firmware restrictions (CIP `0x2107` on STRING writes, UDT array element member writes, stale `symbol_id`) and the workarounds the library uses live in [`docs/agents/notes/ab-firmware-quirks.md`](docs/agents/notes/ab-firmware-quirks.md). Read that page before "simplifying" any write path.
+
+Other surface-specific decisions live alongside it under [`docs/agents/notes/`](docs/agents/notes/): `cip-framing.md` (wire codec boundary), `ffi-safety.md` (FFI invariants for `src/ffi.rs`), and `unconnected-send.md` (service `0x52` wrapping and route path placement).
 
 ## Workspace Layout
 
@@ -153,6 +153,7 @@ This repo uses a two-agent collaboration model. The substantive cross-agent stat
 2. Read **`docs/agents/board.md`** — the entry point. The status table lists open tasks (`open`, `in-progress`, `submitted`, `under-review`, `merged`, `rejected`). Anything not `merged` is in-flight.
 3. For any non-merged row, open `docs/agents/tasks/CODEX-{ID}-{slug}.md` and read the frontmatter (`status:` is authoritative), the Brief, the Codex log, and any prior Claude review.
 4. Skim the last ~20 lines of `docs/agents/log.md` for chronological context.
+5. Before reviewing or modifying a code surface, check whether [`docs/agents/notes/`](docs/agents/notes/) has a page for it (AB firmware quirks, CIP framing, FFI safety, Unconnected Send). Load on demand; these aren't always in context.
 
 Don't re-derive state by reading every file. The agent docs are the durable handoff — `board.md` tells you what's open in 60 seconds. Trust it.
 

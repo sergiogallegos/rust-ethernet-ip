@@ -109,6 +109,32 @@ The root `Cargo.toml` defines a workspace containing `.` (main crate) and `examp
 
 GitHub Actions runs on ubuntu/windows/macos with stable+beta Rust: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --verbose`. C# tests and coverage (tarpaulin) run on ubuntu/stable only.
 
+## Rust code discipline
+
+Rules that apply to all changes to the Rust crate. Briefs and implementations must hold to these unless the brief explicitly waives one.
+
+### Error handling and unsafe
+
+- Avoid `panic!`, `unreachable!`, and `.unwrap()`. Encode constraints in the type system instead — `Result<T, EtherNetIpError>` exists for this reason. Verbose code that surfaces a fallible path beats terse code that hides one.
+- Every `unsafe` block needs a `// SAFETY:` comment naming the invariant being upheld. Non-negotiable for `src/ffi.rs` — the FFI surface is what C# consumers run against, and an unsound block crashes the host process.
+- Prefer `#[expect(<lint>, reason = "…")]` over `#[allow(<lint>)]` for clippy suppressions. `expect` fails the build when the lint stops triggering, so suppressions don't outlive their cause. If clippy flags dead code, delete the code instead of suppressing.
+
+### Dependency and lockfile hygiene
+
+- Never bulk-run `cargo update`. Use `cargo update --precise <crate>@<version>` to bump a specific dependency, keeping PRs reviewable and avoiding unrelated drift.
+- Don't assume clippy warnings on `main` are pre-existing. CI gates `cargo clippy -- -D warnings`, so a warning surfacing in a branch was almost certainly introduced by that branch.
+
+### Tests
+
+- Default: add new tests to the existing file for the module being changed. A new file is justified when the area genuinely has no test home, not when it's mildly tidier.
+- Before writing a new test, read two or three nearby tests in the same file and copy their setup and assertion style. Test conventions in this repo encode real PLC behavior — drifting from them often means missing a guard.
+
+### Code review self-check
+
+- If neighboring code does something differently than the change about to land, find out *why* before deviating. Patterns in this repo are often load-bearing (CIP framing, async ordering, FFI lifetimes), not stylistic.
+- Don't take a bug report's suggested fix at face value. The user-facing symptom may be two layers below where it presents — verify the right layer before patching.
+- Before writing code that makes a non-obvious choice, ask "why this and not the alternative?" If there's no answer, research until there is.
+
 ---
 
 # Agent collaboration

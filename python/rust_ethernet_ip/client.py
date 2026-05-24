@@ -5,8 +5,15 @@ from ctypes import (
     POINTER,
     byref,
     c_char_p,
+    c_double,
     c_int,
+    c_int8,
+    c_int16,
+    c_int64,
     c_uint8,
+    c_uint16,
+    c_uint32,
+    c_uint64,
     c_void_p,
     cast,
     create_string_buffer,
@@ -41,6 +48,30 @@ _PLC_VARIANTS = {
     "Lreal",
     "String",
     "Udt",
+}
+
+
+_INTEGER_RANGES = {
+    "SINT": (-(2**7), 2**7 - 1),
+    "INT": (-(2**15), 2**15 - 1),
+    "DINT": (-(2**31), 2**31 - 1),
+    "LINT": (-(2**63), 2**63 - 1),
+    "USINT": (0, 2**8 - 1),
+    "UINT": (0, 2**16 - 1),
+    "UDINT": (0, 2**32 - 1),
+    "ULINT": (0, 2**64 - 1),
+}
+
+
+_INTEGER_CTYPES = {
+    "SINT": c_int8,
+    "INT": c_int16,
+    "DINT": c_int,
+    "LINT": c_int64,
+    "USINT": c_uint8,
+    "UINT": c_uint16,
+    "UDINT": c_uint32,
+    "ULINT": c_uint64,
 }
 
 
@@ -151,6 +182,22 @@ def _normalize_write_request(item: BatchWriteItem | dict[str, object]) -> dict[s
         "value": value,
         "value_type": value_type or _infer_value_type(value),
     }
+
+
+def _validate_integer_value(kind: str, value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{kind} writes require an integer value")
+
+    low, high = _INTEGER_RANGES[kind]
+    if not low <= value <= high:
+        raise ValueError(f"{kind} value {value} is outside range {low}..{high}")
+    return value
+
+
+def _validate_float_value(kind: str, value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{kind} writes require a numeric value")
+    return float(value)
 
 
 def _parse_write_results(payload: object) -> dict[str, WriteResult]:
@@ -268,13 +315,56 @@ class Client:
         return _decode_plc_value(decoded)
 
     def write_tag(self, tag_name: str, value: object, *, value_type: str | None = None) -> None:
-        item = _normalize_write_request(
-            BatchWriteItem(tag_name=tag_name, value=value, value_type=value_type)
-        )
-        results = self._execute_write_operations([item])
-        result = results[tag_name]
-        if not result.success:
-            raise PlcOperationError(result.error or f"Failed to write tag '{tag_name}'")
+        kind = (value_type or _infer_value_type(value)).upper()
+
+        if kind == "UDT":
+            # UDT writes need symbol-id/raw-data handling and remain on the batch path for now.
+            item = _normalize_write_request(
+                BatchWriteItem(tag_name=tag_name, value=value, value_type=kind)
+            )
+            results = self._execute_write_operations([item])
+            result = results[tag_name]
+            if not result.success:
+                raise PlcOperationError(result.error or f"Failed to write tag '{tag_name}'")
+            return
+
+        client_id = self._require_client_id()
+        encoded_tag = tag_name.encode("utf-8")
+
+        if kind == "BOOL":
+            if not isinstance(value, bool):
+                raise ValueError("BOOL writes require a bool value")
+            rc = self._lib.eip_write_bool(client_id, encoded_tag, 1 if value else 0)
+        elif kind in _INTEGER_CTYPES:
+            integer_value = _validate_integer_value(kind, value)
+            rc = getattr(self._lib, f"eip_write_{kind.lower()}")(
+                client_id,
+                encoded_tag,
+                _INTEGER_CTYPES[kind](integer_value),
+            )
+        elif kind == "REAL":
+            rc = self._lib.eip_write_real(
+                client_id,
+                encoded_tag,
+                c_double(_validate_float_value(kind, value)),
+            )
+        elif kind == "LREAL":
+            rc = self._lib.eip_write_lreal(
+                client_id,
+                encoded_tag,
+                c_double(_validate_float_value(kind, value)),
+            )
+        elif kind == "STRING":
+            if not isinstance(value, str):
+                raise ValueError("STRING writes require a string value")
+            rc = self._lib.eip_write_string(client_id, encoded_tag, value.encode("utf-8"))
+        else:
+            raise ValueError(f"Unsupported PLC value type for single-tag write: {kind}")
+
+        if rc != 0:
+            raise PlcOperationError(
+                f"Failed to write tag '{tag_name}' via {kind} typed FFI export (rc={rc})"
+            )
 
     def read_tags(self, tag_names: list[str]) -> dict[str, object]:
         if not tag_names:

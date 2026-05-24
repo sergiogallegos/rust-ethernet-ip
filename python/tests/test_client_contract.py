@@ -23,6 +23,8 @@ class FakeNativeLibrary:
         self.read_tag_result = {"Dint": 1234}
         self.batch_read_payload: list[dict[str, object]] = []
         self.execute_batch_payload: list[dict[str, object]] | None = None
+        self.typed_write_calls: list[tuple[str, str, object]] = []
+        self.typed_write_result = 0
         self.health_result = 1
 
     def eip_connect(self, address: bytes) -> int:
@@ -92,6 +94,46 @@ class FakeNativeLibrary:
             return -1
         buffer.value = encoded
         return 0
+
+    def _record_typed_write(self, function_name: str, tag_name: bytes, value: object) -> int:
+        self.typed_write_calls.append((function_name, tag_name.decode("utf-8"), value))
+        return self.typed_write_result
+
+    def eip_write_bool(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_bool", tag_name, value)
+
+    def eip_write_sint(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_sint", tag_name, value)
+
+    def eip_write_int(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_int", tag_name, value)
+
+    def eip_write_dint(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_dint", tag_name, value)
+
+    def eip_write_lint(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_lint", tag_name, value)
+
+    def eip_write_usint(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_usint", tag_name, value)
+
+    def eip_write_uint(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_uint", tag_name, value)
+
+    def eip_write_udint(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_udint", tag_name, value)
+
+    def eip_write_ulint(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_ulint", tag_name, value)
+
+    def eip_write_real(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_real", tag_name, value)
+
+    def eip_write_lreal(self, client_id: int, tag_name: bytes, value: object) -> int:
+        return self._record_typed_write("eip_write_lreal", tag_name, value)
+
+    def eip_write_string(self, client_id: int, tag_name: bytes, value: bytes) -> int:
+        return self._record_typed_write("eip_write_string", tag_name, value.decode("utf-8"))
 
     def eip_check_health(self, client_id: int, is_healthy) -> int:
         is_healthy._obj.value = self.health_result
@@ -232,16 +274,17 @@ class ClientContractTests(unittest.TestCase):
         self.assertEqual(ctx.exception.partial_values, {"DINT_TAG": 1234})
         self.assertEqual(ctx.exception.errors, {"MISSING": "Tag not found"})
 
-    def test_write_tag_raises_operation_error_for_per_item_failure(self) -> None:
+    def test_write_tag_raises_operation_error_for_typed_failure(self) -> None:
         lib = FakeNativeLibrary()
-        lib.execute_batch_payload = [{"tag_name": "DINT_TAG", "success": False, "error": "No write"}]
+        lib.typed_write_result = -1
         with patch.object(client_module, "load_native_library", return_value=lib):
             plc = Client("127.0.0.1:44818")
             with self.assertRaises(PlcOperationError) as ctx:
                 plc.write_tag("DINT_TAG", 1)
 
-        self.assertIn("No write", str(ctx.exception))
-        self.assertEqual(lib.executed_batches[0][0]["value_type"], "DINT")
+        self.assertIn("DINT", str(ctx.exception))
+        self.assertEqual(lib.typed_write_calls[0][0], "eip_write_dint")
+        self.assertEqual(lib.executed_batches, [])
 
     def test_write_tags_executes_sequentially_to_preserve_per_tag_status(self) -> None:
         lib = FakeNativeLibrary()

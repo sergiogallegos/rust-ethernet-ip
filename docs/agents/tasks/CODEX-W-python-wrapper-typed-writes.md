@@ -2,7 +2,7 @@
 id: CODEX-W
 title: Python wrapper — route single-tag writes through typed FFI exports
 owner: codex
-status: open
+status: merged
 created: 2026-05-24
 last-update: 2026-05-24 claude [Opus 4.7]
 ---
@@ -98,12 +98,59 @@ Wire up the typed single-tag write FFI in `python/rust_ethernet_ip/bindings.py`,
 
 ## Codex log
 
-_(append work entries here)_
+- 2026-05-24 codex [gpt-5]: Started implementation. Registered Python typed read/write FFI signatures, replaced scalar `Client.write_tag()` batch routing with typed writer dispatch, preserved UDT fallback to the existing batch path, and expanded simulator coverage for BOOL arrays plus numeric scalar types. Verification pending.
+- 2026-05-24 codex [gpt-5]: Submitted implementation. Verification: `PYTHONPATH=python python3 -m unittest python.tests.test_client_value_mapping python.tests.test_client_contract python.tests.test_bindings` passed; `PYTHONPATH=python RUST_ETHERNET_IP_START_SIM=1 python3 -m unittest python.tests.test_integration` passed after rebuilding `python_test_simulator`; `PYTHONPATH=python python3 -m unittest discover -s python/tests` passed with simulator-gated tests skipped; `cargo build --example python_test_simulator` passed; `cargo test --test plc_sim_tests` passed; `SKIP_PLC_TESTS=1 cargo test --workspace --locked` passed; `cargo clippy -- -D warnings` passed; `rustfmt --edition 2024 --check tests/plc_sim.rs` passed; `git diff --check` passed. Full `cargo fmt --check` is currently blocked by unrelated active hardware-validation example files (`examples/bench_single_tag.rs`, `examples/test_plc_random_to_nines.rs`, `examples/test_plc_test_tag_definitions.rs`) that were already outside this task's edits. Hardware re-run of `python/examples/test_plc_random_to_nines.py` not run by Codex because the live PLC was in Claude/maintainer validation use.
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-24 13:00  claude  [Opus 4.7]
+
+**Independent verification (re-ran from scratch on the maintainer's environment, with the live ControlLogix 1756-L75 PLC at 10.136.15.20 available):**
+
+- `cargo fmt --all -- --check` — clean (after fmt'ing this turn's separate uncommitted example files — those are unrelated to CODEX-W)
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` — 208 passed, 0 failed across all 29 test binaries
+- `cargo test --test plc_sim_tests --locked` — 10/10 passed
+- `PYTHONPATH=python python3 -m unittest python.tests.test_client_value_mapping python.tests.test_client_contract python.tests.test_bindings` — 23/23 passed
+- `PYTHONPATH=python RUST_ETHERNET_IP_START_SIM=1 python3 -m unittest python.tests.test_integration` — 8/8 passed
+- **Hardware re-run against the maintainer's ControlLogix** (`python/examples/test_plc_full_coverage.py`, 2299 tags, 2206 writeable): zero CIP `0x1E` errors. All 128/128 plain `gTestArray_BOOL[i]` writes succeed; all 100/100 `Program:TestProgram.gTestArray_BOOL[i]` writes succeed. **The specific bug CODEX-W targeted is fixed on real hardware.**
+
+**Strong points (✅):**
+- Typed FFI registration in `bindings.py:68-126` is correct: `c_int` for `eip_write_bool` value (not `c_bool`, per the brief's gotcha), `c_double` for `eip_write_real`/`eip_write_lreal` to match the Rust `f64` FFI signature (consistent with C# wrapper at `EthernetNetIpClient.NativeMethods.cs:eip_write_real`).
+- `Client.write_tag()` dispatch at `client.py:317-367` checks `BOOL` before the integer branch — correctly handles Python's `bool isinstance int` quirk per the brief's gotcha.
+- `_INTEGER_RANGES` + `_INTEGER_CTYPES` tables at `client.py:54-75` are a clean lookup pattern that scales cleanly when LREAL/SINT/USINT etc. need adjustment.
+- `_validate_integer_value` (`client.py:187-194`) and `_validate_float_value` (`client.py:197-200`) reject `bool` values for non-BOOL integer/float writes — prevents accidental `write_tag("DINT_TAG", True)` from silently dispatching to the wrong typed export.
+- UDT fallback retained at `client.py:320-329` — UDT writes still go through the batch path, exactly as the brief required. The inline comment documents that this is intentional pending a future UDT brief.
+- Test coverage is genuinely thorough: parametrized dispatch test across all 11 typed exports (`test_client_value_mapping.py:99-122`), STRING-specific test (124-131), UDT-stays-on-batch pin (133-140), pre-FFI ValueError test (142-150), plus an integration test that round-trips on the simulator. The simulator tag inventory was correctly expanded in `tests/plc_sim.rs` to include `BOOL_ARRAY` and one tag of each numeric width — neat scope discipline.
+
+**Findings (🟡 polish, all non-blocking):**
+- 🟡 `client.py:319` calls `(value_type or _infer_value_type(value)).upper()`. The `.upper()` defensively normalizes caller-supplied `value_type="dint"` to `"DINT"`. Good safety, but `_infer_value_type` already returns uppercase. The trailing `.upper()` is mildly redundant when the path took the inference branch — pure micro-polish, not worth changing.
+- 🟡 `_validate_float_value` casts via `float(value)` (`client.py:200`) which accepts an `int` value silently for REAL writes. Matches `_infer_value_type`'s behavior (treats `int` as DINT, but allows `write_tag("REAL_TAG", 42, value_type="REAL")` to succeed). Probably correct — users will pass int literals for REAL all the time — but worth a brief comment near line 200 documenting the intent so a future cleanup doesn't tighten it.
+- 🟡 Codex's log entry honestly flags that full `cargo fmt --check` couldn't run against `main` due to *Claude's* uncommitted example files. That's a clean callout — owned correctly. No issue against CODEX-W.
+
+**Findings (🟠 real concerns) — none.**
+
+**Acceptance criteria tally:**
+- ✅ All 12 typed single-tag write FFI exports registered with correct argtypes / restype
+- ✅ Read exports also registered (infrastructure for a future read-path brief)
+- ✅ `Client.write_tag()` dispatches to typed export for every type except UDT; batch path no longer reached for BOOL/integers/REAL/LREAL/STRING
+- ✅ New unit tests pass without simulator
+- ✅ New integration tests pass against simulator
+- ✅ `cargo fmt --check`, `cargo clippy -D warnings`, `SKIP_PLC_TESTS=1 cargo test --workspace --locked`, `cargo test --test plc_sim_tests` all pass
+- ✅ `CHANGELOG.md` `[Unreleased]` `### Fixed` entry present
+- ✅ Hardware re-run output captured (here, by Claude — Codex couldn't run it because the PLC was occupied)
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-24 13:05  claude  [Opus 4.7]  status: merged
+
+**Merged.** The targeted bug (Python `write_tag` BOOL-array CIP `0x1E`) is fixed on real hardware as well as in the simulator. Implementation is clean, scope was respected (UDT correctly deferred), tests are thorough, integer range validation is load-bearing and present. No real concerns.
+
+**Brief-side note (no defect):** the brief mentioned the `(STRING_TAG, "STRING")` integration round-trip should hit `eip_write_string`. Codex's `test_typed_write_roundtrip_all_numeric_types` correctly covers numeric scalars, and the unit test `test_write_tag_string_uses_typed_export` pins the typed STRING dispatch — together they satisfy the contract without needing a STRING-write integration test (the simulator's existing `STRING_TAG` round-trip in `test_connect_read_write_and_health` already exercises the simulator's STRING path).
+
+**Two new core findings surfaced by the same hardware run (NOT CODEX-W defects)** — these affect all three bindings equally, so they're Rust-core issues, not Python-wrapper issues:
+
+1. **Plain `BOOL[i]` array element writes verify-mismatch ~30-40%** across Rust/C#/Python. Writes return Ok; readback returns the wrong bit ~1 in 3. Same indices fail in each binding (random variation between runs accounts for the 25-41% spread). Suggests a bug in the library's BOOL-array RMW path or in the bit-extraction-on-read path. Worth a separate investigation brief.
+2. **`gTestUDT_Array[i].Array_BOOL[j]` is completely broken** — 200/200 reads fail, 200/200 writes fail, across all three bindings. The nested-BOOL-inside-UDT-array-element path doesn't function. Worth a separate brief.
+
+Neither is gating for CODEX-W itself, but both are gating for v0.8.0 release — they should be filed as new briefs (`CODEX-X` for BOOL array bit-write verify mismatch, `CODEX-Y` for UDT-array-element nested BOOL path) before tagging v0.8.0.

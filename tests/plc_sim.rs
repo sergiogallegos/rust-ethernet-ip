@@ -20,17 +20,33 @@ const CIP_REPLY_MULTIPLE_SERVICE_PACKET: u8 = 0x8A;
 const CIP_STATUS_SUCCESS: u8 = 0x00;
 const CIP_STATUS_PATH_SEGMENT_ERROR: u8 = 0x04;
 
-const CIP_TYPE_DINT: u16 = 0x00C4;
 const CIP_TYPE_BOOL: u16 = 0x00C1;
+const CIP_TYPE_SINT: u16 = 0x00C2;
+const CIP_TYPE_INT: u16 = 0x00C3;
+const CIP_TYPE_DINT: u16 = 0x00C4;
+const CIP_TYPE_LINT: u16 = 0x00C5;
+const CIP_TYPE_USINT: u16 = 0x00C6;
+const CIP_TYPE_UINT: u16 = 0x00C7;
+const CIP_TYPE_UDINT: u16 = 0x00C8;
+const CIP_TYPE_ULINT: u16 = 0x00C9;
 const CIP_TYPE_REAL: u16 = 0x00CA;
+const CIP_TYPE_LREAL: u16 = 0x00CB;
 const CIP_TYPE_STRING: u16 = 0x00CE;
 const CIP_TYPE_STRUCTURE: u16 = 0x02A0; // Used by library for STRING writes
 
 #[derive(Clone, Debug)]
 enum TagValue {
     Bool(bool),
+    Sint(i8),
+    Int(i16),
     Dint(i32),
+    Lint(i64),
+    Usint(u8),
+    Uint(u16),
+    Udint(u32),
+    Ulint(u64),
     Real(f32),
+    Lreal(f64),
     String(String),
     Array(Vec<TagValue>),
 }
@@ -99,10 +115,29 @@ impl SimulatedPlc {
         let tags = Arc::new(Mutex::new(HashMap::from([
             ("DINT_TAG".to_string(), TagValue::Dint(1234)),
             ("BOOL_TAG".to_string(), TagValue::Bool(true)),
+            ("SINT_TAG".to_string(), TagValue::Sint(-12)),
+            ("INT_TAG".to_string(), TagValue::Int(-1234)),
+            ("LINT_TAG".to_string(), TagValue::Lint(-123456789)),
+            ("USINT_TAG".to_string(), TagValue::Usint(12)),
+            ("UINT_TAG".to_string(), TagValue::Uint(1234)),
+            ("UDINT_TAG".to_string(), TagValue::Udint(123456789)),
+            ("ULINT_TAG".to_string(), TagValue::Ulint(123456789)),
             ("REAL_TAG".to_string(), TagValue::Real(3.0)),
+            ("LREAL_TAG".to_string(), TagValue::Lreal(6.0)),
             (
                 "STRING_TAG".to_string(),
                 TagValue::String("Hello PLC".to_string()),
+            ),
+            (
+                "BOOL_ARRAY".to_string(),
+                TagValue::Array(vec![
+                    TagValue::Bool(true),
+                    TagValue::Bool(false),
+                    TagValue::Bool(true),
+                    TagValue::Bool(false),
+                    TagValue::Bool(true),
+                    TagValue::Bool(false),
+                ]),
             ),
             (
                 "DINT_ARRAY".to_string(),
@@ -357,6 +392,19 @@ fn handle_write_cip_request(
 
     let value = match data_type {
         CIP_TYPE_BOOL => cip_request.get(data_start).map(|b| TagValue::Bool(*b != 0)),
+        CIP_TYPE_SINT => cip_request
+            .get(data_start)
+            .map(|b| TagValue::Sint(i8::from_le_bytes([*b]))),
+        CIP_TYPE_INT => {
+            if cip_request.len() < data_start + 2 {
+                None
+            } else {
+                Some(TagValue::Int(i16::from_le_bytes([
+                    cip_request[data_start],
+                    cip_request[data_start + 1],
+                ])))
+            }
+        }
         CIP_TYPE_DINT => {
             if cip_request.len() < data_start + 4 {
                 None
@@ -369,6 +417,61 @@ fn handle_write_cip_request(
                 ])))
             }
         }
+        CIP_TYPE_LINT => {
+            if cip_request.len() < data_start + 8 {
+                None
+            } else {
+                Some(TagValue::Lint(i64::from_le_bytes([
+                    cip_request[data_start],
+                    cip_request[data_start + 1],
+                    cip_request[data_start + 2],
+                    cip_request[data_start + 3],
+                    cip_request[data_start + 4],
+                    cip_request[data_start + 5],
+                    cip_request[data_start + 6],
+                    cip_request[data_start + 7],
+                ])))
+            }
+        }
+        CIP_TYPE_USINT => cip_request.get(data_start).copied().map(TagValue::Usint),
+        CIP_TYPE_UINT => {
+            if cip_request.len() < data_start + 2 {
+                None
+            } else {
+                Some(TagValue::Uint(u16::from_le_bytes([
+                    cip_request[data_start],
+                    cip_request[data_start + 1],
+                ])))
+            }
+        }
+        CIP_TYPE_UDINT => {
+            if cip_request.len() < data_start + 4 {
+                None
+            } else {
+                Some(TagValue::Udint(u32::from_le_bytes([
+                    cip_request[data_start],
+                    cip_request[data_start + 1],
+                    cip_request[data_start + 2],
+                    cip_request[data_start + 3],
+                ])))
+            }
+        }
+        CIP_TYPE_ULINT => {
+            if cip_request.len() < data_start + 8 {
+                None
+            } else {
+                Some(TagValue::Ulint(u64::from_le_bytes([
+                    cip_request[data_start],
+                    cip_request[data_start + 1],
+                    cip_request[data_start + 2],
+                    cip_request[data_start + 3],
+                    cip_request[data_start + 4],
+                    cip_request[data_start + 5],
+                    cip_request[data_start + 6],
+                    cip_request[data_start + 7],
+                ])))
+            }
+        }
         CIP_TYPE_REAL => {
             if cip_request.len() < data_start + 4 {
                 None
@@ -378,6 +481,22 @@ fn handle_write_cip_request(
                     cip_request[data_start + 1],
                     cip_request[data_start + 2],
                     cip_request[data_start + 3],
+                ])))
+            }
+        }
+        CIP_TYPE_LREAL => {
+            if cip_request.len() < data_start + 8 {
+                None
+            } else {
+                Some(TagValue::Lreal(f64::from_le_bytes([
+                    cip_request[data_start],
+                    cip_request[data_start + 1],
+                    cip_request[data_start + 2],
+                    cip_request[data_start + 3],
+                    cip_request[data_start + 4],
+                    cip_request[data_start + 5],
+                    cip_request[data_start + 6],
+                    cip_request[data_start + 7],
                 ])))
             }
         }
@@ -579,6 +698,8 @@ fn build_value_response(
                     }
                     response
                 }
+                TagValue::Sint(_) => build_array_value_response(&subset, CIP_TYPE_SINT),
+                TagValue::Int(_) => build_array_value_response(&subset, CIP_TYPE_INT),
                 TagValue::Dint(_) => {
                     let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
                     response.extend_from_slice(&CIP_TYPE_DINT.to_le_bytes());
@@ -593,6 +714,11 @@ fn build_value_response(
                     }
                     response
                 }
+                TagValue::Lint(_) => build_array_value_response(&subset, CIP_TYPE_LINT),
+                TagValue::Usint(_) => build_array_value_response(&subset, CIP_TYPE_USINT),
+                TagValue::Uint(_) => build_array_value_response(&subset, CIP_TYPE_UINT),
+                TagValue::Udint(_) => build_array_value_response(&subset, CIP_TYPE_UDINT),
+                TagValue::Ulint(_) => build_array_value_response(&subset, CIP_TYPE_ULINT),
                 TagValue::Real(_) => {
                     let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
                     response.extend_from_slice(&CIP_TYPE_REAL.to_le_bytes());
@@ -607,6 +733,7 @@ fn build_value_response(
                     }
                     response
                 }
+                TagValue::Lreal(_) => build_array_value_response(&subset, CIP_TYPE_LREAL),
                 TagValue::String(_) => {
                     // Simulator keeps string arrays simple: return first requested string.
                     build_value_response(subset[0].clone(), None, 1)
@@ -623,15 +750,63 @@ fn build_value_response(
             response.push(if v { 0xFF } else { 0x00 });
             response
         }
+        TagValue::Sint(v) => {
+            let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+            response.extend_from_slice(&CIP_TYPE_SINT.to_le_bytes());
+            response.extend_from_slice(&v.to_le_bytes());
+            response
+        }
+        TagValue::Int(v) => {
+            let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+            response.extend_from_slice(&CIP_TYPE_INT.to_le_bytes());
+            response.extend_from_slice(&v.to_le_bytes());
+            response
+        }
         TagValue::Dint(v) => {
             let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
             response.extend_from_slice(&CIP_TYPE_DINT.to_le_bytes());
             response.extend_from_slice(&v.to_le_bytes());
             response
         }
+        TagValue::Lint(v) => {
+            let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+            response.extend_from_slice(&CIP_TYPE_LINT.to_le_bytes());
+            response.extend_from_slice(&v.to_le_bytes());
+            response
+        }
+        TagValue::Usint(v) => {
+            let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+            response.extend_from_slice(&CIP_TYPE_USINT.to_le_bytes());
+            response.push(v);
+            response
+        }
+        TagValue::Uint(v) => {
+            let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+            response.extend_from_slice(&CIP_TYPE_UINT.to_le_bytes());
+            response.extend_from_slice(&v.to_le_bytes());
+            response
+        }
+        TagValue::Udint(v) => {
+            let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+            response.extend_from_slice(&CIP_TYPE_UDINT.to_le_bytes());
+            response.extend_from_slice(&v.to_le_bytes());
+            response
+        }
+        TagValue::Ulint(v) => {
+            let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+            response.extend_from_slice(&CIP_TYPE_ULINT.to_le_bytes());
+            response.extend_from_slice(&v.to_le_bytes());
+            response
+        }
         TagValue::Real(v) => {
             let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
             response.extend_from_slice(&CIP_TYPE_REAL.to_le_bytes());
+            response.extend_from_slice(&v.to_le_bytes());
+            response
+        }
+        TagValue::Lreal(v) => {
+            let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+            response.extend_from_slice(&CIP_TYPE_LREAL.to_le_bytes());
             response.extend_from_slice(&v.to_le_bytes());
             response
         }
@@ -643,6 +818,28 @@ fn build_value_response(
             response
         }
     }
+}
+
+fn build_array_value_response(items: &[TagValue], data_type: u16) -> Vec<u8> {
+    let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+    response.extend_from_slice(&data_type.to_le_bytes());
+    if items.len() > 1 {
+        response.extend_from_slice(&(items.len() as u16).to_le_bytes());
+    }
+    for item in items {
+        match item {
+            TagValue::Sint(v) => response.extend_from_slice(&v.to_le_bytes()),
+            TagValue::Int(v) => response.extend_from_slice(&v.to_le_bytes()),
+            TagValue::Lint(v) => response.extend_from_slice(&v.to_le_bytes()),
+            TagValue::Usint(v) => response.push(*v),
+            TagValue::Uint(v) => response.extend_from_slice(&v.to_le_bytes()),
+            TagValue::Udint(v) => response.extend_from_slice(&v.to_le_bytes()),
+            TagValue::Ulint(v) => response.extend_from_slice(&v.to_le_bytes()),
+            TagValue::Lreal(v) => response.extend_from_slice(&v.to_le_bytes()),
+            _ => {}
+        }
+    }
+    response
 }
 
 fn parse_tag_and_path(cip_request: &[u8]) -> Option<(String, Option<usize>)> {

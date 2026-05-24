@@ -53,6 +53,44 @@ class SimulatorIntegrationTests(unittest.TestCase):
                 self.assertIs(updated["BOOL_TAG"], False)
                 self.assertEqual(updated["STRING_TAG"], "Batch Updated")
 
+    def test_bool_array_element_write_uses_typed_path(self) -> None:
+        with SimulatorHarness() as address:
+            with Client(address) as plc:
+                plc.write_tag("BOOL_ARRAY[5]", True)
+                self.assertIs(plc.read_tag("BOOL_ARRAY[5]"), True)
+
+                plc.write_tag("BOOL_ARRAY[5]", False)
+                self.assertIs(plc.read_tag("BOOL_ARRAY[5]"), False)
+
+    def test_typed_write_roundtrip_all_numeric_types(self) -> None:
+        cases = [
+            ("SINT_TAG", -7, "SINT"),
+            ("INT_TAG", -123, "INT"),
+            ("DINT_TAG", 4567, "DINT"),
+            ("LINT_TAG", -9876543210, "LINT"),
+            ("USINT_TAG", 7, "USINT"),
+            ("UINT_TAG", 123, "UINT"),
+            ("UDINT_TAG", 456789, "UDINT"),
+            ("ULINT_TAG", 9876543210, "ULINT"),
+            ("REAL_TAG", 8.25, "REAL"),
+            ("LREAL_TAG", 9.5, "LREAL"),
+        ]
+
+        with SimulatorHarness() as address:
+            with Client(address) as plc:
+                for tag_name, value, value_type in cases:
+                    with self.subTest(tag_name=tag_name):
+                        plc.write_tag(tag_name, value, value_type=value_type)
+                        self.assertEqual(plc.read_tag(tag_name), value)
+
+    def test_out_of_range_write_raises_value_error_without_changing_tag(self) -> None:
+        with SimulatorHarness() as address:
+            with Client(address) as plc:
+                before = plc.read_tag("INT_TAG")
+                with self.assertRaises(ValueError):
+                    plc.write_tag("INT_TAG", 99_999, value_type="INT")
+                self.assertEqual(plc.read_tag("INT_TAG"), before)
+
     def test_connect_with_route_path(self) -> None:
         with SimulatorHarness() as address:
             with Client(address, route_path=RoutePath(slots=[0])) as plc:

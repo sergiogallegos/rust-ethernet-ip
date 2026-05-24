@@ -65,6 +65,66 @@ def _configure_function_signatures(lib: ctypes.CDLL) -> ctypes.CDLL:
     lib.eip_read_tag.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
     lib.eip_read_tag.restype = ctypes.c_int
 
+    lib.eip_read_bool.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+    lib.eip_read_bool.restype = ctypes.c_int
+    lib.eip_write_bool.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    lib.eip_write_bool.restype = ctypes.c_int
+
+    lib.eip_read_sint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int8)]
+    lib.eip_read_sint.restype = ctypes.c_int
+    lib.eip_write_sint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int8]
+    lib.eip_write_sint.restype = ctypes.c_int
+
+    lib.eip_read_int.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int16)]
+    lib.eip_read_int.restype = ctypes.c_int
+    lib.eip_write_int.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int16]
+    lib.eip_write_int.restype = ctypes.c_int
+
+    lib.eip_read_dint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+    lib.eip_read_dint.restype = ctypes.c_int
+    lib.eip_write_dint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    lib.eip_write_dint.restype = ctypes.c_int
+
+    lib.eip_read_lint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int64)]
+    lib.eip_read_lint.restype = ctypes.c_int
+    lib.eip_write_lint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int64]
+    lib.eip_write_lint.restype = ctypes.c_int
+
+    lib.eip_read_usint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint8)]
+    lib.eip_read_usint.restype = ctypes.c_int
+    lib.eip_write_usint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint8]
+    lib.eip_write_usint.restype = ctypes.c_int
+
+    lib.eip_read_uint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint16)]
+    lib.eip_read_uint.restype = ctypes.c_int
+    lib.eip_write_uint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint16]
+    lib.eip_write_uint.restype = ctypes.c_int
+
+    lib.eip_read_udint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint32)]
+    lib.eip_read_udint.restype = ctypes.c_int
+    lib.eip_write_udint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+    lib.eip_write_udint.restype = ctypes.c_int
+
+    lib.eip_read_ulint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint64)]
+    lib.eip_read_ulint.restype = ctypes.c_int
+    lib.eip_write_ulint.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint64]
+    lib.eip_write_ulint.restype = ctypes.c_int
+
+    lib.eip_read_real.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_double)]
+    lib.eip_read_real.restype = ctypes.c_int
+    lib.eip_write_real.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_double]
+    lib.eip_write_real.restype = ctypes.c_int
+
+    lib.eip_read_lreal.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_double)]
+    lib.eip_read_lreal.restype = ctypes.c_int
+    lib.eip_write_lreal.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_double]
+    lib.eip_write_lreal.restype = ctypes.c_int
+
+    lib.eip_read_string.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    lib.eip_read_string.restype = ctypes.c_int
+    lib.eip_write_string.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
+    lib.eip_write_string.restype = ctypes.c_int
+
     lib.eip_read_tags_batch.argtypes = [ctypes.c_int, c_char_p_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
     lib.eip_read_tags_batch.restype = ctypes.c_int
 

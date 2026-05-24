@@ -94,7 +94,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-C | Decompose lib.rs into route, batch, types, and client modules | codex | `476f21c` |
 | CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | `c58a905` |
 | CODEX-F | RoutePath ordered hops + ASCII ethernet link-address encoding | codex | `9a3d192` |
-| CODEX-W | Python wrapper — route single-tag writes through typed FFI exports | codex | _(merge commit pending)_ |
+| CODEX-W | Python wrapper — route single-tag writes through typed FFI exports | codex | `4bab25a` |
 
 ## Project context
 

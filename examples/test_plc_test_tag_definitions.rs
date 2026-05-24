@@ -26,6 +26,13 @@ fn get_cpu_slot() -> u8 {
         .unwrap_or(0)
 }
 
+fn get_visible_pause_secs() -> u64 {
+    env::var("VISIBLE_PAUSE_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct TestTag {
@@ -221,6 +228,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!();
+
+    let pause_secs = get_visible_pause_secs();
+    if pause_secs > 0 {
+        println!("═══════════════════════════════════════════════════════════════════════════════");
+        println!(
+            "⏸  HOLDING test values on the PLC for {}s — open Studio 5000 and observe.",
+            pause_secs
+        );
+        println!("   Controller Tags: gTestArray_*, gTestUDT.*, gTestUDT_Array[*].*");
+        println!(
+            "   Program Tags:    Program:TestProgram.gTestArray_*, Program:TestProgram.gTestUDT.*"
+        );
+        println!("═══════════════════════════════════════════════════════════════════════════════");
+        for remaining in (1..=pause_secs).rev() {
+            if remaining == pause_secs || remaining % 10 == 0 || remaining <= 5 {
+                use std::io::Write;
+                print!("\r   Restoring in {:>3}s... ", remaining);
+                std::io::stdout().flush().ok();
+            }
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        }
+        println!("\r   Restoring now.                          ");
+        println!();
+    }
+
     println!("═══════════════════════════════════════════════════════════════════════════════");
     println!("♻️  STEP 4: Restoring Initial Values");
     println!("═══════════════════════════════════════════════════════════════════════════════");

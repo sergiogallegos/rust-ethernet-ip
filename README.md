@@ -13,6 +13,33 @@
 
 Production-focused EtherNet/IP library for **Allen-Bradley CompactLogix and ControlLogix PLCs**.
 
+## Why this project exists
+
+### Why Rust for the core
+
+EtherNet/IP runs on factory floors where a dropped packet or an out-of-bounds parse can stop a production line. Rust was chosen for the core because it provides:
+
+- memory safety with no garbage collector — no GC pauses during high-rate scan loops
+- predictable latency and low overhead, important for sub-100 ms tag polling
+- a strong type system that pushes wire-protocol mistakes to compile time instead of to runtime in front of a real PLC
+- a single statically-linked binary that drops into industrial PCs and edge gateways without a managed runtime
+
+The same library can therefore serve both the embedded edge — where C and C++ have historically dominated — and higher-level integrations, without rewriting the protocol layer for each consumer.
+
+### Why a C# wrapper
+
+The Allen-Bradley world is overwhelmingly a Windows and .NET world: HMIs, MES integrations, SCADA front-ends, OPC servers, and integrator-built operator software are usually written in C#. Most engineers on the plant floor are not going to write Rust, and they should not have to. The NuGet-packaged `RustEtherNetIp` wrapper lets those teams consume the Rust core through a familiar API (`client.ReadDint("Tag")`) while the protocol work still runs in the native layer.
+
+### Why a Python wrapper
+
+Data engineering, analytics, historian ingestion, MES bridges, and machine learning on the plant floor are predominantly Python. A Python wrapper means a data scientist or integration engineer can pull live PLC data into pandas, into a Kafka producer, or into a Docker-deployed collector service, without rewriting the protocol stack or routing through OPC.
+
+### Vision and open source
+
+There is no widely-adopted, modern, open-source EtherNet/IP library for Allen-Bradley PLCs that is production-credible across the Rust, .NET, and Python ecosystems at the same time. Existing options tend to be closed-source vendor SDKs with restrictive licensing, aging C libraries with thin or stale language bindings, or per-team rewrites that never get hardened against real PLC firmware quirks.
+
+This project exists to fill that gap with a single, MIT-licensed protocol implementation the industrial automation community can build on, audit, and extend — and to make the firmware-imposed limitations (STRING writes, UDT array element writes, route-path quirks) explicit and documented rather than rediscovered by every new integrator.
+
 ## Version Status
 
 - Current stable release: `0.7.0`

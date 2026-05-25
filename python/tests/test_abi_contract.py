@@ -24,7 +24,7 @@ class FakeFunction:
 class FakeNativeLibrary:
     def __init__(self, *, abi_version: int = 1) -> None:
         self.eip_abi_version = FakeFunction(abi_version)
-        self.eip_library_version = FakeFunction(b"0.8.0")
+        self.eip_library_version = FakeFunction(b"1.0.0")
         self.eip_capabilities = FakeFunction(0x0F)
 
     def __getattr__(self, name: str) -> FakeFunction:
@@ -46,10 +46,10 @@ class AbiContractTests(unittest.TestCase):
 
         self.assertIs(loaded, fake_lib)
         self.assertEqual(bindings.ABI_VERSION, 1)
-        self.assertEqual(bindings.LIBRARY_VERSION, "0.8.0")
+        self.assertEqual(bindings.LIBRARY_VERSION, "1.0.0")
         self.assertEqual(bindings.CAPABILITIES, 0x0F)
         self.assertEqual(rust_ethernet_ip.ABI_VERSION, 1)
-        self.assertEqual(rust_ethernet_ip.LIBRARY_VERSION, "0.8.0")
+        self.assertEqual(rust_ethernet_ip.LIBRARY_VERSION, "1.0.0")
         self.assertEqual(rust_ethernet_ip.CAPABILITIES, 0x0F)
 
     def test_load_native_library_rejects_abi_mismatch(self) -> None:

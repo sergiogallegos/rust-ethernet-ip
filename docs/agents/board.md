@@ -6,9 +6,14 @@
 
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-_(no open briefs — full v0.8.0+CODEX-K release-window scope merged for 1.0.0)_
+| CODEX-Z | Validate agent task file frontmatter + board/log consistency on pre-commit | codex | open | 2026-05-25 claude [Opus 4.7] | [`tasks/CODEX-Z-validate-task-files.md`](tasks/CODEX-Z-validate-task-files.md) |
+| CODEX-AA | Release-readiness checker — version-string parity + cargo package chain | codex | open | 2026-05-25 claude [Opus 4.7] | [`tasks/CODEX-AA-release-readiness-check.md`](tasks/CODEX-AA-release-readiness-check.md) |
+| CODEX-AB | Structured Claude-review template — six-question contract + fixed output shape | codex | open | 2026-05-25 claude [Opus 4.7] | [`tasks/CODEX-AB-structured-review-template.md`](tasks/CODEX-AB-structured-review-template.md) |
+| CODEX-AC | Committer wrapper script — enforce specific-file staging + non-empty message | codex | open | 2026-05-25 claude [Opus 4.7] | [`tasks/CODEX-AC-committer-wrapper.md`](tasks/CODEX-AC-committer-wrapper.md) |
 
 > 2026-05-24 release status: **v1.0.0 shipped**. `main` is at `f02eef5`; annotated tag `v1.0.0` pushed to origin. Five crates published to crates.io (`rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, `rust-ethernet-ip`), all at `1.0.0`. NuGet `RustEtherNetIp 1.0.0` ships via the GitHub release workflow triggered by the tag (assuming `NUGET_API_KEY` is configured). Single residual: multi-hop ethernet hardware validation remains a documented confidence upgrade — see post-1.0.0 polish list.
+>
+> 2026-05-25 agent-infra briefs opened: CODEX-Z (validate-agent-files + pre-commit hook), CODEX-AA (release-readiness checker), CODEX-AB (structured Claude-review template), CODEX-AC (committer wrapper). Inspired by [`steipete/agent-scripts`](https://github.com/steipete/agent-scripts). Each is independently merge-able and would have caught real drift bugs from the 1.0.0 release week. Sequencing: Z + AA are highest-value (caught real bugs); AB is documentation-shape; AC is preventative. Each parallel-safe with the others; pick any order.
 >
 > Scope note: the v0.8.0 bundle is effectively a 1.0.0-shape release (FFI contract pin + behavioral refactor + new public API + structural split + release-window break sweep). Renaming the version to `1.0.0` is defensible and would signal the stability story to NuGet/PyPI/crates.io consumers; left to maintainer decision.
 >

@@ -1,7 +1,6 @@
 [package]
 name = "rust-ethernet-ip-types"
 version = "1.0.0"
-publish = false
 edition = "2024"
 license = "MIT"
 description = "Shared PLC value types for rust-ethernet-ip"

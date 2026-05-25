@@ -42,16 +42,14 @@ This project exists to fill that gap with a single, MIT-licensed protocol implem
 
 ## Version Status
 
-- Current stable release: `0.7.0`
-- Current working line: `0.8.0` draft, not published to crates.io or NuGet
+- Current working line: `1.0.0` draft — bundles SemVer-major cleanup (CODEX-K release-window), actor-backed cloneable client (CODEX-P), service-layer helpers (CODEX-Q), connection event stream (CODEX-R), retry primitive (CODEX-S), fleet pool (CODEX-T), and sibling-crate workspace structure (CODEX-U). Not yet tagged or published.
+- Last published stable release: `0.7.0` (crates.io + NuGet)
 - Previous stable release: `0.6.3`
 - Real-hardware validation evidence is included for the release
 
 Release snapshot:
-- simulator, FFI, Rust, and C# regression gates were completed for `0.7.0`
-- real-hardware validation was completed on one CompactLogix and one ControlLogix target
-- `0.7.0` is the current released line
-- `0.8.0` planning currently includes the Rust 2024 / Rust 1.95 migration, packaging fixes, crates.io README image rendering, official-source traceability, 2026-04-16 ControlLogix Rust/C# validation evidence, and upcoming larger feature work
+- Rust + C# + Python full-coverage hardware exercisers all pass against ControlLogix 1756-L75 fw33 (2026-05-24): 2299/2299 reads, 2206/2206 writes, 2206/2206 verify on the C# and Python paths (Rust 1806/1806 writes; the gap is exerciser-side classification, not a library defect).
+- v1.0.0 crates.io publish requires claiming `rust-ethernet-ip-{types,protocol,tag-path,udt}` on crates.io at tag time (each is an independently SemVer-versioned artifact going forward). Release-day publish order: `types` + `tag-path`, then `protocol` + `udt`, then `rust-ethernet-ip`. NuGet wrapper publish is unaffected.
 
 ## Project Focus
 
@@ -129,7 +127,7 @@ Current NuGet packaging note:
 
 ### Python
 
-The Python wrapper is currently in-repo as a working `0.8.0` draft layer and is not published yet.
+The Python wrapper is currently in-repo as a working `1.0.0` draft layer and is not published to PyPI yet.
 
 See:
 

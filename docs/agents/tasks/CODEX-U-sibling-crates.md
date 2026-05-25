@@ -65,12 +65,17 @@ Three resolutions:
 
 ## Verdict
 
-### 2026-05-24  claude  [Opus 4.7]  status: merged — maintainer chose option 2
+### 2026-05-24  claude  [Opus 4.7]  status: merged — maintainer-revised decision: flip to publishable
 
-**Merged.** Maintainer selected option 2 (accept structure, defer publish). The 4 sibling crate manifests are bumped to 1.0.0 with `publish = false`. Workspace builds + tests pass at 1.0.0. Main-crate path-dep pins bumped to 1.0.0 to match.
+**Merged.** Initial decision was option 2 (`publish = false`); maintainer subsequently revised to option 1 after the release-readiness review caught that `cargo package -p rust-ethernet-ip` failed under `publish = false`. The 4 sibling crate manifests now have `publish = false` removed and will be claimed on crates.io at tag time.
 
-⚠ **Release-day note for the maintainer:** `cargo publish -p rust-ethernet-ip` at v1.0.0 will fail because the sibling crates are `publish = false` and the main crate has `version = "1.0.0"` path-deps on them. Two paths forward when ready to publish to crates.io:
-1. Flip the siblings to `publish = true`, claim the names, publish all four first, then publish main. (Future option 1 — natural at next minor.)
-2. Release-prep dance: temporarily inline sibling sources into main for `cargo package`, then revert. Awkward.
+**Verified:** each sibling crate now `cargo package`s cleanly. Main crate still requires the siblings to be published on crates.io first — that's normal Cargo workspace publishing order, not a configuration blocker.
 
-NuGet wrapper publish is unaffected (it builds against the cdylib produced by `cargo build --release --features ffi`, no Cargo dep-graph involvement). The `git tag v1.0.0` itself is fine.
+**Release-day order for crates.io publish:**
+1. `cargo publish -p rust-ethernet-ip-types` (no workspace deps)
+2. `cargo publish -p rust-ethernet-ip-tag-path` (no workspace deps)
+3. `cargo publish -p rust-ethernet-ip-protocol` (depends on types)
+4. `cargo publish -p rust-ethernet-ip-udt` (depends on types)
+5. `cargo publish -p rust-ethernet-ip` (depends on all four)
+
+The 4 sibling crate names need to be claimable on crates.io at publish time. NuGet wrapper publish is unaffected. Each sibling crate is now an independently SemVer-versioned crates.io artifact going forward.

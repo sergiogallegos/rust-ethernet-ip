@@ -25,13 +25,13 @@ pub const CAPABILITIES: u64 = CAP_ROUTE_PATH_ORDERED_HOPS
     | CAP_TAG_GROUP_SUBSCRIPTIONS;
 
 /// Major version number
-pub const MAJOR_VERSION: u32 = 0;
+pub const MAJOR_VERSION: u32 = 1;
 
 /// Minor version number
-pub const MINOR_VERSION: u32 = 5;
+pub const MINOR_VERSION: u32 = 0;
 
 /// Patch version number
-pub const PATCH_VERSION: u32 = 5;
+pub const PATCH_VERSION: u32 = 0;
 
 /// Version string in format "v0.1.0"
 pub const VERSION_STRING: &str = concat!("v", env!("CARGO_PKG_VERSION"));

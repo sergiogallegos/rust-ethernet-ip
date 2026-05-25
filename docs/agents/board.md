@@ -18,12 +18,13 @@ _(no open briefs — full v0.8.0+CODEX-K release-window scope merged for 1.0.0)_
 
 Resume order recommended by Claude. Each candidate brief is unwritten; the entry below summarises what the brief would cover so the next session can author and execute it without re-deriving context from chat history.
 
-### Gating items for v0.8.0 release (maintainer-owned)
+### Gating items for v1.0.0 release (maintainer-owned)
 
-1. **Hardware validation** — direct-connect + multi-hop ethernet topology against real Allen-Bradley hardware. Specifically validate the new `RouteHop::Ethernet` ASCII extended-link-address encoding from CODEX-F (`9a3d192`). The validated targets in `CLAUDE.md` are CompactLogix `5069-L320ERMS3` and ControlLogix `1756-L81ES`; neither exercises the ethernet routing path. Until a real multi-hop topology accepts the new bytes, `wiki/protocol/route-path-behavior.md` marks the encoding as `likely` rather than `confirmed`. Maintainer's job; no agent can do this.
-2. **Cut v0.8.0** — once hardware validation passes. Needs: tag `v0.8.0`, run the existing NuGet + crates.io pack/publish flow. `Cargo.toml` is already at `0.8.0` (set at `972b10b`); `src/lib.rs` head doc lines 5 and 48 already reference `0.8.0`; `CHANGELOG.md` already has the `[Unreleased]` section targeting `0.8.0`. The release-prep edit is just promoting `[Unreleased]` → `[0.8.0] - YYYY-MM-DD` and tagging.
+1. **Multi-hop ethernet hardware validation** — the 2026-05-24 hardware run validated direct-connect (1756-L75 in slot 0 via 1756-EN2T) end-to-end across Rust/C#/Python with zero anomalies. Multi-chassis ethernet routing (`RouteHop::Ethernet` ASCII extended-link-address encoding from CODEX-F at `9a3d192`) still needs a real 2-chassis bench. `wiki/protocol/route-path-behavior.md` keeps ethernet hops at `likely` until that lands.
+2. **crates.io name claims** — the 4 sibling crates (`rust-ethernet-ip-{types,protocol,tag-path,udt}`) are now publishable (CODEX-U revised decision); their names need to be claimed on crates.io at tag time. Release-day publish order: `types` + `tag-path` (no workspace deps), then `protocol` + `udt` (depend on `types`), then main `rust-ethernet-ip`. NuGet wrapper publish is unaffected (builds the cdylib, not the Cargo dep graph).
+3. **Cut v1.0.0** — once #1 and #2 are resolved. Needs: `git tag v1.0.0`, run the NuGet pack/publish flow, decide on `cargo publish` per #2. `Cargo.toml`, `VERSION`, `csharp/RustEtherNetIp/RustEtherNetIp.csproj`, `python/pyproject.toml`, `src/version.rs`, `src/lib.rs` head doc, and `CHANGELOG.md` are all already at `1.0.0` (release-prep applied in `559aec4` follow-up).
 
-### Post-0.8.0 polish (no version assigned; brief on resume)
+### Post-1.0.0 polish (no version assigned; brief on resume)
 
 These are non-breaking improvements deferred until after v0.8.0 ships. They are not yet briefed; the entries below summarise what each brief would cover. When the maintainer is ready to resume, claude authors the brief, codex implements, claude reviews.
 
@@ -109,7 +110,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 ## Project context
 
 - **Last released version:** `v0.7.0` (tagged 2026-04-07; see CHANGELOG).
-- **Current draft:** `v0.8.0` — `Cargo.toml` bumped to `0.8.0` at `972b10b`, all CODEX-A through CODEX-F merged into the `[Unreleased]` section. No `v0.8.0` git tag exists; no NuGet/crates.io publish has run. Held pending real-hardware validation per maintainer direction (2026-05-17).
+- **Current draft:** `v1.0.0` — `Cargo.toml`, `VERSION`, `csharp/RustEtherNetIp/RustEtherNetIp.csproj`, `python/pyproject.toml`, `src/version.rs`, `src/lib.rs` head doc, and `CHANGELOG.md` `[1.0.0] - 2026-05-24` section all bumped. All CODEX-A → CODEX-Y briefs merged. No `v1.0.0` git tag exists; no NuGet/crates.io publish has run. Held pending the two gating items above (multi-hop hardware bench + sibling-crate publishability resolution).
 - **Current development focus:** the .NET stack — C# wrappers and examples (per `CLAUDE.md` Project Overview).
 - **Hardware validation gate:** integration tests against real CompactLogix / ControlLogix PLCs are the maintainer's responsibility; CI runs `SKIP_PLC_TESTS=1` plus simulator-backed `plc_sim_tests`.
 

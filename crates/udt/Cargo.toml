@@ -1,7 +1,6 @@
 [package]
 name = "rust-ethernet-ip-udt"
 version = "1.0.0"
-publish = false
 edition = "2024"
 license = "MIT"
 description = "Logix UDT parsing helpers used by rust-ethernet-ip"

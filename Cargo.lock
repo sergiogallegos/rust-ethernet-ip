@@ -2954,7 +2954,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "rust-ethernet-ip"
-version = "0.8.0"
+version = "1.0.0"
 dependencies = [
  "bytes",
  "criterion",
@@ -2964,6 +2964,10 @@ dependencies = [
  "libc",
  "log",
  "regex",
+ "rust-ethernet-ip-protocol",
+ "rust-ethernet-ip-tag-path",
+ "rust-ethernet-ip-types",
+ "rust-ethernet-ip-udt",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -2973,6 +2977,37 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "vergen",
+]
+
+[[package]]
+name = "rust-ethernet-ip-protocol"
+version = "1.0.0"
+dependencies = [
+ "bytes",
+ "rust-ethernet-ip-types",
+]
+
+[[package]]
+name = "rust-ethernet-ip-tag-path"
+version = "1.0.0"
+dependencies = [
+ "tracing",
+]
+
+[[package]]
+name = "rust-ethernet-ip-types"
+version = "1.0.0"
+dependencies = [
+ "bytes",
+ "serde",
+]
+
+[[package]]
+name = "rust-ethernet-ip-udt"
+version = "1.0.0"
+dependencies = [
+ "rust-ethernet-ip-types",
+ "tracing",
 ]
 
 [[package]]

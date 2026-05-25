@@ -1,4 +1,24 @@
 from dataclasses import dataclass
+from typing import Literal
+
+
+RouteHopKind = Literal["backplane", "ethernet"]
+
+
+@dataclass(frozen=True, slots=True)
+class RouteHop:
+    kind: RouteHopKind
+    port: int
+    slot: int | None = None
+    address: str | None = None
+
+    @staticmethod
+    def backplane(slot: int, port: int = 1) -> "RouteHop":
+        return RouteHop(kind="backplane", port=port, slot=slot)
+
+    @staticmethod
+    def ethernet(address: str, port: int = 2) -> "RouteHop":
+        return RouteHop(kind="ethernet", port=port, address=address)
 
 
 @dataclass(slots=True)
@@ -6,6 +26,18 @@ class RoutePath:
     slots: list[int] | None = None
     ports: list[int] | None = None
     addresses: list[str] | None = None
+    hops: list[RouteHop] | None = None
+
+    def ordered_hops(self) -> list[RouteHop]:
+        if self.hops is not None:
+            return list(self.hops)
+
+        hops = [RouteHop.backplane(slot) for slot in (self.slots or [])]
+        ports = self.ports or []
+        for index, address in enumerate(self.addresses or []):
+            port = ports[index] if index < len(ports) else 2
+            hops.append(RouteHop.ethernet(address, port))
+        return hops
 
 
 @dataclass(slots=True)

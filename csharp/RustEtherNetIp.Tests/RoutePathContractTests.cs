@@ -19,7 +19,7 @@ namespace RustEtherNetIp.Tests
         }
 
         [Fact]
-        public void FluentAddMethods_PreserveGroupedFields()
+        public void FluentAddMethods_PreserveOrderedHopsAndGroupedViews()
         {
             var route = new RoutePath()
                 .AddSlot(0)
@@ -31,6 +31,7 @@ namespace RustEtherNetIp.Tests
             Assert.Equal(new byte[] { 0, 1 }, route.Slots);
             Assert.Equal(new byte[] { 2 }, route.Ports);
             Assert.Equal(new[] { "192.168.1.10" }, route.Addresses);
+            Assert.Equal(3, route.Hops.Count);
         }
 
         [Theory]
@@ -54,13 +55,14 @@ namespace RustEtherNetIp.Tests
             var prepared = InvokePrepareForFfi(route);
             try
             {
-                Assert.Equal(new byte[] { 3 }, prepared.Slots);
-                Assert.Equal(new byte[] { 2 }, prepared.Ports);
-                var ptr = Assert.Single(prepared.AddressPtrs);
+                Assert.Equal(new byte[] { 1, 2 }, prepared.HopTypes);
+                Assert.Equal(new byte[] { 1, 2 }, prepared.Ports);
+                Assert.Equal(new byte[] { 3, 0 }, prepared.Slots);
+                var ptr = prepared.AddressPtrs[1];
                 Assert.NotEqual(IntPtr.Zero, ptr);
                 Assert.Equal("10.20.30.40", Marshal.PtrToStringAnsi(ptr));
-                Assert.Single(prepared.AddressHandles);
-                Assert.True(prepared.AddressHandles[0].IsAllocated);
+                Assert.Equal(2, prepared.AddressHandles.Length);
+                Assert.True(prepared.AddressHandles[1].IsAllocated);
             }
             finally
             {
@@ -68,12 +70,12 @@ namespace RustEtherNetIp.Tests
             }
         }
 
-        private static (byte[] Slots, byte[] Ports, IntPtr[] AddressPtrs, GCHandle[] AddressHandles)
+        private static (byte[] HopTypes, byte[] Ports, byte[] Slots, IntPtr[] AddressPtrs, GCHandle[] AddressHandles)
             InvokePrepareForFfi(RoutePath route)
         {
             var method = typeof(RoutePath).GetMethod("PrepareForFFI", BindingFlags.Instance | BindingFlags.NonPublic)
                 ?? throw new MissingMethodException(nameof(RoutePath), "PrepareForFFI");
-            return ((byte[] Slots, byte[] Ports, IntPtr[] AddressPtrs, GCHandle[] AddressHandles))method.Invoke(route, null)!;
+            return ((byte[] HopTypes, byte[] Ports, byte[] Slots, IntPtr[] AddressPtrs, GCHandle[] AddressHandles))method.Invoke(route, null)!;
         }
 
         private static void InvokeReleaseFfiHandles(RoutePath route, GCHandle[] handles)

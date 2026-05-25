@@ -32,9 +32,7 @@ namespace RustEtherNetIp
     /// </remarks>
     public class RoutePath
     {
-        private readonly List<byte> _slots = new List<byte>();
-        private readonly List<byte> _ports = new List<byte>();
-        private readonly List<string> _addresses = new List<string>();
+        private readonly List<RouteHop> _hops = new List<RouteHop>();
 
         /// <summary>
         /// Creates a new empty route path
@@ -55,7 +53,12 @@ namespace RustEtherNetIp
         /// </example>
         public RoutePath AddSlot(byte slot)
         {
-            _slots.Add(slot);
+            return AddBackplane(1, slot);
+        }
+
+        public RoutePath AddBackplane(byte port, byte slot)
+        {
+            _hops.Add(RouteHop.Backplane(port, slot));
             return this;
         }
 
@@ -71,7 +74,14 @@ namespace RustEtherNetIp
         /// </example>
         public RoutePath AddPort(byte port)
         {
-            _ports.Add(port);
+            for (int i = _hops.Count - 1; i >= 0; i--)
+            {
+                if (_hops[i].Kind == RouteHopKind.Ethernet)
+                {
+                    _hops[i] = RouteHop.Ethernet(port, _hops[i].Address!);
+                    break;
+                }
+            }
             return this;
         }
 
@@ -93,51 +103,100 @@ namespace RustEtherNetIp
             if (string.IsNullOrEmpty(address))
                 throw new ArgumentException("Address cannot be null or empty", nameof(address));
             
-            _addresses.Add(address);
+            return AddEthernet(2, address);
+        }
+
+        public RoutePath AddEthernet(byte port, string address)
+        {
+            if (string.IsNullOrEmpty(address))
+                throw new ArgumentException("Address cannot be null or empty", nameof(address));
+
+            _hops.Add(RouteHop.Ethernet(port, address));
             return this;
         }
 
         /// <summary>
         /// Gets the slots in this route path
         /// </summary>
-        public IReadOnlyList<byte> Slots => _slots;
+        public IReadOnlyList<byte> Slots
+        {
+            get
+            {
+                var slots = new List<byte>();
+                foreach (var hop in _hops)
+                {
+                    if (hop.Kind == RouteHopKind.Backplane)
+                        slots.Add(hop.Slot);
+                }
+                return slots;
+            }
+        }
 
         /// <summary>
         /// Gets the ports in this route path
         /// </summary>
-        public IReadOnlyList<byte> Ports => _ports;
+        public IReadOnlyList<byte> Ports
+        {
+            get
+            {
+                var ports = new List<byte>();
+                foreach (var hop in _hops)
+                {
+                    if (hop.Kind == RouteHopKind.Ethernet)
+                        ports.Add(hop.Port);
+                }
+                return ports;
+            }
+        }
 
         /// <summary>
         /// Gets the addresses in this route path
         /// </summary>
-        public IReadOnlyList<string> Addresses => _addresses;
+        public IReadOnlyList<string> Addresses
+        {
+            get
+            {
+                var addresses = new List<string>();
+                foreach (var hop in _hops)
+                {
+                    if (hop.Kind == RouteHopKind.Ethernet && hop.Address != null)
+                        addresses.Add(hop.Address);
+                }
+                return addresses;
+            }
+        }
+
+        public IReadOnlyList<RouteHop> Hops => _hops;
 
         /// <summary>
         /// Checks if this route path is empty (no slots, ports, or addresses)
         /// </summary>
-        public bool IsEmpty => _slots.Count == 0 && _ports.Count == 0 && _addresses.Count == 0;
+        public bool IsEmpty => _hops.Count == 0;
 
-        internal (byte[] slots, byte[] ports, IntPtr[] addressPtrs, GCHandle[] addressHandles) PrepareForFFI()
+        internal (byte[] hopTypes, byte[] ports, byte[] slots, IntPtr[] addressPtrs, GCHandle[] addressHandles) PrepareForFFI()
         {
-            // Prepare slots
-            byte[] slots = _slots.ToArray();
-
-            // Prepare ports
-            byte[] ports = _ports.ToArray();
-
-            // Prepare addresses
-            IntPtr[] addressPtrs = new IntPtr[_addresses.Count];
-            GCHandle[] addressHandles = new GCHandle[_addresses.Count];
+            byte[] hopTypes = new byte[_hops.Count];
+            byte[] ports = new byte[_hops.Count];
+            byte[] slots = new byte[_hops.Count];
+            IntPtr[] addressPtrs = new IntPtr[_hops.Count];
+            GCHandle[] addressHandles = new GCHandle[_hops.Count];
             
-            for (int i = 0; i < _addresses.Count; i++)
+            for (int i = 0; i < _hops.Count; i++)
             {
-                byte[] addressBytes = System.Text.Encoding.UTF8.GetBytes(_addresses[i] + "\0");
-                GCHandle handle = GCHandle.Alloc(addressBytes, GCHandleType.Pinned);
-                addressHandles[i] = handle;
-                addressPtrs[i] = handle.AddrOfPinnedObject();
+                var hop = _hops[i];
+                hopTypes[i] = hop.Kind == RouteHopKind.Backplane ? (byte)1 : (byte)2;
+                ports[i] = hop.Port;
+                slots[i] = hop.Slot;
+                if (hop.Kind == RouteHopKind.Ethernet)
+                {
+                    byte[] addressBytes = System.Text.Encoding.UTF8.GetBytes(hop.Address! + "\0");
+                    GCHandle handle = GCHandle.Alloc(addressBytes, GCHandleType.Pinned);
+                    addressHandles[i] = handle;
+                    addressPtrs[i] = handle.AddrOfPinnedObject();
+                }
             }
 
-            return (slots, ports, addressPtrs, addressHandles);
+            return (hopTypes, ports, slots, addressPtrs, addressHandles);
         }
 
         internal void ReleaseFFIHandles(GCHandle[] handles)
@@ -151,5 +210,30 @@ namespace RustEtherNetIp
             }
         }
     }
-}
 
+    public enum RouteHopKind
+    {
+        Backplane = 1,
+        Ethernet = 2
+    }
+
+    public readonly struct RouteHop
+    {
+        private RouteHop(RouteHopKind kind, byte port, byte slot, string? address)
+        {
+            Kind = kind;
+            Port = port;
+            Slot = slot;
+            Address = address;
+        }
+
+        public RouteHopKind Kind { get; }
+        public byte Port { get; }
+        public byte Slot { get; }
+        public string? Address { get; }
+
+        public static RouteHop Backplane(byte port, byte slot) => new RouteHop(RouteHopKind.Backplane, port, slot, null);
+
+        public static RouteHop Ethernet(byte port, string address) => new RouteHop(RouteHopKind.Ethernet, port, 0, address);
+    }
+}

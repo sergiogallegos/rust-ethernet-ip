@@ -8,6 +8,7 @@ pub type Result<T> = std::result::Result<T, EtherNetIpError>;
 
 /// Error types that can occur during EtherNet/IP communication
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum EtherNetIpError {
     /// IO error (network issues, connection problems)
     #[error("IO error: {0}")]
@@ -68,18 +69,6 @@ pub enum EtherNetIpError {
     #[error("Invalid string: {reason}")]
     InvalidString { reason: String },
 
-    /// String write operation failed
-    #[error("String write failed: {message} (status: {status})")]
-    StringWriteError { status: u8, message: String },
-
-    /// String read operation failed
-    #[error("String read failed: {message} (status: {status})")]
-    StringReadError { status: u8, message: String },
-
-    /// Invalid string response from PLC
-    #[error("Invalid string response: {reason}")]
-    InvalidStringResponse { reason: String },
-
     /// Tag error
     #[error("Tag error: {0}")]
     Tag(String),
@@ -119,6 +108,36 @@ impl EtherNetIpError {
 impl<T> From<std::sync::PoisonError<T>> for EtherNetIpError {
     fn from(_: std::sync::PoisonError<T>) -> Self {
         EtherNetIpError::Other("lock poisoned".to_string())
+    }
+}
+
+impl From<rust_ethernet_ip_tag_path::TagPathError> for EtherNetIpError {
+    fn from(error: rust_ethernet_ip_tag_path::TagPathError) -> Self {
+        EtherNetIpError::Protocol(error.to_string())
+    }
+}
+
+impl From<rust_ethernet_ip_protocol::ProtocolError> for EtherNetIpError {
+    fn from(error: rust_ethernet_ip_protocol::ProtocolError) -> Self {
+        EtherNetIpError::Protocol(error.to_string())
+    }
+}
+
+impl From<rust_ethernet_ip_types::TypeError> for EtherNetIpError {
+    fn from(error: rust_ethernet_ip_types::TypeError) -> Self {
+        EtherNetIpError::Protocol(error.to_string())
+    }
+}
+
+impl From<rust_ethernet_ip_udt::UdtError> for EtherNetIpError {
+    fn from(error: rust_ethernet_ip_udt::UdtError) -> Self {
+        match error {
+            rust_ethernet_ip_udt::UdtError::Protocol(message) => EtherNetIpError::Protocol(message),
+            rust_ethernet_ip_udt::UdtError::TagNotFound(tag) => EtherNetIpError::TagNotFound(tag),
+            rust_ethernet_ip_udt::UdtError::DataTypeMismatch { expected, actual } => {
+                EtherNetIpError::DataTypeMismatch { expected, actual }
+            }
+        }
     }
 }
 

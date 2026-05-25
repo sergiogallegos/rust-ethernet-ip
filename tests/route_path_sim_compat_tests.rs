@@ -37,11 +37,11 @@ async fn route_path_sim_set_modify_clear_route_path_works() {
 
     client.set_route_path(RoutePath::new().add_slot(0));
     let route = client.get_route_path().expect("route should be set");
-    assert_eq!(route.slots, vec![0]);
+    assert_eq!(route.slots(), vec![0]);
 
     client.set_route_path(RoutePath::new().add_slot(0).add_slot(1));
     let updated_route = client.get_route_path().expect("route should be set");
-    assert_eq!(updated_route.slots, vec![0, 1]);
+    assert_eq!(updated_route.slots(), vec![0, 1]);
 
     let read = client
         .read_tag("DINT_TAG")

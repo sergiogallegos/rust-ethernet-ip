@@ -2,15 +2,16 @@
 
 ## Summary
 
-`active` as of 2026-05-24: the C FFI registry stores `EipClient` values and most FFI functions retrieve cloned clients. The clone model is currently acceptable for implemented mutation paths because persistent mutations either touch shared `Arc` fields, mutate the registry entry directly, or store the clone back. Copied scalar fields still need explicit guardrails before more FFI configuration APIs are implemented.
+`active` as of 2026-05-24: the C FFI registry stores `EipClient` values and most FFI functions retrieve cloned clients. CODEX-M Phase B structurally shares post-insert route-path and max-packet-size state so cloned registry lookups observe those mutations.
 
 ## Current Understanding
 
-- `EipClient` mixes shared clone state (`stream`, managers, `last_activity`, connected sessions, subscriptions, tag groups) with copied scalar state (`session_handle`, `route_path`, `max_packet_size`, `batch_config`).
-- Current FFI route-path mutation uses `get_mut` on the registry entry, so later lookups observe the new route.
+- `EipClient` mixes shared clone state (`stream`, managers, `route_path`, `max_packet_size`, `last_activity`, connected sessions, subscriptions, tag groups) with copied scalar state (`session_handle`, `batch_config`).
+- Current FFI route-path mutation may operate on a cloned client; `route_path` is shared on clone, so later registry lookups observe the new route.
+- Current FFI max-packet-size mutation operates on a cloned client; `max_packet_size` is an `Arc<AtomicU32>`, so later registry lookups observe the new value.
 - Current FFI batch execution temporarily modifies the cloned `batch_config` and restores it; this is intentionally per-call and not persistent.
-- Unsupported configuration exports such as `eip_set_max_packet_size` and `eip_configure_batch_operations` do not currently mutate copied fields.
-- CODEX-M Phase A recommends Option C: annotate clone behavior and require copied-field FFI mutators to either mutate the registry entry directly or store the clone back.
+- `eip_configure_batch_operations` remains unsupported; persistent batch configuration would need a new audit or an explicitly shared config field.
+- CODEX-M uses Option C: annotate clone behavior and move mutation-bearing scalar fields to shared state.
 
 ## Evidence
 
@@ -20,8 +21,7 @@
 
 ## Open Questions
 
-- `needs-review`: Claude must confirm or counter-propose the CODEX-M Phase B option before implementation.
-- `unclear`: whether future public FFI batch/max-packet configuration should make copied fields shared or use registry-entry mutation only.
+- `unclear`: whether future public FFI batch configuration should keep the current per-call override model or make `batch_config` shared behind a lock.
 
 ## Related Pages
 

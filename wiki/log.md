@@ -908,3 +908,71 @@ Sources used:
 - `src/protocol/tests.rs`
 - `src/client.rs`
 - `src/ffi.rs`
+
+## [2026-05-24] ingest | update FFI clone audit after Phase B
+
+- Updated `wiki/wrapper-parity/ffi-registry-clone-audit.md`.
+- Updated `wiki/investigations/architecture-review-2026-05-18.md`.
+- Recorded that CODEX-M Phase B structurally shares route-path and max-packet-size state across cloned FFI registry lookups.
+- Recorded maintainer direction that CODEX-T and CODEX-U remain in the same v0.8.0 scope.
+
+Sources used:
+
+- `docs/agents/tasks/CODEX-M-ffi-registry-clone-audit.md`
+- `docs/agents/board.md`
+- `src/client.rs`
+- `src/ffi.rs`
+- `tests/ffi_state_consistency.rs`
+
+## [2026-05-24] ingest | actor client, service helpers, and retry policy
+
+- Added `wiki/investigations/client-actor-service-retry-2026-05-24.md`.
+- Updated `wiki/index.md`.
+- Captured CODEX-P/R/Q/S synthesis: actor-backed Rust client handle, lifecycle event broadcast, concrete restricted-write service helpers, and opt-in retry policy semantics.
+
+Sources used:
+
+- `src/client/actor.rs`
+- `src/client/service_layer.rs`
+- `src/client.rs`
+- `src/lib.rs`
+- `tests/client_actor_tests.rs`
+- `docs/agents/tasks/CODEX-P-client-actor.md`
+- `docs/agents/tasks/CODEX-R-client-events.md`
+- `docs/agents/tasks/CODEX-Q-service-layer.md`
+- `docs/agents/tasks/CODEX-S-retry-policy.md`
+
+## [2026-05-24] ingest | fleet API and release-window status
+
+- Added `wiki/investigations/fleet-api-2026-05-24.md`.
+- Updated `wiki/index.md`.
+- Recorded that CODEX-T is additive over the actor client and that CODEX-U remains open pending a dedicated sibling-crate boundary brief.
+
+Sources used:
+
+- `src/fleet.rs`
+- `src/lib.rs`
+- `tests/fleet_tests.rs`
+- `docs/agents/tasks/CODEX-T-fleet-client-pool.md`
+- `docs/agents/tasks/CODEX-U-sibling-crates.md`
+- `docs/agents/tasks/CODEX-K-release-window-bundle.md`
+
+## [2026-05-24] ingest | release-window route API and tag-path crate
+
+- Updated `wiki/protocol/route-path-behavior.md`.
+- Updated `wiki/investigations/fleet-api-2026-05-24.md`.
+- Recorded that CODEX-K moved Rust `RoutePath` to private ordered-hop storage and added ordered-hop FFI/wrapper calls.
+- Recorded that CODEX-U extracted shared value types, protocol codecs, tag-path parsing, and UDT helpers into sibling workspace crates.
+
+Sources used:
+
+- `src/route.rs`
+- `src/ffi.rs`
+- `csharp/RustEtherNetIp/RoutePath.cs`
+- `python/rust_ethernet_ip/types.py`
+- `crates/types/src/lib.rs`
+- `crates/protocol/src/lib.rs`
+- `crates/tag-path/src/lib.rs`
+- `crates/udt/src/lib.rs`
+- `docs/agents/tasks/CODEX-K-release-window-bundle.md`
+- `docs/agents/tasks/CODEX-U-sibling-crates.md`

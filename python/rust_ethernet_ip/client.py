@@ -257,23 +257,27 @@ class Client:
         self._client_id = int(client_id)
 
     def _connect_with_route(self, route_path: RoutePath) -> int:
-        slots = route_path.slots or []
-        ports = route_path.ports or []
-        addresses = route_path.addresses or []
+        hops = route_path.ordered_hops()
+        hop_types = [1 if hop.kind == "backplane" else 2 for hop in hops]
+        ports = [hop.port for hop in hops]
+        slots = [hop.slot or 0 for hop in hops]
+        address_bytes = [
+            (hop.address or "").encode("utf-8") if hop.kind == "ethernet" else b""
+            for hop in hops
+        ]
 
-        slot_array = (c_uint8 * len(slots))(*slots) if slots else None
+        hop_type_array = (c_uint8 * len(hop_types))(*hop_types) if hop_types else None
         port_array = (c_uint8 * len(ports))(*ports) if ports else None
-        address_bytes = [address.encode("utf-8") for address in addresses]
+        slot_array = (c_uint8 * len(slots))(*slots) if slots else None
         address_array = (c_char_p * len(address_bytes))(*address_bytes) if address_bytes else None
 
-        return self._lib.eip_connect_with_route(
+        return self._lib.eip_connect_with_route_hops(
             self._address.encode("utf-8"),
-            cast(slot_array, POINTER(c_uint8)) if slot_array is not None else None,
-            len(slots),
+            cast(hop_type_array, POINTER(c_uint8)) if hop_type_array is not None else None,
             cast(port_array, POINTER(c_uint8)) if port_array is not None else None,
-            len(ports),
+            cast(slot_array, POINTER(c_uint8)) if slot_array is not None else None,
             cast(address_array, POINTER(c_char_p)) if address_array is not None else None,
-            len(addresses),
+            len(hops),
         )
 
     def disconnect(self) -> None:

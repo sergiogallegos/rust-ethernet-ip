@@ -1,28 +1,26 @@
 use bytes::{Buf, BufMut, BytesMut};
 
-use crate::error::{EtherNetIpError, Result};
-use crate::types::{PlcValue, UdtData};
+use crate::{Decode, Encode, ProtocolError, Result};
+use rust_ethernet_ip_types::{PlcValue, UdtData};
 
-use super::{Decode, Encode};
+pub const BOOL: u16 = 0x00C1;
+pub const SINT: u16 = 0x00C2;
+pub const INT: u16 = 0x00C3;
+pub const DINT: u16 = 0x00C4;
+pub const LINT: u16 = 0x00C5;
+pub const USINT: u16 = 0x00C6;
+pub const UINT: u16 = 0x00C7;
+pub const UDINT: u16 = 0x00C8;
+pub const ULINT: u16 = 0x00C9;
+pub const REAL: u16 = 0x00CA;
+pub const LREAL: u16 = 0x00CB;
+pub const STRING: u16 = 0x00CE;
+pub const ALT_STRING: u16 = 0x00DA;
+pub const BOOL_ARRAY_DWORD: u16 = 0x00D3;
+pub const UDT: u16 = 0x00A0;
+pub const AB_UDT: u16 = 0x02A0;
 
-pub(crate) const BOOL: u16 = 0x00C1;
-pub(crate) const SINT: u16 = 0x00C2;
-pub(crate) const INT: u16 = 0x00C3;
-pub(crate) const DINT: u16 = 0x00C4;
-pub(crate) const LINT: u16 = 0x00C5;
-pub(crate) const USINT: u16 = 0x00C6;
-pub(crate) const UINT: u16 = 0x00C7;
-pub(crate) const UDINT: u16 = 0x00C8;
-pub(crate) const ULINT: u16 = 0x00C9;
-pub(crate) const REAL: u16 = 0x00CA;
-pub(crate) const LREAL: u16 = 0x00CB;
-pub(crate) const STRING: u16 = 0x00CE;
-pub(crate) const ALT_STRING: u16 = 0x00DA;
-pub(crate) const BOOL_ARRAY_DWORD: u16 = 0x00D3;
-pub(crate) const UDT: u16 = 0x00A0;
-pub(crate) const AB_UDT: u16 = 0x02A0;
-
-pub(crate) fn write_data_type(value: &PlcValue) -> u16 {
+pub fn write_data_type(value: &PlcValue) -> u16 {
     if let PlcValue::Udt(udt_data) = value {
         AB_UDT.wrapping_add(udt_data.symbol_id as u16)
     } else {
@@ -30,7 +28,7 @@ pub(crate) fn write_data_type(value: &PlcValue) -> u16 {
     }
 }
 
-pub(crate) fn encode_payload(value: &PlcValue, buf: &mut BytesMut) {
+pub fn encode_payload(value: &PlcValue, buf: &mut BytesMut) {
     match value {
         PlcValue::Bool(v) => buf.put_u8(if *v { 0xFF } else { 0x00 }),
         PlcValue::Sint(v) => buf.put_i8(*v),
@@ -54,7 +52,7 @@ pub(crate) fn encode_payload(value: &PlcValue, buf: &mut BytesMut) {
     }
 }
 
-pub(crate) fn encode_type_prefixed(value: &PlcValue, buf: &mut BytesMut) {
+pub fn encode_type_prefixed(value: &PlcValue, buf: &mut BytesMut) {
     buf.put_u16_le(value.get_data_type());
     match value {
         PlcValue::String(v) => {
@@ -70,7 +68,7 @@ pub(crate) fn encode_type_prefixed(value: &PlcValue, buf: &mut BytesMut) {
     }
 }
 
-pub(crate) fn decode_payload(data_type: u16, value_data: &[u8]) -> Result<PlcValue> {
+pub fn decode_payload(data_type: u16, value_data: &[u8]) -> Result<PlcValue> {
     match data_type {
         BOOL => {
             require_len(value_data, 1, "BOOL")?;
@@ -170,24 +168,24 @@ pub(crate) fn decode_payload(data_type: u16, value_data: &[u8]) -> Result<PlcVal
                         .expect("length checked before fixed-width BOOL array decode"),
                 )))
             } else {
-                Err(EtherNetIpError::Protocol(
+                Err(ProtocolError::new(
                     "Insufficient data for ULINT/DWORD value".to_string(),
                 ))
             }
         }
-        _ => Err(EtherNetIpError::Protocol(format!(
+        _ => Err(ProtocolError::new(format!(
             "Unsupported data type: 0x{data_type:04X}"
         ))),
     }
 }
 
-pub(crate) fn decode_array_element(data_type: u16, chunk: &[u8]) -> Result<PlcValue> {
+pub fn decode_array_element(data_type: u16, chunk: &[u8]) -> Result<PlcValue> {
     decode_payload(data_type, chunk)
 }
 
 fn decode_dint_string(value_data: &[u8]) -> Result<PlcValue> {
     if value_data.len() < 4 {
-        return Err(EtherNetIpError::Protocol(
+        return Err(ProtocolError::new(
             "Insufficient data for STRING length field".to_string(),
         ));
     }
@@ -195,7 +193,7 @@ fn decode_dint_string(value_data: &[u8]) -> Result<PlcValue> {
     let length =
         u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]) as usize;
     if value_data.len() - 4 < length {
-        return Err(EtherNetIpError::Protocol(format!(
+        return Err(ProtocolError::new(format!(
             "Insufficient data for STRING value: need {} bytes, have {} bytes",
             4 + length,
             value_data.len()
@@ -212,7 +210,7 @@ fn decode_short_string(value_data: &[u8]) -> Result<PlcValue> {
     }
     let length = value_data[0] as usize;
     if value_data.len() < 1 + length {
-        return Err(EtherNetIpError::Protocol(
+        return Err(ProtocolError::new(
             "Insufficient data for STRING value".to_string(),
         ));
     }
@@ -228,7 +226,7 @@ fn require_len(value_data: &[u8], min_len: usize, name: &str) -> Result<()> {
         } else {
             format!("Insufficient data for {name} value")
         };
-        Err(EtherNetIpError::Protocol(msg))
+        Err(ProtocolError::new(msg))
     } else {
         Ok(())
     }
@@ -243,9 +241,7 @@ impl Encode for PlcValue {
 impl Decode for PlcValue {
     fn decode(buf: &mut impl Buf) -> Result<Self> {
         if buf.remaining() < 2 {
-            return Err(EtherNetIpError::Protocol(
-                "Data too short for type".to_string(),
-            ));
+            return Err(ProtocolError::new("Data too short for type".to_string()));
         }
         let data_type = buf.get_u16_le();
         let remaining = buf.copy_to_bytes(buf.remaining());

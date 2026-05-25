@@ -48,6 +48,7 @@ pub struct BatchResult {
 /// This enum provides detailed error information for batch operations,
 /// allowing for better error handling and diagnostics.
 #[derive(Debug, Clone, thiserror::Error)]
+#[non_exhaustive]
 pub enum BatchError {
     /// Tag was not found in the PLC
     #[error("Tag not found: {0}")]

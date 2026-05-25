@@ -55,6 +55,9 @@ Status values:
 - [investigations/rust-toolchain-baseline-2026-04-19.md](investigations/rust-toolchain-baseline-2026-04-19.md) — Current Rust baseline, Rust 2024 migration outcome, and MSRV posture after the 2026-04-19 refresh. `active`
 - [investigations/software-architecture-map.md](investigations/software-architecture-map.md) — Current architecture ownership map and links to the maintainer-facing architecture document. `active`
 - [investigations/architecture-review-2026-05-18.md](investigations/architecture-review-2026-05-18.md) — Post-books architecture synthesis and reconciled roadmap from Claude and Codex review passes. `active`
+- [investigations/client-actor-service-retry-2026-05-24.md](investigations/client-actor-service-retry-2026-05-24.md) — Current actor-backed client, connection-event, restricted-write helper, and retry-policy synthesis. `active`
+- [investigations/fleet-api-2026-05-24.md](investigations/fleet-api-2026-05-24.md) — Current multi-PLC Fleet API synthesis and its relationship to the actor client and older PlcManager. `active`
+- [investigations/sibling-crate-boundaries-2026-05-24.md](investigations/sibling-crate-boundaries-2026-05-24.md) — Current workspace crate split for shared types, protocol codecs, tag-path parsing, and UDT helpers. `active`
 - [investigations/documentation-state-2026-04-20.md](investigations/documentation-state-2026-04-20.md) — Current documentation-health assessment, including active docs that are healthy and older docs that need clearer historical framing. `active`
 - [investigations/test-coverage-strength-2026-05-18.md](investigations/test-coverage-strength-2026-05-18.md) — Current assessment of Rust, C#, and Python test strength, local command results, and prioritized coverage gaps. `active`
 

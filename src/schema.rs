@@ -132,10 +132,10 @@ impl SchemaExport {
 impl From<&RoutePath> for SchemaRoutePath {
     fn from(value: &RoutePath) -> Self {
         Self {
-            slots: value.slots.clone(),
-            ports: value.ports.clone(),
-            addresses: value.addresses.clone(),
-            hops: value.hops.iter().map(Into::into).collect(),
+            slots: value.slots(),
+            ports: value.ports(),
+            addresses: value.addresses(),
+            hops: value.hops().iter().map(Into::into).collect(),
         }
     }
 }

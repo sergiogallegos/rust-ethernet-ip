@@ -7,7 +7,7 @@ from .exceptions import (
     PlcError,
     PlcOperationError,
 )
-from .types import BatchWriteItem, DiagnosticsSnapshot, RoutePath, WriteResult
+from .types import BatchWriteItem, DiagnosticsSnapshot, RouteHop, RoutePath, WriteResult
 
 __all__ = [
     "BatchReadError",
@@ -19,6 +19,7 @@ __all__ = [
     "PlcError",
     "PlcOperationError",
     "RoutePath",
+    "RouteHop",
     "WriteResult",
     "ABI_VERSION",
     "CAPABILITIES",

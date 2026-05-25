@@ -74,26 +74,6 @@ fn error_display_messages_are_informative() {
             },
             "Invalid string",
         ),
-        (
-            EtherNetIpError::StringWriteError {
-                status: 0x07,
-                message: "string write failed".to_string(),
-            },
-            "String write failed",
-        ),
-        (
-            EtherNetIpError::StringReadError {
-                status: 0x08,
-                message: "string read failed".to_string(),
-            },
-            "String read failed",
-        ),
-        (
-            EtherNetIpError::InvalidStringResponse {
-                reason: "bad format".to_string(),
-            },
-            "Invalid string response",
-        ),
         (EtherNetIpError::Tag("bad tag".to_string()), "Tag error"),
         (
             EtherNetIpError::Permission("read denied".to_string()),

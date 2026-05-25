@@ -1,3 +1,4 @@
+use crate::error::{EtherNetIpError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -140,9 +141,9 @@ pub struct RateLimitingConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggingConfig {
     /// Log level (trace, debug, info, warn, error)
-    pub level: String,
+    pub level: LogLevel,
     /// Log format (json, text)
-    pub format: String,
+    pub format: LogFormat,
     /// Log file path
     pub file_path: Option<String>,
     /// Enable console logging
@@ -162,7 +163,32 @@ pub struct LogRotationConfig {
     /// Maximum number of files
     pub max_files: usize,
     /// Rotation schedule (daily, weekly, monthly)
-    pub schedule: String,
+    pub schedule: LogRotationSchedule,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    Json,
+    Text,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LogRotationSchedule {
+    Daily,
+    Weekly,
+    Monthly,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,8 +272,8 @@ impl Default for ProductionConfig {
                 },
             },
             logging: LoggingConfig {
-                level: "info".to_string(),
-                format: "json".to_string(),
+                level: LogLevel::Info,
+                format: LogFormat::Json,
                 file_path: Some("logs/ethernet_ip.log".to_string()),
                 enable_console: true,
                 enable_structured: true,
@@ -255,7 +281,7 @@ impl Default for ProductionConfig {
                     enabled: true,
                     max_file_size_mb: 100,
                     max_files: 10,
-                    schedule: "daily".to_string(),
+                    schedule: LogRotationSchedule::Daily,
                 },
             },
             plc_settings: HashMap::new(),
@@ -265,21 +291,23 @@ impl Default for ProductionConfig {
 
 impl ProductionConfig {
     /// Load configuration from file
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
-        let config: ProductionConfig = toml::from_str(&content)?;
+        let config: ProductionConfig =
+            toml::from_str(&content).map_err(|e| EtherNetIpError::Other(e.to_string()))?;
         Ok(config)
     }
 
     /// Save configuration to file
-    pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
-        let content = toml::to_string_pretty(self)?;
+    pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let content =
+            toml::to_string_pretty(self).map_err(|e| EtherNetIpError::Other(e.to_string()))?;
         fs::write(path, content)?;
         Ok(())
     }
 
     /// Validate configuration
-    pub fn validate(&self) -> Result<(), Vec<String>> {
+    pub fn validate(&self) -> std::result::Result<(), Vec<String>> {
         let mut errors = Vec::new();
 
         // Validate connection settings
@@ -315,15 +343,6 @@ impl ProductionConfig {
             );
         }
 
-        // Validate logging settings
-        let valid_levels = ["trace", "debug", "info", "warn", "error"];
-        if !valid_levels.contains(&self.logging.level.as_str()) {
-            errors.push(format!(
-                "Invalid log level: {}. Must be one of: {:?}",
-                self.logging.level, valid_levels
-            ));
-        }
-
         if errors.is_empty() {
             Ok(())
         } else {
@@ -344,7 +363,7 @@ impl ProductionConfig {
     /// Create a development configuration
     pub fn development() -> Self {
         let mut config = Self::default();
-        config.logging.level = "debug".to_string();
+        config.logging.level = LogLevel::Debug;
         config.monitoring.enabled = false;
         config.security.rate_limiting.enabled = false;
         config.performance.memory_limits.enable_monitoring = false;
@@ -354,7 +373,7 @@ impl ProductionConfig {
     /// Create a production configuration
     pub fn production() -> Self {
         let mut config = Self::default();
-        config.logging.level = "info".to_string();
+        config.logging.level = LogLevel::Info;
         config.monitoring.enabled = true;
         config.security.rate_limiting.enabled = true;
         config.performance.memory_limits.enable_monitoring = true;

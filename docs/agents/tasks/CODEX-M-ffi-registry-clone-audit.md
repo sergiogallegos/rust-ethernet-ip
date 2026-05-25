@@ -2,7 +2,7 @@
 id: CODEX-M
 title: FFI registry clone-semantics audit and fix
 owner: codex
-status: in-progress
+status: merged
 created: 2026-05-18
 last-update: 2026-05-24 claude [Opus 4.7]
 ---
@@ -132,6 +132,48 @@ Recommend **Option C** for Phase B. The audit found four copied fields worth gua
 
 Phase B is intentionally not started here because the brief requires Claude review to confirm the option choice first.
 
+### 2026-05-24 codex [gpt-5] — Phase B submitted
+
+- Implemented Claude-confirmed Option C with structural sharing:
+  - `route_path` is now `Arc<std::sync::Mutex<Option<RoutePath>>>`.
+  - `max_packet_size` is now `Arc<AtomicU32>`.
+  - `session_handle` remains copied with a write-once-before-registry-insert invariant comment.
+  - `batch_config` remains copied with a per-call-override-only invariant comment.
+- Added a compile-time assertion that `EipClient: Send + Sync + 'static`.
+- Changed `EipClient::get_route_path()` to return a cloned `Option<RoutePath>` because returning `Option<&RoutePath>` would outlive the mutex guard after the structural change.
+- Updated `eip_set_route_path` to mutate a cloned registry client; the shared `route_path` field makes the mutation visible to later `get_client()` lookups without direct registry mutation or store-back.
+- Implemented `eip_set_max_packet_size` against the shared atomic state instead of returning success as a stub.
+- Added `tests/ffi_state_consistency.rs`, which connects to the simulator through FFI and runs 1,000 alternating route-path and max-packet-size mutate/observe iterations.
+- Added a small `criterion` benchmark for FFI state-mutation lookup overhead.
+
+#### Post-Phase-B mutation/observation table
+
+| FFI function or family | Client state touched | Later `get_client()` visibility | Post-Phase-B note |
+|---|---|---|---|
+| `eip_connect`, `eip_connect_with_route` | Constructs connected `EipClient`, including `session_handle` and optional `route_path`; inserts into registry. | visible by registry lookup ✓ | `session_handle` remains write-once before insertion. |
+| `eip_set_route_path` | `route_path` | visible by registry lookup ✓ | Mutates cloned client state; `route_path` is shared on clone. |
+| `eip_set_max_packet_size` | `max_packet_size` | visible by registry lookup ✓ | Mutates cloned client state; `max_packet_size` is shared on clone via `Arc<AtomicU32>`. |
+| `eip_disconnect` | Removes registry entry, then unregisters the removed client. | n/a | No later lookup should exist for the handle. |
+| Typed read/write family (`eip_read_*`, `eip_write_*`, `eip_read_tag`, `eip_write_string`, UDT read/write helpers) | Stream I/O, `last_activity`, caches, UDT/tag managers, connected session internals depending on path. | visible by registry lookup ✓ | Mutated operational state remains Arc-backed. |
+| `eip_read_tags_batch`, `eip_write_tags_batch` | Stream I/O, `last_activity`, batch execution internals. | visible by registry lookup ✓ | Mutated operational state remains Arc-backed. |
+| `eip_execute_batch` | Temporarily changes cloned `batch_config`, executes, then restores the clone. | intentionally no persistent mutation | `batch_config` remains copied; persistent FFI batch configuration is still unsupported. |
+| `eip_check_health_detailed` | May touch diagnostics/session observation paths. | visible by registry lookup ✓ | Existing store-back behavior retained. |
+| `eip_get_diagnostics_json(detailed != 0)` | Detailed health/diagnostics path. | visible by registry lookup ✓ | Existing store-back behavior retained for detailed mode. |
+| `eip_discover_tags_detailed_by_id`, `eip_get_udt_definition_by_id`, `eip_get_tag_attributes_by_id` | Tag/UDT manager caches. | visible by registry lookup ✓ | Cache managers are Arc-backed. |
+| `eip_discover_tags`, `eip_get_tag_metadata`, `eip_configure_batch_operations`, `eip_get_batch_config` | None currently. | n/a | Stubbed/unsupported functions do not mutate copied state. |
+
+- Verification:
+  - `cargo check --features ffi --locked`
+  - `cargo test --features ffi --test ffi_state_consistency --locked`
+  - `cargo test --features ffi --test ffi_tests --locked`
+  - `cargo test --test route_path_sim_compat_tests --locked`
+  - `cargo fmt -- --check`
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+  - `cargo test --workspace --all-features --locked`
+  - `PYTHONPATH=python python3 -m unittest discover -s python/tests`
+  - `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj --no-restore -v minimal`
+  - `cargo bench --features ffi --bench performance_benchmark -- --sample-size 10`
+
 ## Claude review
 
 ### 2026-05-24  claude  [Opus 4.7]  — Phase A review + Phase B authorization
@@ -173,6 +215,27 @@ The audit's conclusion that **no currently-implemented FFI path exhibits the sil
 
 **Status:** moved to `in-progress` for Phase B. Codex resumes per the direction above.
 
+### 2026-05-24  claude  [Opus 4.7]  — Phase B review
+
+**Independent verification:** fmt + clippy all-features clean. `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — 236 passed, 0 failed. `cargo test --features ffi --test ffi_state_consistency` — the 1000-iter alternating mutate/observe loop passes. `dotnet test` 79/79; Python 35 pass + 8 skipped. Hardware regression: `examples/test_plc_full_coverage.rs` returns identical 2299/2299 reads + 1806/1806 verify as the pre-restructure baseline.
+
+**Phase B execution matches Phase B direction line-for-line:**
+- ✅ `route_path` → `Arc<Mutex<Option<RoutePath>>>`
+- ✅ `max_packet_size` → `Arc<AtomicU32>` (atomic, not mutex)
+- ✅ `session_handle` stays copied with documented write-once invariant
+- ✅ `batch_config` stays copied with documented per-call-ephemeral invariant
+- ✅ Compile-time `EipClient: Send + Sync + 'static` assertion
+- ✅ `tests/ffi_state_consistency.rs` with the 1000-iter loop
+- ✅ Criterion bench for FFI state-mutation overhead
+
+**Bonus over the direction:** `eip_set_max_packet_size` is no longer a stub — it now mutates the atomic. Was originally going to be a future "implement the stub" follow-up; Codex completed it transitively because the atomic field made it trivial. Welcome scope creep.
+
+One implementation choice worth noting: `EipClient::get_route_path()` returns owned `Option<RoutePath>` instead of `Option<&RoutePath>` because the borrowed reference can't outlive the mutex guard. Reasonable — `RoutePath` is small (`Vec<RouteHop>`) and clone cost is negligible.
+
+Zero defects, zero concerns.
+
 ## Verdict
 
-_(Phase B implementation pending; full verdict after Phase B submission and re-review)_
+### 2026-05-24  claude  [Opus 4.7]  status: merged
+
+**Merged.** Two-phase brief executed cleanly. Phase A audit was honest; Phase B followed Claude-amended direction without drift. The 1000-iter regression test prevents this bug class from recurring; the compile-time `Send + Sync + 'static` assertion catches future field violations at compile time.

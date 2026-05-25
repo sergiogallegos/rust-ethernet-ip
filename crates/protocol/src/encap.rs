@@ -1,17 +1,15 @@
 use bytes::{Buf, BufMut, BytesMut};
 
-use crate::error::{EtherNetIpError, Result};
+use crate::{Decode, Encode, ProtocolError, Result};
 
-use super::{Decode, Encode};
-
-pub(crate) const REGISTER_SESSION: u16 = 0x0065;
-pub(crate) const UNREGISTER_SESSION: u16 = 0x0066;
-pub(crate) const SEND_RR_DATA: u16 = 0x006F;
+pub const REGISTER_SESSION: u16 = 0x0065;
+pub const UNREGISTER_SESSION: u16 = 0x0066;
+pub const SEND_RR_DATA: u16 = 0x006F;
 #[allow(dead_code)]
-pub(crate) const SEND_UNIT_DATA: u16 = 0x0070;
+pub const SEND_UNIT_DATA: u16 = 0x0070;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EncapsulationHeader {
+pub struct EncapsulationHeader {
     pub command: u16,
     pub length: u16,
     pub session_handle: u32,
@@ -21,7 +19,7 @@ pub(crate) struct EncapsulationHeader {
 }
 
 impl EncapsulationHeader {
-    pub(crate) fn new(command: u16, length: u16, session_handle: u32) -> Self {
+    pub fn new(command: u16, length: u16, session_handle: u32) -> Self {
         Self {
             command,
             length,
@@ -32,7 +30,7 @@ impl EncapsulationHeader {
         }
     }
 
-    pub(crate) fn send_rr_data(length: u16, session_handle: u32) -> Self {
+    pub fn send_rr_data(length: u16, session_handle: u32) -> Self {
         Self {
             sender_context: [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
             ..Self::new(SEND_RR_DATA, length, session_handle)
@@ -54,7 +52,7 @@ impl Encode for EncapsulationHeader {
 impl Decode for EncapsulationHeader {
     fn decode(buf: &mut impl Buf) -> Result<Self> {
         if buf.remaining() < 24 {
-            return Err(EtherNetIpError::Protocol(
+            return Err(ProtocolError::new(
                 "Encapsulation header too short".to_string(),
             ));
         }

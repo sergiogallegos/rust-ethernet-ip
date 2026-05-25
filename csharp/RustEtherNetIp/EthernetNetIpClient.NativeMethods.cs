@@ -24,6 +24,15 @@ namespace RustEtherNetIp
             int address_count);
 
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_connect_with_route_hops(
+            IntPtr address,
+            byte[] hop_types,
+            byte[] ports,
+            byte[] slots,
+            IntPtr[] addresses,
+            int hop_count);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
         private static extern int eip_set_route_path(
             int client_id,
             byte[] slots,
@@ -32,6 +41,15 @@ namespace RustEtherNetIp
             int port_count,
             IntPtr[] addresses,
             int address_count);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_set_route_path_hops(
+            int client_id,
+            byte[] hop_types,
+            byte[] ports,
+            byte[] slots,
+            IntPtr[] addresses,
+            int hop_count);
 
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
         private static extern int eip_disconnect(int client_id);

@@ -1,23 +1,21 @@
 use bytes::{Buf, BufMut, BytesMut};
 
-use crate::error::{EtherNetIpError, Result};
+use crate::{Decode, Encode, ProtocolError, Result};
 
-use super::{Decode, Encode};
-
-pub(crate) const READ_TAG: u8 = 0x4C;
-pub(crate) const WRITE_TAG: u8 = 0x4D;
+pub const READ_TAG: u8 = 0x4C;
+pub const WRITE_TAG: u8 = 0x4D;
 #[allow(dead_code)]
-pub(crate) const MULTIPLE_SERVICE_PACKET: u8 = 0x0A;
+pub const MULTIPLE_SERVICE_PACKET: u8 = 0x0A;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CipRequest {
+pub struct CipRequest {
     pub service: u8,
     pub path: Vec<u8>,
     pub data: Vec<u8>,
 }
 
 impl CipRequest {
-    pub(crate) fn new(service: u8, path: Vec<u8>, data: Vec<u8>) -> Self {
+    pub fn new(service: u8, path: Vec<u8>, data: Vec<u8>) -> Self {
         Self {
             service,
             path,
@@ -25,16 +23,16 @@ impl CipRequest {
         }
     }
 
-    pub(crate) fn validate(&self) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
         if self.path.is_empty() {
-            return Err(EtherNetIpError::Protocol(format!(
+            return Err(ProtocolError::new(format!(
                 "invalid CIP request path for service 0x{:02X}: path must not be empty",
                 self.service
             )));
         }
 
         if !self.path.len().is_multiple_of(2) {
-            return Err(EtherNetIpError::Protocol(format!(
+            return Err(ProtocolError::new(format!(
                 "invalid CIP request path for service 0x{:02X}: path length {} is not word-aligned",
                 self.service,
                 self.path.len()
@@ -43,7 +41,7 @@ impl CipRequest {
 
         let path_words = self.path.len() / 2;
         if path_words > usize::from(u8::MAX) {
-            return Err(EtherNetIpError::Protocol(format!(
+            return Err(ProtocolError::new(format!(
                 "invalid CIP request path for service 0x{:02X}: path length {} bytes exceeds 510-byte CIP limit",
                 self.service,
                 self.path.len()
@@ -53,7 +51,7 @@ impl CipRequest {
         Ok(())
     }
 
-    pub(crate) fn encode(&self, buf: &mut BytesMut) -> Result<()> {
+    pub fn encode(&self, buf: &mut BytesMut) -> Result<()> {
         self.validate()?;
         buf.put_u8(self.service);
         let path_words =
@@ -68,18 +66,14 @@ impl CipRequest {
 impl Decode for CipRequest {
     fn decode(buf: &mut impl Buf) -> Result<Self> {
         if buf.remaining() < 2 {
-            return Err(EtherNetIpError::Protocol(
-                "CIP request too short".to_string(),
-            ));
+            return Err(ProtocolError::new("CIP request too short".to_string()));
         }
 
         let service = buf.get_u8();
         let path_size_words = buf.get_u8() as usize;
         let path_len = path_size_words * 2;
         if buf.remaining() < path_len {
-            return Err(EtherNetIpError::Protocol(
-                "CIP request path truncated".to_string(),
-            ));
+            return Err(ProtocolError::new("CIP request path truncated".to_string()));
         }
         let path = buf.copy_to_bytes(path_len).to_vec();
         let data = buf.copy_to_bytes(buf.remaining()).to_vec();
@@ -93,7 +87,7 @@ impl Decode for CipRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CipResponse {
+pub struct CipResponse {
     pub service: u8,
     pub status: u8,
     pub additional_status: Vec<u16>,
@@ -116,9 +110,7 @@ impl Encode for CipResponse {
 impl Decode for CipResponse {
     fn decode(buf: &mut impl Buf) -> Result<Self> {
         if buf.remaining() < 4 {
-            return Err(EtherNetIpError::Protocol(
-                "CIP response too short".to_string(),
-            ));
+            return Err(ProtocolError::new("CIP response too short".to_string()));
         }
 
         let service = buf.get_u8();
@@ -126,7 +118,7 @@ impl Decode for CipResponse {
         let status = buf.get_u8();
         let additional_status_size = buf.get_u8() as usize;
         if buf.remaining() < additional_status_size * 2 {
-            return Err(EtherNetIpError::Protocol(
+            return Err(ProtocolError::new(
                 "CIP response additional status truncated".to_string(),
             ));
         }
@@ -147,20 +139,20 @@ impl Decode for CipResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CpfItem {
+pub struct CpfItem {
     pub type_id: u16,
     pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SendDataRequest {
+pub struct SendDataRequest {
     pub interface_handle: u32,
     pub timeout: u16,
     pub items: Vec<CpfItem>,
 }
 
 impl SendDataRequest {
-    pub(crate) fn unconnected(item_data: &[u8]) -> Self {
+    pub fn unconnected(item_data: &[u8]) -> Self {
         Self {
             interface_handle: 0,
             timeout: 5,
@@ -194,7 +186,7 @@ impl Encode for SendDataRequest {
 impl Decode for SendDataRequest {
     fn decode(buf: &mut impl Buf) -> Result<Self> {
         if buf.remaining() < 8 {
-            return Err(EtherNetIpError::Protocol("CPF data too short".to_string()));
+            return Err(ProtocolError::new("CPF data too short"));
         }
 
         let interface_handle = buf.get_u32_le();
@@ -203,14 +195,12 @@ impl Decode for SendDataRequest {
         let mut items = Vec::with_capacity(item_count);
         for _ in 0..item_count {
             if buf.remaining() < 4 {
-                return Err(EtherNetIpError::Protocol(
-                    "Response truncated while parsing items".to_string(),
-                ));
+                return Err(ProtocolError::new("Response truncated while parsing items"));
             }
             let type_id = buf.get_u16_le();
             let item_length = buf.get_u16_le() as usize;
             if buf.remaining() < item_length {
-                return Err(EtherNetIpError::Protocol("Data item truncated".to_string()));
+                return Err(ProtocolError::new("Data item truncated"));
             }
             items.push(CpfItem {
                 type_id,

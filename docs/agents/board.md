@@ -6,9 +6,9 @@
 
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-| CODEX-M | FFI registry clone-semantics audit and fix (Phase B in progress) | codex | in-progress | 2026-05-24 claude [Opus 4.7] | [`tasks/CODEX-M-ffi-registry-clone-audit.md`](tasks/CODEX-M-ffi-registry-clone-audit.md) |
+_(no open briefs — full v0.8.0+CODEX-K release-window scope merged for 1.0.0)_
 
-> Per maintainer directive (2026-05-18), all post-books briefs are **in scope for v0.8.0** alongside the pre-existing v0.8.0 draft work and the existing CODEX-G through CODEX-K agenda. The full plan and per-book lesson extraction live at [`wiki/investigations/architecture-review-2026-05-18.md`](../../wiki/investigations/architecture-review-2026-05-18.md) and [`wiki/investigations/books-lessons-2026-05-18.md`](../../wiki/investigations/books-lessons-2026-05-18.md). 2026-05-24 status: CODEX-L (ABI baseline), CODEX-N (CIP path validation), CODEX-V (semver-checks CI), CODEX-W (Python typed writes), CODEX-X (BOOL DWORD-offset), and CODEX-Y (nested BOOL UDT workaround) all merged. CODEX-M Phase A audit complete; Phase B in progress under Claude-amended direction (Option C with structural Arc/Atomic enforcement, not documentation-only). Remaining open: CODEX-M (Phase B), then J (mechanical split), then P (actor), then R/Q/S (events, service layer, retry), then CODEX-K (release-window) last. CODEX-T (fleet) and CODEX-U (sibling crates) remain v0.9.0 deferrals.
+> 2026-05-24 release-prep status: all v0.8.0 / release-window briefs merged. Maintainer authorized the 1.0.0 cut: Cargo.toml at `1.0.0`, CHANGELOG `[Unreleased]` promoted to `[1.0.0] - 2026-05-24`. CODEX-T (fleet) accepted into 1.0.0 scope; CODEX-U (sibling crates) accepted as structure-only with `publish = false` on the four sibling Cargo.tomls (crates.io publish deferred — see CODEX-U verdict). The `git tag v1.0.0` + NuGet publish flow remain maintainer-owned per the original gating items.
 >
 > Scope note: the v0.8.0 bundle is effectively a 1.0.0-shape release (FFI contract pin + behavioral refactor + new public API + structural split + release-window break sweep). Renaming the version to `1.0.0` is defensible and would signal the stability story to NuGet/PyPI/crates.io consumers; left to maintainer decision.
 >
@@ -75,7 +75,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 9. **CODEX-Q — Service Layer for restricted writes.** Add `Client::write_udt_member`, `Client::write_string_tag`, `Client::write_udt_array_member` methods that internally implement the read-modify-write dance for the documented firmware limitations (see `lib.rs:46-62` and the 20-line doctest at `client.rs:131-150`). Removes the workaround ritual from consumer code. Stay concrete to the Logix STRING / UDT-array-member-write quirks; do not generalize into a broader pattern framework.
 10. **CODEX-S — `RetryPolicy` primitive.** Builder + decorator combinator: `client.with_retry(policy).read_tag(...).await`. Backoff (constant / exponential / decorrelated jitter), max attempts, per-error-class predicate (already have `EtherNetIpError::is_retriable` at `src/error.rs:104`). Each consumer currently writes its own retry loop; centralizing prevents policy drift across the C# and Python wrappers.
 
-### Post-books-review roadmap (Phase 4 — scale and extensibility, post-1.0)
+### Post-books-review roadmap (Phase 4 — scale and extensibility, same v0.8.0 scope)
 
 11. **CODEX-T — `Fleet<PlcId, Client>` multi-PLC pool.** Today `PlcManager` (242 LOC) hints at this. Make it an explicit per-PLC actor pool with fleet-level health check and a fleet-level event stream. Industrial deployments routinely talk to N PLCs at once; per-PLC backpressure and shared metrics collection belong in the library, not in every consumer.
 12. **CODEX-U — Promote `protocol`, `tag_path`, `udt` to sibling workspace crates.** Once their APIs stabilize after 1.0. Cargo features in the main crate let consumers pay only for what they use (an HMI that doesn't need UDT discovery shouldn't link `udt.rs`). Long-term modularity payoff; no short-term value.
@@ -96,6 +96,15 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-V | Add cargo-semver-checks to CI as the SemVer gate | codex | `5037133` |
 | CODEX-X | BOOL array element RMW addresses the wrong DWORD for indices ≥ 32 | codex | `5037133` |
 | CODEX-Y | BOOL workaround not applied to nested BOOL arrays inside UDT array elements | codex | `5037133` |
+| CODEX-M | FFI registry clone-semantics audit + Phase B (Arc/Atomic enforcement) | codex | _(merge commit pending)_ |
+| CODEX-J | Mechanical client.rs submodule split | codex | _(merge commit pending)_ |
+| CODEX-P | Request-correlator actor + cloneable Client handle | codex | _(merge commit pending)_ |
+| CODEX-Q | Service layer for restricted writes | codex | _(merge commit pending)_ |
+| CODEX-R | Client connection event stream | codex | _(merge commit pending)_ |
+| CODEX-S | RetryPolicy primitive | codex | _(merge commit pending)_ |
+| CODEX-K | Release-window SemVer bundle | codex | _(merge commit pending)_ |
+| CODEX-T | Fleet multi-PLC actor pool | codex | _(merge commit pending)_ |
+| CODEX-U | Promote protocol, tag_path, and udt to sibling crates (publish deferred) | codex | _(merge commit pending)_ |
 
 ## Project context
 

@@ -1,12 +1,12 @@
 use bytes::BytesMut;
 
-use crate::protocol::cip::{CipRequest, CipResponse, SendDataRequest};
-use crate::protocol::encap::{
+use crate::cip::{CipRequest, CipResponse, SendDataRequest};
+use crate::encap::{
     EncapsulationHeader, REGISTER_SESSION, SEND_RR_DATA, SEND_UNIT_DATA, UNREGISTER_SESSION,
 };
-use crate::protocol::values;
-use crate::protocol::{Decode, Encode};
-use crate::{PlcValue, UdtData};
+use crate::values;
+use crate::{Decode, Encode};
+use rust_ethernet_ip_types::{PlcValue, UdtData};
 
 fn round_trip_value(value: PlcValue) {
     let mut buf = BytesMut::new();
@@ -145,7 +145,7 @@ fn round_trip_header(command: u16) {
     assert_eq!(decoded, header);
 }
 
-fn assert_protocol_error_contains(result: crate::error::Result<()>, expected: &str) {
+fn assert_protocol_error_contains(result: crate::Result<()>, expected: &str) {
     let err = result.expect_err("request should fail validation");
     assert!(
         err.to_string().contains(expected),

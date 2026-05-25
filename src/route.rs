@@ -1,5 +1,6 @@
 /// Ordered route hop for PLC communication.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RouteHop {
     /// Backplane/chassis hop. Rockwell ControlLogix backplanes normally use port 1.
     Backplane { port: u8, slot: u8 },
@@ -8,17 +9,9 @@ pub enum RouteHop {
 }
 
 /// Route path for PLC communication.
-///
-/// The `slots`, `ports`, and `addresses` fields are retained for compatibility with
-/// the original public API and wrappers. New code should prefer [`RoutePath::hops`]
-/// or the explicit hop builders because CIP routing is ordered. If `hops` is empty,
-/// encoding falls back to the legacy grouped-field order for compatibility.
 #[derive(Debug, Clone)]
 pub struct RoutePath {
-    pub slots: Vec<u8>,
-    pub ports: Vec<u8>,
-    pub addresses: Vec<String>,
-    pub hops: Vec<RouteHop>,
+    hops: Vec<RouteHop>,
 }
 
 impl RoutePath {
@@ -28,18 +21,12 @@ impl RoutePath {
     /// Creates a new route path
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            slots: Vec::new(),
-            ports: Vec::new(),
-            addresses: Vec::new(),
-            hops: Vec::new(),
-        }
+        Self { hops: Vec::new() }
     }
 
     /// Adds a backplane slot to the route
     #[must_use]
     pub fn add_slot(mut self, slot: u8) -> Self {
-        self.slots.push(slot);
         self.hops.push(RouteHop::Backplane {
             port: Self::DEFAULT_BACKPLANE_PORT,
             slot,
@@ -50,8 +37,12 @@ impl RoutePath {
     /// Adds a network port to the route
     #[must_use]
     pub fn add_port(mut self, port: u8) -> Self {
-        let port_index = self.ports.len();
-        self.ports.push(port);
+        let port_index = self
+            .hops
+            .iter()
+            .filter(|hop| matches!(hop, RouteHop::Ethernet { .. }))
+            .count()
+            .saturating_sub(1);
         self.update_ethernet_hop_port(port_index, port);
         self
     }
@@ -60,11 +51,8 @@ impl RoutePath {
     #[must_use]
     pub fn add_address(mut self, address: String) -> Self {
         let port = self
-            .ports
-            .get(self.addresses.len())
-            .copied()
+            .pending_ethernet_port()
             .unwrap_or(Self::DEFAULT_ETHERNET_PORT);
-        self.addresses.push(address.clone());
         self.hops.push(RouteHop::Ethernet { port, address });
         self
     }
@@ -72,7 +60,6 @@ impl RoutePath {
     /// Adds a backplane hop with an explicit port number.
     #[must_use]
     pub fn add_backplane(mut self, port: u8, slot: u8) -> Self {
-        self.slots.push(slot);
         self.hops.push(RouteHop::Backplane { port, slot });
         self
     }
@@ -87,10 +74,50 @@ impl RoutePath {
     #[must_use]
     pub fn add_ethernet_with_port(mut self, port: u8, address: impl Into<String>) -> Self {
         let address = address.into();
-        self.ports.push(port);
-        self.addresses.push(address.clone());
         self.hops.push(RouteHop::Ethernet { port, address });
         self
+    }
+
+    /// Returns the ordered hops for this route.
+    #[must_use]
+    pub fn hops(&self) -> &[RouteHop] {
+        &self.hops
+    }
+
+    /// Returns legacy grouped backplane slots derived from the ordered hops.
+    #[must_use]
+    pub fn slots(&self) -> Vec<u8> {
+        self.hops
+            .iter()
+            .filter_map(|hop| match hop {
+                RouteHop::Backplane { slot, .. } => Some(*slot),
+                RouteHop::Ethernet { .. } => None,
+            })
+            .collect()
+    }
+
+    /// Returns legacy grouped Ethernet ports derived from the ordered hops.
+    #[must_use]
+    pub fn ports(&self) -> Vec<u8> {
+        self.hops
+            .iter()
+            .filter_map(|hop| match hop {
+                RouteHop::Backplane { .. } => None,
+                RouteHop::Ethernet { port, .. } => Some(*port),
+            })
+            .collect()
+    }
+
+    /// Returns legacy grouped Ethernet addresses derived from the ordered hops.
+    #[must_use]
+    pub fn addresses(&self) -> Vec<String> {
+        self.hops
+            .iter()
+            .filter_map(|hop| match hop {
+                RouteHop::Backplane { .. } => None,
+                RouteHop::Ethernet { address, .. } => Some(address.clone()),
+            })
+            .collect()
     }
 
     /// Builds CIP route path bytes
@@ -104,10 +131,6 @@ impl RoutePath {
     ///   - Slot 2: `01 02`
     #[must_use]
     pub fn to_cip_bytes(&self) -> Vec<u8> {
-        if self.hops.is_empty() {
-            return self.legacy_grouped_fields_to_cip_bytes();
-        }
-
         let mut path = Vec::new();
 
         for hop in &self.hops {
@@ -139,37 +162,6 @@ impl RoutePath {
         }
     }
 
-    fn legacy_grouped_fields_to_cip_bytes(&self) -> Vec<u8> {
-        let mut path = Vec::new();
-
-        for &slot in &self.slots {
-            Self::append_hop(
-                &mut path,
-                &RouteHop::Backplane {
-                    port: Self::DEFAULT_BACKPLANE_PORT,
-                    slot,
-                },
-            );
-        }
-
-        for (i, address) in self.addresses.iter().enumerate() {
-            let port = self
-                .ports
-                .get(i)
-                .copied()
-                .unwrap_or(Self::DEFAULT_ETHERNET_PORT);
-            Self::append_hop(
-                &mut path,
-                &RouteHop::Ethernet {
-                    port,
-                    address: address.clone(),
-                },
-            );
-        }
-
-        path
-    }
-
     fn update_ethernet_hop_port(&mut self, port_index: usize, port: u8) -> bool {
         if let Some(RouteHop::Ethernet { port: hop_port, .. }) = self
             .hops
@@ -182,6 +174,16 @@ impl RoutePath {
         } else {
             false
         }
+    }
+
+    fn pending_ethernet_port(&self) -> Option<u8> {
+        self.hops
+            .iter()
+            .filter_map(|hop| match hop {
+                RouteHop::Ethernet { port, .. } => Some(*port),
+                RouteHop::Backplane { .. } => None,
+            })
+            .next_back()
     }
 }
 

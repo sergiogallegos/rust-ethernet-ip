@@ -2,7 +2,7 @@
 //!
 //! `rust-ethernet-ip` provides async Rust APIs for explicit EtherNet/IP and CIP
 //! tag operations, plus FFI surfaces used by the repository's .NET wrapper.
-//! The current released crate line is `0.8.0`.
+//! The current released crate line is `1.0.0`.
 //!
 //! ## Highlights
 //!
@@ -45,7 +45,7 @@
 //!
 //! ## Known PLC/Firmware Limits
 //!
-//! Real-hardware validation for the `0.8.0` release line confirmed that some
+//! Real-hardware validation for the `1.0.0` release line confirmed that some
 //! direct write shapes are controller/firmware limitations rather than library
 //! protocol defects:
 //!
@@ -107,6 +107,7 @@ pub mod config; // Production-ready configuration management
 pub mod error;
 #[cfg(feature = "ffi")]
 pub mod ffi;
+pub mod fleet;
 pub mod monitoring; // Enterprise-grade monitoring and health checks
 pub mod plc_manager;
 pub(crate) mod protocol;
@@ -122,12 +123,13 @@ pub mod version;
 
 // Re-export commonly used items
 pub use batch::{BatchConfig, BatchError, BatchOperation, BatchResult};
-pub use client::EipClient;
+pub use client::{Backoff, Client, ConnectionEvent, EipClient, RetryClient, RetryPolicy};
 pub use config::{
-    ConnectionConfig, LoggingConfig, MonitoringConfig, PerformanceConfig, PlcSpecificConfig,
-    ProductionConfig, SecurityConfig,
+    ConnectionConfig, LogFormat, LogLevel, LogRotationSchedule, LoggingConfig, MonitoringConfig,
+    PerformanceConfig, PlcSpecificConfig, ProductionConfig, SecurityConfig,
 };
 pub use error::{EtherNetIpError, Result};
+pub use fleet::{Fleet, FleetEvent};
 pub use monitoring::{
     ConnectionMetrics, DiagnosticsSnapshot, ErrorCategory, ErrorMetrics, HealthCheckMode,
     HealthMetrics, HealthStatus, MonitoringMetrics, OperationMetrics, PerformanceMetrics,
@@ -150,7 +152,7 @@ pub use tag_group::{
 };
 pub use tag_manager::{TagCache, TagManager, TagMetadata, TagPermissions, TagScope};
 pub use tag_path::TagPath;
-pub use types::{ConnectedSession, ConnectionParameters, PlcValue, UdtData};
+pub use types::{PlcValue, UdtData};
 pub use udt::{TagAttributes, UdtDefinition, UdtMember, UdtTemplate};
 
 #[cfg(feature = "ffi")]
@@ -205,7 +207,7 @@ pub fn init_tracing() {
 ///
 /// Returns `Ok(())` if initialization was successful, or an error if a subscriber
 /// was already set.
-pub fn try_init_tracing() -> std::result::Result<(), Box<dyn std::error::Error>> {
+pub fn try_init_tracing() -> crate::error::Result<()> {
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::fmt;
 
@@ -217,6 +219,6 @@ pub fn try_init_tracing() -> std::result::Result<(), Box<dyn std::error::Error>>
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+        .map_err(|e| crate::error::EtherNetIpError::Other(e.to_string()))?;
     Ok(())
 }

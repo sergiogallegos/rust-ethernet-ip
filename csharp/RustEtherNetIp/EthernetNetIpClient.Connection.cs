@@ -27,18 +27,17 @@ namespace RustEtherNetIp
                 IntPtr addressPtr = Marshal.StringToHGlobalAnsi(address);
                 try
                 {
-                    var (slots, ports, addressPtrs, addressHandles) = routePath.PrepareForFFI();
+                    var (hopTypes, ports, slots, addressPtrs, addressHandles) = routePath.PrepareForFFI();
 
                     try
                     {
-                        _clientId = eip_connect_with_route(
+                        _clientId = eip_connect_with_route_hops(
                             addressPtr,
-                            slots,
-                            slots.Length,
+                            hopTypes,
                             ports,
-                            ports.Length,
+                            slots,
                             addressPtrs,
-                            addressPtrs.Length);
+                            hopTypes.Length);
 
                         if (_clientId >= 0)
                         {

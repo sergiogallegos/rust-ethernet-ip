@@ -85,8 +85,8 @@ mod tests {
         let retrieved_route = client.get_route_path();
         assert!(retrieved_route.is_some(), "Route path should be set");
         if let Some(r) = retrieved_route {
-            assert_eq!(r.slots.len(), 1, "Route path should have one slot");
-            assert_eq!(r.slots[0], 0, "Slot should be 0");
+            assert_eq!(r.slots().len(), 1, "Route path should have one slot");
+            assert_eq!(r.slots()[0], 0, "Slot should be 0");
         }
 
         tracing::info!("Route path set and retrieved successfully");
@@ -154,8 +154,8 @@ mod tests {
         let retrieved_route = client.get_route_path();
         assert!(retrieved_route.is_some(), "Route path should be set");
         if let Some(r) = retrieved_route {
-            assert_eq!(r.slots.len(), 1, "Route path should have one slot");
-            assert_eq!(r.slots[0], 0, "Slot should be 0");
+            assert_eq!(r.slots().len(), 1, "Route path should have one slot");
+            assert_eq!(r.slots()[0], 0, "Slot should be 0");
         }
 
         tracing::info!("Client created with route path successfully");
@@ -192,7 +192,7 @@ mod tests {
         let retrieved_route = client.get_route_path();
         assert!(retrieved_route.is_some(), "Route path should still be set");
         if let Some(r) = retrieved_route {
-            assert_eq!(r.slots[0], 1, "Slot should be updated to 1");
+            assert_eq!(r.slots()[0], 1, "Slot should be updated to 1");
         }
 
         tracing::info!("Route path modified successfully");
@@ -222,9 +222,9 @@ mod tests {
         let retrieved_route = client.get_route_path();
         assert!(retrieved_route.is_some(), "Route path should be set");
         if let Some(r) = retrieved_route {
-            assert_eq!(r.slots.len(), 2, "Route path should have two slots");
-            assert_eq!(r.slots[0], 0, "First slot should be 0");
-            assert_eq!(r.slots[1], 1, "Second slot should be 1");
+            assert_eq!(r.slots().len(), 2, "Route path should have two slots");
+            assert_eq!(r.slots()[0], 0, "First slot should be 0");
+            assert_eq!(r.slots()[1], 1, "Second slot should be 1");
         }
 
         tracing::info!("Route path with multiple slots set successfully");

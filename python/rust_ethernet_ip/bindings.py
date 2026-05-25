@@ -67,6 +67,15 @@ def _configure_function_signatures(lib: ctypes.CDLL) -> ctypes.CDLL:
         ctypes.c_int,
     ]
     lib.eip_connect_with_route.restype = ctypes.c_int
+    lib.eip_connect_with_route_hops.argtypes = [
+        ctypes.c_char_p,
+        c_uint8_p,
+        c_uint8_p,
+        c_uint8_p,
+        c_char_p_p,
+        ctypes.c_int,
+    ]
+    lib.eip_connect_with_route_hops.restype = ctypes.c_int
 
     lib.eip_disconnect.argtypes = [ctypes.c_int]
     lib.eip_disconnect.restype = ctypes.c_int

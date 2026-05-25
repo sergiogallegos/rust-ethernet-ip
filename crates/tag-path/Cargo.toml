@@ -1,0 +1,15 @@
+[package]
+name = "rust-ethernet-ip-tag-path"
+version = "1.0.0"
+publish = false
+edition = "2024"
+license = "MIT"
+description = "Allen-Bradley Logix tag-path parser used by rust-ethernet-ip"
+rust-version = "1.95"
+
+[lib]
+name = "rust_ethernet_ip_tag_path"
+path = "src/lib.rs"
+
+[dev-dependencies]
+tracing = "0.1"

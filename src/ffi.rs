@@ -94,10 +94,119 @@ fn get_client(client_id: c_int) -> Result<EipClient, ()> {
     clients.get(&client_id).cloned().ok_or(())
 }
 
+#[doc(hidden)]
+pub fn client_route_path_snapshot_for_testing(client_id: c_int) -> Option<crate::RoutePath> {
+    get_client(client_id)
+        .ok()
+        .and_then(|client| client.get_route_path())
+}
+
+#[doc(hidden)]
+pub fn client_max_packet_size_for_testing(client_id: c_int) -> Option<u32> {
+    get_client(client_id)
+        .ok()
+        .map(|client| client.max_packet_size())
+}
+
 fn store_client(client_id: c_int, client: EipClient) -> Result<(), ()> {
     let mut clients = lock_clients()?;
     clients.insert(client_id, client);
     Ok(())
+}
+
+unsafe fn build_route_path_from_grouped_fields(
+    slots: *const u8,
+    slot_count: c_int,
+    ports: *const u8,
+    port_count: c_int,
+    addresses: *mut *const c_char,
+    address_count: c_int,
+) -> crate::RoutePath {
+    let mut route_path = crate::RoutePath::new();
+
+    if !slots.is_null() && slot_count > 0 {
+        let slots_slice = unsafe { std::slice::from_raw_parts(slots, slot_count as usize) };
+        for &slot in slots_slice {
+            route_path = route_path.add_backplane(1, slot);
+        }
+    }
+
+    if !addresses.is_null() && address_count > 0 {
+        let ports_slice = if !ports.is_null() && port_count > 0 {
+            Some(unsafe { std::slice::from_raw_parts(ports, port_count as usize) })
+        } else {
+            None
+        };
+        let addresses_slice =
+            unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
+        for (index, &addr_ptr) in addresses_slice.iter().enumerate() {
+            if !addr_ptr.is_null()
+                && let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str()
+            {
+                let port = ports_slice
+                    .and_then(|slice| slice.get(index))
+                    .copied()
+                    .unwrap_or(2);
+                route_path = route_path.add_ethernet_with_port(port, addr_str);
+            }
+        }
+    }
+
+    route_path
+}
+
+unsafe fn build_route_path_from_ordered_hops(
+    hop_types: *const u8,
+    ports: *const u8,
+    slots: *const u8,
+    addresses: *mut *const c_char,
+    hop_count: c_int,
+) -> Option<crate::RoutePath> {
+    if hop_count < 0 {
+        return None;
+    }
+    if hop_count == 0 {
+        return Some(crate::RoutePath::new());
+    }
+    if hop_types.is_null() || ports.is_null() {
+        return None;
+    }
+
+    let hop_types = unsafe { std::slice::from_raw_parts(hop_types, hop_count as usize) };
+    let ports = unsafe { std::slice::from_raw_parts(ports, hop_count as usize) };
+    let slots = if slots.is_null() {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(slots, hop_count as usize) }
+    };
+    let addresses = if addresses.is_null() {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(addresses, hop_count as usize) }
+    };
+
+    let mut route_path = crate::RoutePath::new();
+    for index in 0..hop_count as usize {
+        match hop_types[index] {
+            1 => {
+                let slot = *slots.get(index).unwrap_or(&0);
+                route_path = route_path.add_backplane(ports[index], slot);
+            }
+            2 => {
+                let addr_ptr = *addresses.get(index).unwrap_or(&ptr::null());
+                if addr_ptr.is_null() {
+                    return None;
+                }
+                let Ok(addr_str) = (unsafe { CStr::from_ptr(addr_ptr) }).to_str() else {
+                    return None;
+                };
+                route_path = route_path.add_ethernet_with_port(ports[index], addr_str);
+            }
+            _ => return None,
+        }
+    }
+
+    Some(route_path)
 }
 
 unsafe fn free_c_string(ptr: *mut c_char) {
@@ -383,37 +492,67 @@ pub unsafe extern "C" fn eip_connect_with_route(
         return -1;
     };
 
-    // Build route path
-    let mut route_path = crate::RoutePath::new();
+    let route_path = unsafe {
+        build_route_path_from_grouped_fields(
+            slots,
+            slot_count,
+            ports,
+            port_count,
+            addresses,
+            address_count,
+        )
+    };
 
-    // Add slots
-    if !slots.is_null() && slot_count > 0 {
-        let slots_slice = unsafe { std::slice::from_raw_parts(slots, slot_count as usize) };
-        for &slot in slots_slice {
-            route_path = route_path.add_slot(slot);
+    let Ok(client) = ffi_block_on!(crate::EipClient::with_route_path(ip_str, route_path)) else {
+        return -1;
+    };
+
+    let client_id = {
+        let mut next_id = match lock_next_id() {
+            Ok(guard) => guard,
+            Err(_) => return -1,
+        };
+        let id = *next_id;
+        *next_id = next_id.wrapping_add(1);
+        if *next_id < 1 {
+            *next_id = 1;
         }
+        id
+    };
+
+    {
+        let mut clients = match lock_clients() {
+            Ok(guard) => guard,
+            Err(_) => return -1,
+        };
+        clients.insert(client_id, client);
     }
 
-    // Add ports
-    if !ports.is_null() && port_count > 0 {
-        let ports_slice = unsafe { std::slice::from_raw_parts(ports, port_count as usize) };
-        for &port in ports_slice {
-            route_path = route_path.add_port(port);
-        }
+    client_id
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn eip_connect_with_route_hops(
+    ip_address: *const c_char,
+    hop_types: *const u8,
+    ports: *const u8,
+    slots: *const u8,
+    addresses: *mut *const c_char,
+    hop_count: c_int,
+) -> c_int {
+    if ip_address.is_null() {
+        return -1;
     }
 
-    // Add addresses
-    if !addresses.is_null() && address_count > 0 {
-        let addresses_slice =
-            unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
-        for &addr_ptr in addresses_slice {
-            if !addr_ptr.is_null()
-                && let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str()
-            {
-                route_path = route_path.add_address(addr_str.to_string());
-            }
-        }
-    }
+    let Ok(ip_str) = unsafe { CStr::from_ptr(ip_address) }.to_str() else {
+        return -1;
+    };
+
+    let Some(route_path) = (unsafe {
+        build_route_path_from_ordered_hops(hop_types, ports, slots, addresses, hop_count)
+    }) else {
+        return -1;
+    };
 
     let Ok(client) = ffi_block_on!(crate::EipClient::with_route_path(ip_str, route_path)) else {
         return -1;
@@ -461,46 +600,45 @@ pub unsafe extern "C" fn eip_set_route_path(
     addresses: *mut *const c_char,
     address_count: c_int,
 ) -> c_int {
-    let mut clients = match lock_clients() {
-        Ok(guard) => guard,
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
         Err(_) => return -1,
     };
-    let client = match clients.get_mut(&client_id) {
-        Some(c) => c,
-        None => return -1,
+
+    let route_path = unsafe {
+        build_route_path_from_grouped_fields(
+            slots,
+            slot_count,
+            ports,
+            port_count,
+            addresses,
+            address_count,
+        )
     };
 
-    // Build route path
-    let mut route_path = crate::RoutePath::new();
+    client.set_route_path(route_path);
+    0
+}
 
-    // Add slots
-    if !slots.is_null() && slot_count > 0 {
-        let slots_slice = unsafe { std::slice::from_raw_parts(slots, slot_count as usize) };
-        for &slot in slots_slice {
-            route_path = route_path.add_slot(slot);
-        }
-    }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn eip_set_route_path_hops(
+    client_id: c_int,
+    hop_types: *const u8,
+    ports: *const u8,
+    slots: *const u8,
+    addresses: *mut *const c_char,
+    hop_count: c_int,
+) -> c_int {
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
+        Err(_) => return -1,
+    };
 
-    // Add ports
-    if !ports.is_null() && port_count > 0 {
-        let ports_slice = unsafe { std::slice::from_raw_parts(ports, port_count as usize) };
-        for &port in ports_slice {
-            route_path = route_path.add_port(port);
-        }
-    }
-
-    // Add addresses
-    if !addresses.is_null() && address_count > 0 {
-        let addresses_slice =
-            unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
-        for &addr_ptr in addresses_slice {
-            if !addr_ptr.is_null()
-                && let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str()
-            {
-                route_path = route_path.add_address(addr_str.to_string());
-            }
-        }
-    }
+    let Some(route_path) = (unsafe {
+        build_route_path_from_ordered_hops(hop_types, ports, slots, addresses, hop_count)
+    }) else {
+        return -1;
+    };
 
     client.set_route_path(route_path);
     0
@@ -1668,7 +1806,11 @@ pub unsafe extern "C" fn eip_write_udt(
         }
 
         // Convert HashMap to UdtData using the definition
-        crate::UdtData::from_hash_map(&udt_members, &user_def, existing_udt.symbol_id)
+        Ok(crate::UdtData::from_hash_map(
+            &udt_members,
+            &user_def,
+            existing_udt.symbol_id,
+        )?)
     }) {
         Ok(data) => data,
         Err(_) => {
@@ -1706,8 +1848,16 @@ pub unsafe extern "C" fn eip_get_tag_metadata(
 
 // Configuration
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_set_max_packet_size(_client_id: c_int, _size: c_int) -> c_int {
-    // Return success for now - packet size configuration can be added later
+pub unsafe extern "C" fn eip_set_max_packet_size(client_id: c_int, size: c_int) -> c_int {
+    if size <= 0 {
+        return -1;
+    }
+
+    let mut client = match get_client(client_id) {
+        Ok(client) => client,
+        Err(_) => return -1,
+    };
+    client.set_max_packet_size(size as u32);
     0
 }
 

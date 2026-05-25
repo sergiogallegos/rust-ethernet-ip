@@ -31,25 +31,26 @@ class FakeNativeLibrary:
         self.connected_addresses.append(address.decode("utf-8"))
         return self.connect_result
 
-    def eip_connect_with_route(
+    def eip_connect_with_route_hops(
         self,
         address: bytes,
-        slots,
-        slot_count: int,
+        hop_types,
         ports,
-        port_count: int,
+        slots,
         addresses,
-        address_count: int,
+        hop_count: int,
     ) -> int:
-        slot_values = [int(slots[i]) for i in range(slot_count)] if slots else []
-        port_values = [int(ports[i]) for i in range(port_count)] if ports else []
+        hop_type_values = [int(hop_types[i]) for i in range(hop_count)] if hop_types else []
+        slot_values = [int(slots[i]) for i in range(hop_count)] if slots else []
+        port_values = [int(ports[i]) for i in range(hop_count)] if ports else []
         address_values = [
             ctypes.cast(addresses[i], ctypes.c_char_p).value.decode("utf-8")
-            for i in range(address_count)
+            for i in range(hop_count)
         ] if addresses else []
         self.route_calls.append(
             {
                 "address": address.decode("utf-8"),
+                "hop_types": hop_type_values,
                 "slots": slot_values,
                 "ports": port_values,
                 "addresses": address_values,
@@ -232,7 +233,7 @@ class ClientContractTests(unittest.TestCase):
             with self.assertRaises(PlcConnectionError):
                 Client("127.0.0.1:44818")
 
-    def test_connect_with_route_passes_slots_ports_and_addresses(self) -> None:
+    def test_connect_with_route_passes_ordered_hops(self) -> None:
         lib = FakeNativeLibrary()
         route = RoutePath(slots=[0, 1], ports=[2], addresses=["10.20.30.40"])
         with patch.object(client_module, "load_native_library", return_value=lib):
@@ -244,9 +245,10 @@ class ClientContractTests(unittest.TestCase):
             [
                 {
                     "address": "127.0.0.1:44818",
-                    "slots": [0, 1],
-                    "ports": [2],
-                    "addresses": ["10.20.30.40"],
+                    "hop_types": [1, 1, 2],
+                    "slots": [0, 1, 0],
+                    "ports": [1, 1, 2],
+                    "addresses": ["", "", "10.20.30.40"],
                 }
             ],
         )

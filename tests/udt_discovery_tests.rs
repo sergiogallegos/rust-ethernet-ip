@@ -177,9 +177,9 @@ fn test_route_path_creation() {
         .add_address("192.168.1.100".to_string())
         .add_port(1);
 
-    assert_eq!(route.slots, vec![0, 2]);
-    assert_eq!(route.addresses, vec!["192.168.1.100".to_string()]);
-    assert_eq!(route.ports, vec![1]);
+    assert_eq!(route.slots(), vec![0, 2]);
+    assert_eq!(route.addresses(), vec!["192.168.1.100".to_string()]);
+    assert_eq!(route.ports(), vec![1]);
 
     // Test CIP bytes generation
     let cip_bytes = route.to_cip_bytes();
@@ -211,8 +211,8 @@ fn test_route_path_preserves_mixed_hop_order() {
         .add_slot(3);
 
     assert_eq!(
-        route.hops,
-        vec![
+        route.hops(),
+        &[
             RouteHop::Backplane { port: 1, slot: 0 },
             RouteHop::Ethernet {
                 port: 2,
@@ -262,13 +262,10 @@ fn test_legacy_port_address_pairing_still_works_when_port_is_added_late() {
 }
 
 #[test]
-fn test_legacy_public_field_construction_still_encodes_route() {
-    let route = RoutePath {
-        slots: vec![0],
-        ports: vec![3],
-        addresses: vec!["10.20.30.40".to_string()],
-        hops: Vec::new(),
-    };
+fn test_route_path_private_storage_uses_builders() {
+    let route = RoutePath::new()
+        .add_backplane(1, 0)
+        .add_ethernet_with_port(3, "10.20.30.40");
 
     assert_eq!(
         route.to_cip_bytes(),

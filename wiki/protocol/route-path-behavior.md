@@ -6,14 +6,17 @@ The current implementation treats route-path support as stable for the validated
 
 ## Current Understanding
 
+- `confirmed`: as of CODEX-K on 2026-05-24, Rust `RoutePath` stores only private ordered `RouteHop` values. Legacy public grouped fields are removed from the Rust API.
+- `confirmed`: C# and Python wrappers now call ordered-hop FFI route functions so mixed backplane/Ethernet ordering is preserved at the ABI boundary.
+
 - `confirmed`: The current library behavior for routed Logix access is aligned with the documented implementation and with real-hardware validation on `1756-L81ES` via `1756-EN3TR` slot `0`.
 - `confirmed`: The route path is appended as part of Unconnected Send handling, which resolved the prior path-segment error behavior.
 - `confirmed`: Route-path tests passed on both the CompactLogix validation pass and the routed ControlLogix validation pass.
 - `confirmed`: The common backplane route path format in this repo is `RoutePath::new().add_slot(slot)`, encoding backplane port `1` plus the CPU slot.
-- `confirmed`: The pre-`0.8.0` route model grouped `slots`, `ports`, and `addresses` separately, so builder call order could not express mixed topologies such as backplane -> Ethernet -> backplane.
-- `confirmed`: The current `0.8.0` draft Rust route model now stores ordered `RouteHop` entries while preserving the legacy grouped fields for compatibility.
+- `historical`: The pre-CODEX-K route model grouped `slots`, `ports`, and `addresses` separately, so builder call order could not express mixed topologies such as backplane -> Ethernet -> backplane.
+- `superseded`: The early `0.8.0` draft preserved legacy grouped public fields for compatibility; CODEX-K removed those public fields and made ordered hops the only Rust storage.
 - `confirmed`: Ethernet hops in the current draft are encoded as extended link-address segments using an ASCII/NUL link address, rather than the earlier unvalidated raw IPv4-octet shape.
-- `confirmed`: Empty ordered-hop lists fall back to legacy grouped-field encoding so direct public-field construction from older code does not silently become an empty route.
+- `confirmed`: Old grouped FFI route calls remain as compatibility shims, but wrappers now use ordered-hop FFI calls.
 - `likely`: Ordered route modeling is the correct API direction for multi-hop CIP routing, but only the single-hop ControlLogix backplane route has real-hardware validation in this repo so far.
 
 ## Practical Guidance
@@ -36,7 +39,7 @@ The current implementation treats route-path support as stable for the validated
 
 - Whether the wiki should split route-path behavior into separate pages for connection-path theory, implementation mechanics, and validation evidence once more hardware topologies are added.
 - Whether multi-hop Ethernet routing should get its own validation synthesis page after dedicated field testing.
-- Whether wrapper route APIs should grow an ordered-hop FFI shape instead of passing legacy grouped slot/port/address arrays.
+- Whether the old grouped FFI route functions should be removed at the next ABI-major boundary or kept as permanent compatibility shims.
 
 ## Related Pages
 

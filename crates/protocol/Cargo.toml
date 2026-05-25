@@ -1,0 +1,16 @@
+[package]
+name = "rust-ethernet-ip-protocol"
+version = "1.0.0"
+publish = false
+edition = "2024"
+license = "MIT"
+description = "EtherNet/IP wire protocol codecs used by rust-ethernet-ip"
+rust-version = "1.95"
+
+[lib]
+name = "rust_ethernet_ip_protocol"
+path = "src/lib.rs"
+
+[dependencies]
+bytes = "1.0"
+rust-ethernet-ip-types = { path = "../types", version = "1.0.0" }

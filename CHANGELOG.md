@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Target next release: `0.8.0`.
+Target next release: TBD.
+
+## [1.0.0] - 2026-05-24
+
+> Release-window cut. Bundles every deferred SemVer-major change (CODEX-K) with the actor refactor (CODEX-P), event stream (CODEX-R), service layer (CODEX-Q), retry primitive (CODEX-S), FFI clone-semantics fix (CODEX-M Phase B), `client.rs` mechanical split (CODEX-J), fleet pool (CODEX-T), and sibling-crate workspace structure (CODEX-U). Crates.io publish for the sibling crates is deferred — `crates/{types,protocol,tag-path,udt}` are marked `publish = false` for this cut; `cargo publish` of the main crate accordingly requires either flipping the siblings to publishable or inlining their sources at release time. NuGet wrapper publish is unaffected (builds against the cdylib).
 
 ### ✨ Added
-- **Ordered route hops with explicit `RouteHop` variants**: `RoutePath` now stores an ordered `Vec<RouteHop>` (`Backplane { slot }` / `Ethernet { port, address }`) with builder methods `add_backplane`, `add_ethernet`, and `add_ethernet_with_port`. The new `RouteHop::Ethernet` variant emits the spec-correct ASCII extended link-address encoding (`[0x10 | port, ascii_len + 1, ascii…, 0x00, optional_pad]`) instead of raw IPv4 octets. The legacy `pub slots` / `pub ports` / `pub addresses` fields and `add_slot` / `add_port` / `add_address` builders are preserved for non-breaking 0.8.0 ship; private-storage migration is tracked for the 1.0.0 SemVer-major brief.
+- **Ordered route hops with explicit `RouteHop` variants**: `RoutePath` now stores ordered private `RouteHop` values (`Backplane { slot }` / `Ethernet { port, address }`) with builder methods `add_backplane`, `add_ethernet`, and `add_ethernet_with_port`. The new `RouteHop::Ethernet` variant emits the spec-correct ASCII extended link-address encoding (`[0x10 | port, ascii_len + 1, ascii…, 0x00, optional_pad]`) instead of raw IPv4 octets. Legacy Rust public grouped fields were removed in the release-window cleanup; legacy grouped FFI calls remain as compatibility shims.
 - **Windows-first NuGet release workflow**: Added a GitHub Actions release workflow that builds the Rust native library on `windows-latest`, packs the C# wrapper, uploads the `.nupkg` artifact, and publishes to NuGet on version tags when `NUGET_API_KEY` is configured.
 - **NuGet packing scripts**: Added `scripts/pack-nuget.ps1` for Windows `win-x64` native runtime packaging and `scripts/pack-nuget.sh` for local macOS package staging.
 - **Maintainer wiki**: Added `AGENTS.md` workflow instructions plus a `wiki/` synthesis layer for controller behavior, route-path behavior, wrapper parity, limitations, release validation, and investigation notes.
@@ -20,6 +24,11 @@ Target next release: `0.8.0`.
 - **Diagnostics snapshot surfaces**: Added Rust diagnostics snapshot and error categorization, FFI JSON export, and thin C# / Python wrapper accessors.
 - **FFI ABI handshake**: Added ABI version, library version, and capability bitmap exports plus C# and Python wrapper load-time compatibility checks.
 - **CI SemVer gate**: Added a `cargo-semver-checks` GitHub Actions job against the crates.io `0.7.0` baseline, required on `main` and informational on pull requests.
+- **Actor-backed client handle**: Added a cloneable `Client` handle that serializes read/write/batch requests through a worker task owning the underlying `EipClient`.
+- **Connection events**: Added `ConnectionEvent` and `Client::events()` for actor-backed connection lifecycle notifications.
+- **Restricted-write service helpers**: Added actor-client helpers for Logix STRING and UDT-member write flows that internally perform the documented read-modify-write workaround.
+- **RetryPolicy primitive**: Added constant/exponential retry policy support through `Client::with_retry(...)`, using the existing retriable-error classification and opt-in write retries.
+- **Fleet multi-PLC pool**: Added `Fleet<PlcId>` and `FleetEvent` as an actor-client based pool for per-PLC handles, fleet health checks, and fleet-level connection events.
 - **Collector, MQTT, and Docker examples**: Added Python collector, MQTT publisher, FastAPI service, and Docker-based example stacks for local service packaging.
 
 ### 🐛 Fixed
@@ -30,6 +39,7 @@ Target next release: `0.8.0`.
 - **Python routed ControlLogix support**: Fixed the Python wrapper ControlLogix route-path path so routed connections and routed live validation work on `1756-L81ES` via `1756-EN3TR` slot `0`.
 - **Python live write result handling**: Fixed the Python wrapper so routed live `write_tag()` and the exercised `write_tags()` paths no longer misreport successful ControlLogix writes as failures for the validated `DINT` and `REAL` cases.
 - **Python typed single-tag writes**: Fixed the Python wrapper so `write_tag()` uses typed single-tag FFI exports instead of the batch path for scalar writes, addressing CIP `0x1E` failures on plain `BOOL[]` element writes found during ControlLogix hardware validation.
+- **FFI clone-state consistency**: Made route-path and max-packet-size client state shared across cloned FFI registry lookups, and implemented `eip_set_max_packet_size` against the shared state instead of returning a no-op success.
 - **BOOL array DWORD addressing**: Fixed BOOL array element read/write so indices `>= 32` address the correct packed DWORD instead of aliasing every bit operation to DWORD `[0]`.
 - **Nested BOOL array members**: Applied the BOOL array workaround to nested BOOL array members inside UDT array elements, fixing DWORD-as-`UDINT` reads and CIP `0x05` failures for paths such as `gTestUDT_Array[3].Array_BOOL[5]`.
 - **CIP path validation**: Hardened `CipRequest` encoding so empty, odd-length, or over-510-byte paths fail before encoding instead of silently truncating or overflowing the path word count.
@@ -38,7 +48,7 @@ Target next release: `0.8.0`.
 - **Rust 2024 migration without wrapper breakage**: Moved the repo to Rust `2024` / `1.95`, updated FFI exports to Rust 2024 `#[unsafe(no_mangle)]`, refreshed dependency baselines, and verified that Rust tests plus C# wrapper build/tests still pass against the updated native library.
 
 ### 📚 Documentation
-- **Release-prep version reminder**: Updated the literal `src/lib.rs` head-doc release-line references to `0.8.0`; future release prep should keep those literal strings in sync with `Cargo.toml`.
+- **Release-prep version reminder**: Updated the literal `src/lib.rs` head-doc release-line references to `1.0.0`; future release prep should keep those literal strings in sync with `Cargo.toml`.
 - **Main README NuGet guidance**: Documented the published `RustEtherNetIp` NuGet package, CLI install command, `.NET 10` target, and current Windows `win-x64` native runtime focus.
 - **Release process docs**: Updated version-management guidance to use the Windows-first NuGet pack/publish flow.
 - **Official Rockwell source check**: Rechecked official Rockwell EtherNet/IP/data-access publications on 2026-04-16. The repository already tracks the current `1756-PM020I-EN-P` September 2025 data-access manual; `ENET-UM006C-EN-P` September 2025 was added to the traceability matrix as a relevant network-device reference for EtherNet/IP connection/message behavior.
@@ -52,7 +62,11 @@ Target next release: `0.8.0`.
 - **Contained Rust API cleanup**: Derived `thiserror::Error` for `BatchError`, removed unused `EipClient` fields and the unused direct `async-trait` dependency, and added selected `#[must_use]` annotations for builder/getter APIs.
 - **Consolidated subscription re-exports**: Removed the one-line `tag_subscription` module shim; crate-root `RealTimeSubscription*` aliases now re-export directly from `subscription`.
 - **Repository ignore rules**: Added Obsidian workspace ignore coverage.
-- **Rust formatting pass**: Applied `cargo fmt` across the Rust tree to clear the pre-release formatter drift before tagging `0.8.0`.
+- **Rust formatting pass**: Applied `cargo fmt` across the Rust tree to clear the pre-release formatter drift before tagging `1.0.0`.
+- **Client module split**: Moved batch execution, diagnostics, schema export, STRING handling, and subscription/tag-group APIs out of the monolithic `client.rs` while preserving the `EipClient` facade.
+- **Release-window API cleanup**: Added `#[non_exhaustive]` to public enums, changed tracing/config file helpers to return the crate error type, replaced stringly logging config fields with enums, and demoted connected-session wire state from crate-root public exports.
+- **RoutePath and wrapper route API cleanup**: Migrated Rust `RoutePath` to private ordered-hop storage, added ordered-hop FFI route functions, and updated C# / Python wrappers to preserve route-hop ordering explicitly.
+- **Sibling workspace crates**: Promoted shared PLC value types, EtherNet/IP protocol codecs, Logix tag-path parsing, and UDT helpers into `rust-ethernet-ip-types`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-tag-path`, and `rust-ethernet-ip-udt` while preserving main-crate re-exports/wrappers.
 
 ### ✅ Verification
 - `cargo clippy --lib -p rust-ethernet-ip --` passes on Rust `1.95.0`.

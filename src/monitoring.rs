@@ -91,6 +91,7 @@ pub struct HealthMetrics {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum HealthStatus {
     Healthy,
     Warning,
@@ -99,12 +100,14 @@ pub enum HealthStatus {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HealthCheckMode {
     Passive,
     Verified,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ErrorCategory {
     Network,
     Timeout,
@@ -366,18 +369,9 @@ impl ProductionMonitor {
             | EtherNetIpError::WriteError {
                 status: code,
                 message,
-            }
-            | EtherNetIpError::StringWriteError {
-                status: code,
-                message,
-            }
-            | EtherNetIpError::StringReadError {
-                status: code,
-                message,
             } => Self::classify_status_and_message(Some(*code), message),
             EtherNetIpError::Protocol(message)
             | EtherNetIpError::InvalidResponse { reason: message }
-            | EtherNetIpError::InvalidStringResponse { reason: message }
             | EtherNetIpError::Other(message)
             | EtherNetIpError::Tag(message)
             | EtherNetIpError::Subscription(message)

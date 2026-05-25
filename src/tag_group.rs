@@ -30,6 +30,7 @@ pub struct TagGroupSnapshot {
 
 /// High-level classification for tag-group polling events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TagGroupEventKind {
     Data,
     PartialError,
@@ -38,6 +39,7 @@ pub enum TagGroupEventKind {
 
 /// Structured category for tag-group polling failures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TagGroupFailureCategory {
     Network,
     Timeout,
@@ -70,9 +72,7 @@ impl TagGroupFailureDiagnostic {
                 (TagGroupFailureCategory::PlcStatus, Some(*code))
             }
             EtherNetIpError::ReadError { status, .. }
-            | EtherNetIpError::WriteError { status, .. }
-            | EtherNetIpError::StringReadError { status, .. }
-            | EtherNetIpError::StringWriteError { status, .. } => {
+            | EtherNetIpError::WriteError { status, .. } => {
                 (TagGroupFailureCategory::PlcStatus, Some(*status))
             }
             EtherNetIpError::Permission(_) => (TagGroupFailureCategory::Permission, None),
@@ -85,7 +85,6 @@ impl TagGroupFailureDiagnostic {
             | EtherNetIpError::InvalidString { .. } => (TagGroupFailureCategory::Data, None),
             EtherNetIpError::Protocol(_)
             | EtherNetIpError::InvalidResponse { .. }
-            | EtherNetIpError::InvalidStringResponse { .. }
             | EtherNetIpError::Subscription(_)
             | EtherNetIpError::Utf8(_) => (TagGroupFailureCategory::Protocol, None),
             EtherNetIpError::Other(_) => (TagGroupFailureCategory::Other, None),

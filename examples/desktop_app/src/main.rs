@@ -114,8 +114,7 @@ impl DesktopApp {
 
         let client_result = self.rt.block_on(async {
             if use_route {
-                let mut route_path = RoutePath::new();
-                route_path.slots.push(cpu_slot);
+                let route_path = RoutePath::new().add_backplane(1, cpu_slot);
                 EipClient::with_route_path(&address, route_path).await
             } else {
                 EipClient::connect(&address).await

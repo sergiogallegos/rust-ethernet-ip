@@ -105,22 +105,35 @@ run_from_tmp() {
     (cd /tmp && "$@")
 }
 
-rust_default="$(run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example test_plc_full_coverage --locked -- --dry-run 2>&1)"
+capture_or_die() {
+    local label="$1"
+    shift
+    local output
+    if ! output="$("$@" 2>&1)"; then
+        local status=$?
+        printf '%s: command failed (exit %d)\n----- captured output -----\n%s\n---------------------------\n' \
+            "$label" "$status" "$output" >&2
+        exit 1
+    fi
+    printf '%s' "$output"
+}
+
+rust_default="$(capture_or_die "rust default manifest from /tmp" run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example test_plc_full_coverage --locked -- --dry-run)"
 assert_contains "$rust_default" "$EXPECTED_RUST" "rust default manifest from /tmp"
 
-csharp_default="$(run_from_tmp dotnet run --project "$ROOT/examples/CSharpFullCoverage/CSharpFullCoverage.csproj" -c Release -- --dry-run 2>&1)"
+csharp_default="$(capture_or_die "csharp default manifest from /tmp" run_from_tmp dotnet run --project "$ROOT/examples/CSharpFullCoverage/CSharpFullCoverage.csproj" -c Release -- --dry-run)"
 assert_contains "$csharp_default" "$EXPECTED_CSHARP" "csharp default manifest from /tmp"
 
-python_default="$(run_from_tmp env PYTHONPATH="$ROOT/python" python3 "$ROOT/python/examples/test_plc_full_coverage.py" --dry-run 2>&1)"
+python_default="$(capture_or_die "python default manifest from /tmp" run_from_tmp env PYTHONPATH="$ROOT/python" python3 "$ROOT/python/examples/test_plc_full_coverage.py" --dry-run)"
 assert_contains "$python_default" "$EXPECTED_PYTHON" "python default manifest from /tmp"
 
-rust_override="$(run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example test_plc_full_coverage --locked -- --manifest "$MANIFEST" --dry-run 2>&1)"
+rust_override="$(capture_or_die "rust manifest override from /tmp" run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example test_plc_full_coverage --locked -- --manifest "$MANIFEST" --dry-run)"
 assert_contains "$rust_override" "$EXPECTED_RUST" "rust manifest override from /tmp"
 
-csharp_override="$(run_from_tmp dotnet run --project "$ROOT/examples/CSharpFullCoverage/CSharpFullCoverage.csproj" -c Release -- --manifest "$MANIFEST" --dry-run 2>&1)"
+csharp_override="$(capture_or_die "csharp manifest override from /tmp" run_from_tmp dotnet run --project "$ROOT/examples/CSharpFullCoverage/CSharpFullCoverage.csproj" -c Release -- --manifest "$MANIFEST" --dry-run)"
 assert_contains "$csharp_override" "$EXPECTED_CSHARP" "csharp manifest override from /tmp"
 
-python_override="$(run_from_tmp env PYTHONPATH="$ROOT/python" python3 "$ROOT/python/examples/test_plc_full_coverage.py" --manifest "$MANIFEST" --dry-run 2>&1)"
+python_override="$(capture_or_die "python manifest override from /tmp" run_from_tmp env PYTHONPATH="$ROOT/python" python3 "$ROOT/python/examples/test_plc_full_coverage.py" --manifest "$MANIFEST" --dry-run)"
 assert_contains "$python_override" "$EXPECTED_PYTHON" "python manifest override from /tmp"
 
 if rust_bad="$(run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example test_plc_full_coverage --locked -- --manifest /tmp/nonexistent_full_coverage_tags.json --dry-run 2>&1)"; then

@@ -1,26 +1,38 @@
+#[allow(dead_code)]
+mod test_helpers;
+
 #[cfg(test)]
 mod program_tag_tests {
+    use crate::test_helpers::{connect_to_plc, get_test_plc_address, should_skip_plc_tests};
     use rust_ethernet_ip::{EipClient, PlcValue};
+    use std::fmt::Display;
     use std::time::Duration;
-    use tokio::time::timeout;
-    const TEST_PLC_IP: &str = "192.168.0.1:44818";
+
+    async fn connect_test_plc() -> Option<EipClient> {
+        connect_to_plc(&get_test_plc_address(), 10).await
+    }
+
+    fn is_tag_not_found_error(error: &impl Display) -> bool {
+        let message = error.to_string();
+        message.contains("CIP Error 0x04")
+            || message.contains("CIP Error 0x05")
+            || message.contains("Path segment error")
+            || message.contains("Path destination unknown")
+    }
+
     #[tokio::test]
     async fn test_program_tag_reading() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(e)) => {
-                    tracing::warn!("Skipping test - PLC not available: {}", e);
-                    return;
-                }
-                Err(_) => {
-                    tracing::warn!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test program-scoped tag reading with correct format
-        let result = client.read_tag("Program:API_Web.TestTagProgram").await;
+        let result = client
+            .read_tag("Program:TestProgram.gTestArray_DINT[0]")
+            .await;
         match result {
             Ok(PlcValue::Dint(value)) => {
                 tracing::info!("Program tag read successfully: {}", value);
@@ -32,13 +44,10 @@ mod program_tag_tests {
                     other
                 );
             }
+            Err(e) if is_tag_not_found_error(&e) => {
+                tracing::debug!("Skipping test - program tag not available on PLC: {}", e);
+            }
             Err(e) => {
-                tracing::error!("Program tag read failed: {}", e);
-                // Don't fail the test if PLC is not available
-                if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
                 panic!("Program tag read failed: {}", e);
             }
         }
@@ -46,94 +55,70 @@ mod program_tag_tests {
 
     #[tokio::test]
     async fn test_program_tag_out_fuse() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(e)) => {
-                    tracing::warn!("Skipping test - PLC not available: {}", e);
-                    return;
-                }
-                Err(_) => {
-                    tracing::warn!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test another program-scoped tag
-        let result = client.read_tag("Program:API_Web.out_FusePartStatus").await;
+        let result = client
+            .read_tag("Program:TestProgram.gTestArray_BOOL[0]")
+            .await;
         match result {
-            Ok(PlcValue::Dint(value)) => {
-                tracing::info!("out_FusePartStatus read successfully: {}", value);
-                assert!(
-                    value >= 0,
-                    "out_FusePartStatus value should be non-negative"
-                );
+            Ok(PlcValue::Bool(_)) => {
+                tracing::info!("Program BOOL tag read successfully");
             }
             Ok(other) => {
-                tracing::info!(
-                    "out_FusePartStatus read successfully (different type): {:?}",
-                    other
-                );
+                tracing::info!("Program BOOL tag read successfully as {:?}", other);
+            }
+            Err(e) if is_tag_not_found_error(&e) => {
+                tracing::debug!("Skipping test - program tag not available on PLC: {}", e);
             }
             Err(e) => {
-                tracing::error!("out_FusePartStatus read failed: {}", e);
-                if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                panic!("out_FusePartStatus read failed: {}", e);
+                panic!("Program tag read failed: {}", e);
             }
         }
     }
 
     #[tokio::test]
     async fn test_program_tag_path_validation() {
-        // Test that old format fails (this is expected behavior)
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(_)) => {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                Err(_) => {
-                    tracing::debug!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test old format (should fail)
-        let result = client.read_tag("TestTagProgram").await;
+        let result = client.read_tag("TestProgram.gTestArray_DINT[0]").await;
         match result {
             Ok(_) => {
                 tracing::warn!(
-                    "Old format unexpectedly succeeded - this might indicate PLC configuration"
+                    "Invalid program tag format unexpectedly succeeded - this might indicate PLC configuration"
                 );
             }
             Err(e) => {
-                tracing::info!("Old format correctly failed as expected: {}", e);
-                // This is expected behavior - old format should fail
+                tracing::info!("Invalid program tag format correctly failed: {}", e);
             }
         }
     }
 
     #[tokio::test]
     async fn test_program_tag_performance() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(_)) => {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                Err(_) => {
-                    tracing::debug!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
         let start = std::time::Instant::now();
-        let result = client.read_tag("Program:API_Web.TestTagProgram").await;
+        let result = client
+            .read_tag("Program:TestProgram.gTestArray_DINT[0]")
+            .await;
         let duration = start.elapsed();
 
         match result {
@@ -144,11 +129,10 @@ mod program_tag_tests {
                     "Program tag read should be fast"
                 );
             }
+            Err(e) if is_tag_not_found_error(&e) => {
+                tracing::debug!("Skipping test - program tag not available on PLC: {}", e);
+            }
             Err(e) => {
-                if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
                 panic!("Program tag performance test failed: {}", e);
             }
         }

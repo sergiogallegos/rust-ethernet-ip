@@ -1,36 +1,48 @@
+#[allow(dead_code)]
+mod test_helpers;
+
 #[cfg(test)]
 mod cross_language_compatibility_tests {
+    use crate::test_helpers::{connect_to_plc, get_test_plc_address, should_skip_plc_tests};
     use rust_ethernet_ip::{EipClient, PlcValue};
+    use std::fmt::Display;
     use std::time::Duration;
-    use tokio::time::timeout;
 
-    const TEST_PLC_IP: &str = "192.168.0.1:44818";
+    const REPRESENTATIVE_TAGS: &[(&str, &str)] = &[
+        ("gTestArray_DINT[0]", "Controller-scoped DINT"),
+        (
+            "Program:TestProgram.gTestArray_DINT[0]",
+            "Program-scoped DINT",
+        ),
+        ("gTestArray_REAL[0]", "Controller-scoped REAL"),
+        ("gTestArray_BOOL[0]", "Controller-scoped BOOL"),
+        ("gTestUDT.Member1_DINT", "UDT DINT member"),
+        ("gTestUDT.Array_DINT[0]", "UDT nested DINT array"),
+    ];
+
+    async fn connect_test_plc() -> Option<EipClient> {
+        connect_to_plc(&get_test_plc_address(), 10).await
+    }
+
+    fn is_tag_not_found_error(error: &impl Display) -> bool {
+        let message = error.to_string();
+        message.contains("CIP Error 0x04")
+            || message.contains("CIP Error 0x05")
+            || message.contains("Path segment error")
+            || message.contains("Path destination unknown")
+    }
 
     #[tokio::test]
     async fn test_rust_library_core_functionality() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(e)) => {
-                    tracing::warn!("Skipping test - PLC not available: {}", e);
-                    return;
-                }
-                Err(_) => {
-                    tracing::warn!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test core functionality that should work across all language bindings
-        let tests = vec![
-            ("TestTagController", "Controller-scoped tag"),
-            ("Program:API_Web.TestTagProgram", "Program-scoped tag"),
-            ("Program:API_Web.out_FusePartStatus", "Program-scoped tag 2"),
-            ("TestTagUDT", "UDT tag"),
-            ("gTracking", "UDT tag 2"),
-        ];
-
-        for (tag_name, description) in tests {
+        for (tag_name, description) in REPRESENTATIVE_TAGS {
             let result = client.read_tag(tag_name).await;
             match result {
                 Ok(value) => {
@@ -41,14 +53,12 @@ mod cross_language_compatibility_tests {
                         value
                     );
                 }
+                Err(e) if is_tag_not_found_error(&e) => {
+                    tracing::debug!("Skipping test - tag not available on PLC: {}", e);
+                    return;
+                }
                 Err(e) => {
-                    tracing::error!("{} ({}) read failed: {}", tag_name, description, e);
-                    if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                        tracing::debug!("Skipping test - PLC not available");
-                        return;
-                    }
-                    // Don't panic for individual tag failures - some might not exist
-                    tracing::warn!("{} failed (might not exist on PLC): {}", tag_name, e);
+                    panic!("{} ({}) read failed: {}", tag_name, description, e);
                 }
             }
         }
@@ -56,23 +66,15 @@ mod cross_language_compatibility_tests {
 
     #[tokio::test]
     async fn test_ffi_compatibility() {
-        // Test that the library works correctly through FFI
-        // This is more of a smoke test to ensure the FFI functions are properly exposed
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(_)) => {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                Err(_) => {
-                    tracing::debug!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test basic read operation
-        let result = client.read_tag("TestTagController").await;
+        let result = client.read_tag("gTestArray_DINT[0]").await;
         match result {
             Ok(PlcValue::Dint(value)) => {
                 tracing::info!("FFI compatibility test passed: {}", value);
@@ -84,11 +86,10 @@ mod cross_language_compatibility_tests {
                     other
                 );
             }
+            Err(e) if is_tag_not_found_error(&e) => {
+                tracing::debug!("Skipping test - tag not available on PLC: {}", e);
+            }
             Err(e) => {
-                if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
                 panic!("FFI compatibility test failed: {}", e);
             }
         }
@@ -96,27 +97,15 @@ mod cross_language_compatibility_tests {
 
     #[tokio::test]
     async fn test_performance_consistency() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(_)) => {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                Err(_) => {
-                    tracing::debug!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test that performance is consistent across different operations
-        let operations = vec![
-            ("TestTagController", "Controller tag"),
-            ("Program:API_Web.TestTagProgram", "Program tag"),
-            ("TestTagUDT", "UDT tag"),
-        ];
-
-        for (tag_name, description) in operations {
+        for (tag_name, description) in REPRESENTATIVE_TAGS.iter().take(4) {
             let start = std::time::Instant::now();
             let result = client.read_tag(tag_name).await;
             let duration = start.elapsed();
@@ -130,12 +119,12 @@ mod cross_language_compatibility_tests {
                         description
                     );
                 }
+                Err(e) if is_tag_not_found_error(&e) => {
+                    tracing::debug!("Skipping test - tag not available on PLC: {}", e);
+                    return;
+                }
                 Err(e) => {
-                    if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                        tracing::debug!("Skipping test - PLC not available");
-                        return;
-                    }
-                    tracing::warn!("{} failed (might not exist): {}", tag_name, e);
+                    panic!("{} ({}) read failed: {}", tag_name, description, e);
                 }
             }
         }
@@ -143,20 +132,14 @@ mod cross_language_compatibility_tests {
 
     #[tokio::test]
     async fn test_error_handling_consistency() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(_)) => {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                Err(_) => {
-                    tracing::debug!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test error handling for non-existent tags
         let non_existent_tags = vec![
             "NonExistentTag",
             "Program:NonExistentProgram.Tag",
@@ -171,7 +154,6 @@ mod cross_language_compatibility_tests {
                 }
                 Err(e) => {
                     tracing::info!("{} correctly failed: {}", tag_name, e);
-                    // Verify error message is informative
                     assert!(
                         !e.to_string().is_empty(),
                         "Error message should not be empty"
@@ -183,32 +165,25 @@ mod cross_language_compatibility_tests {
 
     #[tokio::test]
     async fn test_memory_safety() {
-        // Test that the library doesn't leak memory or cause crashes
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(_)) => {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                Err(_) => {
-                    tracing::debug!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Perform multiple operations to test memory safety
         for i in 0..10 {
-            let result = client.read_tag("TestTagController").await;
+            let result = client.read_tag("gTestArray_DINT[0]").await;
             match result {
                 Ok(_) => {
                     tracing::info!("Memory safety test iteration {} passed", i);
                 }
+                Err(e) if is_tag_not_found_error(&e) => {
+                    tracing::debug!("Skipping test - tag not available on PLC: {}", e);
+                    return;
+                }
                 Err(e) => {
-                    if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                        tracing::debug!("Skipping test - PLC not available");
-                        return;
-                    }
                     panic!("Memory safety test failed at iteration {}: {}", i, e);
                 }
             }

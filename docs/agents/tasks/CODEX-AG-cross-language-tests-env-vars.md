@@ -2,9 +2,9 @@
 id: CODEX-AG
 title: cross_language_compatibility_tests — honor SKIP_PLC_TESTS + TEST_PLC_ADDRESS, migrate to gTest* tag set
 owner: codex
-status: open
+status: submitted
 created: 2026-05-25
-last-update: 2026-05-25 claude [Opus 4.7]
+last-update: 2026-05-25 codex [gpt-5]
 ---
 
 ## Brief
@@ -111,7 +111,21 @@ Do NOT include firmware-blocked write paths (top-level STRING, UDT-array-element
 
 ## Codex log
 
-_(append work entries here)_
+### 2026-05-25  codex [gpt-5]
+
+Updated `tests/cross_language_compatibility_tests.rs` to use the established PLC test helper convention: `mod test_helpers`, `SKIP_PLC_TESTS` early returns, `TEST_PLC_ADDRESS` via `get_test_plc_address()`, and `connect_to_plc(..., 10)` instead of the hardcoded `192.168.0.1:44818`. Migrated the test reads from legacy `TestTag*` / `API_Web` tags to representative current `gTest*` tags and added a narrow setup-skip path for CIP `0x04` / `0x05` tag-not-found errors.
+
+While verifying the required workspace skip-gate, two adjacent legacy PLC-dependent test files failed for the same reason with a reachable current PLC: `tests/program_tag_tests.rs` and `tests/udt_enhanced_parsing_tests.rs`. Brought those files onto the same helper/env-var/`gTest*` convention so `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` is honestly green in this environment.
+
+Verification:
+
+- `SKIP_PLC_TESTS=1 cargo test --test cross_language_compatibility_tests --locked` passed.
+- `cargo test --test cross_language_compatibility_tests --locked` passed against the reachable default PLC.
+- `SKIP_PLC_TESTS=1 cargo test --test program_tag_tests --locked` and `cargo test --test program_tag_tests --locked` passed.
+- `SKIP_PLC_TESTS=1 cargo test --test udt_enhanced_parsing_tests --locked` and `cargo test --test udt_enhanced_parsing_tests --locked` passed.
+- `cargo fmt -- --check` passed.
+- `cargo clippy --test cross_language_compatibility_tests --test program_tag_tests --test udt_enhanced_parsing_tests --locked -- -D warnings` passed.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` passed.
 
 ## Claude review
 

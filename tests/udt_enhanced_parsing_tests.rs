@@ -1,46 +1,51 @@
+#[allow(dead_code)]
+mod test_helpers;
+
 #[cfg(test)]
 mod udt_enhanced_parsing_tests {
+    use crate::test_helpers::{connect_to_plc, get_test_plc_address, should_skip_plc_tests};
     use rust_ethernet_ip::{EipClient, PlcValue};
+    use std::fmt::Display;
     use std::time::Duration;
-    use tokio::time::timeout;
-    const TEST_PLC_IP: &str = "192.168.0.1:44818";
+
+    async fn connect_test_plc() -> Option<EipClient> {
+        connect_to_plc(&get_test_plc_address(), 10).await
+    }
+
+    fn is_tag_not_found_error(error: &impl Display) -> bool {
+        let message = error.to_string();
+        message.contains("CIP Error 0x04")
+            || message.contains("CIP Error 0x05")
+            || message.contains("Path segment error")
+            || message.contains("Path destination unknown")
+    }
 
     #[tokio::test]
     async fn test_udt_multi_member_parsing() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(e)) => {
-                    tracing::warn!("Skipping test - PLC not available: {}", e);
-                    return;
-                }
-                Err(_) => {
-                    tracing::warn!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test UDT with multiple members (TestTagUDT with DINT, DINT, REAL)
-        let result = client.read_tag("TestTagUDT").await;
+        let result = client.read_tag("gTestUDT").await;
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
                 tracing::info!("UDT read successfully");
                 tracing::debug!("Symbol ID: {}", udt_data.symbol_id);
                 tracing::debug!("Data Size: {} bytes", udt_data.data.len());
-
-                // Verify we have data
                 assert!(!udt_data.data.is_empty(), "UDT should have data");
                 assert!(udt_data.symbol_id >= 0, "UDT should have valid symbol_id");
             }
             Ok(other) => {
                 tracing::info!("UDT read successfully (different type): {:?}", other);
             }
+            Err(e) if is_tag_not_found_error(&e) => {
+                tracing::debug!("Skipping test - UDT tag not available on PLC: {}", e);
+            }
             Err(e) => {
-                tracing::error!("UDT read failed: {}", e);
-                if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
                 panic!("UDT read failed: {}", e);
             }
         }
@@ -48,28 +53,21 @@ mod udt_enhanced_parsing_tests {
 
     #[tokio::test]
     async fn test_udt_chunked_reading() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(e)) => {
-                    tracing::warn!("Skipping test - PLC not available: {}", e);
-                    return;
-                }
-                Err(_) => {
-                    tracing::warn!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test chunked reading for large UDTs
-        let result = client.read_udt_chunked("Part_Data").await;
+        let result = client.read_udt_chunked("gTestUDT").await;
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
                 tracing::info!(
                     "Chunked UDT read successfully ({} bytes)",
                     udt_data.data.len()
                 );
-                // Part_Data might be empty due to parsing limitations, but should not fail
             }
             Ok(other) => {
                 tracing::info!(
@@ -77,13 +75,10 @@ mod udt_enhanced_parsing_tests {
                     other
                 );
             }
+            Err(e) if is_tag_not_found_error(&e) => {
+                tracing::debug!("Skipping test - UDT tag not available on PLC: {}", e);
+            }
             Err(e) => {
-                tracing::error!("Chunked UDT read failed: {}", e);
-                if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                // Chunked reading might fail for various reasons, don't panic
                 tracing::warn!("Chunked reading failed (expected for some UDTs): {}", e);
             }
         }
@@ -91,64 +86,47 @@ mod udt_enhanced_parsing_tests {
 
     #[tokio::test]
     async fn test_udt_g_tracking() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(e)) => {
-                    tracing::warn!("Skipping test - PLC not available: {}", e);
-                    return;
-                }
-                Err(_) => {
-                    tracing::warn!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test gTracking UDT
-        let result = client.read_tag("gTracking").await;
+        let result = client.read_tag("gTestUDT.Member1_DINT").await;
         match result {
-            Ok(PlcValue::Udt(udt_data)) => {
-                tracing::info!(
-                    "gTracking UDT read successfully ({} bytes)",
-                    udt_data.data.len()
-                );
-                // gTracking might have different structure
-            }
             Ok(PlcValue::Dint(value)) => {
-                tracing::info!("gTracking read as DINT: {}", value);
-                assert!(value >= 0, "gTracking should be non-negative");
+                tracing::info!("gTestUDT.Member1_DINT read as DINT: {}", value);
+                assert!(value >= 0, "gTestUDT.Member1_DINT should be non-negative");
             }
             Ok(other) => {
-                tracing::info!("gTracking read successfully (different type): {:?}", other);
+                tracing::info!(
+                    "gTestUDT.Member1_DINT read successfully (different type): {:?}",
+                    other
+                );
+            }
+            Err(e) if is_tag_not_found_error(&e) => {
+                tracing::debug!("Skipping test - UDT member not available on PLC: {}", e);
             }
             Err(e) => {
-                tracing::error!("gTracking read failed: {}", e);
-                if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                panic!("gTracking read failed: {}", e);
+                panic!("gTestUDT.Member1_DINT read failed: {}", e);
             }
         }
     }
 
     #[tokio::test]
     async fn test_udt_parsing_performance() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(_)) => {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                Err(_) => {
-                    tracing::debug!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
         let start = std::time::Instant::now();
-        let result = client.read_tag("TestTagUDT").await;
+        let result = client.read_tag("gTestUDT").await;
         let duration = start.elapsed();
 
         match result {
@@ -159,11 +137,10 @@ mod udt_enhanced_parsing_tests {
                     "UDT parsing should be fast"
                 );
             }
+            Err(e) if is_tag_not_found_error(&e) => {
+                tracing::debug!("Skipping test - UDT tag not available on PLC: {}", e);
+            }
             Err(e) => {
-                if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
                 panic!("UDT parsing performance test failed: {}", e);
             }
         }
@@ -171,39 +148,29 @@ mod udt_enhanced_parsing_tests {
 
     #[tokio::test]
     async fn test_udt_byte_alignment_detection() {
-        let mut client =
-            match timeout(Duration::from_secs(10), EipClient::connect(TEST_PLC_IP)).await {
-                Ok(Ok(client)) => client,
-                Ok(Err(_)) => {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
-                Err(_) => {
-                    tracing::debug!("Skipping test - Connection timeout");
-                    return;
-                }
-            };
+        if should_skip_plc_tests() {
+            tracing::debug!("Skipping test - SKIP_PLC_TESTS is set");
+            return;
+        }
+        let Some(mut client) = connect_test_plc().await else {
+            return;
+        };
 
-        // Test that UDT parsing handles byte alignment correctly
-        let result = client.read_tag("TestTagUDT").await;
+        let result = client.read_tag("gTestUDT").await;
         match result {
             Ok(PlcValue::Udt(udt_data)) => {
                 tracing::info!("UDT byte alignment detection successful");
                 tracing::debug!("Symbol ID: {}", udt_data.symbol_id);
                 tracing::debug!("Data Size: {} bytes", udt_data.data.len());
-
-                // UdtData now contains raw bytes, not parsed members
-                // To access members, you would need to parse using UDT definition
                 assert!(!udt_data.data.is_empty(), "UDT should have data");
             }
             Ok(_) => {
                 tracing::info!("UDT read successful (non-UDT type)");
             }
+            Err(e) if is_tag_not_found_error(&e) => {
+                tracing::debug!("Skipping test - UDT tag not available on PLC: {}", e);
+            }
             Err(e) => {
-                if e.to_string().contains("Connection") || e.to_string().contains("timeout") {
-                    tracing::debug!("Skipping test - PLC not available");
-                    return;
-                }
                 panic!("UDT byte alignment test failed: {}", e);
             }
         }

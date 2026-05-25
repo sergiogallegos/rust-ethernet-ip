@@ -10,6 +10,15 @@ from .exceptions import NativeLibraryLoadError
 
 RESULT_BUFFER_SIZE = 131072
 READ_BUFFER_SIZE = 65536
+EXPECTED_ABI_VERSION = 1
+CAP_ROUTE_PATH_ORDERED_HOPS = 0x0000_0000_0000_0001
+CAP_BATCH_EXECUTE_V1 = 0x0000_0000_0000_0002
+CAP_DIAGNOSTICS_JSON = 0x0000_0000_0000_0004
+CAP_TAG_GROUP_SUBSCRIPTIONS = 0x0000_0000_0000_0008
+
+ABI_VERSION: int | None = None
+LIBRARY_VERSION: str | None = None
+CAPABILITIES: int | None = None
 
 
 def _native_file_names() -> list[str]:
@@ -150,13 +159,44 @@ def _configure_function_signatures(lib: ctypes.CDLL) -> ctypes.CDLL:
     return lib
 
 
+def _configure_abi_signatures(lib: ctypes.CDLL) -> None:
+    lib.eip_abi_version.argtypes = []
+    lib.eip_abi_version.restype = ctypes.c_uint32
+
+    lib.eip_library_version.argtypes = []
+    lib.eip_library_version.restype = ctypes.c_char_p
+
+    lib.eip_capabilities.argtypes = []
+    lib.eip_capabilities.restype = ctypes.c_uint64
+
+
+def _verify_abi(lib: ctypes.CDLL) -> None:
+    global ABI_VERSION, LIBRARY_VERSION, CAPABILITIES
+
+    _configure_abi_signatures(lib)
+    abi_version = int(lib.eip_abi_version())
+    if abi_version != EXPECTED_ABI_VERSION:
+        raise NativeLibraryLoadError(
+            f"native library ABI version {abi_version}, wrapper expects {EXPECTED_ABI_VERSION}"
+        )
+
+    raw_version = lib.eip_library_version()
+    library_version = raw_version.decode("utf-8") if raw_version else ""
+
+    ABI_VERSION = abi_version
+    LIBRARY_VERSION = library_version
+    CAPABILITIES = int(lib.eip_capabilities())
+
+
 def load_native_library() -> ctypes.CDLL:
     errors: list[str] = []
     for path in _candidate_paths():
         if not path.exists():
             continue
         try:
-            return _configure_function_signatures(ctypes.CDLL(str(path)))
+            lib = ctypes.CDLL(str(path))
+            _verify_abi(lib)
+            return _configure_function_signatures(lib)
         except (AttributeError, OSError) as exc:
             errors.append(f"{path}: {exc}")
 

@@ -2,7 +2,7 @@
 id: CODEX-Y
 title: BOOL workaround not applied to nested BOOL arrays inside UDT array elements
 owner: codex
-status: open
+status: merged
 created: 2026-05-24
 last-update: 2026-05-24 claude [Opus 4.7]
 ---
@@ -122,12 +122,66 @@ The detection step (BOOL vs DINT/REAL/etc.) needs to happen at runtime because t
 
 ## Codex log
 
-_(append work entries here)_
+- 2026-05-24 codex [gpt-5]: Submitted implementation. `read_tag` and `write_tag` now detect final array-element paths whose parent probes as packed BOOL-array DWORD data, including nested parents such as `UDT_ARRAY[3].BOOL_NESTED`, and route them through the shared BOOL DWORD RMW helper from CODEX-X. Simulator path parsing now preserves non-final array indices in canonical nested keys, and `UDT_ARRAY[3].BOOL_NESTED` regression coverage pins Bool-not-Udint reads plus same-DWORD and cross-DWORD writes. Verification so far: `cargo test --test plc_sim_tests`, `cargo clippy -- -D warnings`, `PYTHONPATH=python python3 -m unittest discover -s python/tests`, and `git diff --check` pass. Hardware full-coverage re-run not performed by Codex.
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-24  claude  [Opus 4.7]
+
+**Independent verification:**
+- `cargo fmt --all -- --check` — clean
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — 218/218
+- `cargo test --test plc_sim_tests` — 13/13 (`simulated_plc_nested_bool_array_element_read_write` passes)
+- **Hardware re-run against ControlLogix 1756-L75** via `examples/test_plc_full_coverage.rs` — see results below
+
+**Hardware result:**
+
+| Metric | Before fix | After fix |
+|---|---|---|
+| `ctrl.UDTarr_elem_nested` total reads | 160/350 (190 fails) | **350/350** ✅ |
+| BOOL-specific subset (`Array_BOOL[j]` × 10 elements × 20 indices) | 0/200 | **200/200** ✅ |
+| `gTestUDT_Array[i].Array_BOOL[0]` returns `Bool` not `Udint` | broken (`Udint(0)`) | **`Bool(...)`** ✅ |
+| CIP 0x05 "Path destination unknown" on non-zero indices | 190 occurrences | **0 occurrences** ✅ |
+
+Both symptoms from the 2026-05-24 evidence (`Udint(0)` regression at index 0, `CIP 0x05` at every other index) are gone.
+
+**Strong points (✅):**
+- Detection dispatch at `src/client.rs:894-902` (read) and `:3114-3121` (write) is symmetric. Both use the same `parse_final_array_element_access` + `detect_bool_array_path` pattern. The two-line guard is a clean diff against the existing dispatch flow.
+- `parse_final_array_element_access` (`src/client.rs:986-993`) uses `TagPath::parse(...)` properly — pattern-matches on `TagPath::Array { base_path, indices } if indices.len() == 1`. Correctly bails on multi-dim arrays (`indices.len() > 1`) which is the right call: those have a separate CIP encoding path and aren't BOOL-array-shaped today.
+- `detect_bool_array_path` (`src/client.rs:995-1004`) does a single test-read with `count=1`, checks the response's data type for `values::BOOL_ARRAY_DWORD` (0x00D3), and returns `false` on any CIP error or short response — defensive against false-positive routing into the workaround when the parent path isn't actually a BOOL array.
+- `base_path.as_string()` is the right TagPath method to extract the parent — verified by reading `src/tag_path.rs:93`. Round-trips through CIP path encoding cleanly because the underlying `to_cip_path()` is unaffected.
+- Same `read_bool_array_element_workaround` / `write_bool_array_element_workaround` is reused for both top-level (CODEX-X) and nested (CODEX-Y) paths. Single fix site, single test surface — DRY without becoming over-engineered.
+- The new `simulated_plc_nested_bool_array_element_read_write` test (`tests/plc_sim_tests.rs:140`) covers (a) indices [0, 1, 31, 32, 33, 63] for cross-DWORD reads, (b) the specific Bool-not-Udint regression at index 0 (`matches!(..., PlcValue::Bool(_))`), and (c) same-DWORD + cross-DWORD distinct writes confirming no aliasing.
+- Simulator was extended (per the brief's "may need to expand" warning) — `tests/plc_sim.rs` gained a `UDT_ARRAY[3].BOOL_NESTED[i]` tag with the right DWORD packing, and the request handler now preserves non-final array indices in canonical nested keys. Minimal, scoped change as the brief asked.
+
+**Findings (🟡 polish, non-blocking):**
+- 🟡 `detect_bool_array_path` silently returns `Ok(false)` on CIP errors (`src/client.rs:1000-1002`). That's correct for the false-positive-avoidance use case — if the parent path doesn't resolve, the complex-path branch will hit `build_read_request` which will produce its own diagnostic. But it does mean a transient connection issue during detection silently falls through to a less-precise error message at the next step. Minor.
+- 🟡 The detection probe costs an extra round-trip per BOOL access (one test-read to discover data type, then the real read). Brief's "Out of scope: cost optimization" applies; future polish could cache per-`parent_path` resolution in a `HashMap<String, bool>` on the client.
+
+**Findings (🟠 real concerns) — none.**
+
+**Acceptance criteria tally:**
+- ✅ `gTestUDT_Array[i].Array_BOOL[j]` reads return `PlcValue::Bool` correctly
+- ✅ Writes set the right bit without aliasing
+- ✅ `gTestUDT.Array_BOOL[j]` (single-UDT) still works — confirmed by hardware re-run's `ctrl.UDT_nested 35/35 read+`
+- ✅ `gTestArray_BOOL[i]` (plain array, CODEX-X path) still works — `ctrl.BOOL_array 128/128`
+- ✅ New simulator test passes
+- ✅ `cargo fmt --check`, `cargo clippy -D warnings`, workspace tests, simulator tests all pass
+- ✅ `CHANGELOG.md` `[Unreleased]` `### Fixed` entry present
+- ✅ Hardware re-run captured (Claude ran it)
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-24  claude  [Opus 4.7]  status: merged
+
+**Merged.** Combined with CODEX-X, this clears every BOOL-array hardware finding from the 2026-05-24 full-coverage run. The Bool-not-Udint regression at index 0 was the most insidious symptom — calling code would see a `PlcValue::Udint(...)` and silently treat the whole DWORD as some unsigned 32-bit value with no indication anything was wrong. That class of silent type-mismatch is exactly what the new pinned `matches!(_, PlcValue::Bool(_))` assertion guards against forever.
+
+Implementation cleanly factors the detect-and-route pattern via `parse_final_array_element_access` + `detect_bool_array_path`. No defects to fix during merge.
+
+Combined hardware impact (CODEX-X + CODEX-Y):
+- Reads: 2109/2299 → **2299/2299** (+190)
+- Verify matches: 1728/1806 → **1806/1806** (+78)
+- Real anomalies: 268 → **0**
+
+(The 400 "blocked_unexpected_pass" count in the post-fix run is a test-side classification issue in `examples/test_plc_full_coverage.rs`, not a library bug — the exerciser labels `UDTarr_elem_nested` as FirmwareBlocked but those writes actually succeed; the test counter labels successful writes as unexpected. Worth a future test cleanup but doesn't affect the merge decision.)

@@ -82,6 +82,127 @@ async fn simulated_plc_read_write_dint_array_element() {
 }
 
 #[tokio::test]
+async fn simulated_plc_bool_array_cross_dword_read_write() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    for (index, expected) in [(0, true), (31, false), (32, false), (33, true), (63, true)] {
+        let value = client
+            .read_tag(&format!("BOOL_ARRAY[{index}]"))
+            .await
+            .expect("read bool array element");
+        assert_eq!(value, PlcValue::Bool(expected), "index {index}");
+    }
+
+    client
+        .write_tag("BOOL_ARRAY[5]", PlcValue::Bool(true))
+        .await
+        .expect("write BOOL_ARRAY[5]");
+    client
+        .write_tag("BOOL_ARRAY[35]", PlcValue::Bool(false))
+        .await
+        .expect("write BOOL_ARRAY[35]");
+    client
+        .write_tag("BOOL_ARRAY[63]", PlcValue::Bool(false))
+        .await
+        .expect("write BOOL_ARRAY[63]");
+
+    assert_eq!(
+        client.read_tag("BOOL_ARRAY[5]").await.expect("read [5]"),
+        PlcValue::Bool(true)
+    );
+    assert_eq!(
+        client.read_tag("BOOL_ARRAY[35]").await.expect("read [35]"),
+        PlcValue::Bool(false)
+    );
+    assert_eq!(
+        client.read_tag("BOOL_ARRAY[63]").await.expect("read [63]"),
+        PlcValue::Bool(false)
+    );
+}
+
+#[tokio::test]
+async fn bool_array_dword_index_uses_element_segment() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+    let client = EipClient::connect(&addr).await.expect("connect");
+
+    let request = client.build_read_array_request("BOOL_ARRAY", 1, 1);
+    assert!(
+        request.windows(2).any(|window| window == [0x28, 0x01]),
+        "expected DWORD[1] 8-bit element segment in request: {request:02X?}"
+    );
+}
+
+#[tokio::test]
+async fn simulated_plc_nested_bool_array_element_read_write() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    for (index, expected) in [
+        (0, true),
+        (1, false),
+        (31, false),
+        (32, false),
+        (33, true),
+        (63, true),
+    ] {
+        let value = client
+            .read_tag(&format!("UDT_ARRAY[3].BOOL_NESTED[{index}]"))
+            .await
+            .expect("read nested bool array element");
+        assert_eq!(value, PlcValue::Bool(expected), "index {index}");
+    }
+
+    assert!(matches!(
+        client
+            .read_tag("UDT_ARRAY[3].BOOL_NESTED[0]")
+            .await
+            .expect("read nested bit 0"),
+        PlcValue::Bool(_)
+    ));
+
+    client
+        .write_tag("UDT_ARRAY[3].BOOL_NESTED[5]", PlcValue::Bool(true))
+        .await
+        .expect("write nested [5]");
+    client
+        .write_tag("UDT_ARRAY[3].BOOL_NESTED[35]", PlcValue::Bool(false))
+        .await
+        .expect("write nested [35]");
+    client
+        .write_tag("UDT_ARRAY[3].BOOL_NESTED[63]", PlcValue::Bool(false))
+        .await
+        .expect("write nested [63]");
+
+    assert_eq!(
+        client
+            .read_tag("UDT_ARRAY[3].BOOL_NESTED[5]")
+            .await
+            .expect("read nested [5]"),
+        PlcValue::Bool(true)
+    );
+    assert_eq!(
+        client
+            .read_tag("UDT_ARRAY[3].BOOL_NESTED[35]")
+            .await
+            .expect("read nested [35]"),
+        PlcValue::Bool(false)
+    );
+    assert_eq!(
+        client
+            .read_tag("UDT_ARRAY[3].BOOL_NESTED[63]")
+            .await
+            .expect("read nested [63]"),
+        PlcValue::Bool(false)
+    );
+}
+
+#[tokio::test]
 async fn simulated_plc_read_array_range_dint() {
     let sim = SimulatedPlc::start().await;
     let addr = format!("{}", sim.address);

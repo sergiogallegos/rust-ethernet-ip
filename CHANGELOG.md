@@ -18,6 +18,8 @@ Target next release: `0.8.0`.
 - **Python wrapper MVP**: Added an in-repo Python wrapper, unit tests, simulator-backed integration support, diagnostics accessors, and data/service examples.
 - **Schema export**: Added Rust-side schema export structs plus `export_schema()` / `export_schema_json()` for stable tag and UDT metadata export.
 - **Diagnostics snapshot surfaces**: Added Rust diagnostics snapshot and error categorization, FFI JSON export, and thin C# / Python wrapper accessors.
+- **FFI ABI handshake**: Added ABI version, library version, and capability bitmap exports plus C# and Python wrapper load-time compatibility checks.
+- **CI SemVer gate**: Added a `cargo-semver-checks` GitHub Actions job against the crates.io `0.7.0` baseline, required on `main` and informational on pull requests.
 - **Collector, MQTT, and Docker examples**: Added Python collector, MQTT publisher, FastAPI service, and Docker-based example stacks for local service packaging.
 
 ### 🐛 Fixed
@@ -28,6 +30,9 @@ Target next release: `0.8.0`.
 - **Python routed ControlLogix support**: Fixed the Python wrapper ControlLogix route-path path so routed connections and routed live validation work on `1756-L81ES` via `1756-EN3TR` slot `0`.
 - **Python live write result handling**: Fixed the Python wrapper so routed live `write_tag()` and the exercised `write_tags()` paths no longer misreport successful ControlLogix writes as failures for the validated `DINT` and `REAL` cases.
 - **Python typed single-tag writes**: Fixed the Python wrapper so `write_tag()` uses typed single-tag FFI exports instead of the batch path for scalar writes, addressing CIP `0x1E` failures on plain `BOOL[]` element writes found during ControlLogix hardware validation.
+- **BOOL array DWORD addressing**: Fixed BOOL array element read/write so indices `>= 32` address the correct packed DWORD instead of aliasing every bit operation to DWORD `[0]`.
+- **Nested BOOL array members**: Applied the BOOL array workaround to nested BOOL array members inside UDT array elements, fixing DWORD-as-`UDINT` reads and CIP `0x05` failures for paths such as `gTestUDT_Array[3].Array_BOOL[5]`.
+- **CIP path validation**: Hardened `CipRequest` encoding so empty, odd-length, or over-510-byte paths fail before encoding instead of silently truncating or overflowing the path word count.
 - **Rust 1.95 Clippy cleanup**: Removed new Clippy warnings in FFI write helpers and packed BOOL-array decoding without changing runtime behavior.
 - **crates.io README logo rendering**: Switched README logo image URLs from relative paths to absolute GitHub raw URLs so the crate page can render the logo outside the GitHub repository context.
 - **Rust 2024 migration without wrapper breakage**: Moved the repo to Rust `2024` / `1.95`, updated FFI exports to Rust 2024 `#[unsafe(no_mangle)]`, refreshed dependency baselines, and verified that Rust tests plus C# wrapper build/tests still pass against the updated native library.

@@ -2,7 +2,7 @@
 id: CODEX-X
 title: BOOL array element RMW addresses the wrong DWORD for indices ≥ 32
 owner: codex
-status: open
+status: merged
 created: 2026-05-24
 last-update: 2026-05-24 claude [Opus 4.7]
 ---
@@ -110,12 +110,54 @@ The semantics of the public API don't change — callers see `read_tag("gTestArr
 
 ## Codex log
 
-_(append work entries here)_
+- 2026-05-24 codex [gpt-5]: Submitted implementation. `read_bool_array_element_workaround` and `write_bool_array_element_workaround` now compute `dword_index = index / 32` and use element-addressed read/write requests for the packed DWORD; bit extraction/modification remains `index % 32`. Expanded simulator `BOOL_ARRAY` to 64 packed BOOLs and added cross-DWORD read/write plus pinned request-byte coverage. Verification so far: `cargo test --test plc_sim_tests`, `cargo clippy -- -D warnings`, `PYTHONPATH=python python3 -m unittest discover -s python/tests`, and `git diff --check` pass. Hardware full-coverage re-run not performed by Codex.
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-24  claude  [Opus 4.7]
+
+**Independent verification:**
+- `cargo fmt --all -- --check` — clean
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — 218/218
+- `cargo test --test plc_sim_tests` — 13/13 (the two new BOOL tests pass)
+- **Hardware re-run against the maintainer's ControlLogix 1756-L75 fw33 (10.136.15.20)** via `examples/test_plc_full_coverage.rs` — see results below
+
+**Hardware result (the moment of truth):**
+
+| Metric | Before fix | After fix |
+|---|---|---|
+| `ctrl.BOOL_array` verify+ | 79/128 (62%) | **128/128 (100%)** ✅ |
+| `prog.BOOL_array` verify+ | 71/100 (71%) | **100/100 (100%)** ✅ |
+| Total verify+ | 1728/1806 | **1806/1806** ✅ |
+
+The 62.5% theoretical match rate predicted from the aliasing model is gone — clean 100% verify across all 228 plain BOOL array elements (both scopes). Reads pre-fix returned correct values *for the bit position they hit*, but writes silently aliased onto DWORD[0]; both directions now address the correct DWORD.
+
+**Strong points (✅):**
+- `let dword_index = index / 32;` followed by `build_read_array_request(base, dword_index, 1)` at `src/client.rs:1128` and `build_write_array_request_with_index(base, dword_index, 1, BOOL_ARRAY_DWORD, &dword_bytes)` at `src/client.rs:1593-1599` is exactly the fix the brief asked for. Surgical change, no scope creep.
+- Codex factored out `parse_bool_array_dword_response` (`src/client.rs:1006-1056`) as a shared helper used by both the simple-path read and the new complex-path read from CODEX-Y. Net 53 lines removed from the read function despite adding new behavior — pleasant cleanup. The duplicated response-format detection (`>= 12 → cip_data[8..]` vs `>= 10 → cip_data[6..]`) lives in one place now.
+- Dead code purge: `build_write_request_with_data` (formerly `src/client.rs:1714-1738`) was the sole caller of the old DWORD-only write path. With the workaround now using `build_write_array_request_with_index`, the helper is gone — that's one less item in the CODEX-H agenda backlog. Same for the manual byte-pushing in `build_write_request_raw` (now uses `CipRequest::new(...).encode(...)?`, picking up the CODEX-N path validation for free).
+- `bool_array_dword_index_uses_element_segment` (`tests/plc_sim_tests.rs:127-137`) is a pinned-byte guard against silent regression: asserts that `build_read_array_request("BOOL_ARRAY", 1, 1)` produces a wire request containing `0x28 0x01` (the 8-bit element segment for DWORD[1]). Any future refactor that drops the element segment will trip this test immediately.
+- `simulated_plc_bool_array_cross_dword_read_write` (line 85) covers indices 0, 31, 32, 33, 63 — the boundaries on both sides of every DWORD edge for the new 64-element `BOOL_ARRAY`, plus distinct writes to indices in different DWORDs to confirm no aliasing. Strong regression coverage.
+
+**Findings (🟡 polish, non-blocking):**
+- 🟡 `parse_bool_array_dword_response` (`src/client.rs:1023-1056`) duplicates the `cip_data[8..]` vs `cip_data[6..]` heuristic comment from the original code. Could move the comment into the function (it's now the only place that decides). Pure docs polish.
+- 🟡 The DWORD-index calculation `index / 32` is implicit in two places (read at line 1128, write at line 1553). Could extract a `bool_array_dword_index(index) -> u32` const helper to make the intent explicit. Sub-blocker — the existing `% 32` bit-index calculation is also inline. Either factor both or leave both. Pre-existing style.
+
+**Findings (🟠 real concerns) — none.**
+
+**Acceptance criteria tally:**
+- ✅ BOOL writes at any index don't corrupt adjacent DWORDs (simulator test pinned)
+- ✅ BOOL reads at any index return the value last written to *that* index (no aliasing)
+- ✅ Index 0..5 backward compat (CODEX-W's earlier simulator coverage still passes)
+- ✅ `cargo fmt --check`, `cargo clippy -D warnings`, workspace tests, simulator tests all pass
+- ✅ `CHANGELOG.md` `[Unreleased]` `### Fixed` entry present
+- ✅ Hardware re-run captured here (since Codex couldn't run it)
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-24  claude  [Opus 4.7]  status: merged
+
+**Merged.** This was a silent data-corruption bug for any BOOL array element with `index >= 32` — the kind of bug that doesn't crash but quietly returns wrong data, and the kind that's hardest to notice until you write a comprehensive test exerciser. Hardware re-run confirms 100% verify on every plain BOOL array tag both controller and program scope. No defects to fix during merge.
+
+Pleasant incidental improvements: dead code purge of `build_write_request_with_data`, shared `parse_bool_array_dword_response` helper, and `build_write_request_raw` cleanup to use `CipRequest::encode` (picking up CODEX-N validation transitively).

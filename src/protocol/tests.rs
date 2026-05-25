@@ -145,6 +145,14 @@ fn round_trip_header(command: u16) {
     assert_eq!(decoded, header);
 }
 
+fn assert_protocol_error_contains(result: crate::error::Result<()>, expected: &str) {
+    let err = result.expect_err("request should fail validation");
+    assert!(
+        err.to_string().contains(expected),
+        "expected {err} to contain {expected}"
+    );
+}
+
 #[test]
 fn encap_register_session_round_trips() {
     round_trip_header(REGISTER_SESSION);
@@ -183,7 +191,7 @@ fn encap_register_session_pinned_bytes() {
 fn cip_read_tag_request_round_trips() {
     let request = CipRequest::new(0x4C, vec![0x91, 0x04, b'T', b'a', b'g', b'1'], vec![1, 0]);
     let mut buf = BytesMut::new();
-    request.encode(&mut buf);
+    request.encode(&mut buf).unwrap();
     assert_eq!(
         &buf[..],
         &[0x4C, 0x03, 0x91, 0x04, b'T', b'a', b'g', b'1', 1, 0]
@@ -200,7 +208,7 @@ fn cip_write_tag_request_round_trips() {
         vec![0xC4, 0x00, 1, 0, 42, 0, 0, 0],
     );
     let mut buf = BytesMut::new();
-    request.encode(&mut buf);
+    request.encode(&mut buf).unwrap();
     let mut bytes = &buf[..];
     assert_eq!(CipRequest::decode(&mut bytes).unwrap(), request);
 }
@@ -213,9 +221,50 @@ fn cip_batch_request_round_trips() {
         vec![2, 0, 6, 0, 14, 0, 0x4C, 2, 0x91, 2, b'A', b'1'],
     );
     let mut buf = BytesMut::new();
-    request.encode(&mut buf);
+    request.encode(&mut buf).unwrap();
     let mut bytes = &buf[..];
     assert_eq!(CipRequest::decode(&mut bytes).unwrap(), request);
+}
+
+#[test]
+fn cip_request_even_paths_up_to_limit_encode_and_round_trip() {
+    for len in [2_usize, 4, 8, 16, 32, 64, 128, 256, 510] {
+        let path = vec![0x20; len];
+        let request = CipRequest::new(0x4C, path, vec![1, 0]);
+        let mut buf = BytesMut::new();
+        request.encode(&mut buf).unwrap();
+
+        assert_eq!(buf[1] as usize, len / 2);
+        let mut bytes = &buf[..];
+        assert_eq!(CipRequest::decode(&mut bytes).unwrap(), request);
+    }
+}
+
+#[test]
+fn cip_request_rejects_odd_path_length() {
+    let request = CipRequest::new(0x4C, vec![0x91, 0x01, b'A'], vec![1, 0]);
+    let mut buf = BytesMut::new();
+
+    assert_protocol_error_contains(request.encode(&mut buf), "not word-aligned");
+    assert!(buf.is_empty());
+}
+
+#[test]
+fn cip_request_rejects_path_over_u8_word_limit() {
+    let request = CipRequest::new(0x4C, vec![0x20; 512], vec![1, 0]);
+    let mut buf = BytesMut::new();
+
+    assert_protocol_error_contains(request.encode(&mut buf), "exceeds 510-byte CIP limit");
+    assert!(buf.is_empty());
+}
+
+#[test]
+fn cip_request_rejects_empty_read_path() {
+    let request = CipRequest::new(0x4C, Vec::new(), vec![1, 0]);
+    let mut buf = BytesMut::new();
+
+    assert_protocol_error_contains(request.encode(&mut buf), "must not be empty");
+    assert!(buf.is_empty());
 }
 
 #[test]

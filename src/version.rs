@@ -3,6 +3,27 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const NAME: &str = env!("CARGO_PKG_NAME");
 pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
+/// C FFI ABI version expected by downstream wrappers.
+pub const ABI_VERSION: u32 = 1;
+
+/// FFI supports ordered route-hop construction.
+pub const CAP_ROUTE_PATH_ORDERED_HOPS: u64 = 0x0000_0000_0000_0001;
+
+/// FFI supports the v1 native batch execution endpoint.
+pub const CAP_BATCH_EXECUTE_V1: u64 = 0x0000_0000_0000_0002;
+
+/// FFI supports diagnostics snapshot export as JSON.
+pub const CAP_DIAGNOSTICS_JSON: u64 = 0x0000_0000_0000_0004;
+
+/// FFI supports tag-group subscription endpoints.
+pub const CAP_TAG_GROUP_SUBSCRIPTIONS: u64 = 0x0000_0000_0000_0008;
+
+/// Capability bitmap for ABI v1.
+pub const CAPABILITIES: u64 = CAP_ROUTE_PATH_ORDERED_HOPS
+    | CAP_BATCH_EXECUTE_V1
+    | CAP_DIAGNOSTICS_JSON
+    | CAP_TAG_GROUP_SUBSCRIPTIONS;
+
 /// Major version number
 pub const MAJOR_VERSION: u32 = 0;
 

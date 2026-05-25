@@ -32,6 +32,7 @@ const CIP_TYPE_ULINT: u16 = 0x00C9;
 const CIP_TYPE_REAL: u16 = 0x00CA;
 const CIP_TYPE_LREAL: u16 = 0x00CB;
 const CIP_TYPE_STRING: u16 = 0x00CE;
+const CIP_TYPE_BOOL_ARRAY_DWORD: u16 = 0x00D3;
 const CIP_TYPE_STRUCTURE: u16 = 0x02A0; // Used by library for STRING writes
 
 #[derive(Clone, Debug)]
@@ -130,14 +131,19 @@ impl SimulatedPlc {
             ),
             (
                 "BOOL_ARRAY".to_string(),
-                TagValue::Array(vec![
-                    TagValue::Bool(true),
-                    TagValue::Bool(false),
-                    TagValue::Bool(true),
-                    TagValue::Bool(false),
-                    TagValue::Bool(true),
-                    TagValue::Bool(false),
-                ]),
+                TagValue::Array(
+                    (0..64)
+                        .map(|index| TagValue::Bool(index % 3 == 0))
+                        .collect(),
+                ),
+            ),
+            (
+                "UDT_ARRAY[3].BOOL_NESTED".to_string(),
+                TagValue::Array(
+                    (0..64)
+                        .map(|index| TagValue::Bool(index % 3 == 0))
+                        .collect(),
+                ),
             ),
             (
                 "DINT_ARRAY".to_string(),
@@ -389,6 +395,28 @@ fn handle_write_cip_request(
 
     let data_type = u16::from_le_bytes([cip_request[path_end], cip_request[path_end + 1]]);
     let data_start = path_end + 4;
+
+    if data_type == CIP_TYPE_BOOL_ARRAY_DWORD {
+        if cip_request.len() < data_start + 4 {
+            return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
+        }
+
+        let dword_value = u32::from_le_bytes([
+            cip_request[data_start],
+            cip_request[data_start + 1],
+            cip_request[data_start + 2],
+            cip_request[data_start + 3],
+        ]);
+        let dword_index = element_index.unwrap_or(0);
+        let mut tags = tags.lock().expect("tag lock");
+        if let Some(TagValue::Array(items)) = tags.get_mut(&tag_name)
+            && write_bool_array_dword(items, dword_index, dword_value)
+        {
+            return build_cip_ok_write_reply();
+        }
+
+        return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
+    }
 
     let value = match data_type {
         CIP_TYPE_BOOL => cip_request.get(data_start).map(|b| TagValue::Bool(*b != 0)),
@@ -686,15 +714,14 @@ fn build_value_response(
             match &subset[0] {
                 TagValue::Bool(_) => {
                     let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
-                    response.extend_from_slice(&CIP_TYPE_BOOL.to_le_bytes());
-                    // Only add element count for multi-element responses (range reads)
-                    if subset.len() > 1 {
-                        response.extend_from_slice(&(subset.len() as u16).to_le_bytes());
+                    response.extend_from_slice(&CIP_TYPE_BOOL_ARRAY_DWORD.to_le_bytes());
+                    let start_dword = element_index.unwrap_or(0);
+                    if count > 1 {
+                        response.extend_from_slice(&(count as u16).to_le_bytes());
                     }
-                    for item in subset {
-                        if let TagValue::Bool(v) = item {
-                            response.push(if v { 0xFF } else { 0x00 });
-                        }
+                    for dword_offset in 0..count {
+                        let dword = bool_array_dword(&items, start_dword + dword_offset);
+                        response.extend_from_slice(&dword.to_le_bytes());
                     }
                     response
                 }
@@ -842,6 +869,31 @@ fn build_array_value_response(items: &[TagValue], data_type: u16) -> Vec<u8> {
     response
 }
 
+fn bool_array_dword(items: &[TagValue], dword_index: usize) -> u32 {
+    let start = dword_index * 32;
+    let mut dword = 0u32;
+    for bit in 0..32 {
+        if let Some(TagValue::Bool(true)) = items.get(start + bit) {
+            dword |= 1u32 << bit;
+        }
+    }
+    dword
+}
+
+fn write_bool_array_dword(items: &mut [TagValue], dword_index: usize, dword: u32) -> bool {
+    let start = dword_index * 32;
+    if start >= items.len() {
+        return false;
+    }
+
+    for bit in 0..32 {
+        if let Some(item @ TagValue::Bool(_)) = items.get_mut(start + bit) {
+            *item = TagValue::Bool((dword >> bit) & 1 != 0);
+        }
+    }
+    true
+}
+
 fn parse_tag_and_path(cip_request: &[u8]) -> Option<(String, Option<usize>)> {
     if cip_request.len() < 2 {
         return None;
@@ -855,12 +907,18 @@ fn parse_tag_and_path(cip_request: &[u8]) -> Option<(String, Option<usize>)> {
 
     let path = &cip_request[2..2 + path_bytes];
     let mut pos = 0;
-    let mut tag_name = None;
-    let mut element_index = None;
+    let mut path_parts: Vec<String> = Vec::new();
+    let mut pending_element_index = None;
 
     while pos < path.len() {
         match path[pos] {
             0x91 => {
+                if let Some(index) = pending_element_index.take()
+                    && let Some(last_part) = path_parts.last_mut()
+                {
+                    last_part.push_str(&format!("[{}]", index));
+                }
+
                 if pos + 1 >= path.len() {
                     break;
                 }
@@ -871,30 +929,29 @@ fn parse_tag_and_path(cip_request: &[u8]) -> Option<(String, Option<usize>)> {
                     break;
                 }
                 let name = String::from_utf8_lossy(&path[start..end]).to_string();
-                if tag_name.is_none() {
-                    tag_name = Some(name);
-                }
+                path_parts.push(name);
                 pos = end + (len % 2);
             }
             0x28 => {
                 if pos + 1 >= path.len() {
                     break;
                 }
-                element_index = Some(path[pos + 1] as usize);
+                pending_element_index = Some(path[pos + 1] as usize);
                 pos += 2;
             }
             0x29 => {
                 if pos + 2 >= path.len() {
                     break;
                 }
-                element_index = Some(u16::from_le_bytes([path[pos + 1], path[pos + 2]]) as usize);
+                pending_element_index =
+                    Some(u16::from_le_bytes([path[pos + 1], path[pos + 2]]) as usize);
                 pos += 3;
             }
             0x2A => {
                 if pos + 4 >= path.len() {
                     break;
                 }
-                element_index = Some(u32::from_le_bytes([
+                pending_element_index = Some(u32::from_le_bytes([
                     path[pos + 1],
                     path[pos + 2],
                     path[pos + 3],
@@ -908,7 +965,11 @@ fn parse_tag_and_path(cip_request: &[u8]) -> Option<(String, Option<usize>)> {
         }
     }
 
-    tag_name.map(|name| (name, element_index))
+    if path_parts.is_empty() {
+        None
+    } else {
+        Some((path_parts.join("."), pending_element_index))
+    }
 }
 
 fn parse_read_element_count(cip_request: &[u8]) -> Option<u16> {

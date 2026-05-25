@@ -24,14 +24,44 @@ impl CipRequest {
             data,
         }
     }
-}
 
-impl Encode for CipRequest {
-    fn encode(&self, buf: &mut BytesMut) {
+    pub(crate) fn validate(&self) -> Result<()> {
+        if self.path.is_empty() {
+            return Err(EtherNetIpError::Protocol(format!(
+                "invalid CIP request path for service 0x{:02X}: path must not be empty",
+                self.service
+            )));
+        }
+
+        if !self.path.len().is_multiple_of(2) {
+            return Err(EtherNetIpError::Protocol(format!(
+                "invalid CIP request path for service 0x{:02X}: path length {} is not word-aligned",
+                self.service,
+                self.path.len()
+            )));
+        }
+
+        let path_words = self.path.len() / 2;
+        if path_words > usize::from(u8::MAX) {
+            return Err(EtherNetIpError::Protocol(format!(
+                "invalid CIP request path for service 0x{:02X}: path length {} bytes exceeds 510-byte CIP limit",
+                self.service,
+                self.path.len()
+            )));
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn encode(&self, buf: &mut BytesMut) -> Result<()> {
+        self.validate()?;
         buf.put_u8(self.service);
-        buf.put_u8((self.path.len() / 2) as u8);
+        let path_words =
+            u8::try_from(self.path.len() / 2).expect("validated path word count fits in u8");
+        buf.put_u8(path_words);
         buf.put_slice(&self.path);
         buf.put_slice(&self.data);
+        Ok(())
     }
 }
 

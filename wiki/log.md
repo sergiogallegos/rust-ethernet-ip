@@ -880,3 +880,31 @@ Sources used:
 - `wiki/investigations/architecture-review-2026-05-18.md`
 - `wiki/index.md`
 - `docs/SOFTWARE_ARCHITECTURE.md`
+
+## [2026-05-24] ingest | record FFI ABI contract
+
+- Added `wiki/protocol/abi-contract.md`.
+- Updated `wiki/index.md`.
+- Captured ABI version `1`, capability bits, pointer-lifetime rules for `eip_library_version()`, and the wrapper load-time handshake policy from CODEX-L.
+
+Sources used:
+
+- `docs/agents/tasks/CODEX-L-ffi-abi-version-handshake.md`
+- `src/version.rs`
+- `src/ffi.rs`
+
+## [2026-05-24] ingest | record CIP path validation and FFI clone audit
+
+- Added `wiki/protocol/cip-path-validation.md`.
+- Added `wiki/wrapper-parity/ffi-registry-clone-audit.md`.
+- Updated `wiki/index.md`.
+- Captured CODEX-N's checked CIP path encoding rules and CODEX-M Phase A's clone-semantics audit recommendation.
+
+Sources used:
+
+- `docs/agents/tasks/CODEX-N-cip-path-encoding-validation.md`
+- `docs/agents/tasks/CODEX-M-ffi-registry-clone-audit.md`
+- `src/protocol/cip.rs`
+- `src/protocol/tests.rs`
+- `src/client.rs`
+- `src/ffi.rs`

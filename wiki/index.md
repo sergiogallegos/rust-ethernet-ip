@@ -29,10 +29,13 @@ Status values:
 ## Protocol
 
 - [protocol/route-path-behavior.md](protocol/route-path-behavior.md) — Current route-path behavior, validation status, and implementation guidance. `active`
+- [protocol/abi-contract.md](protocol/abi-contract.md) — FFI ABI version, capability bitmap, and wrapper load-time compatibility policy. `active`
+- [protocol/cip-path-validation.md](protocol/cip-path-validation.md) — CIP request path-size validation rules and current empty-path policy. `confirmed`
 
 ## Wrapper Parity
 
 - [wrapper-parity/rust-vs-csharp.md](wrapper-parity/rust-vs-csharp.md) — Current parity picture between the Rust core and the C# wrapper. `active`
+- [wrapper-parity/ffi-registry-clone-audit.md](wrapper-parity/ffi-registry-clone-audit.md) — FFI registry clone semantics, copied-field risks, and CODEX-M Phase A recommendation. `needs-review`
 
 ## Investigations
 

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_short, c_void};
 use std::ptr;
-use std::sync::{LazyLock, Mutex, MutexGuard, Once};
+use std::sync::{LazyLock, Mutex, MutexGuard, Once, OnceLock};
 use tracing;
 
 // FFI-specific client manager using synchronous mutex
@@ -22,6 +22,27 @@ static RUNTIME_INIT_LOG: Once = Once::new();
 #[cfg(test)]
 static FORCE_RUNTIME_INIT_ERROR: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn eip_abi_version() -> u32 {
+    crate::version::ABI_VERSION
+}
+
+/// Returns a static, null-terminated semver string.
+///
+/// The returned pointer is valid for the process lifetime. Callers must not free it.
+#[unsafe(no_mangle)]
+pub extern "C" fn eip_library_version() -> *const c_char {
+    static VERSION_C: OnceLock<CString> = OnceLock::new();
+    VERSION_C
+        .get_or_init(|| CString::new(env!("CARGO_PKG_VERSION")).expect("static version"))
+        .as_ptr()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn eip_capabilities() -> u64 {
+    crate::version::CAPABILITIES
+}
 
 fn runtime_init_error_code(error: &std::io::Error) -> c_int {
     RUNTIME_INIT_LOG.call_once(|| {

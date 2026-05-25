@@ -6,14 +6,9 @@
 
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-| CODEX-L | FFI ABI version + capability handshake | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-L-ffi-abi-version-handshake.md`](tasks/CODEX-L-ffi-abi-version-handshake.md) |
-| CODEX-M | FFI registry clone-semantics audit and fix | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-M-ffi-registry-clone-audit.md`](tasks/CODEX-M-ffi-registry-clone-audit.md) |
-| CODEX-N | CIP path encoding hard validation | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-N-cip-path-encoding-validation.md`](tasks/CODEX-N-cip-path-encoding-validation.md) |
-| CODEX-V | Add cargo-semver-checks to CI as the SemVer gate | codex | open | 2026-05-18 claude [Opus 4.7] | [`tasks/CODEX-V-cargo-semver-checks-ci.md`](tasks/CODEX-V-cargo-semver-checks-ci.md) |
-| CODEX-X | BOOL array element RMW addresses the wrong DWORD for indices ≥ 32 | codex | open | 2026-05-24 claude [Opus 4.7] | [`tasks/CODEX-X-bool-array-rmw-dword-offset.md`](tasks/CODEX-X-bool-array-rmw-dword-offset.md) |
-| CODEX-Y | BOOL workaround not applied to nested BOOL arrays inside UDT array elements | codex | open | 2026-05-24 claude [Opus 4.7] | [`tasks/CODEX-Y-nested-bool-udt-array-element.md`](tasks/CODEX-Y-nested-bool-udt-array-element.md) |
+| CODEX-M | FFI registry clone-semantics audit and fix (Phase B in progress) | codex | in-progress | 2026-05-24 claude [Opus 4.7] | [`tasks/CODEX-M-ffi-registry-clone-audit.md`](tasks/CODEX-M-ffi-registry-clone-audit.md) |
 
-> Per maintainer directive (2026-05-18), all post-books briefs (CODEX-L through CODEX-V) are **in scope for v0.8.0** alongside the pre-existing v0.8.0 draft work and the existing CODEX-G through CODEX-K agenda. The full plan and per-book lesson extraction live at [`wiki/investigations/architecture-review-2026-05-18.md`](../../wiki/investigations/architecture-review-2026-05-18.md) and [`wiki/investigations/books-lessons-2026-05-18.md`](../../wiki/investigations/books-lessons-2026-05-18.md). Sequencing: CODEX-L first (ABI baseline); then M, N, O in parallel; then J (mechanical split); then P (actor); then R/Q/S (events, service layer, retry); CODEX-K (release-window) last; CODEX-V (semver-checks CI), CODEX-X (BOOL DWORD-offset fix), and CODEX-Y (nested BOOL UDT workaround) all run parallel-safe from the start. CODEX-X and CODEX-Y are both v0.8.0 gating items surfaced by the 2026-05-24 full-coverage hardware run. (CODEX-W Python wrapper typed-writes merged 2026-05-24.) CODEX-T (fleet) and CODEX-U (sibling crates) are the largest items and the natural v0.9.0 deferrals if scope tightens.
+> Per maintainer directive (2026-05-18), all post-books briefs are **in scope for v0.8.0** alongside the pre-existing v0.8.0 draft work and the existing CODEX-G through CODEX-K agenda. The full plan and per-book lesson extraction live at [`wiki/investigations/architecture-review-2026-05-18.md`](../../wiki/investigations/architecture-review-2026-05-18.md) and [`wiki/investigations/books-lessons-2026-05-18.md`](../../wiki/investigations/books-lessons-2026-05-18.md). 2026-05-24 status: CODEX-L (ABI baseline), CODEX-N (CIP path validation), CODEX-V (semver-checks CI), CODEX-W (Python typed writes), CODEX-X (BOOL DWORD-offset), and CODEX-Y (nested BOOL UDT workaround) all merged. CODEX-M Phase A audit complete; Phase B in progress under Claude-amended direction (Option C with structural Arc/Atomic enforcement, not documentation-only). Remaining open: CODEX-M (Phase B), then J (mechanical split), then P (actor), then R/Q/S (events, service layer, retry), then CODEX-K (release-window) last. CODEX-T (fleet) and CODEX-U (sibling crates) remain v0.9.0 deferrals.
 >
 > Scope note: the v0.8.0 bundle is effectively a 1.0.0-shape release (FFI contract pin + behavioral refactor + new public API + structural split + release-window break sweep). Renaming the version to `1.0.0` is defensible and would signal the stability story to NuGet/PyPI/crates.io consumers; left to maintainer decision.
 >
@@ -39,7 +34,6 @@ These are non-breaking improvements deferred until after v0.8.0 ships. They are 
    - Nine `#[allow(dead_code)]` annotations in `src/client.rs` (lines 1617, 2112, 2163, 3326, 3837, 6486, 6597, 6607, 6628). Per-method audit needed; most are unused FFI helpers or half-finished features.
    - `BOOL_ARRAY_DWORD` dead `else if` branch at `src/protocol/values.rs:158-176` — preserved from pre-CODEX-D inline code, but `len >= 4` always matches before `len >= 8`. Tidy.
    - Leftover `#[allow(dead_code)] fn serialize_value` at `src/client.rs:3326` — pre-existing dead method.
-   - ~~Add a `debug_assert!(self.path.len() % 2 == 0)` to `CipRequest::encode`~~ — superseded by CODEX-N which does hard validation returning `Result`. Drop this item from CODEX-H when briefed.
 
    Note: removing `TagCache` from the public re-export at `src/lib.rs:150` (`pub use tag_manager::{TagCache, ...}`) is technically a SemVer-major change — verify it's actually re-exported and decide whether to defer that one item to the 1.0.0 brief.
 3. **CODEX-I — real codec benchmarks.** Replace the placeholder `benches/performance_benchmark.rs` (three mock functions that don't exercise the codec at all — `black_box(PlcValue::Dint(42))`, `Vec<PlcValue>` push, no-op) with benchmarks that actually call `PlcValue::encode`, `PlcValue::decode`, `EncapsulationHeader::encode`, and a realistic batch-request build via `BytesMut`. Closes the brief-error gap from CODEX-D where the `>5%` regression gate was a sub-nanosecond noise check.
@@ -97,6 +91,11 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | `c58a905` |
 | CODEX-F | RoutePath ordered hops + ASCII ethernet link-address encoding | codex | `9a3d192` |
 | CODEX-W | Python wrapper — route single-tag writes through typed FFI exports | codex | `4bab25a` |
+| CODEX-L | FFI ABI version + capability handshake | codex | _(merge commit pending)_ |
+| CODEX-N | CIP path encoding hard validation | codex | _(merge commit pending)_ |
+| CODEX-V | Add cargo-semver-checks to CI as the SemVer gate | codex | _(merge commit pending)_ |
+| CODEX-X | BOOL array element RMW addresses the wrong DWORD for indices ≥ 32 | codex | _(merge commit pending)_ |
+| CODEX-Y | BOOL workaround not applied to nested BOOL arrays inside UDT array elements | codex | _(merge commit pending)_ |
 
 ## Project context
 

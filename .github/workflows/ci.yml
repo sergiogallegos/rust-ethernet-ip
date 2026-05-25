@@ -140,6 +140,22 @@ jobs:
         tool: cargo-audit
     - run: cargo audit
 
+  semver-checks:
+    name: cargo semver-checks
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: semver
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-semver-checks
+    - name: Check public API against crates.io 0.7.0
+      run: cargo semver-checks check-release --baseline-version 0.7.0
+
   version-check:
     name: Version consistency
     runs-on: ubuntu-latest
@@ -194,7 +210,7 @@ jobs:
 
   build:
     name: Build
-    needs: [test, python, msrv, audit, package, version-check]
+    needs: [test, python, msrv, audit, semver-checks, package, version-check]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

@@ -894,8 +894,16 @@ impl EipClient {
         // For complex paths (with member access, nested arrays, etc.), use TagPath::parse()
         // This handles paths like "gTestUDT_Array[0].Member1_DINT" correctly
         // Standard tag reading uses build_read_request which uses TagPath::parse()
+        if let Some((parent_path, index)) = self.parse_final_array_element_access(tag_name)
+            && self.detect_bool_array_path(&parent_path).await?
+        {
+            return self
+                .read_bool_array_element_workaround(&parent_path, index)
+                .await;
+        }
+
         let response = self
-            .send_cip_request(&self.build_read_request(tag_name))
+            .send_cip_request(&self.build_read_request(tag_name)?)
             .await?;
         let cip_data = self.extract_cip_from_response(&response)?;
         self.parse_cip_response(&cip_data)
@@ -975,6 +983,77 @@ impl EipClient {
         None
     }
 
+    fn parse_final_array_element_access(&self, tag_name: &str) -> Option<(String, u32)> {
+        match TagPath::parse(tag_name).ok()? {
+            TagPath::Array { base_path, indices } if indices.len() == 1 => {
+                Some((base_path.as_string(), indices[0]))
+            }
+            _ => None,
+        }
+    }
+
+    async fn detect_bool_array_path(&mut self, array_path: &str) -> crate::error::Result<bool> {
+        let test_response = self
+            .send_cip_request(&self.build_read_request_with_count(array_path, 1)?)
+            .await?;
+        let test_cip_data = self.extract_cip_from_response(&test_response)?;
+
+        if self.check_cip_error(&test_cip_data).is_err() || test_cip_data.len() < 6 {
+            return Ok(false);
+        }
+
+        let test_data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
+        Ok(test_data_type == values::BOOL_ARRAY_DWORD)
+    }
+
+    fn parse_bool_array_dword_response(&self, cip_data: &[u8]) -> crate::error::Result<u32> {
+        if cip_data.len() < 6 {
+            return Err(EtherNetIpError::Protocol(
+                "BOOL array response too short".to_string(),
+            ));
+        }
+
+        self.check_cip_error(cip_data)?;
+
+        let service_reply = cip_data[0];
+        if service_reply != 0xCC {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unexpected service reply: 0x{service_reply:02X}"
+            )));
+        }
+
+        let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+        if data_type != values::BOOL_ARRAY_DWORD {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Expected BOOL array DWORD data type 0x00D3, got 0x{data_type:04X}"
+            )));
+        }
+
+        let value_data = if cip_data.len() >= 12 {
+            &cip_data[8..]
+        } else if cip_data.len() >= 10 {
+            &cip_data[6..]
+        } else {
+            return Err(EtherNetIpError::Protocol(
+                "BOOL array response too short for data".to_string(),
+            ));
+        };
+
+        if value_data.len() < 4 {
+            return Err(EtherNetIpError::Protocol(format!(
+                "BOOL array data too short: need 4 bytes (DWORD), got {} bytes",
+                value_data.len()
+            )));
+        }
+
+        Ok(u32::from_le_bytes([
+            value_data[0],
+            value_data[1],
+            value_data[2],
+            value_data[3],
+        ]))
+    }
+
     /// Reads a single array element using proper CIP element addressing
     ///
     /// This method uses element addressing (0x28/0x29/0x2A segments) in the Request Path
@@ -1000,7 +1079,7 @@ impl EipClient {
 
         // First, detect if it's a BOOL array by reading with count=1 to check data type
         let test_response = self
-            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1)?)
             .await?;
         let test_cip_data = self.extract_cip_from_response(&test_response)?;
 
@@ -1046,68 +1125,15 @@ impl EipClient {
             index
         );
 
+        let dword_index = index / 32;
+
         // Read just 1 element (the DWORD containing 32 BOOLs)
         // Reference: 1756-PM020, Page 797-811
         let response = self
-            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
+            .send_cip_request(&self.build_read_array_request(base_array_name, dword_index, 1))
             .await?;
         let cip_data = self.extract_cip_from_response(&response)?;
-
-        // Parse the response
-        if cip_data.len() < 6 {
-            return Err(EtherNetIpError::Protocol(
-                "BOOL array response too short".to_string(),
-            ));
-        }
-
-        // Check for errors (including extended errors)
-        self.check_cip_error(&cip_data)?;
-
-        let service_reply = cip_data[0];
-        if service_reply != 0xCC {
-            return Err(EtherNetIpError::Protocol(format!(
-                "Unexpected service reply: 0x{service_reply:02X}"
-            )));
-        }
-
-        let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
-
-        // Check response format - might have element count or just data
-        // Reference: 1756-PM020, Page 828-837 (Response format)
-        let value_data = if cip_data.len() >= 8 && data_type == 0x00D3 {
-            // Check if there's an element count field (bytes 6-7)
-            // For BOOL arrays with count=1, we should get just the DWORD data
-            if cip_data.len() >= 12 {
-                // Has element count field
-                &cip_data[8..]
-            } else if cip_data.len() >= 10 {
-                // No element count, data starts at byte 6
-                &cip_data[6..]
-            } else {
-                return Err(EtherNetIpError::Protocol(
-                    "BOOL array response too short for data".to_string(),
-                ));
-            }
-        } else {
-            // Standard format with element count
-            if cip_data.len() < 8 {
-                return Err(EtherNetIpError::Protocol(
-                    "BOOL array response too short".to_string(),
-                ));
-            }
-            &cip_data[8..]
-        };
-
-        // For BOOL arrays, the data is a DWORD (4 bytes) containing 32 BOOLs
-        if value_data.len() < 4 {
-            return Err(EtherNetIpError::Protocol(format!(
-                "BOOL array data too short: need 4 bytes (DWORD), got {} bytes",
-                value_data.len()
-            )));
-        }
-
-        let dword_value =
-            u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]);
+        let dword_value = self.parse_bool_array_dword_response(&cip_data)?;
 
         // Extract the specific bit
         // Each DWORD contains 32 BOOLs (bits 0-31)
@@ -1447,7 +1473,7 @@ impl EipClient {
 
         // First, detect if it's a BOOL array by reading with count=1
         let test_response = self
-            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
+            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1)?)
             .await?;
         let test_cip_data = self.extract_cip_from_response(&test_response)?;
 
@@ -1524,42 +1550,13 @@ impl EipClient {
             index
         );
 
+        let dword_index = index / 32;
+
         // Read the DWORD
         let response = self
-            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1))
+            .send_cip_request(&self.build_read_array_request(base_array_name, dword_index, 1))
             .await?;
         let cip_data = self.extract_cip_from_response(&response)?;
-
-        // BOOL array response format: [0]=service, [1]=reserved, [2]=status, [3]=additional_status_size,
-        // [4-5]=data_type, [6-9]=data (DWORD, 4 bytes)
-        // Minimum size is 10 bytes (no element count field when count=1)
-        if cip_data.len() < 10 {
-            return Err(EtherNetIpError::Protocol(
-                "BOOL array response too short".to_string(),
-            ));
-        }
-
-        // Check for errors (including extended errors)
-        self.check_cip_error(&cip_data)?;
-
-        let service_reply = cip_data[0];
-        if service_reply != 0xCC {
-            return Err(EtherNetIpError::Protocol(format!(
-                "Unexpected service reply: 0x{service_reply:02X}"
-            )));
-        }
-
-        let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
-
-        // Extract DWORD data (4 bytes)
-        // For BOOL arrays with count=1, data starts at byte 6 (no element count field)
-        let value_data = if cip_data.len() >= 10 {
-            &cip_data[6..10]
-        } else {
-            return Err(EtherNetIpError::Protocol(
-                "BOOL array data too short".to_string(),
-            ));
-        };
 
         // Get the boolean value
         let bool_value = match value {
@@ -1572,8 +1569,8 @@ impl EipClient {
         };
 
         // Modify the DWORD
-        let mut dword_value =
-            u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]);
+        let original_dword_value = self.parse_bool_array_dword_response(&cip_data)?;
+        let mut dword_value = original_dword_value;
 
         let bit_index = (index % 32) as u8;
         if bool_value {
@@ -1585,17 +1582,18 @@ impl EipClient {
         tracing::trace!(
             "Modified BOOL[{}] in DWORD: 0x{:08X} -> 0x{:08X} (bit {} = {})",
             index,
-            u32::from_le_bytes([value_data[0], value_data[1], value_data[2], value_data[3]]),
+            original_dword_value,
             dword_value,
             bit_index,
             bool_value
         );
 
         // Write the DWORD back
-        let write_request = self.build_write_request_with_data(
+        let write_request = self.build_write_array_request_with_index(
             base_array_name,
-            data_type,
+            dword_index,
             1,
+            values::BOOL_ARRAY_DWORD,
             &dword_value.to_le_bytes(),
         )?;
         let write_response = self.send_cip_request(&write_request).await?;
@@ -1706,34 +1704,6 @@ impl EipClient {
         // Reference: 1756-PM020, Page 855-867 (Writing to Array Element - Full Message)
         cip_request.extend_from_slice(&data_type.to_le_bytes());
         cip_request.extend_from_slice(&element_count.to_le_bytes());
-        cip_request.extend_from_slice(data);
-
-        Ok(cip_request)
-    }
-
-    /// Builds a write request with raw data
-    fn build_write_request_with_data(
-        &self,
-        tag_name: &str,
-        data_type: u16,
-        element_count: u16,
-        data: &[u8],
-    ) -> crate::error::Result<Vec<u8>> {
-        let mut cip_request = Vec::new();
-
-        // Service: Write Tag Service (0x4D)
-        cip_request.push(0x4D);
-
-        // Build the path
-        let path = self.build_tag_path(tag_name);
-        cip_request.push((path.len() / 2) as u8);
-        cip_request.extend_from_slice(&path);
-
-        // Data type and element count
-        cip_request.extend_from_slice(&data_type.to_le_bytes());
-        cip_request.extend_from_slice(&element_count.to_le_bytes());
-
-        // Data
         cip_request.extend_from_slice(data);
 
         Ok(cip_request)
@@ -3144,6 +3114,15 @@ impl EipClient {
                 .await;
         }
 
+        if let PlcValue::Bool(_) = value
+            && let Some((parent_path, index)) = self.parse_final_array_element_access(tag_name)
+            && self.detect_bool_array_path(&parent_path).await?
+        {
+            return self
+                .write_bool_array_element_workaround(&parent_path, index, value)
+                .await;
+        }
+
         // Use specialized AB STRING format for STRING writes (required for proper Allen-Bradley STRING handling)
         // All data types including strings now use the standard write path
         // The PlcValue::to_bytes() method handles the correct format for each type
@@ -3287,7 +3266,7 @@ impl EipClient {
 
         let request = CipRequest::new(WRITE_TAG, path, data.to_vec());
         let mut cip_request = BytesMut::new();
-        request.encode(&mut cip_request);
+        request.encode(&mut cip_request)?;
 
         tracing::trace!(
             "Built CIP write request ({} bytes): {:02X?}",
@@ -3303,20 +3282,11 @@ impl EipClient {
         tag_name: &str,
         data: &[u8],
     ) -> crate::error::Result<Vec<u8>> {
-        let mut request = Vec::new();
-
-        // Write Tag Service
-        request.push(0x4D);
-        request.push(0x00);
-
-        // Build tag path
-        let tag_path = self.build_tag_path(tag_name);
-        request.extend(tag_path);
-
-        // Add raw data
-        request.extend(data);
-
-        Ok(request)
+        let path = self.build_tag_path(tag_name);
+        let request = CipRequest::new(WRITE_TAG, path, data.to_vec());
+        let mut cip_request = BytesMut::new();
+        request.encode(&mut cip_request)?;
+        Ok(cip_request.to_vec())
     }
 
     /// Serializes a `PlcValue` into bytes for transmission
@@ -3344,19 +3314,11 @@ impl EipClient {
         let request_data = vec![0x02, 0x00, 0x01, 0x00, 0x02, 0x00];
 
         // Build CIP Message Router request
-        let mut cip_request = Vec::new();
-
-        // Service: Get Instance Attribute List (0x55)
-        cip_request.push(0x55);
-
-        // Request Path Size (in words)
-        cip_request.push((path_array.len() / 2) as u8);
-
-        // Request Path
-        cip_request.extend_from_slice(&path_array);
-
-        // Request Data
-        cip_request.extend_from_slice(&request_data);
+        let request = CipRequest::new(0x55, path_array, request_data);
+        let mut cip_request = BytesMut::new();
+        request
+            .encode(&mut cip_request)
+            .expect("list-tags request path is static and valid");
 
         tracing::trace!(
             "Built CIP list tags request ({} bytes): {:02X?}",
@@ -3364,7 +3326,7 @@ impl EipClient {
             cip_request
         );
 
-        cip_request
+        cip_request.to_vec()
     }
 
     /// Gets a human-readable error message for a CIP status code
@@ -3825,7 +3787,7 @@ impl EipClient {
     /// Reads raw data from a tag
     async fn read_tag_raw(&mut self, tag_name: &str) -> crate::error::Result<Vec<u8>> {
         let response = self
-            .send_cip_request(&self.build_read_request(tag_name))
+            .send_cip_request(&self.build_read_request(tag_name)?)
             .await?;
         self.extract_cip_from_response(&response)
     }
@@ -4185,14 +4147,18 @@ impl EipClient {
     }
 
     /// Builds a CIP Read Tag Service request
-    fn build_read_request(&self, tag_name: &str) -> Vec<u8> {
+    fn build_read_request(&self, tag_name: &str) -> crate::error::Result<Vec<u8>> {
         self.build_read_request_with_count(tag_name, 1)
     }
 
     /// Builds a CIP Read Tag Service request with specified element count
     ///
     /// Reference: 1756-PM020, Page 220-252 (Read Tag Service)
-    fn build_read_request_with_count(&self, tag_name: &str, element_count: u16) -> Vec<u8> {
+    fn build_read_request_with_count(
+        &self,
+        tag_name: &str,
+        element_count: u16,
+    ) -> crate::error::Result<Vec<u8>> {
         tracing::debug!(
             "Building read request for tag: '{}' with count: {}",
             tag_name,
@@ -4219,7 +4185,7 @@ impl EipClient {
         );
         let request = CipRequest::new(READ_TAG, path, element_count.to_le_bytes().to_vec());
         let mut cip_request = BytesMut::new();
-        request.encode(&mut cip_request);
+        request.encode(&mut cip_request)?;
 
         tracing::debug!(
             "Built CIP read request ({} bytes) for tag '{}': {:02X?}",
@@ -4227,7 +4193,7 @@ impl EipClient {
             tag_name,
             cip_request
         );
-        cip_request.to_vec()
+        Ok(cip_request.to_vec())
     }
 
     /// Builds an Element ID segment for array element addressing
@@ -4883,7 +4849,7 @@ impl EipClient {
         for operation in operations {
             // Build individual service request
             let service_request = match operation {
-                BatchOperation::Read { tag_name } => self.build_read_request(tag_name),
+                BatchOperation::Read { tag_name } => self.build_read_request(tag_name)?,
                 BatchOperation::Write { tag_name, value } => {
                     self.build_write_request(tag_name, value)?
                 }

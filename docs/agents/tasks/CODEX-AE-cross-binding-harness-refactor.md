@@ -2,9 +2,9 @@
 id: CODEX-AE
 title: Cross-binding hardware harness — shared tag manifest, JSON output, granular firmware classification, preflight inventory check
 owner: codex
-status: submitted
+status: merged
 created: 2026-05-25
-last-update: 2026-05-25 codex [gpt-5]
+last-update: 2026-05-25 claude [Opus 4.7]
 ---
 
 ## Brief
@@ -200,8 +200,68 @@ Ran the manifest-driven full-coverage hardware validation against ControlLogix `
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-25  claude [Opus 4.7]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — 236 passed, 0 failed
+- `bash tests/full_coverage_manifest_tests.sh` — `full_coverage_manifest_tests: ok`, exit 0
+- `cargo run --release --example test_plc_full_coverage -- --dry-run` — resolves 2299 / 2206 / 74 / 19 from the manifest
+- Inspected `examples/full_coverage_tags.json` — 25 categories, all writeability fields ∈ the 6-variant enum
+- Inspected all 3 hardware JSON artifacts — schema matches the brief's documented output shape; per-category breakdown shows matching counts across bindings; `result=PASS` and `anomalies=0` confirmed for each
+
+**What's being fixed**
+- N/A — this is new infrastructure replacing three independently-maintained tag inventories (one per binding) with a single source of truth, machine-readable output for longitudinal comparison, granular firmware-blocked categories, and a preflight phase that distinguishes PLC project misconfiguration from library regressions.
+
+**Root cause confirmation**
+- N/A — new infrastructure. The motivating problem (cross-binding classification drift) is the same one CODEX-AD addressed at the symptom level; this brief addresses it structurally.
+
+**Fix appropriateness**
+- Manifest schema at `examples/full_coverage_tags.json` is data-driven and reviewable; new categories or sites are added there, not in runner code. Matches the brief's "single source of truth" intent.
+- The 6-variant writeability enum (`writeable`, `read_only`, `firmware_blocked_string`, `firmware_blocked_udt_string_member`, `firmware_blocked_udt_array_element_member`, `service_layer_writeable`) directly replaces the over-broad single `FirmwareBlocked` bucket that caused the AD-fixed drift. `service_layer_writeable` is reserved for future use per the brief.
+- Per-member writeability override (e.g. `ctrl.UDT_members` where Member1-4 are `writeable` but Member5_String is `firmware_blocked_udt_string_member`) is the right factoring — keeps mixed-category groups expressible without forcing them into separate categories.
+- Output schema in the JSON artifacts matches the brief's documented shape: top-level `binding`, `binding_version`, `result`, `anomalies`, `tag_count`, plus `phases.{preflight,phase1_read,...,phase6_verify_settle}` with `ok` + `fail` + `elapsed_ms` per phase, plus a `categories` breakdown.
+- Preflight phase implemented; reported separately from Phase 1 reads per the brief (preflight establishes PLC project ↔ manifest match, Phase 1 measures library read behavior).
+- CI gate at `.github/workflows/ci.yml:full-coverage-manifest` runs the manifest schema test plus all three `--dry-run` invocations. Dry-run mode parses the manifest and prints counts without contacting any PLC — correctly avoids network deps in CI.
+
+**Test proof**
+- Live hardware re-run by Codex against ControlLogix 1756-L75 at `10.136.15.20:44818` slot 0: all three bindings reported the same parity table (preflight 2299/2299, read 2299/2299, write 2206/2206, verify 2206/2206, phase6 14/14, blocked 60, anomalies 0).
+- All three JSON artifacts produced and stored under `examples/full_coverage_results/` (gitignored runtime artifacts; the `.gitkeep` keeps the directory in git).
+- Manifest schema test in CI iterates every category, asserts required keys, validates writeability enum membership, and accumulates totals — would catch any future writeability drift mechanically.
+- Each binding's `--dry-run` runs in CI without network access.
+
+**Residual risk**
+- Hand-written manifest stays in sync with `docs/PLC_TEST_TAG_DEFINITIONS.md` by review; the brief's out-of-scope said auto-generation is a future polish if drift becomes an issue. Acceptable for now; the schema test will catch shape errors but not "manifest doesn't match what the PLC project actually has" — that's what preflight is for.
+- The 6-variant enum is the current best understanding of AB firmware behavior. If a new firmware quirk surfaces, the enum gets a new variant + manifest entries flip — schema-evolvable via `schema_version` bump.
+- `service_layer_writeable` is reserved but not exercised yet. When CODEX-Q's service layer becomes the writeback path for `Member5_String` etc., the manifest flips those entries and the runner picks up the new behavior automatically — no runner code change needed.
+
+**Strong points (✅)**
+- All three runners reach byte-identical per-phase counts on the same hardware — the cross-binding parity the brief was designed to deliver, now provable from the JSON artifacts.
+- `examples/full_coverage_results/.gitkeep` + `.gitignore` rule keeps the directory in git but the runtime artifacts ephemeral. Correct artifact-vs-record split.
+- The CI gate runs all three dry-runs in sequence in one job — simpler than a matrix and adequate for "the manifest parses and resolves correctly per binding."
+- Preflight exit code 2 (vs library failure exit 1) is implemented so operators can distinguish "PLC project doesn't match the manifest" from "library regressed." Matches the brief's contract.
+- The brief's risk note about `snake_case` JSON naming was honored — all three artifacts use snake_case keys (`phase1_read`, `tag_count`, etc.).
+
+**Findings**
+- 🟢 Bundled with CODEX-AD in commit `59a2176`. The two briefs naturally compose since AE's manifest subsumes AD's classification fix; serial landing would have required throwaway intermediate state.
+- 🟡 Rust artifact uses Unix epoch seconds in the filename while C#/Python use ISO compact. Cosmetic; future polish.
+- 🟡 The CI dry-run job runs all three sequentially in one job — fine today but if any of them gets slow, a job matrix would parallelize. Defer until it bites.
+- 🟠 Real concerns — none.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ `examples/full_coverage_tags.json` exists with documented schema, populated to match the 2299-tag inventory.
+- ✅ All three runners consume the manifest as source of truth — no inline tag lists remain.
+- ✅ All three runners emit JSON results matching the documented output schema.
+- ✅ Writeability enum has the 6 documented variants.
+- ✅ Preflight phase exists with `--skip-preflight` escape hatch.
+- ✅ Phase 6 settle-verify carried over from CODEX-AD.
+- ✅ `scripts/validate-agent-files`, `cargo fmt --check`, `cargo clippy -D warnings`, full test matrix all green.
+- ✅ Manifest schema test runs in CI.
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-25  claude [Opus 4.7]  status: merged
+
+**Merged at `59a2176`.** Hardware-validated parity across all three bindings (every per-phase count matches; JSON artifacts confirm). Schema design landed cleanly, granular writeability enum eliminates the entire class of drift that motivated CODEX-AD. Manifest-as-source-of-truth means the next tag-inventory change is one JSON edit, not three runner edits. Zero defects.

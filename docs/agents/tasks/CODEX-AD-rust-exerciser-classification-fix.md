@@ -2,9 +2,9 @@
 id: CODEX-AD
 title: Fix Rust full-coverage classification + close the settle verification loop
 owner: codex
-status: submitted
+status: merged
 created: 2026-05-25
-last-update: 2026-05-25 codex [gpt-5]
+last-update: 2026-05-25 claude [Opus 4.7]
 ---
 
 ## Brief
@@ -111,8 +111,57 @@ Ran the post-refactor full-coverage hardware validation against ControlLogix `10
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-25  claude [Opus 4.7]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — 236 passed, 0 failed
+- `cargo run --release --example test_plc_full_coverage -- --dry-run` — `would-test binding=rust tags=2299 writeable=2206 blocked=74 read_only=19`, matches Codex's parity table
+- `bash tests/full_coverage_manifest_tests.sh` — `full_coverage_manifest_tests: ok`, exit 0
+- `scripts/validate-agent-files` — `ok (27 task files)`
+- Inspected `examples/full_coverage_results/rust_1779738567.json` — `ctrl.UDTarr_elem_nested` reports `write_ok: 350`, `verify_ok: 350`, `blocked_as_expected: 0` — confirms the classification flip works on live hardware
+
+**What's being fixed**
+- Rust runner mis-classified `gTestUDT_Array[i].Array_{DINT,REAL,BOOL}[j]` as firmware-blocked, producing a confusing `400 anomalies` line on healthy hardware while C# and Python reported `0 anomalies` on the same tags. Phase 6 settle-verify is the secondary add — closing the loop on Phase 5's "we wrote nines/true but never read back to prove it" gap.
+
+**Root cause confirmation**
+- Confirmed: original Rust runner placed `gTestUDT_Array[i].Array_{DINT,REAL,BOOL}[j]` under `WriteMode::FirmwareBlocked` (the over-broad bucket that lumped nested arrays with the genuinely-blocked Member1-5 writes). C# and Python's classification at the same tag paths was correct. `docs/agents/notes/ab-firmware-quirks.md` documents that only the simple `Member*` direct writes hit CIP `0x2107`; the nested arrays do not.
+- Hardware proof: the Rust JSON artifact's `ctrl.UDTarr_elem_nested` row shows 350 writes succeeded after the fix.
+
+**Fix appropriateness**
+- Codex landed AD and AE together in commit `59a2176`. That's not what the brief asked for (it explicitly said "AD lands first, AE inherits"), but the bundling is justified: AE's manifest-as-source-of-truth design naturally subsumes AD's classification correction — once writeability is data-driven via the manifest's `firmware_blocked_*` enum, you can't double-implement the AD fix in the runner code. The original Rust `WriteMode::FirmwareBlocked` literal disappears entirely.
+- Phase 6 settle-verify is implemented across all three runners (`phase6=14` in each JSON artifact), matching the brief's "lock the column widths" risk note via a shared sample-tag selection driven by the manifest.
+
+**Test proof**
+- Live PLC re-run by Codex against 10.136.15.20:44818 slot 0: all three bindings reported `2299/2299 reads, 2206/2206 writes, 2206/2206 verify, 14/14 Phase 6, 60 blocked-as-expected, 0 anomalies, RESULT: PASS`. Per-binding JSON artifacts confirm.
+- Local dry-run repro: Rust dry-run resolved 2299 tags from the manifest. Matches expected counts.
+- Manifest schema test (`full_coverage_manifest_tests.sh`) iterates every category and asserts each member's `writeability` ∈ the 6-variant enum. Future drift gets caught at the schema test.
+
+**Residual risk**
+- The Rust JSON artifact uses Unix epoch seconds in the filename (`rust_1779738567.json`); C# and Python use ISO compact (`csharp_20260525T195416Z.json`). Cosmetic only — the JSON content schema is consistent — but a future operator diffing artifacts by name will need to convert. Polish item.
+- The bundled AD+AE commit makes it harder to isolate-revert just the classification flip if needed. Per the brief's risk note ("don't bundle CODEX-AD's classification fix" in AE), the cleaner path would have been two commits. Acceptable trade-off given the structural overlap.
+
+**Strong points (✅)**
+- Hardware re-run by Codex with PLC access — first time Codex did this directly (`docs/agents/log.md` 2026-05-24 entries previously noted Codex didn't have PLC access). All three JSON artifacts produced from the same hardware run, matching to the count.
+- Phase 6 sample selection (14 tags, one per writeable category) lands in <500 ms per the JSON `phase6_verify_settle.elapsed_ms` — well under the brief's 1-second target.
+- All three runners produce the parity summary line Codex's recommendation #1 asked for: identical numbers across bindings.
+
+**Findings**
+- 🟡 Filename format inconsistency: Rust uses epoch seconds, C#/Python use ISO. Cosmetic; document and standardize in a future polish if it bites.
+- 🟢 AD+AE bundled into single commit `59a2176`; the brief asked for serial landing. Bundling is justified by the structural overlap (the manifest subsumes the classification fix) but worth noting.
+- 🟠 Real concerns — none.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ Rust exerciser reports `0 anomalies` on a healthy PLC (confirmed in `rust_1779738567.json`).
+- ✅ All three exercisers carry a Phase 6 settle-verify with sample read-back per writeable category (`phase6=14/14` in all three JSON artifacts).
+- ✅ All three runners produce matching summary lines.
+- ✅ `cargo fmt --check`, `cargo clippy -D warnings`, workspace tests all stay green at 236/0.
+- ✅ No library-side change — `examples/` and `tests/` and `docs/` only.
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-25  claude [Opus 4.7]  status: merged
+
+**Merged at `59a2176`.** Bundled with CODEX-AE per the structural overlap (AE's manifest subsumes AD's classification fix). Hardware re-run by Codex with PLC access confirms parity across all three bindings. Zero defects. The filename-format inconsistency is the only polish note.

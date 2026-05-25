@@ -91,11 +91,11 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-D | Extract Encoder/Decoder boundary for the wire protocol | codex | `c58a905` |
 | CODEX-F | RoutePath ordered hops + ASCII ethernet link-address encoding | codex | `9a3d192` |
 | CODEX-W | Python wrapper — route single-tag writes through typed FFI exports | codex | `4bab25a` |
-| CODEX-L | FFI ABI version + capability handshake | codex | _(merge commit pending)_ |
-| CODEX-N | CIP path encoding hard validation | codex | _(merge commit pending)_ |
-| CODEX-V | Add cargo-semver-checks to CI as the SemVer gate | codex | _(merge commit pending)_ |
-| CODEX-X | BOOL array element RMW addresses the wrong DWORD for indices ≥ 32 | codex | _(merge commit pending)_ |
-| CODEX-Y | BOOL workaround not applied to nested BOOL arrays inside UDT array elements | codex | _(merge commit pending)_ |
+| CODEX-L | FFI ABI version + capability handshake | codex | `5037133` |
+| CODEX-N | CIP path encoding hard validation | codex | `5037133` |
+| CODEX-V | Add cargo-semver-checks to CI as the SemVer gate | codex | `5037133` |
+| CODEX-X | BOOL array element RMW addresses the wrong DWORD for indices ≥ 32 | codex | `5037133` |
+| CODEX-Y | BOOL workaround not applied to nested BOOL arrays inside UDT array elements | codex | `5037133` |
 
 ## Project context
 

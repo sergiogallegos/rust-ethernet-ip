@@ -8,7 +8,7 @@
 |---|---|---|---|---|---|
 _(no open briefs — full v0.8.0+CODEX-K release-window scope merged for 1.0.0)_
 
-> 2026-05-24 release-prep status: all v0.8.0 / release-window briefs merged. Maintainer authorized the 1.0.0 cut: Cargo.toml at `1.0.0`, CHANGELOG `[Unreleased]` promoted to `[1.0.0] - 2026-05-24`. CODEX-T (fleet) accepted into 1.0.0 scope; CODEX-U (sibling crates) accepted as structure-only with `publish = false` on the four sibling Cargo.tomls (crates.io publish deferred — see CODEX-U verdict). The `git tag v1.0.0` + NuGet publish flow remain maintainer-owned per the original gating items.
+> 2026-05-24 release-prep status: all v0.8.0 / release-window briefs merged. Maintainer authorized the 1.0.0 cut: `Cargo.toml`, `VERSION`, `csharp/RustEtherNetIp/RustEtherNetIp.csproj`, `python/pyproject.toml`, `src/version.rs`, `src/lib.rs` head doc, and `CHANGELOG.md` `[1.0.0] - 2026-05-24` all bumped. CODEX-T (fleet) accepted into 1.0.0 scope; CODEX-U (sibling crates) accepted as publishable after the release-readiness review caught that `publish = false` blocked `cargo package -p rust-ethernet-ip`. Sibling crate names (`rust-ethernet-ip-{types,protocol,tag-path,udt}`) need to be claimed on crates.io at tag time. `git push` + `git tag v1.0.0` + the staged crates.io publish + NuGet publish flow remain maintainer-owned per the gating items below.
 >
 > Scope note: the v0.8.0 bundle is effectively a 1.0.0-shape release (FFI contract pin + behavioral refactor + new public API + structural split + release-window break sweep). Renaming the version to `1.0.0` is defensible and would signal the stability story to NuGet/PyPI/crates.io consumers; left to maintainer decision.
 >
@@ -21,7 +21,17 @@ Resume order recommended by Claude. Each candidate brief is unwritten; the entry
 ### Gating items for v1.0.0 release (maintainer-owned)
 
 1. **Multi-hop ethernet hardware validation** — the 2026-05-24 hardware run validated direct-connect (1756-L75 in slot 0 via 1756-EN2T) end-to-end across Rust/C#/Python with zero anomalies. Multi-chassis ethernet routing (`RouteHop::Ethernet` ASCII extended-link-address encoding from CODEX-F at `9a3d192`) still needs a real 2-chassis bench. `wiki/protocol/route-path-behavior.md` keeps ethernet hops at `likely` until that lands.
-2. **crates.io name claims** — the 4 sibling crates (`rust-ethernet-ip-{types,protocol,tag-path,udt}`) are now publishable (CODEX-U revised decision); their names need to be claimed on crates.io at tag time. Release-day publish order: `types` + `tag-path` (no workspace deps), then `protocol` + `udt` (depend on `types`), then main `rust-ethernet-ip`. NuGet wrapper publish is unaffected (builds the cdylib, not the Cargo dep graph).
+2. **Staged crates.io publish** — the 4 sibling crates (`rust-ethernet-ip-{types,protocol,tag-path,udt}`) are now publishable (CODEX-U revised decision). At the local working tree right now, only `types` and `tag-path` `cargo package` cleanly; `protocol`, `udt`, and the main `rust-ethernet-ip` crate all fail with "no matching package found" until their dependencies are actually on crates.io. That's expected — the staged publish order is:
+   1. `git push origin main`
+   2. `cargo publish -p rust-ethernet-ip-types`
+   3. `cargo publish -p rust-ethernet-ip-tag-path`
+   4. Wait for crates.io index propagation
+   5. `cargo package -p rust-ethernet-ip-protocol` + `-p rust-ethernet-ip-udt` to dry-run, then `cargo publish` each
+   6. Wait for crates.io index propagation
+   7. `cargo package -p rust-ethernet-ip` to dry-run, then `cargo publish`
+   8. `git tag v1.0.0` after the chain confirms, or tag before step 2 only if you accept the risk of a follow-up patch release if a later publish fails
+
+   NuGet wrapper publish is unaffected (builds the cdylib, not the Cargo dep graph) and can run in parallel.
 3. **Cut v1.0.0** — once #1 and #2 are resolved. Needs: `git tag v1.0.0`, run the NuGet pack/publish flow, decide on `cargo publish` per #2. `Cargo.toml`, `VERSION`, `csharp/RustEtherNetIp/RustEtherNetIp.csproj`, `python/pyproject.toml`, `src/version.rs`, `src/lib.rs` head doc, and `CHANGELOG.md` are all already at `1.0.0` (release-prep applied in `559aec4` follow-up).
 
 ### Post-1.0.0 polish (no version assigned; brief on resume)

@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -150,10 +151,12 @@ class CatStats:
 
 
 def main() -> int:
+    # Script lives at python/examples/<name>.py; walk up two levels to the repo root.
+    default_manifest = Path(__file__).resolve().parents[2] / "examples" / "full_coverage_tags.json"
     parser = argparse.ArgumentParser()
     parser.add_argument("--plc-address", default=os.environ.get("TEST_PLC_ADDRESS", "192.168.0.1:44818"))
     parser.add_argument("--plc-slot", type=int, default=int(os.environ.get("TEST_PLC_SLOT", "0")))
-    parser.add_argument("--manifest", default="examples/full_coverage_tags.json")
+    parser.add_argument("--manifest", default=str(default_manifest))
     parser.add_argument("--out-dir", default="examples/full_coverage_results")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-preflight", action="store_true")
@@ -161,7 +164,11 @@ def main() -> int:
     address = args.plc_address
     slot = args.plc_slot
     rng = random.Random()
-    tags = build_tags(args.manifest)
+    try:
+        tags = build_tags(args.manifest)
+    except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        print(f"manifest-error: failed to load {args.manifest}: {exc}", file=sys.stderr)
+        return 2
     writeable = sum(1 for t in tags if t.mode.is_writeable())
     blocked = sum(1 for t in tags if t.mode.is_firmware_blocked())
     readonly = sum(1 for t in tags if t.mode == Mode.READ_ONLY)

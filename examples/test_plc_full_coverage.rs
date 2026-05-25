@@ -30,7 +30,9 @@ fn parse_args() -> Args {
     let mut args = Args {
         address: get_plc_address(),
         slot: get_cpu_slot(),
-        manifest_path: PathBuf::from("examples/full_coverage_tags.json"),
+        manifest_path: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("examples")
+            .join("full_coverage_tags.json"),
         out_dir: PathBuf::from("examples/full_coverage_results"),
         dry_run: false,
         skip_preflight: false,
@@ -163,7 +165,26 @@ struct ManifestSpec {
 }
 
 fn build_tags(manifest_path: &Path) -> Result<Vec<Tag>, Box<dyn std::error::Error>> {
-    let manifest: Manifest = serde_json::from_str(&fs::read_to_string(manifest_path)?)?;
+    let manifest_text = fs::read_to_string(manifest_path).map_err(|err| {
+        std::io::Error::new(
+            err.kind(),
+            format!(
+                "manifest-error: failed to read {}: {}",
+                manifest_path.display(),
+                err
+            ),
+        )
+    })?;
+    let manifest: Manifest = serde_json::from_str(&manifest_text).map_err(|err| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "manifest-error: failed to parse {}: {}",
+                manifest_path.display(),
+                err
+            ),
+        )
+    })?;
     let mut tags = Vec::new();
     for category in manifest.categories {
         tags.extend(expand_category(&category)?);

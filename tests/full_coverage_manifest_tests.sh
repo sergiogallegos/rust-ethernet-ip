@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="$ROOT/examples/full_coverage_tags.json"
+EXPECTED_RUST="would-test binding=rust tags=2299 writeable=2206 blocked=74 read_only=19"
+EXPECTED_CSHARP="would-test binding=csharp tags=2299 writeable=2206 blocked=74 read_only=19"
+EXPECTED_PYTHON="would-test binding=python tags=2299 writeable=2206 blocked=74 read_only=19"
 
 python3 - "$MANIFEST" <<'PY'
 import json
@@ -77,3 +80,65 @@ if actual != expected:
     raise SystemExit(f"count mismatch: expected {expected}, got {actual}")
 print("full_coverage_manifest_tests: ok")
 PY
+
+assert_contains() {
+    local output="$1"
+    local expected="$2"
+    local label="$3"
+    if [[ "$output" != *"$expected"* ]]; then
+        printf '%s: expected output to contain %q\n%s\n' "$label" "$expected" "$output" >&2
+        exit 1
+    fi
+}
+
+assert_clean_manifest_error() {
+    local output="$1"
+    local label="$2"
+    assert_contains "$output" "manifest-error:" "$label"
+    if [[ "$output" == *"Unhandled exception"* || "$output" == *"Traceback"* ]]; then
+        printf '%s: manifest error included a stack trace\n%s\n' "$label" "$output" >&2
+        exit 1
+    fi
+}
+
+run_from_tmp() {
+    (cd /tmp && "$@")
+}
+
+rust_default="$(run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example test_plc_full_coverage --locked -- --dry-run 2>&1)"
+assert_contains "$rust_default" "$EXPECTED_RUST" "rust default manifest from /tmp"
+
+csharp_default="$(run_from_tmp dotnet run --project "$ROOT/examples/CSharpFullCoverage/CSharpFullCoverage.csproj" -c Release -- --dry-run 2>&1)"
+assert_contains "$csharp_default" "$EXPECTED_CSHARP" "csharp default manifest from /tmp"
+
+python_default="$(run_from_tmp env PYTHONPATH="$ROOT/python" python3 "$ROOT/python/examples/test_plc_full_coverage.py" --dry-run 2>&1)"
+assert_contains "$python_default" "$EXPECTED_PYTHON" "python default manifest from /tmp"
+
+rust_override="$(run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example test_plc_full_coverage --locked -- --manifest "$MANIFEST" --dry-run 2>&1)"
+assert_contains "$rust_override" "$EXPECTED_RUST" "rust manifest override from /tmp"
+
+csharp_override="$(run_from_tmp dotnet run --project "$ROOT/examples/CSharpFullCoverage/CSharpFullCoverage.csproj" -c Release -- --manifest "$MANIFEST" --dry-run 2>&1)"
+assert_contains "$csharp_override" "$EXPECTED_CSHARP" "csharp manifest override from /tmp"
+
+python_override="$(run_from_tmp env PYTHONPATH="$ROOT/python" python3 "$ROOT/python/examples/test_plc_full_coverage.py" --manifest "$MANIFEST" --dry-run 2>&1)"
+assert_contains "$python_override" "$EXPECTED_PYTHON" "python manifest override from /tmp"
+
+if rust_bad="$(run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example test_plc_full_coverage --locked -- --manifest /tmp/nonexistent_full_coverage_tags.json --dry-run 2>&1)"; then
+    printf 'rust bad manifest unexpectedly succeeded\n%s\n' "$rust_bad" >&2
+    exit 1
+fi
+assert_clean_manifest_error "$rust_bad" "rust bad manifest"
+
+if csharp_bad="$(run_from_tmp dotnet run --project "$ROOT/examples/CSharpFullCoverage/CSharpFullCoverage.csproj" -c Release -- --manifest /tmp/nonexistent_full_coverage_tags.json --dry-run 2>&1)"; then
+    printf 'csharp bad manifest unexpectedly succeeded\n%s\n' "$csharp_bad" >&2
+    exit 1
+fi
+assert_clean_manifest_error "$csharp_bad" "csharp bad manifest"
+
+if python_bad="$(run_from_tmp env PYTHONPATH="$ROOT/python" python3 "$ROOT/python/examples/test_plc_full_coverage.py" --manifest /tmp/nonexistent_full_coverage_tags.json --dry-run 2>&1)"; then
+    printf 'python bad manifest unexpectedly succeeded\n%s\n' "$python_bad" >&2
+    exit 1
+fi
+assert_clean_manifest_error "$python_bad" "python bad manifest"
+
+echo "full_coverage_manifest_cwd_tests: ok"

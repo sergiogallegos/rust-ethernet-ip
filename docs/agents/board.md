@@ -6,7 +6,7 @@
 
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-| CODEX-AF | Full-coverage exerciser — cwd-independent manifest resolution across all three bindings | codex | open | 2026-05-25 claude [Opus 4.7] | [`tasks/CODEX-AF-cwd-independent-manifest-resolution.md`](tasks/CODEX-AF-cwd-independent-manifest-resolution.md) |
+| CODEX-AF | Full-coverage exerciser — cwd-independent manifest resolution across all three bindings | codex | submitted | 2026-05-25 codex [gpt-5] | [`tasks/CODEX-AF-cwd-independent-manifest-resolution.md`](tasks/CODEX-AF-cwd-independent-manifest-resolution.md) |
 
 > 2026-05-24 release status: **v1.0.0 shipped**. `main` is at `f02eef5`; annotated tag `v1.0.0` pushed to origin. Five crates published to crates.io (`rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, `rust-ethernet-ip`), all at `1.0.0`. NuGet `RustEtherNetIp 1.0.0` ships via the GitHub release workflow triggered by the tag (assuming `NUGET_API_KEY` is configured). Single residual: multi-hop ethernet hardware validation remains a documented confidence upgrade — see post-1.0.0 polish list.
 >

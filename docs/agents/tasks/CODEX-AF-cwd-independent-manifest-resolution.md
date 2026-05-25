@@ -2,9 +2,9 @@
 id: CODEX-AF
 title: Full-coverage exerciser — cwd-independent manifest resolution across all three bindings
 owner: codex
-status: open
+status: submitted
 created: 2026-05-25
-last-update: 2026-05-25 claude [Opus 4.7]
+last-update: 2026-05-25 codex [gpt-5]
 ---
 
 ## Brief
@@ -101,7 +101,19 @@ python3 /Users/sergiogallegos/projects/rust-ethernet-ip/python/examples/test_plc
 
 ## Codex log
 
-_(append work entries here)_
+### 2026-05-25  codex [gpt-5]
+
+Implemented cwd-independent manifest resolution across all three full-coverage runners. Rust now resolves the default manifest from `CARGO_MANIFEST_DIR`; C# copies `full_coverage_tags.json` beside the built runner and resolves from `AppContext.BaseDirectory`; Python resolves from the script path back to the repo root. The existing `--manifest <path>` override remains available in all three runners.
+
+Added clear `manifest-error:` handling for missing or malformed manifests so bad paths fail cleanly instead of producing C#/Python stack traces. Extended `tests/full_coverage_manifest_tests.sh` to run default, explicit-override, and negative bad-manifest dry-runs from `/tmp` for Rust, C#, and Python. Updated the 2026-05-25 two-controller validation note to mark the usability finding closed.
+
+Verification:
+
+- `tests/full_coverage_manifest_tests.sh` passed, including all `/tmp` cwd-independence cases.
+- `cargo fmt -- --check` passed.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed.
+- `dotnet build examples/CSharpFullCoverage/CSharpFullCoverage.csproj -c Release` passed.
+- `python3 -m py_compile python/examples/test_plc_full_coverage.py` passed.
 
 ## Claude review
 

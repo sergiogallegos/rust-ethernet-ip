@@ -231,7 +231,7 @@ internal static class Program
     {
         var address = Environment.GetEnvironmentVariable("TEST_PLC_ADDRESS") ?? "192.168.0.1:44818";
         var slot = byte.TryParse(Environment.GetEnvironmentVariable("TEST_PLC_SLOT"), out var s) ? s : (byte)0;
-        var manifestPath = "examples/full_coverage_tags.json";
+        var manifestPath = Path.Combine(AppContext.BaseDirectory, "full_coverage_tags.json");
         var outDir = "examples/full_coverage_results";
         var dryRun = false;
         var skipPreflight = false;
@@ -248,7 +248,16 @@ internal static class Program
                 case "--skip-preflight": skipPreflight = true; break;
             }
         }
-        var tags = BuildTags(manifestPath);
+        List<Tag> tags;
+        try
+        {
+            tags = BuildTags(manifestPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException or KeyNotFoundException)
+        {
+            Console.Error.WriteLine($"manifest-error: failed to load {manifestPath}: {ex.Message}");
+            return 2;
+        }
         var rng = new Random();
         var stats = new SortedDictionary<string, CatStats>();
         var writtenValues = new List<(Tag, object)>(1900);

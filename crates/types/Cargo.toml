@@ -4,6 +4,12 @@ version = "1.0.0"
 edition = "2024"
 license = "MIT"
 description = "Shared PLC value types for rust-ethernet-ip"
+readme = "README.md"
+repository = "https://github.com/sergiogallegos/rust-ethernet-ip"
+homepage = "https://github.com/sergiogallegos/rust-ethernet-ip"
+documentation = "https://docs.rs/rust-ethernet-ip-types"
+keywords = ["ethernet-ip", "plc", "allen-bradley", "industrial", "automation"]
+categories = ["data-structures", "network-programming"]
 rust-version = "1.95"
 
 [lib]

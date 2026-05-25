@@ -96,15 +96,15 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-V | Add cargo-semver-checks to CI as the SemVer gate | codex | `5037133` |
 | CODEX-X | BOOL array element RMW addresses the wrong DWORD for indices ≥ 32 | codex | `5037133` |
 | CODEX-Y | BOOL workaround not applied to nested BOOL arrays inside UDT array elements | codex | `5037133` |
-| CODEX-M | FFI registry clone-semantics audit + Phase B (Arc/Atomic enforcement) | codex | _(merge commit pending)_ |
-| CODEX-J | Mechanical client.rs submodule split | codex | _(merge commit pending)_ |
-| CODEX-P | Request-correlator actor + cloneable Client handle | codex | _(merge commit pending)_ |
-| CODEX-Q | Service layer for restricted writes | codex | _(merge commit pending)_ |
-| CODEX-R | Client connection event stream | codex | _(merge commit pending)_ |
-| CODEX-S | RetryPolicy primitive | codex | _(merge commit pending)_ |
-| CODEX-K | Release-window SemVer bundle | codex | _(merge commit pending)_ |
-| CODEX-T | Fleet multi-PLC actor pool | codex | _(merge commit pending)_ |
-| CODEX-U | Promote protocol, tag_path, and udt to sibling crates (publish deferred) | codex | _(merge commit pending)_ |
+| CODEX-M | FFI registry clone-semantics audit + Phase B (Arc/Atomic enforcement) | codex | `71c0d7e` |
+| CODEX-J | Mechanical client.rs submodule split | codex | `71c0d7e` |
+| CODEX-P | Request-correlator actor + cloneable Client handle | codex | `71c0d7e` |
+| CODEX-Q | Service layer for restricted writes | codex | `71c0d7e` |
+| CODEX-R | Client connection event stream | codex | `71c0d7e` |
+| CODEX-S | RetryPolicy primitive | codex | `71c0d7e` |
+| CODEX-K | Release-window SemVer bundle | codex | `71c0d7e` |
+| CODEX-T | Fleet multi-PLC actor pool | codex | `71c0d7e` |
+| CODEX-U | Promote protocol, tag_path, and udt to sibling crates (publish deferred) | codex | `71c0d7e` |
 
 ## Project context
 

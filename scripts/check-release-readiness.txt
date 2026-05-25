@@ -1,0 +1,26 @@
+# kind|file|label|regex|expected-template
+regex|Cargo.toml|[package].version|(?m)^version = "([^"]+)"|{version}
+regex|Cargo.toml|path-dep crates/tag-path|rust-ethernet-ip-tag-path = \{[^}]*version = "([^"]+)"|{version}
+regex|Cargo.toml|path-dep crates/types|rust-ethernet-ip-types = \{[^}]*version = "([^"]+)"|{version}
+regex|Cargo.toml|path-dep crates/protocol|rust-ethernet-ip-protocol = \{[^}]*version = "([^"]+)"|{version}
+regex|Cargo.toml|path-dep crates/udt|rust-ethernet-ip-udt = \{[^}]*version = "([^"]+)"|{version}
+regex|crates/types/Cargo.toml|[package].version|(?m)^version = "([^"]+)"|{version}
+regex|crates/tag-path/Cargo.toml|[package].version|(?m)^version = "([^"]+)"|{version}
+regex|crates/protocol/Cargo.toml|[package].version|(?m)^version = "([^"]+)"|{version}
+regex|crates/protocol/Cargo.toml|dep on -types|rust-ethernet-ip-types = \{[^}]*version = "([^"]+)"|{version}
+regex|crates/udt/Cargo.toml|[package].version|(?m)^version = "([^"]+)"|{version}
+regex|crates/udt/Cargo.toml|dep on -types|rust-ethernet-ip-types = \{[^}]*version = "([^"]+)"|{version}
+content|VERSION|file content||{version}
+regex|csharp/RustEtherNetIp/RustEtherNetIp.csproj|<Version>|<Version>([^<]+)</Version>|{version}
+regex|csharp/RustEtherNetIp/RustEtherNetIp.csproj|<AssemblyVersion>|<AssemblyVersion>([^<]+)</AssemblyVersion>|{version}.0
+regex|csharp/RustEtherNetIp/RustEtherNetIp.csproj|<FileVersion>|<FileVersion>([^<]+)</FileVersion>|{version}.0
+regex|python/pyproject.toml|[project].version|(?m)^version = "([^"]+)"|{version}
+regex|src/version.rs|MAJOR_VERSION|(?m)^pub const MAJOR_VERSION: u32 = (\d+);|{major}
+regex|src/version.rs|MINOR_VERSION|(?m)^pub const MINOR_VERSION: u32 = (\d+);|{minor}
+regex|src/version.rs|PATCH_VERSION|(?m)^pub const PATCH_VERSION: u32 = (\d+);|{patch}
+regex|src/lib.rs|head-doc release-line current|The current released crate line is `([^`]+)`\.|{version}
+regex|src/lib.rs|head-doc release-line validation|Real-hardware validation for the `([^`]+)` release line|{version}
+regex|CHANGELOG.md|latest [X.Y.Z] heading|(?m)^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - |{version}
+regex|examples/AspNetExample/AspNetExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}
+regex|examples/WpfExample/WpfExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}
+regex|examples/WinFormsExample/WinFormsExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}

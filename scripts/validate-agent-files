@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""Validate docs/agents task files, board rows, and log lines."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+STATUSES = {"open", "in-progress", "submitted", "under-review", "merged", "rejected"}
+ACTIVE_STATUSES = {"open", "in-progress", "submitted", "under-review"}
+REQUIRED_KEYS = ["id", "title", "owner", "status", "created", "last-update"]
+SECTION_ORDER = ["## Brief", "## Codex log", "## Claude review", "## Verdict"]
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+LAST_UPDATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+\S+(?:\s+\[[^\]]+\])?$")
+LAST_UPDATE_RE_WITH_MODEL = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\S+\s+\[[^\]]+\]$")
+LOG_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(\S+)\s+(?:\[[^\]]+\]\s+)?(CODEX-[A-Z]+|--)\s+.+$")
+LOG_RE_WITH_MODEL = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})\s+(\S+)\s+\[[^\]]+\]\s+(CODEX-[A-Z]+|--)\s+.+$"
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", default=".", help="repository root")
+    parser.add_argument("--tasks-dir", default="docs/agents/tasks", help="task directory")
+    parser.add_argument("--board", default="docs/agents/board.md", help="board path")
+    parser.add_argument("--log", default="docs/agents/log.md", help="log path")
+    return parser.parse_args()
+
+
+def fail(errors: list[str], path: Path, message: str, line: int | None = None) -> None:
+    if line is None:
+        errors.append(f"{path}: {message}")
+    else:
+        errors.append(f"{path}:{line}: {message}")
+
+
+def warn(warnings: list[str], path: Path, message: str) -> None:
+    warnings.append(f"{path}: warning: {message}")
+
+
+def parse_frontmatter(path: Path, errors: list[str]) -> dict[str, str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        fail(errors, path, "missing opening frontmatter delimiter", 1)
+        return {}
+    try:
+        end = lines[1:].index("---") + 1
+    except ValueError:
+        fail(errors, path, "missing closing frontmatter delimiter", 1)
+        return {}
+
+    data: dict[str, str] = {}
+    for lineno, line in enumerate(lines[1:end], start=2):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if ":" not in line:
+            fail(errors, path, "frontmatter line is not key: value", lineno)
+            continue
+        key, value = line.split(":", 1)
+        data[key.strip()] = value.strip().strip('"').strip("'")
+    return data
+
+
+def validate_task(path: Path, errors: list[str]) -> dict[str, str]:
+    data = parse_frontmatter(path, errors)
+    text = path.read_text(encoding="utf-8")
+
+    for key in REQUIRED_KEYS:
+        if not data.get(key):
+            fail(errors, path, f"missing required frontmatter key: {key}")
+
+    task_id = data.get("id", "")
+    if task_id:
+        expected_prefix = f"{task_id}-"
+        if not path.name.startswith(expected_prefix):
+            fail(errors, path, f'id "{task_id}" does not match filename {path.name}')
+
+    status = data.get("status", "")
+    if status and status not in STATUSES:
+        fail(
+            errors,
+            path,
+            f'status "{status}" is not one of: {", ".join(sorted(STATUSES))}',
+            line_for_key(path, "status"),
+        )
+
+    created = data.get("created", "")
+    if created and not DATE_RE.match(created):
+        fail(errors, path, f'created "{created}" must use YYYY-MM-DD', line_for_key(path, "created"))
+
+    last_update = data.get("last-update", "")
+    last_update_match = LAST_UPDATE_RE.match(last_update) if last_update else None
+    if last_update and not last_update_match:
+        fail(
+            errors,
+            path,
+            f'last-update "{last_update}" must match YYYY-MM-DD <author> [<model>]',
+            line_for_key(path, "last-update"),
+        )
+    elif last_update_match and last_update_match.group(1) >= "2026-05-17":
+        if not LAST_UPDATE_RE_WITH_MODEL.match(last_update):
+            fail(
+                errors,
+                path,
+                f'last-update "{last_update}" dated 2026-05-17 or later must include [model]',
+                line_for_key(path, "last-update"),
+            )
+
+    positions = []
+    for section in SECTION_ORDER:
+        match = re.search(rf"^{re.escape(section)}\s*$", text, flags=re.MULTILINE)
+        if not match:
+            fail(errors, path, f"missing required section: {section}")
+            positions.append(-1)
+        else:
+            positions.append(match.start())
+    if all(pos >= 0 for pos in positions) and positions != sorted(positions):
+        fail(errors, path, "required sections are out of order")
+
+    return data
+
+
+def line_for_key(path: Path, key: str) -> int | None:
+    for idx, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if line.startswith(f"{key}:"):
+            return idx
+    return None
+
+
+def parse_board_table(board: Path, heading: str) -> dict[str, list[str]]:
+    lines = board.read_text(encoding="utf-8").splitlines()
+    in_section = False
+    rows: dict[str, list[str]] = {}
+    for line in lines:
+        if line.strip() == heading:
+            in_section = True
+            continue
+        if in_section and line.startswith("## ") and line.strip() != heading:
+            break
+        if not in_section or not line.startswith("|"):
+            continue
+        cols = [col.strip() for col in line.strip().strip("|").split("|")]
+        if not cols or cols[0] in {"Id", "---"}:
+            continue
+        if re.match(r"^CODEX-[A-Z]+$", cols[0]):
+            rows[cols[0]] = cols
+    return rows
+
+
+def strip_code(value: str) -> str:
+    value = value.strip()
+    if value.startswith("`") and value.endswith("`"):
+        return value[1:-1]
+    return value
+
+
+def validate_board(
+    board: Path,
+    tasks: dict[str, tuple[Path, dict[str, str]]],
+    errors: list[str],
+    warnings: list[str],
+) -> None:
+    if not board.exists():
+        fail(errors, board, "board file does not exist")
+        return
+    open_rows = parse_board_table(board, "## Open")
+    done_rows = parse_board_table(board, "## Done")
+
+    for task_id, (path, data) in tasks.items():
+        status = data.get("status", "")
+        if status in ACTIVE_STATUSES and task_id not in open_rows:
+            fail(errors, board, f'{task_id} has status "{status}" in task file but does not appear in Open table')
+        if status == "merged":
+            if task_id not in done_rows:
+                fail(errors, board, f'{task_id} has status "merged" in task file but does not appear in Done table')
+            elif len(done_rows[task_id]) >= 4:
+                merge_ref = strip_code(done_rows[task_id][3])
+                if merge_ref == "_(merge commit pending)_":
+                    warn(warnings, board, f"{task_id} merge commit is pending")
+                elif not re.match(r"^[0-9a-fA-F]{7,40}$", merge_ref):
+                    fail(errors, board, f'{task_id} Done merge commit "{merge_ref}" is not a 7+ hex ref')
+
+    for task_id in open_rows:
+        if task_id not in tasks:
+            fail(errors, board, f"{task_id} appears in Open table but no task file exists")
+            continue
+        status = tasks[task_id][1].get("status", "")
+        if status in {"merged", "rejected"}:
+            fail(errors, board, f'{task_id} appears in Open table but task status is "{status}"')
+
+    for task_id in done_rows:
+        if task_id not in tasks:
+            fail(errors, board, f"{task_id} appears in Done table but no task file exists")
+            continue
+        status = tasks[task_id][1].get("status", "")
+        if status != "merged":
+            fail(errors, board, f'{task_id} appears in Done table but task status is "{status}"')
+
+
+def validate_log(log_path: Path, errors: list[str]) -> None:
+    if not log_path.exists():
+        fail(errors, log_path, "log file does not exist")
+        return
+    for lineno, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        if not re.match(r"^\d{4}-\d{2}-\d{2}\s+", line):
+            continue
+        match = LOG_RE.match(line)
+        if not match:
+            fail(errors, log_path, "line does not parse (expected YYYY-MM-DD author [model] task event)", lineno)
+            continue
+        date = match.group(1)
+        author = match.group(2)
+        if date >= "2026-05-17" and author != "--" and not LOG_RE_WITH_MODEL.match(line):
+            fail(errors, log_path, "line dated 2026-05-17 or later must include [model] tag", lineno)
+
+
+def main() -> int:
+    args = parse_args()
+    root = Path(args.root)
+    tasks_dir = root / args.tasks_dir
+    board = root / args.board
+    log_path = root / args.log
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    tasks: dict[str, tuple[Path, dict[str, str]]] = {}
+    for path in sorted(tasks_dir.glob("CODEX-*.md")):
+        data = validate_task(path, errors)
+        task_id = data.get("id") or path.stem.split("-", 2)[:2]
+        if isinstance(task_id, list):
+            task_id = "-".join(task_id)
+        tasks[str(task_id)] = (path, data)
+
+    validate_board(board, tasks, errors, warnings)
+    validate_log(log_path, errors)
+
+    for message in warnings:
+        print(message, file=sys.stderr)
+    for message in errors:
+        print(message, file=sys.stderr)
+    if errors:
+        return 1
+    print(f"validate-agent-files: ok ({len(tasks)} task files)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

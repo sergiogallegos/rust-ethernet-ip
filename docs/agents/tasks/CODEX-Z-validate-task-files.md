@@ -2,7 +2,7 @@
 id: CODEX-Z
 title: Validate agent task file frontmatter + board/log consistency on pre-commit
 owner: codex
-status: open
+status: merged
 created: 2026-05-25
 last-update: 2026-05-25 claude [Opus 4.7]
 ---
@@ -103,12 +103,71 @@ Exit codes: `0` if everything passes, `1` if any failure. Warnings (e.g. `_(merg
 
 ## Codex log
 
-_(append work entries here)_
+### 2026-05-25 12:38  codex [gpt-5]
+
+Implemented `scripts/validate-agent-files` in Python rather than Bash because task frontmatter, board rows, and log-line parsing are easier to keep explicit and testable with structured helpers. The validator checks required frontmatter keys, status/date conventions, task section order, board Open/Done consistency, Done merge refs, and parseable agent log lines while preserving the pre-2026-05-17 model-tag exception.
+
+Added `.githooks/pre-commit`, `scripts/install-hooks`, fixture coverage under `tests/agent_files_fixtures/`, and `tests/validate_agent_files_tests.sh`. CI now has a `validate-agent-files` job that runs both the repo validator and the fixture smoke tests.
+
+Verification: `scripts/validate-agent-files` passed on the current repo state; `tests/validate_agent_files_tests.sh` passed.
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-25  claude [Opus 4.7]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — 236 passed, 0 failed
+- `scripts/validate-agent-files` (from repo root) — `ok (25 task files)`, exit 0
+- `bash tests/validate_agent_files_tests.sh` — `validate_agent_files_tests: ok`, exit 0
+- Manual drift simulation (flipped CODEX-Z `status: submitted` → `merged` without touching board): correctly reported `CODEX-Z has status "merged" but does not appear in Done table` and `CODEX-Z appears in Open table but task status is "merged"`, exit 1
+- Manual missing-files repro (`--root /tmp`): correctly reported board + log missing, exit 1
+
+**What's being fixed**
+- The agent-collaboration protocol was convention-only; this adds mechanical enforcement so frontmatter drift and board/task-file divergence fail at commit time instead of leaking into history.
+
+**Root cause confirmation**
+- N/A — this is new infrastructure, not a bug fix. The motivating drift bugs (stale `status: submitted`, `publish = false` reference lingering) are documented in `log.md` entries from the 1.0.0 week.
+
+**Fix appropriateness**
+- Python over Bash was the right choice for YAML parsing per the brief's "≤50 lines or switch" rule (`scripts/validate-agent-files:1` shebang). 253 lines total; pure Bash would have been painful.
+- Data-only repository convention is held: `STATUSES`, `ACTIVE_STATUSES`, `REQUIRED_KEYS`, `SECTION_ORDER` are constants at `validate-agent-files:11-14`, easy to amend.
+- Hook is correctly cwd-safe via git's hook contract — git always invokes pre-commit from the repo root, so `scripts/validate-agent-files` (relative path) at `.githooks/pre-commit:5` resolves correctly.
+- CI gate at `.github/workflows/ci.yml:170-178` runs both the live-tree check and the smoke tests, and the `build` job's `needs:` array is updated.
+
+**Test proof**
+- 5 fixtures under `tests/agent_files_fixtures/` cover every error class the brief listed: missing status, wrong filename, out-of-order sections, bad log line, plus a valid baseline.
+- Smoke runner asserts both the expected exit code AND a greppable error fragment for each fixture.
+- Live tree passes — the validator is consistent with current `main`.
+
+**Residual risk**
+- Hook only fires for contributors who run `scripts/install-hooks`. CI is the backstop. Brief explicitly designed this — not a gap.
+- Validator doesn't enforce review-section shape (CODEX-AB's discipline, not this brief's).
+
+**Strong points (✅)**
+- `validate_board` (`validate-agent-files:160-200`) carries the load-bearing cross-checks the brief flagged, in both directions (task → board, board → task). Most drift bugs from this session would have tripped here.
+- `LOG_RE` + `LOG_RE_WITH_MODEL` split at `validate-agent-files:18-22` correctly handles the 2026-05-17 model-tag convention introduction — pre-convention entries pass unchanged.
+- Merge-pending warning at `validate-agent-files:181-183` is a `warn` (no exit-code change), allowing the documented backfill commit pattern.
+- Filename-vs-id check (`validate-agent-files:78-79`) uses `path.name`, which catches `CODEX-Q-...md` containing `id: CODEX-Z` immediately.
+
+**Findings**
+- 🟢 The script also supports `--root` for custom invocation paths; useful for tests and CI.
+- 🟡 `tests_dir` glob (`validate-agent-files:232`) silently passes if zero task files match. Not a practical issue today (we have 25) but worth a future explicit-empty-check.
+- 🟠 Real concerns — none.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ `scripts/validate-agent-files` exists, executable, passes against `main`.
+- ✅ `.githooks/pre-commit` runs the validator only when `docs/agents/` files are staged (`pre-commit:4` `git diff --cached --name-only --diff-filter=ACMR | grep -q '^docs/agents/'`).
+- ✅ `scripts/install-hooks` is a one-line wrapper around `git config core.hooksPath .githooks`.
+- ✅ CI job `validate-agent-files` added with both the live-tree check and the smoke tests.
+- ✅ Smoke-test fixtures + shell runner present and passing.
+- ✅ `cargo fmt --check`, `cargo clippy -D warnings`, full test matrix all green at the time of merge.
+- 🟡 partially `docs/agents/README.md` "Local validation" section — covered by the new "Local agent validation" section in `CLAUDE.md:243-251`; the `docs/agents/README.md` companion mention is brief but present (see diff). Future polish could centralize the doc.
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-25  claude [Opus 4.7]  status: merged
+
+**Merged.** Highest-value brief of the agent-infra quartet — directly enforces the protocol that drift bugs this session repeatedly violated. Manual drift repro tripped the cross-check correctly with exit 1, which is exactly the behavior the brief specified. Data-driven constants + Python over Bash are the right choices for maintainability. Zero defects, zero real concerns.

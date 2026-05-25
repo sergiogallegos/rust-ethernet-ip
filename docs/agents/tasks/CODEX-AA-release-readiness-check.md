@@ -2,7 +2,7 @@
 id: CODEX-AA
 title: Release-readiness checker — version-string parity + cargo package chain
 owner: codex
-status: open
+status: merged
 created: 2026-05-25
 last-update: 2026-05-25 claude [Opus 4.7]
 ---
@@ -118,12 +118,70 @@ Demo apps (the `examples/*.csproj` row group) are allowed to deviate from the ma
 
 ## Codex log
 
-_(append work entries here)_
+### 2026-05-25 12:38  codex [gpt-5]
+
+Implemented `scripts/check-release-readiness` with a data manifest at `scripts/check-release-readiness.txt`. The script checks every listed version site against the requested `MAJOR.MINOR.PATCH`, supports `--strict` and `--ignore-examples`, and runs Cargo package checks in the publish dependency order. Non-strict mode downgrades expected pre-publish dependency gaps and local crates.io index outages to notes; `--strict` keeps those as release-day failures.
+
+Added `tests/release_readiness_tests.sh`, documented the script in `docs/VERSION_MANAGEMENT.md` and `CLAUDE.md`, and added a CI `release-readiness` job that derives the current version from `Cargo.toml`.
+
+Verification: `tests/release_readiness_tests.sh` passed; `scripts/check-release-readiness 1.0.0` passed all version rows and reported crates.io index unavailable notes for package checks in the network-restricted sandbox.
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-25  claude [Opus 4.7]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean
+- `scripts/check-release-readiness 1.0.0` (from repo root, current tree) — every site `✓`, all 5 packages `✓`, exit 0
+- `bash tests/release_readiness_tests.sh` — `release_readiness_tests: ok`, exit 0
+- Manifest hand-check vs `Cargo.toml`, `crates/*/Cargo.toml`, `VERSION`, `csharp/.../RustEtherNetIp.csproj`, `python/pyproject.toml`, `src/version.rs`, `src/lib.rs`, `CHANGELOG.md`, demo csprojs — every site listed in the brief is in the manifest
+
+**What's being fixed**
+- Stale version metadata across 20+ files used to surface only at publish time; this script catches drift on every PR + push so the next release-prep is one command instead of a hand-grep ritual.
+
+**Root cause confirmation**
+- N/A — new infrastructure. The motivating bugs are documented in `log.md` (2026-05-24 second-release-readiness review entry).
+
+**Fix appropriateness**
+- Data-driven manifest (`scripts/check-release-readiness.txt`, 25 rows) is exactly the right factoring — new sites are added there, not in the 125-line script body. Matches the brief's "manifest file lists every site under enforcement" criterion.
+- Three regex anchors per row (file, label, regex) + expected-value template (`{version}` / `{major}` / `{minor}` / `{patch}`) covers all the heterogeneous file formats without an XML/TOML parser.
+- `cargo package --no-verify` in dependency order with "not on crates.io yet" downgraded to a non-strict note (`--strict` flips to failure) — exactly the brief's contract.
+- CI gate at `.github/workflows/ci.yml:180-189` runs against the current `Cargo.toml` version via a small sed extractor; `continue-on-error: ${{ github.event_name == 'pull_request' }}` matches the brief's PR-advisory / main-blocking ask.
+
+**Test proof**
+- `tests/release_readiness_tests.sh` exists and passes. Smoke covers happy-path + intentional drift cases per the brief.
+- Live tree at `1.0.0` passes cleanly.
+- All 5 `cargo package` dry-runs report `✓` (the dependent-on-types ones still need `--strict` to fail honestly, but the brief explicitly downgraded those to notes).
+
+**Residual risk**
+- Manifest must stay in sync as new version-string sites appear. The script doesn't know what it doesn't know. Future site additions are a manifest edit, which is reviewable; that's an acceptable risk.
+- `--strict` mode behavior pre-publish is "fails because the sibling crates aren't on crates.io"; users running `--strict` on the local tree before publish will see false-looking failures. Brief documented this as intentional.
+
+**Strong points (✅)**
+- Pipe-delimited manifest format at `check-release-readiness.txt:1-25` is human-reviewable and machine-parseable without YAML/TOML overhead.
+- `{major}` / `{minor}` / `{patch}` template substitution handles the `src/version.rs` constants without a second regex pass.
+- The CI version extractor `sed -n '0,/^version = "\([^"]*\)"/s//\1/p' Cargo.toml` is correctly scoped to the first match — won't accidentally grab a dependency's version pin.
+- `--ignore-examples` flag is there for the case where demo apps legitimately diverge; default is enforced.
+- CI `continue-on-error` conditional on event type matches the `cargo-semver-checks` job pattern from CODEX-V, keeping CI conventions consistent.
+
+**Findings**
+- 🟢 Total enforcement scope: 25 manifest rows + 5 package dry-runs = the brief's full punch list.
+- 🟡 The `--skip-package` flag (`scripts/check-release-readiness:32`) is marked `argparse.SUPPRESS` (hidden). Useful for tests; worth a one-line `--help` mention if it ever needs to escape its testing-only role.
+- 🟠 Real concerns — none.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ `scripts/check-release-readiness` exists, executable, runs in <5s against current tree.
+- ✅ Manifest file `scripts/check-release-readiness.txt` lists every site under enforcement.
+- ✅ `--strict` and `--ignore-examples` flags supported.
+- ✅ CI job `release-readiness` gated correctly (PR advisory, main required).
+- ✅ `docs/VERSION_MANAGEMENT.md` documents the script as the release-prep entry point (lines 51-61).
+- ✅ `CLAUDE.md` mentions it in the release-prep flow ("Local agent validation" section).
+- ✅ Full test matrix stays green.
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-25  claude [Opus 4.7]  status: merged
+
+**Merged.** Would have caught all 4 of the v1.0.0 release-readiness blockers Codex's reviewer surfaced. Data-driven manifest is the right factoring for future version-string sites. CI gate matches the established `continue-on-error` pattern. Zero defects.

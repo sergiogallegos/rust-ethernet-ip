@@ -50,6 +50,16 @@ The following files contain version information and must be updated when releasi
 
 ## Automated Version Management
 
+### Release Readiness Check
+
+Before a release-prep commit or tag, run the mechanical readiness check:
+
+```bash
+scripts/check-release-readiness X.Y.Z
+```
+
+The script reads `scripts/check-release-readiness.txt`, verifies every known version-string site against `X.Y.Z`, and runs Cargo package dry-runs in the workspace publish order. Use `--strict` for release-day validation after sibling crates have propagated on crates.io. Use `--ignore-examples` only when demo application versions intentionally diverge from the library version.
+
 ### Using the Update Script
 
 Use the PowerShell script to automatically update versions across all files:
@@ -97,6 +107,7 @@ If you prefer to update manually:
 
 ### 1. Pre-Release Checklist
 
+- [ ] `scripts/check-release-readiness X.Y.Z` passes
 - [ ] All tests pass
 - [ ] Documentation is updated
 - [ ] Performance benchmarks are current

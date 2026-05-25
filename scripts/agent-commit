@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+usage: scripts/agent-commit [--allow-deletion] [--unsafe] [--force-paths] [--amend-anyway] "<message>" <file> [file...]
+
+Commits only the listed files. The script unstages the whole index first, so
+anything already staged but not listed will be removed from the index.
+EOF
+}
+
+allow_deletion=0
+unsafe=0
+force_paths=0
+amend=0
+
+while (($#)); do
+  case "$1" in
+    --allow-deletion)
+      allow_deletion=1
+      shift
+      ;;
+    --unsafe)
+      unsafe=1
+      shift
+      ;;
+    --force-paths)
+      force_paths=1
+      shift
+      ;;
+    --amend)
+      echo "agent-commit: --amend is blocked; use --amend-anyway only with explicit maintainer direction" >&2
+      exit 2
+      ;;
+    --amend-anyway)
+      amend=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "agent-commit: unknown flag $1" >&2
+      usage
+      exit 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if (($# < 1)); then
+  usage
+  exit 2
+fi
+
+message=$1
+shift
+
+if [[ -z "${message//[[:space:]]/}" ]]; then
+  echo "agent-commit: commit message must not be empty" >&2
+  exit 2
+fi
+
+if (($# < 1)); then
+  echo "agent-commit: at least one file path is required" >&2
+  exit 2
+fi
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "agent-commit: must run inside a git repository" >&2
+  exit 1
+}
+cd "$repo_root"
+
+paths=("$@")
+
+for path in "${paths[@]}"; do
+  case "$path" in
+    .|-A|--all|\*)
+      echo "agent-commit: use specific file paths; agent-commit forbids wildcards" >&2
+      exit 2
+      ;;
+  esac
+
+  if [[ "$path" == *"*"* || "$path" == *"?"* || "$path" == *"["* || "$path" == *"]"* ]]; then
+    echo "agent-commit: use specific file paths; agent-commit forbids wildcards" >&2
+    exit 2
+  fi
+
+  if ((force_paths == 0)) && [[ "$path" != */* && "$path" != *\\* && "$path" =~ [[:space:]\;\&\|\`\"\'] ]]; then
+    echo "agent-commit: file argument looks like a message; pass --force-paths to override" >&2
+    exit 2
+  fi
+
+  basename=${path##*/}
+  if ((unsafe == 0)); then
+    case "$basename" in
+      .env|.env.*|*.pem|*.key|credentials.json|id_rsa*|*.p12)
+        echo "agent-commit: refusing possible secret file $path; pass --unsafe to override" >&2
+        exit 1
+        ;;
+    esac
+  fi
+
+  if [[ -e "$path" ]]; then
+    continue
+  fi
+
+  if git ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+    if ((allow_deletion == 1)); then
+      continue
+    fi
+    echo "agent-commit: $path is a deleted tracked file; pass --allow-deletion" >&2
+    exit 1
+  fi
+
+  echo "agent-commit: file does not exist or is not tracked: $path" >&2
+  exit 1
+done
+
+subject=${message%%$'\n'*}
+if ((${#subject} > 70)); then
+  echo "agent-commit: warning: subject is ${#subject} chars (>70)" >&2
+fi
+
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+  git restore --staged :/
+fi
+git add -- "${paths[@]}"
+
+staged_status=$(git status --porcelain=v1 -- "${paths[@]}")
+if [[ ! "$staged_status" =~ ^[AMDRC] ]]; then
+  echo "agent-commit: no staged changes after pre-stage hygiene" >&2
+  exit 1
+fi
+
+commit_args=(-m "$message")
+if ((amend == 1)); then
+  commit_args=(--amend "${commit_args[@]}")
+fi
+
+git commit "${commit_args[@]}"
+
+hash=$(git rev-parse --short HEAD)
+count=$(git diff-tree --root --no-commit-id --name-only -r HEAD | wc -l | tr -d ' ')
+printf 'agent-commit: committed %s file(s) as %s %s\n' "$count" "$hash" "$subject"

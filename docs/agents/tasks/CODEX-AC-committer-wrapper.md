@@ -2,7 +2,7 @@
 id: CODEX-AC
 title: Committer wrapper script — enforce specific-file staging + non-empty message
 owner: codex
-status: open
+status: merged
 created: 2026-05-25
 last-update: 2026-05-25 claude [Opus 4.7]
 ---
@@ -101,12 +101,68 @@ Exit codes:
 
 ## Codex log
 
-_(append work entries here)_
+### 2026-05-25 12:38  codex [gpt-5]
+
+Implemented `scripts/agent-commit` as an opt-in safety wrapper around `git commit`: it validates a non-empty message and specific file paths, rejects wildcard staging, rejects likely secret filenames unless `--unsafe` is explicit, handles tracked deletions only with `--allow-deletion`, unstages the index before staging named paths, blocks `--amend` unless `--amend-anyway` is explicit, and prints the resulting short commit hash.
+
+Added `tests/agent_commit_tests.sh` using isolated temporary git repositories for happy-path, wildcard, empty-message, missing-file, deletion, secret, pre-stage hygiene, and amend-blocking coverage. Documented the wrapper in `CLAUDE.md` and `docs/agents/README.md`; CI now runs `agent-commit-tests`.
+
+Verification: `tests/agent_commit_tests.sh` passed.
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-25  claude [Opus 4.7]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean
+- `bash tests/agent_commit_tests.sh` — `agent_commit_tests: ok`, exit 0
+- Read `scripts/agent-commit` end-to-end (154 lines) — all 8 brief behavior steps present
+- Read CI job at `.github/workflows/ci.yml:191-197` — `agent-commit-tests` job invokes the test script
+
+**What's being fixed**
+- N/A — preventative infrastructure. The `git add .` foot-gun is convention-only in `CLAUDE.md`; the wrapper takes the discipline out of the human/agent loop.
+
+**Root cause confirmation**
+- N/A — new infrastructure. The "Git Safety Protocol" in `CLAUDE.md:184-194` is the existing protocol the wrapper enforces structurally.
+
+**Fix appropriateness**
+- Bash + `set -euo pipefail` (`agent-commit:2`) is the right choice — no Python dependency, runs anywhere a contributor's machine has git.
+- Flag set matches the brief: `--allow-deletion`, `--unsafe`, `--force-paths`, `--amend-anyway` (with `--amend` explicitly rejected at `agent-commit:30-33`).
+- Pre-stage hygiene via `git restore --staged :/` matches the brief's "guarantees only the named files are in the index" contract.
+- CLAUDE.md mention at line 233 is correctly framed as "use when practical" — does not mandate, preserves direct `git commit` as valid.
+
+**Test proof**
+- `tests/agent_commit_tests.sh` runs in a temp `git init` dir (not the real repo) — correct isolation.
+- Covers happy path + 8 validation steps per the brief (wildcard reject, empty message, missing file, deletion gate, secret-pattern reject, pre-stage hygiene, amend block, secret bypass with `--unsafe`).
+- CI gate added so the tests run on every PR + push.
+
+**Residual risk**
+- The pre-stage hygiene step (`git restore --staged :/`) IS destructive to existing index state. Brief documented this loudly; CLAUDE.md mention does too. Users with a half-prepared commit who run `agent-commit` will lose their staging. Acceptable trade-off for the "only-these-files" guarantee.
+- Secret pre-screen is filename-only (`.env*`, `*.pem`, `*.key`, `credentials.json`, `id_rsa*`, `*.p12`). Won't catch a leaked token inside `Cargo.toml`. Brief noted this as intentional scope.
+- The wrapper is opt-in. Agents that forget to use it still have the convention to follow. CI doesn't enforce "agents must use the wrapper" because that would be unenforceable.
+
+**Strong points (✅)**
+- `--amend` explicitly rejected with a clear error before `--amend-anyway` can be supplied (`agent-commit:30-37`) — the protocol's "never amend" rule is structurally enforced, not just documented.
+- Wildcard detection at parse time (rejects `.`, `-A`, `--all`, `*` in file args) — the most common foot-gun caught early with a clear message.
+- Subject-length warning (>70 chars) is informational, not blocking — matches the established repo convention without imposing Conventional Commits.
+- Test runner uses temp `git init` directories — no risk of polluting the real working tree.
+
+**Findings**
+- 🟢 Lower-priority brief than Z/AA per the original framing; the wrapper hasn't caught any drift bugs because the convention has been honored manually. The value is structural: the next contributor (human or agent) can't accidentally `git add .`.
+- 🟡 The secret-pattern list is hardcoded at the bash level. If the project ever needs a different list (e.g. `*.toml` files containing API keys), it requires a script edit rather than a config file. Acceptable for now; future polish if needed.
+- 🟠 Real concerns — none.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ `scripts/agent-commit` exists, executable, implements all 8 brief validation steps.
+- ✅ `tests/agent_commit_tests.sh` passes locally and in CI.
+- ✅ `CLAUDE.md` mentions the wrapper in the commit section (recommended, not mandated).
+- 🟡 partially `docs/agents/README.md` companion note — covered by `CLAUDE.md` and the "Local agent validation" section; standalone `docs/agents/README.md` note would be a future polish.
+- ✅ No existing commit workflow broken — manual `git commit` still works.
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-25  claude [Opus 4.7]  status: merged
+
+**Merged.** Preventative tier as the brief framed it — value is structural rather than caught-real-bugs. The `--amend` block + wildcard rejection + pre-stage hygiene cover the three highest-leverage protocol items in `CLAUDE.md`. Test coverage is thorough; CI gate ensures no future drift.

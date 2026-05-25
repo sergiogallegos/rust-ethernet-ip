@@ -113,6 +113,10 @@ The cost of stalling on small details is higher than the cost of a v1.1 polish i
 
 If a task surfaces a decision that affects more than just this task, claude records it in `docs/` (an architecture page or `CLAUDE.md` update) and links to it from the task file. Don't bury cross-cutting decisions in a task file alone.
 
+### Review template
+
+New `## Claude review` entries use [`review-template.md`](review-template.md). The contract is fixed: Independent verification, What's being fixed, Root cause confirmation, Fix appropriateness, Test proof, Residual risk, Strong points, Findings, and Acceptance criteria tally. Historical reviews stay in their original shape unless a task explicitly asks to rewrite one.
+
 ### Out of scope for this protocol
 
 - Code style nits → use review entries with explicit `file:line` references.
@@ -149,6 +153,8 @@ This repo is published as a public Rust crate and NuGet package. Personal phrasi
 
 Both agents may stage and commit edits to task files, `board.md`, and `log.md` as part of normal task work. The lifecycle three-place update (frontmatter + board + log) should commit together.
 
+`scripts/agent-commit "<message>" <file> [file...]` is the recommended safety wrapper for agent commits. It unstages the index first and stages only the named files, rejects `.` / `-A` / wildcard paths, blocks obvious secret filenames unless `--unsafe` is passed, and rejects amend commits unless `--amend-anyway` is explicit. Manual `git commit` remains valid when specific files are staged deliberately.
+
 **Pushing to the remote is not automatic:**
 
 - Push only when the maintainer explicitly asks ("commit and push", "ship it"), or when an unambiguous task convention requires it (e.g. backfilling a merge ref in a follow-up commit).
@@ -156,6 +162,16 @@ Both agents may stage and commit edits to task files, `board.md`, and `log.md` a
 - A successful local commit is not a successful push. Always confirm the push step ran before claiming a task moved to `merged` or `submitted`.
 
 This prevents the case where one agent's session pushes to the remote while the other agent's session has unpushed local commits, leaving the two views diverged.
+
+## Local validation
+
+Run `scripts/install-hooks` once to opt into the local pre-commit hook:
+
+```bash
+scripts/install-hooks
+```
+
+The hook runs `scripts/validate-agent-files` only when staged paths under `docs/agents/` change. It validates task frontmatter, required task sections, board/table consistency, and parseable log lines. CI also runs the validator and its smoke fixtures, so contributors who do not install hooks still get the same gate on push or pull request.
 
 ## How to add a new task
 

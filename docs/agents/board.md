@@ -6,14 +6,11 @@
 
 | Id | Title | Owner | Status | Last update | File |
 |---|---|---|---|---|---|
-| CODEX-Z | Validate agent task file frontmatter + board/log consistency on pre-commit | codex | open | 2026-05-25 claude [Opus 4.7] | [`tasks/CODEX-Z-validate-task-files.md`](tasks/CODEX-Z-validate-task-files.md) |
-| CODEX-AA | Release-readiness checker — version-string parity + cargo package chain | codex | open | 2026-05-25 claude [Opus 4.7] | [`tasks/CODEX-AA-release-readiness-check.md`](tasks/CODEX-AA-release-readiness-check.md) |
-| CODEX-AB | Structured Claude-review template — six-question contract + fixed output shape | codex | open | 2026-05-25 claude [Opus 4.7] | [`tasks/CODEX-AB-structured-review-template.md`](tasks/CODEX-AB-structured-review-template.md) |
-| CODEX-AC | Committer wrapper script — enforce specific-file staging + non-empty message | codex | open | 2026-05-25 claude [Opus 4.7] | [`tasks/CODEX-AC-committer-wrapper.md`](tasks/CODEX-AC-committer-wrapper.md) |
+_(no open briefs — agent-infra quartet merged 2026-05-25)_
 
 > 2026-05-24 release status: **v1.0.0 shipped**. `main` is at `f02eef5`; annotated tag `v1.0.0` pushed to origin. Five crates published to crates.io (`rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, `rust-ethernet-ip`), all at `1.0.0`. NuGet `RustEtherNetIp 1.0.0` ships via the GitHub release workflow triggered by the tag (assuming `NUGET_API_KEY` is configured). Single residual: multi-hop ethernet hardware validation remains a documented confidence upgrade — see post-1.0.0 polish list.
 >
-> 2026-05-25 agent-infra briefs opened: CODEX-Z (validate-agent-files + pre-commit hook), CODEX-AA (release-readiness checker), CODEX-AB (structured Claude-review template), CODEX-AC (committer wrapper). Inspired by [`steipete/agent-scripts`](https://github.com/steipete/agent-scripts). Each is independently merge-able and would have caught real drift bugs from the 1.0.0 release week. Sequencing: Z + AA are highest-value (caught real bugs); AB is documentation-shape; AC is preventative. Each parallel-safe with the others; pick any order.
+> 2026-05-25 agent-infra quartet merged: CODEX-Z (validate-agent-files + pre-commit hook), CODEX-AA (release-readiness checker), CODEX-AB (structured Claude-review template), CODEX-AC (committer wrapper). Inspired by [`steipete/agent-scripts`](https://github.com/steipete/agent-scripts). All four landed in one bundle; CI gates now enforce frontmatter shape, version-string parity, and the agent-commit wrapper contract on every PR + push.
 >
 > **Patch-release policy (2026-05-25 maintainer direction):** post-1.0.0 changes accumulate on `main` without triggering a new crates.io / NuGet release. Agent-infra (CODEX-Z/AA/AB/AC), tooling, docs, and test-only work do NOT cut a patch. The next patch release (1.0.1) is queued for when a real library change lands — current candidates are CODEX-G (`plc_manager.rs` unwrap cleanup), CODEX-H (dead-code purge), and CODEX-O (`PlcValue::Udt::get_data_type` placeholder honesty). At that point the maintainer decides which accumulated changes to roll into 1.0.1, runs the staged publish sequence (gating item below), and tags. Until then: push to `main` freely, no release pressure.
 >
@@ -123,6 +120,10 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-K | Release-window SemVer bundle | codex | `71c0d7e` |
 | CODEX-T | Fleet multi-PLC actor pool | codex | `71c0d7e` |
 | CODEX-U | Promote protocol, tag_path, and udt to sibling crates (publish deferred) | codex | `71c0d7e` |
+| CODEX-Z | Validate agent task file frontmatter + board/log consistency on pre-commit | codex | _(merge commit pending)_ |
+| CODEX-AA | Release-readiness checker — version-string parity + cargo package chain | codex | _(merge commit pending)_ |
+| CODEX-AB | Structured Claude-review template — six-question contract + fixed output shape | codex | _(merge commit pending)_ |
+| CODEX-AC | Committer wrapper script — enforce specific-file staging + non-empty message | codex | _(merge commit pending)_ |
 
 ## Project context
 

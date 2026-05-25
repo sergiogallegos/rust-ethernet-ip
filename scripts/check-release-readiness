@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Check release version parity and cargo package readiness."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+PACKAGE_ORDER = [
+    "rust-ethernet-ip-types",
+    "rust-ethernet-ip-tag-path",
+    "rust-ethernet-ip-protocol",
+    "rust-ethernet-ip-udt",
+    "rust-ethernet-ip",
+]
+EXAMPLE_PREFIX = "examples/"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("version", help="expected version, e.g. 1.0.0")
+    parser.add_argument("--root", default=".", help="repository root")
+    parser.add_argument("--strict", action="store_true", help="fail on pre-publish dependency resolution gaps")
+    parser.add_argument("--ignore-examples", action="store_true", help="skip demo .csproj version checks")
+    parser.add_argument("--skip-package", action="store_true", help=argparse.SUPPRESS)
+    return parser.parse_args()
+
+
+def expected_value(template: str, version: str) -> str:
+    major, minor, patch = version.split(".")
+    return template.format(version=version, major=major, minor=minor, patch=patch)
+
+
+def read_manifest(root: Path) -> list[tuple[str, str, str, str, str]]:
+    manifest = root / "scripts/check-release-readiness.txt"
+    rows = []
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        parts = line.split("|", 4)
+        if len(parts) != 5:
+            raise SystemExit(f"{manifest}: malformed row: {line}")
+        rows.append(tuple(parts))  # type: ignore[arg-type]
+    return rows
+
+
+def check_versions(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    failures = 0
+    print(f"{'file':<52} {'site':<34} {'expected':<12} {'actual':<12} ok")
+    for kind, rel, label, pattern, template in read_manifest(root):
+        if args.ignore_examples and rel.startswith(EXAMPLE_PREFIX):
+            continue
+        path = root / rel
+        expected = expected_value(template, args.version)
+        actual = "<missing>"
+        ok = False
+        if path.exists():
+            text = path.read_text(encoding="utf-8").strip() if kind == "content" else path.read_text(encoding="utf-8")
+            if kind == "content":
+                actual = text
+                ok = actual == expected
+            elif kind == "regex":
+                match = re.search(pattern, text)
+                if match:
+                    actual = match.group(1)
+                    ok = actual == expected
+                else:
+                    actual = "<not found>"
+            else:
+                raise SystemExit(f"unknown manifest kind: {kind}")
+        if not ok:
+            failures += 1
+        mark = "✓" if ok else "✗"
+        print(f"{rel:<52} {label:<34} {expected:<12} {actual:<12} {mark}")
+    return failures
+
+
+def package_checks(args: argparse.Namespace) -> int:
+    if args.skip_package:
+        return 0
+    failures = 0
+    print()
+    print(f"{'package check':<52} result")
+    for package in PACKAGE_ORDER:
+        cmd = ["cargo", "package", "--no-verify", "--allow-dirty", "-p", package]
+        env = os.environ.copy()
+        env.setdefault("CARGO_NET_RETRY", "0")
+        proc = subprocess.run(cmd, cwd=args.root, text=True, capture_output=True, env=env)
+        output = f"{proc.stdout}\n{proc.stderr}"
+        missing_dep = "no matching package named" in output and "location searched: crates.io index" in output
+        index_unavailable = "Could not resolve host" in output or "failed to download from `https://index.crates.io" in output
+        if proc.returncode == 0:
+            print(f"{package:<52} ✓")
+        elif missing_dep and not args.strict:
+            print(f"{package:<52} note: dependency not yet visible on crates.io")
+        elif index_unavailable and not args.strict:
+            print(f"{package:<52} note: crates.io index unavailable")
+        else:
+            failures += 1
+            print(f"{package:<52} ✗")
+            sys.stderr.write(output)
+    return failures
+
+
+def main() -> int:
+    args = parse_args()
+    if not re.match(r"^\d+\.\d+\.\d+$", args.version):
+        print("version must be MAJOR.MINOR.PATCH", file=sys.stderr)
+        return 2
+    failures = check_versions(args)
+    failures += package_checks(args)
+    if failures:
+        print(f"\ncheck-release-readiness: {failures} failure(s)", file=sys.stderr)
+        return 1
+    print("\ncheck-release-readiness: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

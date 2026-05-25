@@ -167,6 +167,36 @@ jobs:
     - name: Verify version consistency across manifests
       run: python .github/scripts/check_versions.py
 
+  validate-agent-files:
+    name: validate-agent-files
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Validate agent task files
+      run: scripts/validate-agent-files
+    - name: Run validator smoke tests
+      run: tests/validate_agent_files_tests.sh
+
+  release-readiness:
+    name: Release readiness
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Check release readiness for current version
+      run: |
+        VERSION=$(sed -n '0,/^version = "\([^"]*\)"/s//\1/p' Cargo.toml)
+        scripts/check-release-readiness "$VERSION"
+
+  agent-commit-tests:
+    name: agent-commit-tests
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run agent commit wrapper tests
+      run: tests/agent_commit_tests.sh
+
   package:
     name: Package validation
     needs: [test, python]
@@ -210,7 +240,7 @@ jobs:
 
   build:
     name: Build
-    needs: [test, python, msrv, audit, semver-checks, package, version-check]
+    needs: [test, python, msrv, audit, semver-checks, package, version-check, validate-agent-files, release-readiness, agent-commit-tests]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

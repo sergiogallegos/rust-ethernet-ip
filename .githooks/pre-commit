@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -q '^docs/agents/'; then
+  scripts/validate-agent-files
+fi

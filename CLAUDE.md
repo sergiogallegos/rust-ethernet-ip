@@ -170,7 +170,7 @@ When Codex submits (status `submitted` in the task frontmatter):
    ```
    Plus task-specific extras (C# wrapper `dotnet build` + `dotnet test` for FFI-touching tasks; benches for perf-touching tasks; manual hardware smoke for protocol-touching tasks — that one is the maintainer's job).
 2. Read the changed files — at minimum the impl module, the test file, and any wiki entry the brief asked for.
-3. Write the `## Claude review` section with strong points (✅), findings (🟡 polish, 🟠 real concern), and acceptance-criteria tally.
+3. Write the `## Claude review` section using [`docs/agents/review-template.md`](docs/agents/review-template.md). The fixed contract is: Independent verification, What's being fixed, Root cause confirmation, Fix appropriateness, Test proof, Residual risk, Strong points, Findings, Acceptance criteria tally.
 4. Set frontmatter `status: merged`, write the `## Verdict` section, update `board.md` (move row to Done, record merge commit), append to `log.md`.
 5. Commit. Push only on explicit maintainer request — see "Commit and push expectations" below.
 
@@ -230,6 +230,8 @@ The cost of stalling on small details is higher than the cost of a v1.1 polish i
 
 Both agents may stage and commit edits to task files, `board.md`, and `log.md` as part of normal task work. The lifecycle three-place update (frontmatter + board + log) commits together.
 
+Use `scripts/agent-commit "<message>" <file> [file...]` when practical. It unstages the full index first, stages only the named files, rejects wildcard staging, blocks obvious secret filenames, and blocks amend commits unless `--amend-anyway` is passed with explicit maintainer direction. Direct `git commit` remains valid when specific files are staged manually.
+
 **Pushing to the remote is not automatic:**
 
 - Push only when the maintainer explicitly asks ("commit and push", "ship it"), or when an unambiguous task convention requires it (e.g. backfilling a merge ref in a follow-up commit).
@@ -237,3 +239,9 @@ Both agents may stage and commit edits to task files, `board.md`, and `log.md` a
 - If push is blocked (network, auth, safe-directory), surface the blocker — don't retry silently or work around it.
 
 This prevents the case where one agent's session pushes to the remote while the other agent's session has unpushed local commits, leaving the two views diverged.
+
+## Local agent validation
+
+Run `scripts/install-hooks` once to opt into the repo-local pre-commit hook. The hook runs `scripts/validate-agent-files` only when staged files under `docs/agents/` change. CI runs the same validator for every push and pull request.
+
+Release prep starts with `scripts/check-release-readiness X.Y.Z`. The script checks version-string parity across manifests and docs, then runs the Cargo package dry-runs in dependency order. Use `--strict` for release-day validation after sibling crates are visible on crates.io, and `--ignore-examples` only when demo app versions intentionally diverge.

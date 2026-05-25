@@ -210,6 +210,8 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
+    - name: Build native library (release, with ffi)
+      run: cargo build --release --features ffi --locked
     - name: Validate manifest schema and counts
       run: tests/full_coverage_manifest_tests.sh
     - name: Rust dry run

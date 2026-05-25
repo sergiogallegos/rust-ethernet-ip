@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "generated_from": "docs/PLC_TEST_TAG_DEFINITIONS.md",
+  "categories": [
+    { "name": "ctrl.DINT_array", "scope": "controller", "pattern": "gTestArray_DINT[{i}]", "indices": { "range": [0, 100] }, "kind": "Dint", "writeability": "writeable" },
+    { "name": "ctrl.REAL_array", "scope": "controller", "pattern": "gTestArray_REAL[{i}]", "indices": { "range": [0, 50] }, "kind": "Real", "writeability": "writeable" },
+    { "name": "ctrl.BOOL_array", "scope": "controller", "pattern": "gTestArray_BOOL[{i}]", "indices": { "range": [0, 128] }, "kind": "Bool", "writeability": "writeable" },
+    { "name": "ctrl.INT_array", "scope": "controller", "pattern": "gTestArray_INT[{i}]", "indices": { "range": [0, 200] }, "kind": "Int", "writeability": "writeable" },
+    { "name": "ctrl.Large_DINT", "scope": "controller", "pattern": "gTestArray_Large[{i}]", "indices": { "range": [0, 1000] }, "kind": "Dint", "writeability": "writeable" },
+    { "name": "ctrl.STRING", "scope": "controller", "pattern": "gTest_STRING", "kind": "String", "writeability": "firmware_blocked_string" },
+    { "name": "ctrl.UDT_whole", "scope": "controller", "pattern": "gTestUDT", "kind": "Udt", "writeability": "read_only" },
+    {
+      "name": "ctrl.UDT_members",
+      "scope": "controller",
+      "pattern": "gTestUDT.{member}",
+      "members": {
+        "Member1_DINT": { "kind": "Dint", "writeability": "writeable" },
+        "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
+        "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
+        "Member4_INT": { "kind": "Int", "writeability": "writeable" },
+        "Member5_String": { "kind": "String", "writeability": "firmware_blocked_udt_string_member" }
+      }
+    },
+    {
+      "name": "ctrl.UDT_nested",
+      "scope": "controller",
+      "pattern": "gTestUDT.{field}[{j}]",
+      "inner": {
+        "Array_DINT": { "range": [0, 10], "kind": "Dint", "writeability": "writeable" },
+        "Array_REAL": { "range": [0, 5], "kind": "Real", "writeability": "writeable" },
+        "Array_BOOL": { "range": [0, 20], "kind": "Bool", "writeability": "writeable" }
+      }
+    },
+    { "name": "ctrl.UDTarr_whole", "scope": "controller", "pattern": "gTestUDT_Array", "kind": "Udt", "writeability": "read_only" },
+    { "name": "ctrl.UDTarr_element", "scope": "controller", "pattern": "gTestUDT_Array[{i}]", "indices": { "range": [0, 10] }, "kind": "Udt", "writeability": "read_only" },
+    {
+      "name": "ctrl.UDTarr_elem_members",
+      "scope": "controller",
+      "pattern": "gTestUDT_Array[{i}].{member}",
+      "indices": { "range": [0, 10] },
+      "members": {
+        "Member1_DINT": { "kind": "Dint", "writeability": "firmware_blocked_udt_array_element_member" },
+        "Member2_REAL": { "kind": "Real", "writeability": "firmware_blocked_udt_array_element_member" },
+        "Member3_BOOL": { "kind": "Bool", "writeability": "firmware_blocked_udt_array_element_member" },
+        "Member4_INT": { "kind": "Int", "writeability": "firmware_blocked_udt_array_element_member" },
+        "Member5_String": { "kind": "String", "writeability": "firmware_blocked_udt_array_element_member" }
+      }
+    },
+    {
+      "name": "ctrl.UDTarr_elem_nested",
+      "scope": "controller",
+      "pattern": "gTestUDT_Array[{i}].{field}[{j}]",
+      "outer_indices": { "range": [0, 10] },
+      "inner": {
+        "Array_DINT": { "range": [0, 10], "kind": "Dint", "writeability": "writeable" },
+        "Array_REAL": { "range": [0, 5], "kind": "Real", "writeability": "writeable" },
+        "Array_BOOL": { "range": [0, 20], "kind": "Bool", "writeability": "writeable" }
+      }
+    },
+    { "name": "prog.DINT_array", "scope": "program", "pattern": "Program:TestProgram.gTestArray_DINT[{i}]", "indices": { "range": [0, 100] }, "kind": "Dint", "writeability": "writeable" },
+    { "name": "prog.REAL_array", "scope": "program", "pattern": "Program:TestProgram.gTestArray_REAL[{i}]", "indices": { "range": [0, 50] }, "kind": "Real", "writeability": "writeable" },
+    { "name": "prog.BOOL_array", "scope": "program", "pattern": "Program:TestProgram.gTestArray_BOOL[{i}]", "indices": { "range": [0, 100] }, "kind": "Bool", "writeability": "writeable" },
+    { "name": "prog.STRING", "scope": "program", "pattern": "Program:TestProgram.gTest_STRING", "kind": "String", "writeability": "firmware_blocked_string" },
+    { "name": "prog.UDT_whole", "scope": "program", "pattern": "Program:TestProgram.gTestUDT", "kind": "Udt", "writeability": "read_only" },
+    {
+      "name": "prog.UDT_members",
+      "scope": "program",
+      "pattern": "Program:TestProgram.gTestUDT.{member}",
+      "members": {
+        "Member1_DINT": { "kind": "Dint", "writeability": "writeable" },
+        "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
+        "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
+        "Member4_INT": { "kind": "Int", "writeability": "writeable" },
+        "Member5_String": { "kind": "String", "writeability": "firmware_blocked_udt_string_member" }
+      }
+    },
+    {
+      "name": "prog.UDT_nested",
+      "scope": "program",
+      "pattern": "Program:TestProgram.gTestUDT.{field}[{j}]",
+      "inner": {
+        "Array_DINT": { "range": [0, 10], "kind": "Dint", "writeability": "writeable" },
+        "Array_REAL": { "range": [0, 5], "kind": "Real", "writeability": "writeable" },
+        "Array_BOOL": { "range": [0, 20], "kind": "Bool", "writeability": "writeable" }
+      }
+    },
+    { "name": "prog.UDTarr_whole", "scope": "program", "pattern": "Program:TestProgram.gTestUDT_Array", "kind": "Udt", "writeability": "read_only" },
+    { "name": "prog.UDTarr_element", "scope": "program", "pattern": "Program:TestProgram.gTestUDT_Array[{i}]", "indices": { "range": [0, 5] }, "kind": "Udt", "writeability": "read_only" },
+    {
+      "name": "prog.UDTarr_elem_members",
+      "scope": "program",
+      "pattern": "Program:TestProgram.gTestUDT_Array[{i}].{member}",
+      "indices": { "range": [0, 5] },
+      "members": {
+        "Member1_DINT": { "kind": "Dint", "writeability": "firmware_blocked_udt_array_element_member" },
+        "Member2_REAL": { "kind": "Real", "writeability": "firmware_blocked_udt_array_element_member" },
+        "Member3_BOOL": { "kind": "Bool", "writeability": "firmware_blocked_udt_array_element_member" },
+        "Member4_INT": { "kind": "Int", "writeability": "firmware_blocked_udt_array_element_member" }
+      }
+    },
+    {
+      "name": "prog.UDTarr_elem_nested",
+      "scope": "program",
+      "pattern": "Program:TestProgram.gTestUDT_Array[{i}].{field}[{j}]",
+      "outer_indices": { "range": [0, 5] },
+      "inner": {
+        "Array_DINT": { "range": [0, 10], "kind": "Dint", "writeability": "writeable" }
+      }
+    }
+  ]
+}

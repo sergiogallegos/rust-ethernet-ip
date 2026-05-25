@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import math
+import argparse
+import json
 import os
 import random
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -25,8 +28,28 @@ class Kind(Enum):
 
 class Mode(Enum):
     WRITEABLE = "writeable"
-    BLOCKED = "firmware_blocked"
     READ_ONLY = "read_only"
+    FIRMWARE_BLOCKED_STRING = "firmware_blocked_string"
+    FIRMWARE_BLOCKED_UDT_STRING_MEMBER = "firmware_blocked_udt_string_member"
+    FIRMWARE_BLOCKED_UDT_ARRAY_ELEMENT_MEMBER = "firmware_blocked_udt_array_element_member"
+    SERVICE_LAYER_WRITEABLE = "service_layer_writeable"
+
+    @classmethod
+    def from_manifest(cls, value: str) -> "Mode":
+        try:
+            return cls(value)
+        except ValueError as exc:
+            raise ValueError(f"unknown writeability: {value}") from exc
+
+    def is_writeable(self) -> bool:
+        return self in {Mode.WRITEABLE, Mode.SERVICE_LAYER_WRITEABLE}
+
+    def is_firmware_blocked(self) -> bool:
+        return self in {
+            Mode.FIRMWARE_BLOCKED_STRING,
+            Mode.FIRMWARE_BLOCKED_UDT_STRING_MEMBER,
+            Mode.FIRMWARE_BLOCKED_UDT_ARRAY_ELEMENT_MEMBER,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,64 +60,48 @@ class Tag:
     mode: Mode
 
 
-def build_tags() -> list[Tag]:
-    t: list[Tag] = []
+def build_tags(manifest_path: str) -> list[Tag]:
+    with open(manifest_path, "r", encoding="utf-8") as fh:
+        manifest = json.load(fh)
+    tags: list[Tag] = []
+    for category in manifest["categories"]:
+        tags.extend(expand_category(category))
+    return tags
 
-    for i in range(100): t.append(Tag(f"gTestArray_DINT[{i}]",  "ctrl.DINT_array",  Kind.DINT, Mode.WRITEABLE))
-    for i in range(50):  t.append(Tag(f"gTestArray_REAL[{i}]",  "ctrl.REAL_array",  Kind.REAL, Mode.WRITEABLE))
-    for i in range(128): t.append(Tag(f"gTestArray_BOOL[{i}]",  "ctrl.BOOL_array",  Kind.BOOL, Mode.WRITEABLE))
-    for i in range(200): t.append(Tag(f"gTestArray_INT[{i}]",   "ctrl.INT_array",   Kind.INT,  Mode.WRITEABLE))
-    for i in range(1000):t.append(Tag(f"gTestArray_Large[{i}]", "ctrl.Large_DINT",  Kind.DINT, Mode.WRITEABLE))
 
-    t.append(Tag("gTest_STRING", "ctrl.STRING", Kind.STRING, Mode.BLOCKED))
+def expand_category(category: dict) -> list[Tag]:
+    tags: list[Tag] = []
+    pattern = category["pattern"]
+    name = category["name"]
+    if "members" in category:
+        for i in range_or_once(category.get("indices")):
+            for member, spec in category["members"].items():
+                tags.append(Tag(render_pattern(pattern, i=i, member=member), name, Kind(spec["kind"].upper()), Mode.from_manifest(spec["writeability"])))
+        return tags
+    if "inner" in category:
+        for i in range_or_once(category.get("outer_indices")):
+            for field, spec in category["inner"].items():
+                for j in range(*spec["range"]):
+                    tags.append(Tag(render_pattern(pattern, i=i, field=field, j=j), name, Kind(spec["kind"].upper()), Mode.from_manifest(spec["writeability"])))
+        return tags
+    for i in range_or_once(category.get("indices")):
+        tags.append(Tag(render_pattern(pattern, i=i), name, Kind(category["kind"].upper()), Mode.from_manifest(category["writeability"])))
+    return tags
 
-    t.append(Tag("gTestUDT", "ctrl.UDT_whole", Kind.UDT, Mode.READ_ONLY))
-    t.append(Tag("gTestUDT.Member1_DINT",   "ctrl.UDT_members", Kind.DINT,   Mode.WRITEABLE))
-    t.append(Tag("gTestUDT.Member2_REAL",   "ctrl.UDT_members", Kind.REAL,   Mode.WRITEABLE))
-    t.append(Tag("gTestUDT.Member3_BOOL",   "ctrl.UDT_members", Kind.BOOL,   Mode.WRITEABLE))
-    t.append(Tag("gTestUDT.Member4_INT",    "ctrl.UDT_members", Kind.INT,    Mode.WRITEABLE))
-    t.append(Tag("gTestUDT.Member5_String", "ctrl.UDT_members", Kind.STRING, Mode.BLOCKED))
-    for i in range(10): t.append(Tag(f"gTestUDT.Array_DINT[{i}]", "ctrl.UDT_nested", Kind.DINT, Mode.WRITEABLE))
-    for i in range(5):  t.append(Tag(f"gTestUDT.Array_REAL[{i}]", "ctrl.UDT_nested", Kind.REAL, Mode.WRITEABLE))
-    for i in range(20): t.append(Tag(f"gTestUDT.Array_BOOL[{i}]", "ctrl.UDT_nested", Kind.BOOL, Mode.WRITEABLE))
 
-    t.append(Tag("gTestUDT_Array", "ctrl.UDTarr_whole", Kind.UDT, Mode.READ_ONLY))
-    for i in range(10):
-        t.append(Tag(f"gTestUDT_Array[{i}]", "ctrl.UDTarr_element", Kind.UDT, Mode.READ_ONLY))
-        t.append(Tag(f"gTestUDT_Array[{i}].Member1_DINT",   "ctrl.UDTarr_elem_members", Kind.DINT,   Mode.BLOCKED))
-        t.append(Tag(f"gTestUDT_Array[{i}].Member2_REAL",   "ctrl.UDTarr_elem_members", Kind.REAL,   Mode.BLOCKED))
-        t.append(Tag(f"gTestUDT_Array[{i}].Member3_BOOL",   "ctrl.UDTarr_elem_members", Kind.BOOL,   Mode.BLOCKED))
-        t.append(Tag(f"gTestUDT_Array[{i}].Member4_INT",    "ctrl.UDTarr_elem_members", Kind.INT,    Mode.BLOCKED))
-        t.append(Tag(f"gTestUDT_Array[{i}].Member5_String", "ctrl.UDTarr_elem_members", Kind.STRING, Mode.BLOCKED))
-        for j in range(10): t.append(Tag(f"gTestUDT_Array[{i}].Array_DINT[{j}]", "ctrl.UDTarr_elem_nested", Kind.DINT, Mode.WRITEABLE))
-        for j in range(5):  t.append(Tag(f"gTestUDT_Array[{i}].Array_REAL[{j}]", "ctrl.UDTarr_elem_nested", Kind.REAL, Mode.WRITEABLE))
-        for j in range(20): t.append(Tag(f"gTestUDT_Array[{i}].Array_BOOL[{j}]", "ctrl.UDTarr_elem_nested", Kind.BOOL, Mode.WRITEABLE))
+def range_or_once(indices: dict | None) -> range:
+    if indices is None:
+        return range(1)
+    return range(*indices["range"])
 
-    for i in range(100): t.append(Tag(f"Program:TestProgram.gTestArray_DINT[{i}]", "prog.DINT_array", Kind.DINT, Mode.WRITEABLE))
-    for i in range(50):  t.append(Tag(f"Program:TestProgram.gTestArray_REAL[{i}]", "prog.REAL_array", Kind.REAL, Mode.WRITEABLE))
-    for i in range(100): t.append(Tag(f"Program:TestProgram.gTestArray_BOOL[{i}]", "prog.BOOL_array", Kind.BOOL, Mode.WRITEABLE))
-    t.append(Tag("Program:TestProgram.gTest_STRING", "prog.STRING", Kind.STRING, Mode.BLOCKED))
 
-    t.append(Tag("Program:TestProgram.gTestUDT", "prog.UDT_whole", Kind.UDT, Mode.READ_ONLY))
-    t.append(Tag("Program:TestProgram.gTestUDT.Member1_DINT",   "prog.UDT_members", Kind.DINT,   Mode.WRITEABLE))
-    t.append(Tag("Program:TestProgram.gTestUDT.Member2_REAL",   "prog.UDT_members", Kind.REAL,   Mode.WRITEABLE))
-    t.append(Tag("Program:TestProgram.gTestUDT.Member3_BOOL",   "prog.UDT_members", Kind.BOOL,   Mode.WRITEABLE))
-    t.append(Tag("Program:TestProgram.gTestUDT.Member4_INT",    "prog.UDT_members", Kind.INT,    Mode.WRITEABLE))
-    t.append(Tag("Program:TestProgram.gTestUDT.Member5_String", "prog.UDT_members", Kind.STRING, Mode.BLOCKED))
-    for i in range(10): t.append(Tag(f"Program:TestProgram.gTestUDT.Array_DINT[{i}]", "prog.UDT_nested", Kind.DINT, Mode.WRITEABLE))
-    for i in range(5):  t.append(Tag(f"Program:TestProgram.gTestUDT.Array_REAL[{i}]", "prog.UDT_nested", Kind.REAL, Mode.WRITEABLE))
-    for i in range(20): t.append(Tag(f"Program:TestProgram.gTestUDT.Array_BOOL[{i}]", "prog.UDT_nested", Kind.BOOL, Mode.WRITEABLE))
-
-    t.append(Tag("Program:TestProgram.gTestUDT_Array", "prog.UDTarr_whole", Kind.UDT, Mode.READ_ONLY))
-    for i in range(5):
-        t.append(Tag(f"Program:TestProgram.gTestUDT_Array[{i}]", "prog.UDTarr_element", Kind.UDT, Mode.READ_ONLY))
-        t.append(Tag(f"Program:TestProgram.gTestUDT_Array[{i}].Member1_DINT", "prog.UDTarr_elem_members", Kind.DINT, Mode.BLOCKED))
-        t.append(Tag(f"Program:TestProgram.gTestUDT_Array[{i}].Member2_REAL", "prog.UDTarr_elem_members", Kind.REAL, Mode.BLOCKED))
-        t.append(Tag(f"Program:TestProgram.gTestUDT_Array[{i}].Member3_BOOL", "prog.UDTarr_elem_members", Kind.BOOL, Mode.BLOCKED))
-        t.append(Tag(f"Program:TestProgram.gTestUDT_Array[{i}].Member4_INT",  "prog.UDTarr_elem_members", Kind.INT,  Mode.BLOCKED))
-        for j in range(10): t.append(Tag(f"Program:TestProgram.gTestUDT_Array[{i}].Array_DINT[{j}]", "prog.UDTarr_elem_nested", Kind.DINT, Mode.WRITEABLE))
-
-    return t
+def render_pattern(pattern: str, i: int | None = None, member: str | None = None, field: str | None = None, j: int | None = None) -> str:
+    output = pattern
+    if i is not None: output = output.replace("{i}", str(i))
+    if member is not None: output = output.replace("{member}", member)
+    if field is not None: output = output.replace("{field}", field)
+    if j is not None: output = output.replace("{j}", str(j))
+    return output
 
 
 def rand_value(k: Kind, rng: random.Random) -> object | None:
@@ -118,24 +125,55 @@ def values_match(a, b, k: Kind) -> bool:
     return a == b
 
 
+def settle_samples() -> list[tuple[str, Tag, object]]:
+    return [
+        ("ctrl.BOOL_array", Tag("gTestArray_BOOL[5]", "ctrl.BOOL_array", Kind.BOOL, Mode.WRITEABLE), True),
+        ("ctrl.DINT_array", Tag("gTestArray_DINT[42]", "ctrl.DINT_array", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("ctrl.INT_array", Tag("gTestArray_INT[100]", "ctrl.INT_array", Kind.INT, Mode.WRITEABLE), 9_999),
+        ("ctrl.Large_DINT", Tag("gTestArray_Large[500]", "ctrl.Large_DINT", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("ctrl.REAL_array", Tag("gTestArray_REAL[10]", "ctrl.REAL_array", Kind.REAL, Mode.WRITEABLE), 99.99),
+        ("ctrl.UDT_members", Tag("gTestUDT.Member1_DINT", "ctrl.UDT_members", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("ctrl.UDT_nested", Tag("gTestUDT.Array_DINT[5]", "ctrl.UDT_nested", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("ctrl.UDTarr_elem_nested", Tag("gTestUDT_Array[2].Array_DINT[3]", "ctrl.UDTarr_elem_nested", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("prog.BOOL_array", Tag("Program:TestProgram.gTestArray_BOOL[5]", "prog.BOOL_array", Kind.BOOL, Mode.WRITEABLE), True),
+        ("prog.DINT_array", Tag("Program:TestProgram.gTestArray_DINT[42]", "prog.DINT_array", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("prog.REAL_array", Tag("Program:TestProgram.gTestArray_REAL[10]", "prog.REAL_array", Kind.REAL, Mode.WRITEABLE), 99.99),
+        ("prog.UDT_members", Tag("Program:TestProgram.gTestUDT.Member1_DINT", "prog.UDT_members", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("prog.UDT_nested", Tag("Program:TestProgram.gTestUDT.Array_DINT[5]", "prog.UDT_nested", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("prog.UDTarr_elem_nested", Tag("Program:TestProgram.gTestUDT_Array[2].Array_DINT[3]", "prog.UDTarr_elem_nested", Kind.DINT, Mode.WRITEABLE), 999_999),
+    ]
+
+
 class CatStats:
     __slots__ = ("read_ok","read_fail","write_ok","write_fail","verify_ok","verify_fail","blocked_ok","blocked_unexpected")
     def __init__(self): self.read_ok=self.read_fail=self.write_ok=self.write_fail=self.verify_ok=self.verify_fail=self.blocked_ok=self.blocked_unexpected=0
 
 
 def main() -> int:
-    address = os.environ.get("TEST_PLC_ADDRESS", "192.168.0.1:44818")
-    slot = int(os.environ.get("TEST_PLC_SLOT", "0"))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--plc-address", default=os.environ.get("TEST_PLC_ADDRESS", "192.168.0.1:44818"))
+    parser.add_argument("--plc-slot", type=int, default=int(os.environ.get("TEST_PLC_SLOT", "0")))
+    parser.add_argument("--manifest", default="examples/full_coverage_tags.json")
+    parser.add_argument("--out-dir", default="examples/full_coverage_results")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--skip-preflight", action="store_true")
+    args = parser.parse_args()
+    address = args.plc_address
+    slot = args.plc_slot
     rng = random.Random()
-    tags = build_tags()
-    writeable = sum(1 for t in tags if t.mode == Mode.WRITEABLE)
-    blocked = sum(1 for t in tags if t.mode == Mode.BLOCKED)
+    tags = build_tags(args.manifest)
+    writeable = sum(1 for t in tags if t.mode.is_writeable())
+    blocked = sum(1 for t in tags if t.mode.is_firmware_blocked())
     readonly = sum(1 for t in tags if t.mode == Mode.READ_ONLY)
 
     print("Python wrapper — full-coverage exerciser")
     print(f"PLC: {address} (slot {slot})  total tags: {len(tags)}")
     print(f"  writeable: {writeable}   firmware-blocked: {blocked}   read-only: {readonly}")
     print()
+
+    if args.dry_run:
+        print(f"would-test binding=python tags={len(tags)} writeable={writeable} blocked={blocked} read_only={readonly}")
+        return 0
 
     stats: dict[str, CatStats] = {}
     def S(c: str) -> CatStats:
@@ -145,6 +183,21 @@ def main() -> int:
     written: list[tuple[Tag, object]] = []
 
     with Client(address, route_path=RoutePath(slots=[slot])) as client:
+        preflight_ok = preflight_fail = 0
+        if not args.skip_preflight:
+            print("Phase 0 — preflight tag inventory")
+            tp = time.perf_counter()
+            for tag in tags:
+                try:
+                    client.read_tag(tag.name)
+                    preflight_ok += 1
+                except Exception as exc:
+                    preflight_fail += 1
+                    print(f"setup-error: tag {tag.name} failed preflight ({exc}) — verify the PLC project against docs/PLC_TEST_TAG_DEFINITIONS.md", file=sys.stderr)
+            print(f"  done in {time.perf_counter()-tp:.1f}s  preflight={preflight_ok}/{preflight_ok + preflight_fail}")
+            if preflight_fail:
+                return 2
+
         print("Phase 1 — read every tag")
         t0 = time.perf_counter()
         for tag in tags:
@@ -157,7 +210,7 @@ def main() -> int:
         print("Phase 2 — write random values to writeable tags")
         t1 = time.perf_counter()
         for tag in tags:
-            if tag.mode != Mode.WRITEABLE: continue
+            if not tag.mode.is_writeable(): continue
             v = rand_value(tag.kind, rng)
             if v is None: continue
             try:
@@ -184,7 +237,7 @@ def main() -> int:
         print("Phase 4 — confirm firmware-blocked writes are still blocked")
         t3 = time.perf_counter()
         for tag in tags:
-            if tag.mode != Mode.BLOCKED: continue
+            if not tag.mode.is_firmware_blocked(): continue
             v = rand_value(tag.kind, rng)
             if v is None: continue
             try:
@@ -198,7 +251,7 @@ def main() -> int:
         t4 = time.perf_counter()
         settle_ok = settle_fail = 0
         for tag in tags:
-            if tag.mode != Mode.WRITEABLE: continue
+            if not tag.mode.is_writeable(): continue
             v = nines(tag.kind)
             if v is None: continue
             try:
@@ -207,6 +260,24 @@ def main() -> int:
             except Exception:
                 settle_fail += 1
         print(f"  done in {time.perf_counter()-t4:.1f}s  settle_ok={settle_ok} settle_fail={settle_fail}")
+        print()
+
+        print("Phase 6 — verify settle (sample read-back)")
+        t5 = time.perf_counter()
+        settle_verify_ok = settle_verify_fail = 0
+        for category, tag, expected in settle_samples():
+            try:
+                actual = client.read_tag(tag.name)
+                if values_match(actual, expected, tag.kind):
+                    settle_verify_ok += 1
+                    print(f"  verify-settle  {category:<28} {tag.name:<48} ✓")
+                else:
+                    settle_verify_fail += 1
+                    print(f"  verify-settle  {category:<28} {tag.name:<48} ✗ MISMATCH: expected {expected!r}, got {actual!r}")
+            except Exception as exc:
+                settle_verify_fail += 1
+                print(f"  verify-settle  {category:<28} {tag.name:<48} ✗ READ ERROR: {exc}")
+        print(f"  done in {time.perf_counter()-t5:.1f}s  settle_verify={settle_verify_ok}/{settle_verify_ok + settle_verify_fail}")
         print()
 
     print("Per-category results:")
@@ -222,13 +293,54 @@ def main() -> int:
     print(f"  {'TOTAL':<32} {T.read_ok:>9} {T.read_fail:>9} {T.write_ok:>9} {T.write_fail:>9} {T.verify_ok:>9} {T.blocked_ok:>9}")
     print()
 
-    unexpected = T.read_fail + T.write_fail + T.verify_fail + T.blocked_unexpected + settle_fail
+    unexpected = T.read_fail + T.write_fail + T.verify_fail + T.blocked_unexpected + settle_fail + settle_verify_fail
     print(
         f"Summary: reads={T.read_ok}/{T.read_ok+T.read_fail}  "
         f"writes={T.write_ok}/{T.write_ok+T.write_fail}  "
         f"verify={T.verify_ok}/{T.verify_ok+T.verify_fail}  "
         f"blocked_as_expected={T.blocked_ok}  unexpected_anomalies={unexpected}"
     )
+    print(
+        f"binding=python tags={len(tags)} reads={T.read_ok}/{T.read_ok+T.read_fail} "
+        f"writes={T.write_ok}/{T.write_ok+T.write_fail} verify={T.verify_ok}/{T.verify_ok+T.verify_fail} "
+        f"blocked={T.blocked_ok} anomalies={unexpected} RESULT={'PASS' if unexpected == 0 else 'FAIL'}"
+    )
+    os.makedirs(args.out_dir, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    with open(os.path.join(args.out_dir, f"python_{stamp}.json"), "w", encoding="utf-8") as fh:
+        json.dump({
+            "schema_version": 1,
+            "binding": "python",
+            "binding_version": "1.0.0",
+            "plc_address": address,
+            "plc_slot": slot,
+            "manifest_version": 1,
+            "tag_count": len(tags),
+            "result": "PASS" if unexpected == 0 else "FAIL",
+            "anomalies": unexpected,
+            "phases": {
+                "preflight": {"ok": preflight_ok, "fail": preflight_fail},
+                "phase1_read": {"ok": T.read_ok, "fail": T.read_fail},
+                "phase2_write": {"ok": T.write_ok, "fail": T.write_fail},
+                "phase3_verify": {"ok": T.verify_ok, "fail": T.verify_fail},
+                "phase4_blocked": {"ok": T.blocked_ok, "fail": T.blocked_unexpected, "note": "expected firmware rejections"},
+                "phase5_settle": {"ok": settle_ok, "fail": settle_fail},
+                "phase6_verify_settle": {"ok": settle_verify_ok, "fail": settle_verify_fail},
+            },
+            "categories": {
+                category: {
+                    "read_ok": s.read_ok,
+                    "read_fail": s.read_fail,
+                    "write_ok": s.write_ok,
+                    "write_fail": s.write_fail,
+                    "verify_ok": s.verify_ok,
+                    "verify_fail": s.verify_fail,
+                    "blocked_as_expected": s.blocked_ok,
+                    "blocked_unexpected_pass": s.blocked_unexpected,
+                }
+                for category, s in sorted(stats.items())
+            },
+        }, fh, indent=2)
     print("RESULT: PASS" if unexpected == 0 else f"RESULT: FAIL ({unexpected} anomalies)")
     return 0 if unexpected == 0 else 1
 

@@ -32,6 +32,7 @@ Thumbs.db
 
 # Project specific
 rust_enip_driver.dll
+examples/full_coverage_results/*.json
 
 # Next.js build output
 .next

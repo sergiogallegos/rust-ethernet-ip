@@ -197,6 +197,28 @@ jobs:
     - name: Run agent commit wrapper tests
       run: tests/agent_commit_tests.sh
 
+  full-coverage-manifest:
+    name: Full coverage manifest
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+        dotnet-quality: 'preview'
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Validate manifest schema and counts
+      run: tests/full_coverage_manifest_tests.sh
+    - name: Rust dry run
+      run: cargo run --example test_plc_full_coverage --locked -- --dry-run
+    - name: C# dry run
+      run: dotnet run --project examples/CSharpFullCoverage/CSharpFullCoverage.csproj -c Release -- --dry-run
+    - name: Python dry run
+      run: PYTHONPATH=python python3 python/examples/test_plc_full_coverage.py --dry-run
+
   package:
     name: Package validation
     needs: [test, python]
@@ -240,7 +262,7 @@ jobs:
 
   build:
     name: Build
-    needs: [test, python, msrv, audit, semver-checks, package, version-check, validate-agent-files, release-readiness, agent-commit-tests]
+    needs: [test, python, msrv, audit, semver-checks, package, version-check, validate-agent-files, release-readiness, agent-commit-tests, full-coverage-manifest]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

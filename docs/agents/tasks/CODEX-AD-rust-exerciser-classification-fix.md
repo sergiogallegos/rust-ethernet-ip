@@ -2,9 +2,9 @@
 id: CODEX-AD
 title: Fix Rust full-coverage classification + close the settle verification loop
 owner: codex
-status: open
+status: submitted
 created: 2026-05-25
-last-update: 2026-05-25 claude [Opus 4.7]
+last-update: 2026-05-25 codex [gpt-5]
 ---
 
 ## Brief
@@ -92,7 +92,22 @@ Failed sample reads or value mismatches increment `unexpected_anomalies` and pri
 
 ## Codex log
 
-_(append work entries here)_
+### 2026-05-25  codex [gpt-5]
+
+Implemented the exerciser-side classification correction by moving the nested UDT array element paths onto the writeable path through the shared manifest consumed by the Rust runner. Added Phase 6 settle verification across Rust, C#, and Python with a consistent sample set spanning controller/program arrays, UDT members, nested UDT arrays, and UDT-array nested elements.
+
+Verification:
+
+- `cargo run --example test_plc_full_coverage --locked -- --dry-run` resolves `2299` tags, `2206` writeable, `74` firmware-blocked, `19` read-only.
+- `dotnet run --project examples/CSharpFullCoverage/CSharpFullCoverage.csproj -c Release -- --dry-run` resolves the same counts.
+- `python3 python/examples/test_plc_full_coverage.py --dry-run` resolves the same counts.
+- `cargo test --test plc_sim_tests --locked` passed.
+- `cargo test --workspace --all-features --locked` passed.
+- `cargo fmt -- --check` and `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed.
+
+### 2026-05-25  codex [gpt-5]
+
+Ran the post-refactor full-coverage hardware validation against ControlLogix `10.136.15.20:44818`, slot `0`, with preflight enabled in all three bindings. Rust, C#, and Python each passed with `2299/2299` reads, `2206/2206` writes, `2206/2206` verify, Phase 6 `14/14`, `60` expected firmware-blocked write rejections, and `0` unexpected anomalies.
 
 ## Claude review
 

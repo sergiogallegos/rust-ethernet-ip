@@ -1,6 +1,10 @@
-use rust_ethernet_ip::{EipClient, EtherNetIpError, PlcValue, RoutePath};
+use rust_ethernet_ip::{EipClient, PlcValue, RoutePath};
+use serde::Deserialize;
+use serde_json::json;
 use std::collections::BTreeMap;
 use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime};
 
 fn get_plc_address() -> String {
@@ -11,6 +15,50 @@ fn get_cpu_slot() -> u8 {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0)
+}
+
+struct Args {
+    address: String,
+    slot: u8,
+    manifest_path: PathBuf,
+    out_dir: PathBuf,
+    dry_run: bool,
+    skip_preflight: bool,
+}
+
+fn parse_args() -> Args {
+    let mut args = Args {
+        address: get_plc_address(),
+        slot: get_cpu_slot(),
+        manifest_path: PathBuf::from("examples/full_coverage_tags.json"),
+        out_dir: PathBuf::from("examples/full_coverage_results"),
+        dry_run: false,
+        skip_preflight: false,
+    };
+    let mut iter = env::args().skip(1);
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--plc-address" => args.address = iter.next().expect("--plc-address requires a value"),
+            "--plc-slot" => {
+                args.slot = iter
+                    .next()
+                    .expect("--plc-slot requires a value")
+                    .parse()
+                    .expect("--plc-slot must be an integer")
+            }
+            "--manifest" => {
+                args.manifest_path =
+                    PathBuf::from(iter.next().expect("--manifest requires a value"));
+            }
+            "--out-dir" => {
+                args.out_dir = PathBuf::from(iter.next().expect("--out-dir requires a value"))
+            }
+            "--dry-run" => args.dry_run = true,
+            "--skip-preflight" => args.skip_preflight = true,
+            other => eprintln!("warning: ignoring unknown argument {other}"),
+        }
+    }
+    args
 }
 
 struct Lcg(u64);
@@ -40,7 +88,7 @@ impl Lcg {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Deserialize, PartialEq, Eq, Hash)]
 enum Kind {
     Dint,
     Int,
@@ -50,354 +98,160 @@ enum Kind {
     Udt,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 enum WriteMode {
     Writeable,
-    FirmwareBlocked,
     ReadOnly,
+    FirmwareBlockedString,
+    FirmwareBlockedUdtStringMember,
+    FirmwareBlockedUdtArrayElementMember,
+    ServiceLayerWriteable,
+}
+
+impl WriteMode {
+    fn is_writeable(self) -> bool {
+        matches!(self, Self::Writeable | Self::ServiceLayerWriteable)
+    }
+
+    fn is_firmware_blocked(self) -> bool {
+        matches!(
+            self,
+            Self::FirmwareBlockedString
+                | Self::FirmwareBlockedUdtStringMember
+                | Self::FirmwareBlockedUdtArrayElementMember
+        )
+    }
 }
 
 struct Tag {
     name: String,
-    category: &'static str,
+    category: String,
     kind: Kind,
     write: WriteMode,
 }
 
-fn build_tags() -> Vec<Tag> {
-    let mut t = Vec::new();
-
-    // Controller-scope arrays — full coverage
-    for i in 0..100 {
-        t.push(mk(
-            format!("gTestArray_DINT[{}]", i),
-            "ctrl.DINT_array",
-            Kind::Dint,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..50 {
-        t.push(mk(
-            format!("gTestArray_REAL[{}]", i),
-            "ctrl.REAL_array",
-            Kind::Real,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..128 {
-        t.push(mk(
-            format!("gTestArray_BOOL[{}]", i),
-            "ctrl.BOOL_array",
-            Kind::Bool,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..200 {
-        t.push(mk(
-            format!("gTestArray_INT[{}]", i),
-            "ctrl.INT_array",
-            Kind::Int,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..1000 {
-        t.push(mk(
-            format!("gTestArray_Large[{}]", i),
-            "ctrl.Large_DINT",
-            Kind::Dint,
-            WriteMode::Writeable,
-        ));
-    }
-
-    // Controller STRING — read works, direct write blocked by firmware 0x2107
-    t.push(mk(
-        "gTest_STRING".into(),
-        "ctrl.STRING",
-        Kind::String,
-        WriteMode::FirmwareBlocked,
-    ));
-
-    // Controller UDT
-    t.push(mk(
-        "gTestUDT".into(),
-        "ctrl.UDT_whole",
-        Kind::Udt,
-        WriteMode::ReadOnly,
-    ));
-    t.push(mk(
-        "gTestUDT.Member1_DINT".into(),
-        "ctrl.UDT_members",
-        Kind::Dint,
-        WriteMode::Writeable,
-    ));
-    t.push(mk(
-        "gTestUDT.Member2_REAL".into(),
-        "ctrl.UDT_members",
-        Kind::Real,
-        WriteMode::Writeable,
-    ));
-    t.push(mk(
-        "gTestUDT.Member3_BOOL".into(),
-        "ctrl.UDT_members",
-        Kind::Bool,
-        WriteMode::Writeable,
-    ));
-    t.push(mk(
-        "gTestUDT.Member4_INT".into(),
-        "ctrl.UDT_members",
-        Kind::Int,
-        WriteMode::Writeable,
-    ));
-    t.push(mk(
-        "gTestUDT.Member5_String".into(),
-        "ctrl.UDT_members",
-        Kind::String,
-        WriteMode::FirmwareBlocked,
-    ));
-    for i in 0..10 {
-        t.push(mk(
-            format!("gTestUDT.Array_DINT[{}]", i),
-            "ctrl.UDT_nested",
-            Kind::Dint,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..5 {
-        t.push(mk(
-            format!("gTestUDT.Array_REAL[{}]", i),
-            "ctrl.UDT_nested",
-            Kind::Real,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..20 {
-        t.push(mk(
-            format!("gTestUDT.Array_BOOL[{}]", i),
-            "ctrl.UDT_nested",
-            Kind::Bool,
-            WriteMode::Writeable,
-        ));
-    }
-
-    // Controller UDT array — all element-member writes firmware-blocked
-    t.push(mk(
-        "gTestUDT_Array".into(),
-        "ctrl.UDTarr_whole",
-        Kind::Udt,
-        WriteMode::ReadOnly,
-    ));
-    for i in 0..10 {
-        t.push(mk(
-            format!("gTestUDT_Array[{}]", i),
-            "ctrl.UDTarr_element",
-            Kind::Udt,
-            WriteMode::ReadOnly,
-        ));
-        t.push(mk(
-            format!("gTestUDT_Array[{}].Member1_DINT", i),
-            "ctrl.UDTarr_elem_members",
-            Kind::Dint,
-            WriteMode::FirmwareBlocked,
-        ));
-        t.push(mk(
-            format!("gTestUDT_Array[{}].Member2_REAL", i),
-            "ctrl.UDTarr_elem_members",
-            Kind::Real,
-            WriteMode::FirmwareBlocked,
-        ));
-        t.push(mk(
-            format!("gTestUDT_Array[{}].Member3_BOOL", i),
-            "ctrl.UDTarr_elem_members",
-            Kind::Bool,
-            WriteMode::FirmwareBlocked,
-        ));
-        t.push(mk(
-            format!("gTestUDT_Array[{}].Member4_INT", i),
-            "ctrl.UDTarr_elem_members",
-            Kind::Int,
-            WriteMode::FirmwareBlocked,
-        ));
-        t.push(mk(
-            format!("gTestUDT_Array[{}].Member5_String", i),
-            "ctrl.UDTarr_elem_members",
-            Kind::String,
-            WriteMode::FirmwareBlocked,
-        ));
-        for j in 0..10 {
-            t.push(mk(
-                format!("gTestUDT_Array[{}].Array_DINT[{}]", i, j),
-                "ctrl.UDTarr_elem_nested",
-                Kind::Dint,
-                WriteMode::FirmwareBlocked,
-            ));
-        }
-        for j in 0..5 {
-            t.push(mk(
-                format!("gTestUDT_Array[{}].Array_REAL[{}]", i, j),
-                "ctrl.UDTarr_elem_nested",
-                Kind::Real,
-                WriteMode::FirmwareBlocked,
-            ));
-        }
-        for j in 0..20 {
-            t.push(mk(
-                format!("gTestUDT_Array[{}].Array_BOOL[{}]", i, j),
-                "ctrl.UDTarr_elem_nested",
-                Kind::Bool,
-                WriteMode::FirmwareBlocked,
-            ));
-        }
-    }
-
-    // Program-scope arrays
-    for i in 0..100 {
-        t.push(mk(
-            format!("Program:TestProgram.gTestArray_DINT[{}]", i),
-            "prog.DINT_array",
-            Kind::Dint,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..50 {
-        t.push(mk(
-            format!("Program:TestProgram.gTestArray_REAL[{}]", i),
-            "prog.REAL_array",
-            Kind::Real,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..100 {
-        t.push(mk(
-            format!("Program:TestProgram.gTestArray_BOOL[{}]", i),
-            "prog.BOOL_array",
-            Kind::Bool,
-            WriteMode::Writeable,
-        ));
-    }
-    t.push(mk(
-        "Program:TestProgram.gTest_STRING".into(),
-        "prog.STRING",
-        Kind::String,
-        WriteMode::FirmwareBlocked,
-    ));
-
-    // Program UDT
-    t.push(mk(
-        "Program:TestProgram.gTestUDT".into(),
-        "prog.UDT_whole",
-        Kind::Udt,
-        WriteMode::ReadOnly,
-    ));
-    t.push(mk(
-        "Program:TestProgram.gTestUDT.Member1_DINT".into(),
-        "prog.UDT_members",
-        Kind::Dint,
-        WriteMode::Writeable,
-    ));
-    t.push(mk(
-        "Program:TestProgram.gTestUDT.Member2_REAL".into(),
-        "prog.UDT_members",
-        Kind::Real,
-        WriteMode::Writeable,
-    ));
-    t.push(mk(
-        "Program:TestProgram.gTestUDT.Member3_BOOL".into(),
-        "prog.UDT_members",
-        Kind::Bool,
-        WriteMode::Writeable,
-    ));
-    t.push(mk(
-        "Program:TestProgram.gTestUDT.Member4_INT".into(),
-        "prog.UDT_members",
-        Kind::Int,
-        WriteMode::Writeable,
-    ));
-    t.push(mk(
-        "Program:TestProgram.gTestUDT.Member5_String".into(),
-        "prog.UDT_members",
-        Kind::String,
-        WriteMode::FirmwareBlocked,
-    ));
-    for i in 0..10 {
-        t.push(mk(
-            format!("Program:TestProgram.gTestUDT.Array_DINT[{}]", i),
-            "prog.UDT_nested",
-            Kind::Dint,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..5 {
-        t.push(mk(
-            format!("Program:TestProgram.gTestUDT.Array_REAL[{}]", i),
-            "prog.UDT_nested",
-            Kind::Real,
-            WriteMode::Writeable,
-        ));
-    }
-    for i in 0..20 {
-        t.push(mk(
-            format!("Program:TestProgram.gTestUDT.Array_BOOL[{}]", i),
-            "prog.UDT_nested",
-            Kind::Bool,
-            WriteMode::Writeable,
-        ));
-    }
-
-    // Program UDT array — element members firmware-blocked too
-    t.push(mk(
-        "Program:TestProgram.gTestUDT_Array".into(),
-        "prog.UDTarr_whole",
-        Kind::Udt,
-        WriteMode::ReadOnly,
-    ));
-    for i in 0..5 {
-        t.push(mk(
-            format!("Program:TestProgram.gTestUDT_Array[{}]", i),
-            "prog.UDTarr_element",
-            Kind::Udt,
-            WriteMode::ReadOnly,
-        ));
-        t.push(mk(
-            format!("Program:TestProgram.gTestUDT_Array[{}].Member1_DINT", i),
-            "prog.UDTarr_elem_members",
-            Kind::Dint,
-            WriteMode::FirmwareBlocked,
-        ));
-        t.push(mk(
-            format!("Program:TestProgram.gTestUDT_Array[{}].Member2_REAL", i),
-            "prog.UDTarr_elem_members",
-            Kind::Real,
-            WriteMode::FirmwareBlocked,
-        ));
-        t.push(mk(
-            format!("Program:TestProgram.gTestUDT_Array[{}].Member3_BOOL", i),
-            "prog.UDTarr_elem_members",
-            Kind::Bool,
-            WriteMode::FirmwareBlocked,
-        ));
-        t.push(mk(
-            format!("Program:TestProgram.gTestUDT_Array[{}].Member4_INT", i),
-            "prog.UDTarr_elem_members",
-            Kind::Int,
-            WriteMode::FirmwareBlocked,
-        ));
-        for j in 0..10 {
-            t.push(mk(
-                format!(
-                    "Program:TestProgram.gTestUDT_Array[{}].Array_DINT[{}]",
-                    i, j
-                ),
-                "prog.UDTarr_elem_nested",
-                Kind::Dint,
-                WriteMode::FirmwareBlocked,
-            ));
-        }
-    }
-
-    t
+#[derive(Deserialize)]
+struct Manifest {
+    #[serde(rename = "schema_version")]
+    _schema_version: u32,
+    categories: Vec<ManifestCategory>,
 }
 
-fn mk(name: String, category: &'static str, kind: Kind, write: WriteMode) -> Tag {
+#[derive(Deserialize)]
+struct ManifestCategory {
+    name: String,
+    pattern: String,
+    kind: Option<Kind>,
+    writeability: Option<WriteMode>,
+    indices: Option<RangeSpec>,
+    outer_indices: Option<RangeSpec>,
+    members: Option<BTreeMap<String, ManifestSpec>>,
+    inner: Option<BTreeMap<String, ManifestSpec>>,
+}
+
+#[derive(Deserialize)]
+struct RangeSpec {
+    range: [usize; 2],
+}
+
+#[derive(Deserialize)]
+struct ManifestSpec {
+    range: Option<[usize; 2]>,
+    kind: Kind,
+    writeability: WriteMode,
+}
+
+fn build_tags(manifest_path: &Path) -> Result<Vec<Tag>, Box<dyn std::error::Error>> {
+    let manifest: Manifest = serde_json::from_str(&fs::read_to_string(manifest_path)?)?;
+    let mut tags = Vec::new();
+    for category in manifest.categories {
+        tags.extend(expand_category(&category)?);
+    }
+    Ok(tags)
+}
+
+fn expand_category(category: &ManifestCategory) -> Result<Vec<Tag>, Box<dyn std::error::Error>> {
+    let mut tags = Vec::new();
+    if let Some(members) = &category.members {
+        for i in range_or_once(category.indices.as_ref()) {
+            for (member, spec) in members {
+                tags.push(mk(
+                    render_pattern(&category.pattern, Some(i), Some(member), None, None),
+                    category.name.clone(),
+                    spec.kind,
+                    spec.writeability,
+                ));
+            }
+        }
+        return Ok(tags);
+    }
+    if let Some(inner) = &category.inner {
+        for i in range_or_once(category.outer_indices.as_ref()) {
+            for (field, spec) in inner {
+                let range = spec
+                    .range
+                    .ok_or_else(|| format!("{}.{field} missing range", category.name))?;
+                for j in range[0]..range[1] {
+                    tags.push(mk(
+                        render_pattern(&category.pattern, Some(i), None, Some(field), Some(j)),
+                        category.name.clone(),
+                        spec.kind,
+                        spec.writeability,
+                    ));
+                }
+            }
+        }
+        return Ok(tags);
+    }
+    let kind = category
+        .kind
+        .ok_or_else(|| format!("{} missing kind", category.name))?;
+    let write = category
+        .writeability
+        .ok_or_else(|| format!("{} missing writeability", category.name))?;
+    for i in range_or_once(category.indices.as_ref()) {
+        tags.push(mk(
+            render_pattern(&category.pattern, Some(i), None, None, None),
+            category.name.clone(),
+            kind,
+            write,
+        ));
+    }
+    Ok(tags)
+}
+
+fn range_or_once(indices: Option<&RangeSpec>) -> Vec<usize> {
+    match indices {
+        Some(spec) => (spec.range[0]..spec.range[1]).collect(),
+        None => vec![0],
+    }
+}
+
+fn render_pattern(
+    pattern: &str,
+    i: Option<usize>,
+    member: Option<&str>,
+    field: Option<&str>,
+    j: Option<usize>,
+) -> String {
+    let mut out = pattern.to_string();
+    if let Some(i) = i {
+        out = out.replace("{i}", &i.to_string());
+    }
+    if let Some(member) = member {
+        out = out.replace("{member}", member);
+    }
+    if let Some(field) = field {
+        out = out.replace("{field}", field);
+    }
+    if let Some(j) = j {
+        out = out.replace("{j}", &j.to_string());
+    }
+    out
+}
+
+fn mk(name: String, category: String, kind: Kind, write: WriteMode) -> Tag {
     Tag {
         name,
         category,
@@ -416,6 +270,20 @@ struct CatStats {
     verify_fail: u32,
     blocked_as_expected: u32,
     blocked_unexpected_pass: u32,
+}
+
+struct RunSummary<'a> {
+    args: &'a Args,
+    tag_count: usize,
+    stats: &'a BTreeMap<String, CatStats>,
+    preflight_ok: u32,
+    preflight_fail: u32,
+    totals: &'a CatStats,
+    settle_ok: u32,
+    settle_fail: u32,
+    settle_verify_ok: u32,
+    settle_verify_fail: u32,
+    unexpected: u32,
 }
 
 fn rand_value(kind: Kind, rng: &mut Lcg) -> Option<PlcValue> {
@@ -448,23 +316,101 @@ fn values_match(a: &PlcValue, b: &PlcValue) -> bool {
     }
 }
 
+fn settle_samples() -> Vec<(&'static str, &'static str, PlcValue)> {
+    vec![
+        (
+            "ctrl.BOOL_array",
+            "gTestArray_BOOL[5]",
+            PlcValue::Bool(true),
+        ),
+        (
+            "ctrl.DINT_array",
+            "gTestArray_DINT[42]",
+            PlcValue::Dint(999_999),
+        ),
+        (
+            "ctrl.INT_array",
+            "gTestArray_INT[100]",
+            PlcValue::Int(9_999),
+        ),
+        (
+            "ctrl.Large_DINT",
+            "gTestArray_Large[500]",
+            PlcValue::Dint(999_999),
+        ),
+        (
+            "ctrl.REAL_array",
+            "gTestArray_REAL[10]",
+            PlcValue::Real(99.99),
+        ),
+        (
+            "ctrl.UDT_members",
+            "gTestUDT.Member1_DINT",
+            PlcValue::Dint(999_999),
+        ),
+        (
+            "ctrl.UDT_nested",
+            "gTestUDT.Array_DINT[5]",
+            PlcValue::Dint(999_999),
+        ),
+        (
+            "ctrl.UDTarr_elem_nested",
+            "gTestUDT_Array[2].Array_DINT[3]",
+            PlcValue::Dint(999_999),
+        ),
+        (
+            "prog.BOOL_array",
+            "Program:TestProgram.gTestArray_BOOL[5]",
+            PlcValue::Bool(true),
+        ),
+        (
+            "prog.DINT_array",
+            "Program:TestProgram.gTestArray_DINT[42]",
+            PlcValue::Dint(999_999),
+        ),
+        (
+            "prog.REAL_array",
+            "Program:TestProgram.gTestArray_REAL[10]",
+            PlcValue::Real(99.99),
+        ),
+        (
+            "prog.UDT_members",
+            "Program:TestProgram.gTestUDT.Member1_DINT",
+            PlcValue::Dint(999_999),
+        ),
+        (
+            "prog.UDT_nested",
+            "Program:TestProgram.gTestUDT.Array_DINT[5]",
+            PlcValue::Dint(999_999),
+        ),
+        (
+            "prog.UDTarr_elem_nested",
+            "Program:TestProgram.gTestUDT_Array[2].Array_DINT[3]",
+            PlcValue::Dint(999_999),
+        ),
+    ]
+}
+
 #[tokio::main]
-async fn main() -> Result<(), EtherNetIpError> {
-    let address = get_plc_address();
-    let slot = get_cpu_slot();
-    let tags = build_tags();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = parse_args();
+    let tags = build_tags(&args.manifest_path)?;
 
     println!("Rust binding — full-coverage exerciser");
     println!(
         "PLC: {} (slot {})  total tags: {}",
-        address,
-        slot,
+        args.address,
+        args.slot,
         tags.len()
     );
-    let counts = tags.iter().fold((0, 0, 0), |(w, b, r), t| match t.write {
-        WriteMode::Writeable => (w + 1, b, r),
-        WriteMode::FirmwareBlocked => (w, b + 1, r),
-        WriteMode::ReadOnly => (w, b, r + 1),
+    let counts = tags.iter().fold((0, 0, 0), |(w, b, r), t| {
+        if t.write.is_writeable() {
+            (w + 1, b, r)
+        } else if t.write.is_firmware_blocked() {
+            (w, b + 1, r)
+        } else {
+            (w, b, r + 1)
+        }
     });
     println!(
         "  writeable: {}   firmware-blocked: {}   read-only: {}",
@@ -472,15 +418,55 @@ async fn main() -> Result<(), EtherNetIpError> {
     );
     println!();
 
-    let mut client = EipClient::with_route_path(&address, RoutePath::new().add_slot(slot)).await?;
-    let mut stats: BTreeMap<&'static str, CatStats> = BTreeMap::new();
+    if args.dry_run {
+        println!(
+            "would-test binding=rust tags={} writeable={} blocked={} read_only={}",
+            tags.len(),
+            counts.0,
+            counts.1,
+            counts.2
+        );
+        return Ok(());
+    }
+
+    let mut client =
+        EipClient::with_route_path(&args.address, RoutePath::new().add_slot(args.slot)).await?;
+    let mut stats: BTreeMap<String, CatStats> = BTreeMap::new();
     let mut rng = Lcg::seeded();
     let mut random_values: Vec<(usize, PlcValue)> = Vec::new();
+    let mut preflight_ok = 0u32;
+    let mut preflight_fail = 0u32;
+
+    if !args.skip_preflight {
+        println!("Phase 0 — preflight tag inventory");
+        let tp = Instant::now();
+        for tag in &tags {
+            match client.read_tag(&tag.name).await {
+                Ok(_) => preflight_ok += 1,
+                Err(err) => {
+                    preflight_fail += 1;
+                    eprintln!(
+                        "setup-error: tag {} failed preflight ({}) — verify the PLC project against docs/PLC_TEST_TAG_DEFINITIONS.md",
+                        tag.name, err
+                    );
+                }
+            }
+        }
+        println!(
+            "  done in {:.1}s  preflight={}/{}",
+            tp.elapsed().as_secs_f64(),
+            preflight_ok,
+            preflight_ok + preflight_fail
+        );
+        if preflight_fail > 0 {
+            std::process::exit(2);
+        }
+    }
 
     println!("Phase 1 — read every tag");
     let t0 = Instant::now();
     for tag in &tags {
-        let entry = stats.entry(tag.category).or_default();
+        let entry = stats.entry(tag.category.clone()).or_default();
         match client.read_tag(&tag.name).await {
             Ok(_) => entry.read_ok += 1,
             Err(_) => entry.read_fail += 1,
@@ -491,13 +477,13 @@ async fn main() -> Result<(), EtherNetIpError> {
     println!("Phase 2 — write random values to all writeable tags");
     let t1 = Instant::now();
     for (idx, tag) in tags.iter().enumerate() {
-        if tag.write != WriteMode::Writeable {
+        if !tag.write.is_writeable() {
             continue;
         }
         let Some(v) = rand_value(tag.kind, &mut rng) else {
             continue;
         };
-        let entry = stats.entry(tag.category).or_default();
+        let entry = stats.entry(tag.category.clone()).or_default();
         match client.write_tag(&tag.name, v.clone()).await {
             Ok(()) => {
                 entry.write_ok += 1;
@@ -514,7 +500,7 @@ async fn main() -> Result<(), EtherNetIpError> {
     let t2 = Instant::now();
     for (idx, expected) in &random_values {
         let tag = &tags[*idx];
-        let entry = stats.entry(tag.category).or_default();
+        let entry = stats.entry(tag.category.clone()).or_default();
         match client.read_tag(&tag.name).await {
             Ok(actual) if values_match(&actual, expected) => entry.verify_ok += 1,
             _ => entry.verify_fail += 1,
@@ -525,13 +511,13 @@ async fn main() -> Result<(), EtherNetIpError> {
     println!("Phase 4 — confirm firmware-blocked writes are still blocked");
     let t3 = Instant::now();
     for tag in &tags {
-        if tag.write != WriteMode::FirmwareBlocked {
+        if !tag.write.is_firmware_blocked() {
             continue;
         }
         let Some(v) = rand_value(tag.kind, &mut rng) else {
             continue;
         };
-        let entry = stats.entry(tag.category).or_default();
+        let entry = stats.entry(tag.category.clone()).or_default();
         match client.write_tag(&tag.name, v).await {
             Err(_) => entry.blocked_as_expected += 1,
             Ok(()) => entry.blocked_unexpected_pass += 1,
@@ -544,7 +530,7 @@ async fn main() -> Result<(), EtherNetIpError> {
     let mut settle_ok = 0u32;
     let mut settle_fail = 0u32;
     for tag in &tags {
-        if tag.write != WriteMode::Writeable {
+        if !tag.write.is_writeable() {
             continue;
         }
         let Some(v) = nines(tag.kind) else {
@@ -560,6 +546,40 @@ async fn main() -> Result<(), EtherNetIpError> {
         t4.elapsed().as_secs_f64(),
         settle_ok,
         settle_fail
+    );
+    println!();
+
+    println!("Phase 6 — verify settle (sample read-back)");
+    let t5 = Instant::now();
+    let mut settle_verify_ok = 0u32;
+    let mut settle_verify_fail = 0u32;
+    for (category, tag_name, expected) in settle_samples() {
+        match client.read_tag(tag_name).await {
+            Ok(actual) if values_match(&actual, &expected) => {
+                settle_verify_ok += 1;
+                println!("  verify-settle  {:<28} {:<48} ✓", category, tag_name);
+            }
+            Ok(actual) => {
+                settle_verify_fail += 1;
+                println!(
+                    "  verify-settle  {:<28} {:<48} ✗ MISMATCH: expected {:?}, got {:?}",
+                    category, tag_name, expected, actual
+                );
+            }
+            Err(err) => {
+                settle_verify_fail += 1;
+                println!(
+                    "  verify-settle  {:<28} {:<48} ✗ READ ERROR: {}",
+                    category, tag_name, err
+                );
+            }
+        }
+    }
+    println!(
+        "  done in {:.1}s  settle_verify={}/{}",
+        t5.elapsed().as_secs_f64(),
+        settle_verify_ok,
+        settle_verify_ok + settle_verify_fail
     );
     println!();
 
@@ -605,7 +625,8 @@ async fn main() -> Result<(), EtherNetIpError> {
         + totals.write_fail
         + totals.verify_fail
         + totals.blocked_unexpected_pass
-        + settle_fail;
+        + settle_fail
+        + settle_verify_fail;
     println!(
         "Summary: reads={}/{}  writes={}/{}  verify={}/{}  blocked_as_expected={}  unexpected_anomalies={}",
         totals.read_ok,
@@ -617,6 +638,32 @@ async fn main() -> Result<(), EtherNetIpError> {
         totals.blocked_as_expected,
         unexpected
     );
+    println!(
+        "binding=rust tags={} reads={}/{} writes={}/{} verify={}/{} blocked={} anomalies={} RESULT={}",
+        tags.len(),
+        totals.read_ok,
+        totals.read_ok + totals.read_fail,
+        totals.write_ok,
+        totals.write_ok + totals.write_fail,
+        totals.verify_ok,
+        totals.verify_ok + totals.verify_fail,
+        totals.blocked_as_expected,
+        unexpected,
+        if unexpected == 0 { "PASS" } else { "FAIL" }
+    );
+    write_json_result(&RunSummary {
+        args: &args,
+        tag_count: tags.len(),
+        stats: &stats,
+        preflight_ok,
+        preflight_fail,
+        totals: &totals,
+        settle_ok,
+        settle_fail,
+        settle_verify_ok,
+        settle_verify_fail,
+        unexpected,
+    })?;
 
     if unexpected == 0 {
         println!("RESULT: PASS");
@@ -625,4 +672,51 @@ async fn main() -> Result<(), EtherNetIpError> {
         println!("RESULT: FAIL ({} anomalies)", unexpected);
         std::process::exit(1);
     }
+}
+
+fn write_json_result(summary: &RunSummary<'_>) -> Result<(), Box<dyn std::error::Error>> {
+    fs::create_dir_all(&summary.args.out_dir)?;
+    let ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs();
+    let path = summary.args.out_dir.join(format!("rust_{ts}.json"));
+    let mut categories = serde_json::Map::new();
+    for (category, stats) in summary.stats {
+        categories.insert(
+            category.clone(),
+            json!({
+                "read_ok": stats.read_ok,
+                "read_fail": stats.read_fail,
+                "write_ok": stats.write_ok,
+                "write_fail": stats.write_fail,
+                "verify_ok": stats.verify_ok,
+                "verify_fail": stats.verify_fail,
+                "blocked_as_expected": stats.blocked_as_expected,
+                "blocked_unexpected_pass": stats.blocked_unexpected_pass
+            }),
+        );
+    }
+    let result = json!({
+        "schema_version": 1,
+        "binding": "rust",
+        "binding_version": env!("CARGO_PKG_VERSION"),
+        "plc_address": summary.args.address,
+        "plc_slot": summary.args.slot,
+        "manifest_version": 1,
+        "tag_count": summary.tag_count,
+        "result": if summary.unexpected == 0 { "PASS" } else { "FAIL" },
+        "anomalies": summary.unexpected,
+        "phases": {
+            "preflight": { "ok": summary.preflight_ok, "fail": summary.preflight_fail },
+            "phase1_read": { "ok": summary.totals.read_ok, "fail": summary.totals.read_fail },
+            "phase2_write": { "ok": summary.totals.write_ok, "fail": summary.totals.write_fail },
+            "phase3_verify": { "ok": summary.totals.verify_ok, "fail": summary.totals.verify_fail },
+            "phase4_blocked": { "ok": summary.totals.blocked_as_expected, "fail": summary.totals.blocked_unexpected_pass, "note": "expected firmware rejections" },
+            "phase5_settle": { "ok": summary.settle_ok, "fail": summary.settle_fail },
+            "phase6_verify_settle": { "ok": summary.settle_verify_ok, "fail": summary.settle_verify_fail }
+        },
+        "categories": categories
+    });
+    fs::write(path, serde_json::to_string_pretty(&result)?)?;
+    Ok(())
 }

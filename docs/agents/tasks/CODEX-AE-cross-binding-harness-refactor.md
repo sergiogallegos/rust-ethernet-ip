@@ -2,9 +2,9 @@
 id: CODEX-AE
 title: Cross-binding hardware harness — shared tag manifest, JSON output, granular firmware classification, preflight inventory check
 owner: codex
-status: open
+status: submitted
 created: 2026-05-25
-last-update: 2026-05-25 claude [Opus 4.7]
+last-update: 2026-05-25 codex [gpt-5]
 ---
 
 ## Brief
@@ -179,7 +179,24 @@ Items #2-6 from Codex's 2026-05-25 cross-binding parity recommendation, bundled 
 
 ## Codex log
 
-_(append work entries here)_
+### 2026-05-25  codex [gpt-5]
+
+Refactored the Rust, C#, and Python full-coverage hardware exercisers to consume `examples/full_coverage_tags.json` as the single source of truth. Added granular manifest writeability categories, `--dry-run`, `--skip-preflight`, manifest-driven tag expansion, preflight setup validation, parity console summary lines, and per-run JSON result output under `examples/full_coverage_results/` with per-phase and per-category counters.
+
+Added `tests/full_coverage_manifest_tests.sh` and a CI `full-coverage-manifest` job that validates the manifest and runs each binding in dry-run mode. Added `examples/full_coverage_results/.gitkeep`, ignored generated result JSON, and linked the machine-readable manifest from `docs/PLC_TEST_TAG_DEFINITIONS.md`.
+
+Verification:
+
+- `tests/full_coverage_manifest_tests.sh` passed.
+- Rust/C#/Python dry-runs each resolved `2299` tags, `2206` writeable, `74` firmware-blocked, `19` read-only.
+- `dotnet build examples/CSharpFullCoverage/CSharpFullCoverage.csproj -c Release` passed.
+- `python3 -m py_compile python/examples/test_plc_full_coverage.py` passed.
+- `cargo test --workspace --all-features --locked` passed.
+- `cargo fmt -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `git diff --check` passed.
+
+### 2026-05-25  codex [gpt-5]
+
+Ran the manifest-driven full-coverage hardware validation against ControlLogix `10.136.15.20:44818`, slot `0`, with preflight enabled. All three bindings produced JSON result artifacts in `examples/full_coverage_results/` and passed with matching totals: `2299/2299` preflight reads, `2299/2299` phase reads, `2206/2206` writes, `2206/2206` verify, Phase 6 `14/14`, `60` blocked-as-expected, and `0` anomalies.
 
 ## Claude review
 

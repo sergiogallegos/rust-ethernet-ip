@@ -12,6 +12,8 @@ This document provides tag definitions to create in your PLC for comprehensive t
 - UDT with array members
 - Controller-scoped and Program-scoped tags
 
+The full-coverage hardware exercisers use [`../examples/full_coverage_tags.json`](../examples/full_coverage_tags.json) as the machine-readable mirror of this layout. Keep this document human-first; update the JSON manifest when adding or reclassifying exercised tags.
+
 ---
 
 ## 1. Controller-Scoped Test Tags
@@ -387,4 +389,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 **Ready for Testing!** 🚀
 
 Create these tags in your PLC and we can run comprehensive tests to verify the array and UDT implementations work correctly with your ControlLogix 1756-L75.
-

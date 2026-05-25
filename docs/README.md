@@ -3,8 +3,8 @@
 This folder contains project documentation for `rust-ethernet-ip`.
 
 Current release state:
-- Stable published line: `0.7.0`
-- Working draft line: `0.8.0` (not published)
+- Working draft line: `1.0.0` (not tagged or published)
+- Last published stable line: `0.7.0`
 - Previous stable line: `0.6.3`
 
 ## Start Here
@@ -31,7 +31,9 @@ Current release state:
 
 ## Release and Quality Gates
 
-- [release/0.8.0_RELEASE_NOTES_DRAFT.md](release/0.8.0_RELEASE_NOTES_DRAFT.md)
+- [../CHANGELOG.md](../CHANGELOG.md): `1.0.0` release notes and historical release history
+- [agents/board.md](agents/board.md): current `1.0.0` release gates and staged publish order
+- [release/0.8.0_RELEASE_NOTES_DRAFT.md](release/0.8.0_RELEASE_NOTES_DRAFT.md) (historical draft absorbed into `1.0.0`)
 - [0.7.0_HARDENING_GATE.md](0.7.0_HARDENING_GATE.md)
 - [validation/REAL_PLC_TESTING.md](validation/REAL_PLC_TESTING.md)
 - [validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
@@ -66,6 +68,7 @@ Some older files now include an explicit `Historical reference` banner near the 
 Use them for context, but treat the following as authoritative for current behavior:
 - `../README.md`
 - `programmer_manual.md`
-- `release/0.8.0_RELEASE_NOTES_DRAFT.md`
+- `../CHANGELOG.md`
+- `agents/board.md`
 - current records in `validation/`
 - the maintainer wiki in `../wiki/`

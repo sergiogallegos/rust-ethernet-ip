@@ -16,7 +16,7 @@ Validated scope today:
 ## Package Status
 
 - current published package: `0.7.0`
-- current validated wrapper line in this repo: `0.8.0` draft work on `main`
+- current validated wrapper line in this repo: `1.0.0` draft work on `main`
 - current published package target: `.NET 10`
 - current packaged native runtime focus: Windows `win-x64`
 

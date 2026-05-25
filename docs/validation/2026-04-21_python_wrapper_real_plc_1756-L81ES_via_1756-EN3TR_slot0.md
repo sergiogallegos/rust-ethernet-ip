@@ -7,7 +7,7 @@ Network topology: Routed Ethernet connection to `192.168.0.101:44818` via `1756-
 
 ## Scope
 
-This record captures the Python wrapper validation pass run against the current `0.8.0` draft line on the routed ControlLogix target used for the Rust and C# real-PLC validations.
+This record captures the Python wrapper validation pass run against the then-current `0.8.0` draft line on the routed ControlLogix target used for the Rust and C# real-PLC validations.
 
 The focus of this pass was:
 
@@ -83,4 +83,4 @@ No evidence from this pass suggests a regression in routed reads, routed `DINT` 
 
 ## Assessment
 
-The Python wrapper is viable on the exercised routed ControlLogix feature set for the `0.8.0` draft line, but this validation surfaced a real write-status handling bug that required a fix during the session. After the fix, the exercised live read, single-write, batch-read, health, diagnostics, and collector paths behaved correctly. One routed BOOL write path remains an explicit follow-up item rather than a closed limitation classification.
+The Python wrapper was viable on the exercised routed ControlLogix feature set for the then-current `0.8.0` draft line, but this validation surfaced a real write-status handling bug that required a fix during the session. After the fix, the exercised live read, single-write, batch-read, health, diagnostics, and collector paths behaved correctly. One routed BOOL write path remained an explicit follow-up item rather than a closed limitation classification.

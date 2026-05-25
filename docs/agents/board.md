@@ -36,7 +36,7 @@ Resume order recommended by Claude. Each candidate brief is unwritten; the entry
 
 ### Post-1.0.0 polish (no version assigned; brief on resume)
 
-These are non-breaking improvements deferred until after v0.8.0 ships. They are not yet briefed; the entries below summarise what each brief would cover. When the maintainer is ready to resume, claude authors the brief, codex implements, claude reviews.
+These are non-breaking improvements deferred until after v1.0.0 ships. They are not yet briefed; the entries below summarise what each brief would cover. When the maintainer is ready to resume, claude authors the brief, codex implements, claude reviews.
 
 1. **CODEX-G — `plc_manager.rs` unwrap cleanup.** Five-to-six `.unwrap()` calls on live paths: `src/plc_manager.rs:25` (parse in `Default`), and lines 135, 139, 163, 173, 183 (HashMap `get_mut`/`last_mut` on connection pool lookups). Soundness-adjacent — a panic from a connection-pool miss is a real failure mode, especially when reached from the FFI side. Convert to `Result` propagation; pair with a `From<std::net::AddrParseError>` impl if needed.
 2. **CODEX-H — dead-code purge.** Six concrete items:
@@ -86,7 +86,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 9. **CODEX-Q — Service Layer for restricted writes.** Add `Client::write_udt_member`, `Client::write_string_tag`, `Client::write_udt_array_member` methods that internally implement the read-modify-write dance for the documented firmware limitations (see `lib.rs:46-62` and the 20-line doctest at `client.rs:131-150`). Removes the workaround ritual from consumer code. Stay concrete to the Logix STRING / UDT-array-member-write quirks; do not generalize into a broader pattern framework.
 10. **CODEX-S — `RetryPolicy` primitive.** Builder + decorator combinator: `client.with_retry(policy).read_tag(...).await`. Backoff (constant / exponential / decorrelated jitter), max attempts, per-error-class predicate (already have `EtherNetIpError::is_retriable` at `src/error.rs:104`). Each consumer currently writes its own retry loop; centralizing prevents policy drift across the C# and Python wrappers.
 
-### Post-books-review roadmap (Phase 4 — scale and extensibility, same v0.8.0 scope)
+### Post-books-review roadmap (Phase 4 — scale and extensibility, post-1.0.0 scope)
 
 11. **CODEX-T — `Fleet<PlcId, Client>` multi-PLC pool.** Today `PlcManager` (242 LOC) hints at this. Make it an explicit per-PLC actor pool with fleet-level health check and a fleet-level event stream. Industrial deployments routinely talk to N PLCs at once; per-PLC backpressure and shared metrics collection belong in the library, not in every consumer.
 12. **CODEX-U — Promote `protocol`, `tag_path`, `udt` to sibling workspace crates.** Once their APIs stabilize after 1.0. Cargo features in the main crate let consumers pay only for what they use (an HMI that doesn't need UDT discovery shouldn't link `udt.rs`). Long-term modularity payoff; no short-term value.

@@ -4,6 +4,8 @@ This document maps the curated research papers in [research/CURATED_INDUSTRIAL_R
 
 Date: 2026-04-19
 
+Status note: this map was originally written for the `0.8.0` draft planning window. That work was later absorbed into the `1.0.0` release-candidate line; the original timing labels below are preserved as planning context.
+
 ## Summary
 
 The papers are most useful for:
@@ -22,7 +24,7 @@ That split matters. The Rust core should remain grounded in Rockwell behavior, v
 
 ## Priority Buckets
 
-## 0.8.0 Candidate Scope
+## 1.0.0 Candidate Scope
 
 These fit the current active direction without diluting the repo's core mission.
 
@@ -32,7 +34,7 @@ These fit the current active direction without diluting the repo's core mission.
 - backlog definition for metadata/schema export
 - backlog definition for collector/API/MQTT adapters
 
-## Post-0.8.0 Near-Term
+## Post-1.0.0 Near-Term
 
 - metadata and schema export design
 - collector service MVP
@@ -59,7 +61,7 @@ These fit the current active direction without diluting the repo's core mission.
 - Recommendation:
   - use this as a design reference when formalizing schema export, not as a reason to bloat the read/write API
 - Timing:
-  - post-0.8.0
+  - post-1.0.0
 
 ## Paper 2. Automatic Configuration of OPC UA for IIoT Environments
 
@@ -142,7 +144,7 @@ These fit the current active direction without diluting the repo's core mission.
 - Recommendation:
   - prioritize CSV, SQLite, and dataframe-friendly examples over in-library analytics features
 - Timing:
-  - 0.8.0 candidate
+  - 1.0.0 candidate
 
 ## Paper 9. AI + IoT Predictive Maintenance Practical Approach
 
@@ -154,7 +156,7 @@ These fit the current active direction without diluting the repo's core mission.
 - Recommendation:
   - add examples that combine PLC polling with downstream data handling patterns
 - Timing:
-  - 0.8.0 candidate for examples, deeper integrations later
+  - 1.0.0 candidate for examples, deeper integrations later
 
 ## Paper 10. ML for ICS Intrusion Detection
 
@@ -200,7 +202,7 @@ These fit the current active direction without diluting the repo's core mission.
 - Recommendation:
   - add Python examples that use batch reads and interval-driven loops rather than many single-tag calls
 - Timing:
-  - 0.8.0 examples and later perf work
+  - 1.0.0 examples and later perf work
 
 ## Paper 14. OPC UA vs MQTT in a Unified Namespace Context
 

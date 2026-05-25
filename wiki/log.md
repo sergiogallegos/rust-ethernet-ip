@@ -976,3 +976,17 @@ Sources used:
 - `crates/udt/src/lib.rs`
 - `docs/agents/tasks/CODEX-K-release-window-bundle.md`
 - `docs/agents/tasks/CODEX-U-sibling-crates.md`
+
+## [2026-05-24] reframe | current docs to 1.0.0 release candidate
+
+- Updated `wiki/protocol/abi-contract.md`.
+- Reframed ABI v1 as the `1.0.0` release-candidate contract instead of the superseded `0.8.0` draft line.
+- Kept historical 0.7.0 and 0.8.0 release-validation pages unchanged as historical evidence.
+
+Sources used:
+
+- `Cargo.toml`
+- `VERSION`
+- `docs/agents/board.md`
+- `CHANGELOG.md`
+- `src/version.rs`

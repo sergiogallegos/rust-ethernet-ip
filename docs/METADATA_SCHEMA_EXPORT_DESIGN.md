@@ -75,7 +75,7 @@ Recommended JSON shape:
   "generated_at_utc": "2026-04-19T18:00:00Z",
   "library": {
     "name": "rust-ethernet-ip",
-    "version": "0.8.0-dev"
+    "version": "1.0.0"
   },
   "target": {
     "address": "192.168.0.101:44818",

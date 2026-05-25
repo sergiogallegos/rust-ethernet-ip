@@ -11,7 +11,7 @@ It is intended for:
 - release reviewers checking compatibility risk
 - AI agents that need a stable map of module boundaries and design constraints
 
-This document describes the current `v0.8.0` development line. The wiki may
+This document describes the current `v1.0.0` release-candidate line. The wiki may
 contain investigation notes and synthesis, but this file is the user-facing
 architecture reference.
 
@@ -47,8 +47,8 @@ The important design goals are:
 - stable public APIs for Rust users and wrapper consumers
 - thin wrappers that do not reimplement PLC protocol logic
 - high confidence through unit, simulator, wrapper, and hardware validation
-- conservative refactors that preserve compatibility through the `v0.8.0` line
-- clear pre-1.0 cleanup of known public API and ABI debt
+- conservative refactors that preserve compatibility through the current `v1.0.0` release-candidate line
+- clear post-1.0 handling of any new public API and ABI debt
 
 Key constraints:
 
@@ -57,7 +57,7 @@ Key constraints:
 - real hardware validation is required for PLC-specific behavior
 - some Allen-Bradley firmware limitations are external constraints, not library
   bugs
-- compatibility matters more than architectural purity while `v0.8.0` is being
+- compatibility matters more than architectural purity while `v1.0.0` is being
   stabilized
 
 ## Architecture Summary
@@ -267,8 +267,9 @@ Coverage expectations:
 
 ## Release and Compatibility Model
 
-The current development focus is stabilizing `v0.8.0`. Compatibility should be
-handled conservatively until that line is released.
+The current development focus is stabilizing the `v1.0.0` release candidate.
+Compatibility should be handled conservatively until that line is tagged and
+published.
 
 Compatibility surfaces:
 

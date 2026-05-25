@@ -2,10 +2,11 @@
 
 Practical manual for developers integrating the library in Rust projects or through the C# wrapper.
 
-- Last updated: `2026-04-07`
-- Source baseline commit: `bd2375a`
+- Last updated: `2026-05-24`
+- Source baseline commit: `ecadf95`
 
-- Stable crate line: `0.7.0`
+- Working draft crate line: `1.0.0` (not tagged or published)
+- Last published stable crate line: `0.7.0`
 - Previous stable crate line: `0.6.3`
 - Target PLCs: CompactLogix / ControlLogix
 
@@ -59,6 +60,8 @@ MixerRecipe.Stage[2].TemperatureSetpoint
 rust-ethernet-ip = "0.7.0"
 tokio = { version = "1", features = ["full"] }
 ```
+
+For source builds from `main`, the repository is currently prepared as `1.0.0`. The crates.io release still requires the staged sibling-crate publish sequence documented in [agents/board.md](agents/board.md).
 
 ### Quick Start
 
@@ -382,4 +385,4 @@ Recommended workaround pattern in both Rust and C#: read full UDT/element, modif
 - Run sustained read/write soak tests in your target network topology.
 - Capture error handling for disconnects, timeouts, and type mismatches.
 - Lock down network access (firewall/VLAN) because EtherNet/IP has limited built-in security.
-- Pin stable crate versions in production deployments (`0.7.0` currently published).
+- Pin stable crate versions in production deployments (`0.7.0` is currently published; `1.0.0` is the current release candidate).

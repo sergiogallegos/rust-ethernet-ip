@@ -2,7 +2,7 @@
 
 ## Summary
 
-The native C FFI surface is pinned at ABI version `1` for the `0.8.0` draft line. Wrappers should check `eip_abi_version()` at native-library load time and fail fast when the loaded `cdylib` does not match the wrapper's expected ABI.
+The native C FFI surface is pinned at ABI version `1` for the `1.0.0` release-candidate line. Wrappers should check `eip_abi_version()` at native-library load time and fail fast when the loaded `cdylib` does not match the wrapper's expected ABI.
 
 ## Current Understanding
 
@@ -41,7 +41,7 @@ Adding a new export can remain ABI-compatible when existing symbols and semantic
 
 ## Open Questions
 
-- `CODEX-M` will audit FFI registry clone semantics. If it introduces an internal registry-handle type without changing exported signatures, ABI version remains `1`; this page should be updated with the internal rationale.
+- Future registry or client-handle refactors can remain on ABI version `1` only when exported signatures, pointer ownership rules, and return-code semantics stay unchanged.
 
 ## Related Pages
 

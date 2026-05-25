@@ -6,13 +6,14 @@ This document describes the version management process for the Rust EtherNet/IP 
 
 This project follows [Semantic Versioning](https://semver.org/) (SemVer):
 
-- **MAJOR.MINOR.PATCH** (e.g., 0.7.0)
+- **MAJOR.MINOR.PATCH** (e.g., 1.0.0)
 - **MAJOR**: Incompatible API changes
 - **MINOR**: New functionality in a backwards compatible manner
 - **PATCH**: Backwards compatible bug fixes
 
 ## Current Version State
 
+- **Current working draft version:** `1.0.0`
 - **Current stable published version:** `0.7.0`
 - **Previous stable version:** `0.6.3`
 
@@ -20,7 +21,8 @@ This project follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 | Version | Release Date | Status | Notes |
 |---------|-------------|--------|-------|
-| 0.7.0   | 2026-04-07  | Current stable | Hardening release with Rust/C# parity improvements and real-PLC validation evidence |
+| 1.0.0   | 2026-05-24  | Release candidate | SemVer-major release-window bundle; pending staged crates.io publish, NuGet publish, tag, and maintainer hardware gate |
+| 0.7.0   | 2026-04-07  | Current published stable | Hardening release with Rust/C# parity improvements and real-PLC validation evidence |
 | 0.6.3   | 2026-03-01  | Previous stable | Reliability and protocol correctness fixes |
 | 0.6.2   | 2026-01-24  | Previous stable | Stream injection and test configuration support |
 | 0.6.1   | 2026-01-17  | Legacy stable | Repository scope cleanup |
@@ -31,6 +33,7 @@ The following files contain version information and must be updated when releasi
 
 ### Core Rust Files
 - `Cargo.toml` - Main package version
+- `crates/*/Cargo.toml` - Sibling crate package versions
 - `src/version.rs` - Version constants
 - `VERSION` - Simple version file
 
@@ -43,6 +46,7 @@ The following files contain version information and must be updated when releasi
 ### Documentation Files
 - `CHANGELOG.md` - Release notes and version history
 - `README.md` - Quick start dependency version
+- `docs/README.md`, `docs/programmer_manual.md`, `docs/SOFTWARE_ARCHITECTURE.md`, and wrapper README files - Current release-state references
 
 ## Automated Version Management
 

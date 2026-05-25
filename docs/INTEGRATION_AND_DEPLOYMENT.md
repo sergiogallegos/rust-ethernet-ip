@@ -20,9 +20,9 @@ For older Windows-only DLL notes, see [DLL_DEPLOYMENT.md](DLL_DEPLOYMENT.md), wh
 
 Current packaging state:
 
-- Rust crate: published
-- C# NuGet package: published
-- Python wrapper: in-repo draft layer, not published yet
+- Rust crate: `0.7.0` published; `1.0.0` release candidate prepared in-repo, pending staged crates.io publish
+- C# NuGet package: `0.7.0` published; `1.0.0` project metadata prepared in-repo, pending NuGet publish
+- Python wrapper: `1.0.0` in-repo draft layer, not published to PyPI yet
 
 ## Rust Integration
 
@@ -33,6 +33,8 @@ Current packaging state:
 rust-ethernet-ip = "0.7.0"
 tokio = { version = "1", features = ["full"] }
 ```
+
+For source builds from `main`, the crate manifests are currently prepared as `1.0.0`. The crates.io release requires the staged sibling-crate publish order documented in [agents/board.md](agents/board.md).
 
 ### 2. Connect and read/write
 

@@ -12,7 +12,7 @@ Scenarios executed:
 - Health check APIs
 - Tag discovery/cache clear/repopulation
 - Route-path configuration and routed client creation
-- UDT read paths used by current 0.7.0 test tags
+- UDT read paths used by the then-current 0.7.0 test tags
 - Array element addressing including BOOL array elements
 - Arrays of UDTs and nested member/array access
 
@@ -74,7 +74,7 @@ Benchmark interpretation:
 - These numbers are hardware-specific and should be treated as a field baseline for this controller/network path, not a universal product claim.
 
 Status assessment:
-- Current 0.7.0 hardening status on this ControlLogix target is acceptable for the exercised feature set.
+- The 0.7.0 hardening status on this ControlLogix target was acceptable for the exercised feature set.
 - No unexpected regressions were found in routed connection, batch, cache, route-path, health-check, array addressing, program tag, or UDT read/nested access scenarios.
 - Real-hardware evidence now covers both CompactLogix and ControlLogix families for the current release gate.
 

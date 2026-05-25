@@ -2,7 +2,7 @@
 
 > Historical reference: this guide describes the pre-release `0.7.0` hardening workflow. Use the newer validation checklist and current release-validation records for the active process.
 
-This guide defines the current real-hardware validation workflow for the unreleased `0.7.0` hardening line.
+This guide defined the real-hardware validation workflow for the unreleased `0.7.0` hardening line.
 
 Use it when validating against CompactLogix or ControlLogix hardware with the dedicated `gTest*` tag set.
 

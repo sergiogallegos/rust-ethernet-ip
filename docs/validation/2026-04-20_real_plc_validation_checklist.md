@@ -2,7 +2,7 @@
 
 Status: routed ControlLogix release-gate pass captured
 
-Use this checklist for the next real-PLC validation session on the current `0.8.0` draft line.
+This checklist captured the routed ControlLogix release-gate pass for the then-current `0.8.0` draft line.
 
 Target exercised on 2026-04-20:
 

@@ -15,6 +15,8 @@
 >
 > 2026-05-25 agent-infra briefs opened: CODEX-Z (validate-agent-files + pre-commit hook), CODEX-AA (release-readiness checker), CODEX-AB (structured Claude-review template), CODEX-AC (committer wrapper). Inspired by [`steipete/agent-scripts`](https://github.com/steipete/agent-scripts). Each is independently merge-able and would have caught real drift bugs from the 1.0.0 release week. Sequencing: Z + AA are highest-value (caught real bugs); AB is documentation-shape; AC is preventative. Each parallel-safe with the others; pick any order.
 >
+> **Patch-release policy (2026-05-25 maintainer direction):** post-1.0.0 changes accumulate on `main` without triggering a new crates.io / NuGet release. Agent-infra (CODEX-Z/AA/AB/AC), tooling, docs, and test-only work do NOT cut a patch. The next patch release (1.0.1) is queued for when a real library change lands — current candidates are CODEX-G (`plc_manager.rs` unwrap cleanup), CODEX-H (dead-code purge), and CODEX-O (`PlcValue::Udt::get_data_type` placeholder honesty). At that point the maintainer decides which accumulated changes to roll into 1.0.1, runs the staged publish sequence (gating item below), and tags. Until then: push to `main` freely, no release pressure.
+>
 > Scope note: the v0.8.0 bundle is effectively a 1.0.0-shape release (FFI contract pin + behavioral refactor + new public API + structural split + release-window break sweep). Renaming the version to `1.0.0` is defensible and would signal the stability story to NuGet/PyPI/crates.io consumers; left to maintainer decision.
 >
 > Six earlier briefs merged (CODEX-A → CODEX-F). All belong to the v0.8.0 draft, which sits on `main` unreleased — no `v0.8.0` tag, no NuGet/crates.io publish.

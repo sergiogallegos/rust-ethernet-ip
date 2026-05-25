@@ -3,9 +3,9 @@
 This folder contains project documentation for `rust-ethernet-ip`.
 
 Current release state:
-- Working draft line: `1.0.0` (not tagged or published)
-- Last published stable line: `0.7.0`
-- Previous stable line: `0.6.3`
+- Current stable line: `1.0.0` (tagged 2026-05-24, crates.io + NuGet)
+- Previous stable line: `0.7.0`
+- Earlier stable line: `0.6.3`
 
 ## Start Here
 

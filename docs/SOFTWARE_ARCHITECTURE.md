@@ -11,7 +11,7 @@ It is intended for:
 - release reviewers checking compatibility risk
 - AI agents that need a stable map of module boundaries and design constraints
 
-This document describes the current `v1.0.0` release-candidate line. The wiki may
+This document describes the current `v1.0.0` released line. The wiki may
 contain investigation notes and synthesis, but this file is the user-facing
 architecture reference.
 
@@ -47,7 +47,7 @@ The important design goals are:
 - stable public APIs for Rust users and wrapper consumers
 - thin wrappers that do not reimplement PLC protocol logic
 - high confidence through unit, simulator, wrapper, and hardware validation
-- conservative refactors that preserve compatibility through the current `v1.0.0` release-candidate line
+- conservative refactors that preserve compatibility through the current `v1.0.0` released line
 - clear post-1.0 handling of any new public API and ABI debt
 
 Key constraints:
@@ -267,9 +267,9 @@ Coverage expectations:
 
 ## Release and Compatibility Model
 
-The current development focus is stabilizing the `v1.0.0` release candidate.
-Compatibility should be handled conservatively until that line is tagged and
-published.
+`v1.0.0` is the current released line (tagged 2026-05-24). Future work
+should preserve compatibility within the `v1.x` line per SemVer; new
+SemVer-major work bundles into the next major release window.
 
 Compatibility surfaces:
 

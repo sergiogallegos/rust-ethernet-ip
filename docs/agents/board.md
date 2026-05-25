@@ -8,7 +8,7 @@
 |---|---|---|---|---|---|
 _(no open briefs — full v0.8.0+CODEX-K release-window scope merged for 1.0.0)_
 
-> 2026-05-24 release-prep status: all v0.8.0 / release-window briefs merged. Maintainer authorized the 1.0.0 cut: `Cargo.toml`, `VERSION`, `csharp/RustEtherNetIp/RustEtherNetIp.csproj`, `python/pyproject.toml`, `src/version.rs`, `src/lib.rs` head doc, and `CHANGELOG.md` `[1.0.0] - 2026-05-24` all bumped. CODEX-T (fleet) accepted into 1.0.0 scope; CODEX-U (sibling crates) accepted as publishable after the release-readiness review caught that `publish = false` blocked `cargo package -p rust-ethernet-ip`. Sibling crate names (`rust-ethernet-ip-{types,protocol,tag-path,udt}`) need to be claimed on crates.io at tag time. `git push` + `git tag v1.0.0` + the staged crates.io publish + NuGet publish flow remain maintainer-owned per the gating items below.
+> 2026-05-24 release status: **v1.0.0 shipped**. `main` is at `f02eef5`; annotated tag `v1.0.0` pushed to origin. Five crates published to crates.io (`rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, `rust-ethernet-ip`), all at `1.0.0`. NuGet `RustEtherNetIp 1.0.0` ships via the GitHub release workflow triggered by the tag (assuming `NUGET_API_KEY` is configured). Single residual: multi-hop ethernet hardware validation remains a documented confidence upgrade — see post-1.0.0 polish list.
 >
 > Scope note: the v0.8.0 bundle is effectively a 1.0.0-shape release (FFI contract pin + behavioral refactor + new public API + structural split + release-window break sweep). Renaming the version to `1.0.0` is defensible and would signal the stability story to NuGet/PyPI/crates.io consumers; left to maintainer decision.
 >
@@ -18,21 +18,21 @@ _(no open briefs — full v0.8.0+CODEX-K release-window scope merged for 1.0.0)_
 
 Resume order recommended by Claude. Each candidate brief is unwritten; the entry below summarises what the brief would cover so the next session can author and execute it without re-deriving context from chat history.
 
-### Gating items for v1.0.0 release (maintainer-owned)
+### v1.0.0 release sequence — completed 2026-05-24
 
-1. **Multi-hop ethernet hardware validation** — the 2026-05-24 hardware run validated direct-connect (1756-L75 in slot 0 via 1756-EN2T) end-to-end across Rust/C#/Python with zero anomalies. Multi-chassis ethernet routing (`RouteHop::Ethernet` ASCII extended-link-address encoding from CODEX-F at `9a3d192`) still needs a real 2-chassis bench. `wiki/protocol/route-path-behavior.md` keeps ethernet hops at `likely` until that lands.
-2. **Staged crates.io publish** — the 4 sibling crates (`rust-ethernet-ip-{types,protocol,tag-path,udt}`) are now publishable (CODEX-U revised decision). At the local working tree right now, only `types` and `tag-path` `cargo package` cleanly; `protocol`, `udt`, and the main `rust-ethernet-ip` crate all fail with "no matching package found" until their dependencies are actually on crates.io. That's expected — the staged publish order is:
-   1. `git push origin main`
-   2. `cargo publish -p rust-ethernet-ip-types`
-   3. `cargo publish -p rust-ethernet-ip-tag-path`
-   4. Wait for crates.io index propagation
-   5. `cargo package -p rust-ethernet-ip-protocol` + `-p rust-ethernet-ip-udt` to dry-run, then `cargo publish` each
-   6. Wait for crates.io index propagation
-   7. `cargo package -p rust-ethernet-ip` to dry-run, then `cargo publish`
-   8. `git tag v1.0.0` after the chain confirms, or tag before step 2 only if you accept the risk of a follow-up patch release if a later publish fails
+1. ✅ `git push origin main` → `main` at `f02eef5`
+2. ✅ `cargo publish -p rust-ethernet-ip-types` v1.0.0
+3. ✅ `cargo publish -p rust-ethernet-ip-tag-path` v1.0.0
+4. ✅ `cargo publish -p rust-ethernet-ip-protocol` v1.0.0
+5. ✅ `cargo publish -p rust-ethernet-ip-udt` v1.0.0
+6. ✅ Main crate dry-run passed after sibling-crate index propagation
+7. ✅ `cargo publish -p rust-ethernet-ip` v1.0.0
+8. ✅ Annotated tag `v1.0.0` created on `f02eef5` and pushed to origin
+9. NuGet `RustEtherNetIp 1.0.0` ships via the tag-triggered GitHub release workflow (assumes `NUGET_API_KEY` configured); workflow run was not monitored locally.
 
-   NuGet wrapper publish is unaffected (builds the cdylib, not the Cargo dep graph) and can run in parallel.
-3. **Cut v1.0.0** — once #1 and #2 are resolved. Needs: `git tag v1.0.0`, run the NuGet pack/publish flow, decide on `cargo publish` per #2. `Cargo.toml`, `VERSION`, `csharp/RustEtherNetIp/RustEtherNetIp.csproj`, `python/pyproject.toml`, `src/version.rs`, `src/lib.rs` head doc, and `CHANGELOG.md` are all already at `1.0.0` (release-prep applied in `559aec4` follow-up).
+### Post-1.0.0 confidence upgrades
+
+1. **Multi-hop ethernet hardware validation** — the 2026-05-24 release run validated direct-connect (1756-L75 in slot 0 via 1756-EN2T) end-to-end across Rust/C#/Python with zero anomalies. Multi-chassis ethernet routing (`RouteHop::Ethernet` ASCII extended-link-address encoding from CODEX-F at `9a3d192`) still needs a real 2-chassis bench. `wiki/protocol/route-path-behavior.md` keeps ethernet hops at `likely` until that lands. Not blocking for `1.0.x` because the wire format is unchanged from prior validated paths; promotes to `confirmed` on first multi-chassis run.
 
 ### Post-1.0.0 polish (no version assigned; brief on resume)
 
@@ -119,8 +119,9 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 ## Project context
 
-- **Last released version:** `v0.7.0` (tagged 2026-04-07; see CHANGELOG).
-- **Current draft:** `v1.0.0` — `Cargo.toml`, `VERSION`, `csharp/RustEtherNetIp/RustEtherNetIp.csproj`, `python/pyproject.toml`, `src/version.rs`, `src/lib.rs` head doc, and `CHANGELOG.md` `[1.0.0] - 2026-05-24` section all bumped. All CODEX-A → CODEX-Y briefs merged. No `v1.0.0` git tag exists; no NuGet/crates.io publish has run. Held pending the two gating items above (multi-hop hardware bench + sibling-crate publishability resolution).
+- **Current released version:** `v1.0.0` (tagged 2026-05-24, `f02eef5`; published to crates.io as 5 workspace artifacts; NuGet release workflow triggered by the tag).
+- **Previous released version:** `v0.7.0` (tagged 2026-04-07; see CHANGELOG).
+- **Active development line:** `1.0.x` patch line — non-breaking polish briefs (CODEX-G, -H, -I, -O) and the post-1.0.0 multi-hop ethernet hardware validation are the eligible follow-ups.
 - **Current development focus:** the .NET stack — C# wrappers and examples (per `CLAUDE.md` Project Overview).
 - **Hardware validation gate:** integration tests against real CompactLogix / ControlLogix PLCs are the maintainer's responsibility; CI runs `SKIP_PLC_TESTS=1` plus simulator-backed `plc_sim_tests`.
 

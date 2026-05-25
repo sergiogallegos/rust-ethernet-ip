@@ -13,16 +13,16 @@ This project follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 ## Current Version State
 
-- **Current working draft version:** `1.0.0`
-- **Current stable published version:** `0.7.0`
-- **Previous stable version:** `0.6.3`
+- **Current stable published version:** `1.0.0`
+- **Previous stable version:** `0.7.0`
+- **Earlier stable version:** `0.6.3`
 
 ### Version History
 
 | Version | Release Date | Status | Notes |
 |---------|-------------|--------|-------|
-| 1.0.0   | 2026-05-24  | Release candidate | SemVer-major release-window bundle; pending staged crates.io publish, NuGet publish, tag, and maintainer hardware gate |
-| 0.7.0   | 2026-04-07  | Current published stable | Hardening release with Rust/C# parity improvements and real-PLC validation evidence |
+| 1.0.0   | 2026-05-24  | Current published stable | SemVer-major release-window bundle: actor refactor, sibling crates, FFI ABI handshake, BOOL array fixes, CIP path validation, Python typed writes, fleet pool, service layer, retry primitive |
+| 0.7.0   | 2026-04-07  | Previous published stable | Hardening release with Rust/C# parity improvements and real-PLC validation evidence |
 | 0.6.3   | 2026-03-01  | Previous stable | Reliability and protocol correctness fixes |
 | 0.6.2   | 2026-01-24  | Previous stable | Stream injection and test configuration support |
 | 0.6.1   | 2026-01-17  | Legacy stable | Repository scope cleanup |

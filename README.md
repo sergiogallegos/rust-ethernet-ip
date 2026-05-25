@@ -42,14 +42,15 @@ This project exists to fill that gap with a single, MIT-licensed protocol implem
 
 ## Version Status
 
-- Current working line: `1.0.0` draft — bundles SemVer-major cleanup (CODEX-K release-window), actor-backed cloneable client (CODEX-P), service-layer helpers (CODEX-Q), connection event stream (CODEX-R), retry primitive (CODEX-S), fleet pool (CODEX-T), and sibling-crate workspace structure (CODEX-U). Not yet tagged or published.
-- Last published stable release: `0.7.0` (crates.io + NuGet)
-- Previous stable release: `0.6.3`
+- Current stable release: `1.0.0` (tagged 2026-05-24, crates.io + NuGet)
+- Previous stable release: `0.7.0`
+- Earlier stable release: `0.6.3`
 - Real-hardware validation evidence is included for the release
 
 Release snapshot:
+- `1.0.0` bundles SemVer-major cleanup (CODEX-K release-window), actor-backed cloneable client (CODEX-P), service-layer helpers (CODEX-Q), connection event stream (CODEX-R), retry primitive (CODEX-S), fleet pool (CODEX-T), and sibling-crate workspace structure (CODEX-U).
 - Rust + C# + Python full-coverage hardware exercisers all pass against ControlLogix 1756-L75 fw33 (2026-05-24): 2299/2299 reads, 2206/2206 writes, 2206/2206 verify on the C# and Python paths (Rust 1806/1806 writes; the gap is exerciser-side classification, not a library defect).
-- v1.0.0 crates.io publish requires claiming `rust-ethernet-ip-{types,protocol,tag-path,udt}` on crates.io at tag time (each is an independently SemVer-versioned artifact going forward). Release-day publish order: `types` + `tag-path`, then `protocol` + `udt`, then `rust-ethernet-ip`. NuGet wrapper publish is unaffected.
+- crates.io ships five workspace artifacts at `1.0.0`: `rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, and the top-level `rust-ethernet-ip`. NuGet ships `RustEtherNetIp 1.0.0` from the GitHub release workflow on tag push.
 
 ## Project Focus
 
@@ -127,7 +128,7 @@ Current NuGet packaging note:
 
 ### Python
 
-The Python wrapper is currently in-repo as a working `1.0.0` draft layer and is not published to PyPI yet.
+The Python wrapper ships in-repo at `1.0.0` alongside the Rust and C# wrappers; PyPI publish is not yet wired up (see board agenda for the future brief).
 
 See:
 

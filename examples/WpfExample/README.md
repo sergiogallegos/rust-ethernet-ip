@@ -1,6 +1,6 @@
-# 🦀 Rust EtherNet/IP WPF Example (0.7.0)
+# 🦀 Rust EtherNet/IP WPF Example (1.0.0)
 
-A modern Windows Presentation Foundation (WPF) application demonstrating the released Rust EtherNet/IP `0.7.0` line, with real-time tag monitoring, subscriptions, program-tag access, and batch operations against a real PLC.
+A modern Windows Presentation Foundation (WPF) application demonstrating the released Rust EtherNet/IP `1.0.0` line, with real-time tag monitoring, subscriptions, program-tag access, and batch operations against a real PLC.
 
 ## 🚀 Features
 

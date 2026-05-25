@@ -1,6 +1,6 @@
-# 🦀 Rust EtherNet/IP WinForms Example (0.7.0)
+# 🦀 Rust EtherNet/IP WinForms Example (1.0.0)
 
-A comprehensive Windows Forms application demonstrating batch operations and diagnostics in the released `rust-ethernet-ip` 0.7.0 line.
+A comprehensive Windows Forms application demonstrating batch operations and diagnostics in the released `rust-ethernet-ip` 1.0.0 line.
 
 Release-readiness note:
 - The WinForms sample builds cleanly against the current wrapper.

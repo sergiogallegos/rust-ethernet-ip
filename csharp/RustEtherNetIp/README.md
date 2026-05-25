@@ -15,8 +15,8 @@ Validated scope today:
 
 ## Package Status
 
-- current published package: `0.7.0`
-- current validated wrapper line in this repo: `1.0.0` draft work on `main`
+- current published package: `1.0.0`
+- previous published package: `0.7.0`
 - current published package target: `.NET 10`
 - current packaged native runtime focus: Windows `win-x64`
 
@@ -30,13 +30,13 @@ If you are evaluating deployment, read:
 ### NuGet
 
 ```bash
-dotnet add package RustEtherNetIp --version 0.7.0
+dotnet add package RustEtherNetIp --version 1.0.0
 ```
 
 Or:
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="0.7.0" />
+<PackageReference Include="RustEtherNetIp" Version="1.0.0" />
 ```
 
 ### Source-based builds
@@ -529,7 +529,15 @@ The project is also open to:
 
 ## Version History
 
-### v0.7.0 (Current Stable)
+### v1.0.0 (Current Stable)
+- ✅ SemVer-major release-window bundle (`#[non_exhaustive]` on public enums, `RoutePath` private storage, typed `try_init_tracing`, etc.)
+- ✅ Native FFI ABI version + capability handshake — wrapper rejects mismatched native libraries at load time via `BadImageFormatException`
+- ✅ BOOL-array DWORD-offset fix: `gTestArray_BOOL[i]` for `i >= 32` now addresses the correct DWORD instead of aliasing to DWORD[0]
+- ✅ Nested BOOL-in-UDT-array-element path: `gTestUDT_Array[i].Array_BOOL[j]` now returns `Bool` (was returning the whole DWORD as `Udint` or failing with CIP `0x05`)
+- ✅ Ordered route-hop FFI exports (`eip_connect_with_route_hops`, `eip_set_route_path_hops`); legacy grouped exports kept as compat shims
+- ✅ Real ControlLogix 1756-L75 fw33 validation: 2299/2299 reads, 2206/2206 writes, 2206/2206 verify, 0 anomalies
+
+### v0.7.0
 - ✅ Rust/C# parity improvements for batch, subscriptions, and tag-group polling
 - ✅ Real CompactLogix and ControlLogix validation evidence on file
 - ✅ Improved native batch-read behavior and clearer PLC firmware-limit diagnostics

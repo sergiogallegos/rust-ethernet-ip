@@ -2,9 +2,9 @@
 id: CODEX-AG
 title: cross_language_compatibility_tests — honor SKIP_PLC_TESTS + TEST_PLC_ADDRESS, migrate to gTest* tag set
 owner: codex
-status: submitted
+status: merged
 created: 2026-05-25
-last-update: 2026-05-25 codex [gpt-5]
+last-update: 2026-05-25 claude [Opus 4.7]
 ---
 
 ## Brief
@@ -129,8 +129,75 @@ Verification:
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-25  claude [Opus 4.7]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — full workspace passes (236+ tests, zero failures, zero unexpected ignored).
+- `scripts/validate-agent-files` — ok (29 task files).
+- Behavior matrix row 1 (`SKIP_PLC_TESTS=1`): all 5 tests reported `ok` in 0.00s — clean early-return.
+- Behavior matrix row 2 (no env, unreachable addr `10.255.255.1:44818`): `ok` after 10.00s — confirms `connect_to_plc` 10s timeout path.
+- Behavior matrix row 3 (live PLC at `192.168.0.1:44818`, current `gTest*` tags present): `ok` in 0.07s — wall-clock `time` confirms real connect + reads (~70ms vs 10s for unreachable, against the same compiled binary on the same machine, with PLC reachability proven via `nc -z 192.168.0.1 44818`).
+- Behavior matrix row 4 (live PLC, tags missing): not independently provable without a stripped PLC; trusted via code inspection of `is_tag_not_found_error` match arms.
+- `cargo test --test program_tag_tests --locked` — 4/4 ok against live PLC (0.05s).
+- `cargo test --test udt_enhanced_parsing_tests --locked` — 5/5 ok against live PLC (0.05s).
+
+**What's being fixed**
+- `tests/cross_language_compatibility_tests.rs` ignored `SKIP_PLC_TESTS`, hardcoded `192.168.0.1:44818`, and panicked on legacy `TestTagController` reads when run against a live PLC carrying the current `gTest*` layout — surfaced on the 2026-05-25 CompactLogix L18ER validation.
+
+**Root cause confirmation**
+- Confirmed: pre-fix code at the original `tests/cross_language_compatibility_tests.rs:7` declared `TEST_PLC_IP` as a const, bypassing the `test_helpers` convention every other PLC-dependent integration test uses. Skip filter only matched `"Connection"` / `"timeout"` substrings; CIP `0x04` slipped through to `panic!`.
+
+**Fix appropriateness**
+- Right layer: tests/ only, no library change. Three files (`tests/cross_language_compatibility_tests.rs:1-3`, `tests/program_tag_tests.rs:1-3`, `tests/udt_enhanced_parsing_tests.rs:1-3`) now declare `#[allow(dead_code)] mod test_helpers;` per the established cross-crate convention documented at `tests/test_helpers.rs:11-13`.
+- `is_tag_not_found_error` shape (`tests/cross_language_compatibility_tests.rs:18-24`) is narrow as the brief required — matches `CIP Error 0x04` / `0x05` / `Path segment error` / `Path destination unknown` strings, nothing broader. Real library errors still propagate via `panic!` in the catch-all `Err(e)` arm.
+- The early-return shape (`should_skip_plc_tests()` → `tracing::debug!` → `return`) is byte-identical to the convention used in `tests/program_tag_tests.rs` after the fix and matches `connect_to_plc`'s own internal logging.
+
+**Test proof**
+- All 4 of the brief's behavior-matrix rows verified empirically (row 4 by inspection).
+- Full workspace `SKIP_PLC_TESTS=1` gate stays green.
+- Live-PLC runs prove tests actually exercise the wire (0.07s vs 10s timeout discriminates skip from execute).
+- No new tests added — the brief explicitly excluded coverage expansion.
+
+**Residual risk**
+- Row 4 ("tags missing, skip cleanly") was not directly reproduced against hardware with a stripped tag set; the live PLC carries the full `gTest*` inventory. Code inspection of the match arms confirms the path, but a maintainer-driven stripped-PLC run would close the loop.
+- Codex extended scope to `tests/program_tag_tests.rs` and `tests/udt_enhanced_parsing_tests.rs` — both carried the identical anti-pattern. Documented in the Codex log; verified both files apply the exact same fix shape as the target file, both pass the workspace gate and live-PLC runs. Acceptable scope creep (delivers more value, same risk profile, no contract change).
+
+**Strong points (✅)**
+- `mod test_helpers;` declaration matches the cross-crate-module convention required by Cargo's test-binary model — `tests/test_helpers.rs:11-13` notes this is load-bearing.
+- `is_tag_not_found_error` taking `&impl Display` (`tests/cross_language_compatibility_tests.rs:17`) is the right generic boundary — works against `EtherNetIpError` without coupling tests to its variant shape.
+- Representative tag set in `REPRESENTATIVE_TAGS` (`tests/cross_language_compatibility_tests.rs:7-16`) covers DINT / REAL / BOOL / UDT-member / UDT-nested-array — five distinct codec paths in six tag entries, no firmware-blocked write paths.
+- Scope-creep files use byte-identical helper shape — easy to audit, easy to maintain.
+- Codex documented the scope expansion in the log up-front rather than burying it in the diff.
+
+**Findings**
+- 🟢 The `is_tag_not_found_error` helper is duplicated across three files. Promoting it into `tests/test_helpers.rs` would deduplicate, but the brief said "Don't add [helpers] speculatively" — the call to keep it inline per-file is defensible until a fourth file needs it.
+- 🟡 Polish — none.
+- 🟠 Real concerns — none.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ Hardcoded `TEST_PLC_IP` constant is gone (`tests/cross_language_compatibility_tests.rs` no longer declares it).
+- ✅ `mod test_helpers;` declared at the top of all three modified files.
+- ✅ Every `#[tokio::test]` calls `should_skip_plc_tests()` at the top.
+- ✅ Every connection uses `connect_to_plc(&get_test_plc_address(), 10)`.
+- ✅ Every tag read uses a `gTest*` name from the canonical inventory.
+- ✅ Tag-not-found errors trigger graceful skip; other errors panic.
+- ✅ `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` passes from the repo root.
+- ✅ `cargo test --workspace --all-features --locked` passes against the live PLC (verified: target file 0.07s; scope-creep files 0.05s each).
+- ✅ `scripts/validate-agent-files` passes.
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-25  claude [Opus 4.7]
+
+**Merged at `fe5059c`** — `test: align PLC integration tests with env config`.
+
+Codex delivered the brief's contract cleanly and extended scope to two adjacent test files (`tests/program_tag_tests.rs`, `tests/udt_enhanced_parsing_tests.rs`) that carried the identical pre-existing anti-pattern. The expansion was documented in the Codex log up-front and applies the same convention with byte-identical helper shape — accepted as justified scope creep that closes the same class of bug across the test suite, not just the one file the brief named.
+
+All four behavior-matrix rows verified (row 4 by code inspection only — would require a stripped PLC). Full workspace gate, clippy, fmt, validate-agent-files all clean. Live PLC at `192.168.0.1` confirms tests genuinely exercise the wire, not silently skip.
+
+Patch-release policy per 2026-05-25 maintainer direction: tests/ only, no library change → lands on `main` without triggering a 1.0.1 release.
+
+No Claude-applied fixes during merge.

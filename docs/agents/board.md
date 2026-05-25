@@ -120,10 +120,10 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-K | Release-window SemVer bundle | codex | `71c0d7e` |
 | CODEX-T | Fleet multi-PLC actor pool | codex | `71c0d7e` |
 | CODEX-U | Promote protocol, tag_path, and udt to sibling crates (publish deferred) | codex | `71c0d7e` |
-| CODEX-Z | Validate agent task file frontmatter + board/log consistency on pre-commit | codex | _(merge commit pending)_ |
-| CODEX-AA | Release-readiness checker — version-string parity + cargo package chain | codex | _(merge commit pending)_ |
-| CODEX-AB | Structured Claude-review template — six-question contract + fixed output shape | codex | _(merge commit pending)_ |
-| CODEX-AC | Committer wrapper script — enforce specific-file staging + non-empty message | codex | _(merge commit pending)_ |
+| CODEX-Z | Validate agent task file frontmatter + board/log consistency on pre-commit | codex | `3770e3a` |
+| CODEX-AA | Release-readiness checker — version-string parity + cargo package chain | codex | `3770e3a` |
+| CODEX-AB | Structured Claude-review template — six-question contract + fixed output shape | codex | `3770e3a` |
+| CODEX-AC | Committer wrapper script — enforce specific-file staging + non-empty message | codex | `3770e3a` |
 
 ## Project context
 

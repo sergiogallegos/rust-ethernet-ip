@@ -105,7 +105,19 @@ namespace RustEtherNetIp.Tests
                 var destination = Path.Combine(AppContext.BaseDirectory, NativeLibraryFileName);
 
                 if (!PathsEqual(source, destination))
-                    File.Copy(source, destination, overwrite: true);
+                {
+                    try
+                    {
+                        File.Copy(source, destination, overwrite: true);
+                    }
+                    catch (IOException) when (File.Exists(destination))
+                    {
+                        // Another parallel testhost process already loaded and
+                        // locked the destination DLL (Windows file-locking on
+                        // LoadLibrary). The export assertion below validates
+                        // that the existing copy is the right one.
+                    }
+                }
 
                 AssertNativeLibraryHasRequiredExports(destination);
                 _nativeLibraryStaged = true;

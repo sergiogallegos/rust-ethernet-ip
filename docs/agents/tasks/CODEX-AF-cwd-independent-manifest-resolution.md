@@ -2,9 +2,9 @@
 id: CODEX-AF
 title: Full-coverage exerciser — cwd-independent manifest resolution across all three bindings
 owner: codex
-status: submitted
+status: merged
 created: 2026-05-25
-last-update: 2026-05-25 codex [gpt-5]
+last-update: 2026-05-25 claude [Opus 4.7]
 ---
 
 ## Brief
@@ -117,8 +117,65 @@ Verification:
 
 ## Claude review
 
-_(append review entries here)_
+### 2026-05-25  claude [Opus 4.7]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean
+- `scripts/validate-agent-files` — `ok (28 task files)`, exit 0
+- `bash tests/full_coverage_manifest_tests.sh` — both `full_coverage_manifest_tests: ok` and the new `full_coverage_manifest_cwd_tests: ok` pass
+- Hand-repro from `/tmp` for all 3 bindings — each prints the expected `would-test binding=X tags=2299 writeable=2206 blocked=74 read_only=19` line
+- 🟢 Note: `cargo test --workspace --all-features --locked` surfaces 2 failures in `tests/cross_language_compatibility_tests.rs` because that file hardcodes `192.168.0.1:44818` and reads legacy `TestTagController` tags that don't exist on the live CompactLogix at that IP. **Pre-existing test design issue, not CODEX-AF related** — the file isn't in the AF diff. Worth its own follow-up brief.
+
+**What's being fixed**
+- All three full-coverage runners resolved `examples/full_coverage_tags.json` relative to cwd, forcing operators to invoke from the repo root. This brief makes resolution script-location-relative, plus adds a `--manifest <path>` override across the three bindings.
+
+**Root cause confirmation**
+- Confirmed: original resolution was `PathBuf::from("examples/full_coverage_tags.json")` (Rust, `test_plc_full_coverage.rs:33`), `var manifestPath = "examples/full_coverage_tags.json"` (C#, `Program.cs:234`), and `default="examples/full_coverage_tags.json"` in the argparse defaults (Python, `test_plc_full_coverage.py`). All three were relative paths resolved against cwd at runtime.
+
+**Fix appropriateness**
+- Rust uses `env!("CARGO_MANIFEST_DIR")` — compile-time workspace member directory, correctly resolves to the repo root for the main crate. Matches the brief's specified approach.
+- C# uses `Path.Combine(AppContext.BaseDirectory, "full_coverage_tags.json")` plus a new `<None Include="..\..\examples\full_coverage_tags.json"><Link>full_coverage_tags.json</Link><CopyToOutputDirectory>Always</CopyToOutputDirectory></None>` in `CSharpFullCoverage.csproj`. The `<Link>` is present, so MSBuild flattens the copy to the .dll's own directory — exactly the brief's risk-callout. Matches the spec.
+- Python uses `Path(__file__).resolve().parents[2] / "examples" / "full_coverage_tags.json"` with the documented one-line "walk up 2 levels" comment per the brief's gotcha. Matches.
+- Each runner adds a try/catch wrap around `build_tags` that returns exit 2 on bad manifest paths with a `manifest-error:` prefix — matches the CODEX-AE preflight contract (exit 1 = library failure, exit 2 = setup error). Stack traces are explicitly absent from the user-facing path.
+
+**Test proof**
+- `tests/full_coverage_manifest_tests.sh` extended with 9 new test cases:
+  - 3× default manifest resolution from `/tmp` (one per binding)
+  - 3× explicit `--manifest <path>` override from `/tmp`
+  - 3× bad manifest path → asserts `manifest-error:` prefix AND absence of `"Unhandled exception"` / `"Traceback"` strings
+- All 9 pass. The `assert_clean_manifest_error` helper in `tests/full_coverage_manifest_tests.sh:90-98` is exactly the brief's "no stack trace" guarantee.
+- Live hand-repro: I cd'd to `/tmp` and ran each runner manually with `--dry-run`; all three produced the expected counts.
+
+**Residual risk**
+- Python `parents[2]` depth is path-length-sensitive per the brief's gotcha. The one-line comment Codex added (`# Script lives at python/examples/<name>.py; walk up two levels to the repo root.`) documents this; future relocations will need the same explicit walk-up update.
+- C# `<Link>` element is load-bearing — without it MSBuild would copy to `bin/Release/net10.0/examples/full_coverage_tags.json` (preserving the path) and `AppContext.BaseDirectory + "full_coverage_tags.json"` wouldn't resolve. The brief flagged this; the csproj has the `<Link>` so the risk is closed.
+- The pre-existing `tests/cross_language_compatibility_tests.rs` failure when a live PLC at 192.168.0.1 lacks `TestTagController` is a different problem entirely — that test file should either use the env var, check `SKIP_PLC_TESTS`, or treat tag-not-found errors as graceful skips. Not in this brief's scope.
+
+**Strong points (✅)**
+- `tests/full_coverage_manifest_tests.sh:90-98` `assert_clean_manifest_error` helper makes the "no stack trace" guarantee mechanical, not honor-based.
+- All three runners exit code 2 on manifest errors — matches the CODEX-AE preflight contract for the operator-vs-library distinction.
+- `<Link>` element correctly present in the csproj so MSBuild copies the manifest flat to `bin/Release/net10.0/`.
+- The validation evidence file (`docs/validation/2026-05-25_real_plc_two-controller_cross-binding_full-coverage.md:57`) was updated to close out the polish finding — observation marker changed from "🟡 polish" to "Usability finding closed by CODEX-AF". Good follow-through.
+- CI gate is unchanged structurally — the existing `full-coverage-manifest` job still runs the extended test script, so the new cwd tests automatically run on every PR + push without YAML edits.
+
+**Findings**
+- 🟢 Implementation matches the brief exactly — no scope creep, no missing items.
+- 🟢 `tests/cross_language_compatibility_tests.rs` failures are pre-existing and unrelated to AF — surfaced because the live PLC at `192.168.0.1` now responds to connections instead of refusing them, exposing that the hardcoded test reads non-existent tags. Worth a future brief.
+- 🟡 The Python `default_manifest` resolution runs on every invocation regardless of whether `--manifest` is passed. Minor (lazy evaluation would skip the `Path(__file__).resolve()` work when the user overrides), but the cost is microseconds; not worth restructuring.
+- 🟠 Real concerns — none.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ All three runners successfully run `--dry-run` from any cwd (verified from `/tmp` by hand and via the new test runner).
+- ✅ Default manifest resolution is script-location-relative, not cwd-relative.
+- ✅ `--manifest <path>` flag works on all three runners.
+- ✅ Bad manifest paths produce clear `manifest-error:` messages, not stack traces (asserted by the new test helper).
+- ✅ `tests/full_coverage_manifest_tests.sh` extended with cwd-independence tests; CI inherits them automatically.
+- ✅ Validation evidence file updated to mark the gap closed.
 
 ## Verdict
 
-_(final disposition)_
+### 2026-05-25  claude [Opus 4.7]  status: merged
+
+**Merged at `6ec3f8d`.** Brief executed exactly to spec — all three bindings use the right language-native script-relative resolution (`env!("CARGO_MANIFEST_DIR")`, `AppContext.BaseDirectory` + `<Link>`, `Path(__file__).parents[2]`), `--manifest` override works across all three, exit code 2 on manifest errors matches the CODEX-AE preflight contract, no stack traces leak to operators. The 9-case test extension is exhaustive and inherits the existing CI gate. Validation evidence file was correctly updated. Zero defects.

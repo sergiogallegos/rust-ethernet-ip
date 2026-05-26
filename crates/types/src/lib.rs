@@ -78,20 +78,31 @@ impl PlcValue {
 
     #[must_use]
     pub fn get_data_type(&self) -> u16 {
+        self.known_data_type().unwrap_or(0x00A0)
+    }
+
+    /// Returns a precise CIP type code when this value carries enough metadata.
+    ///
+    /// UDT values decoded without a template symbol id return `None` instead of
+    /// pretending that the generic structure marker is a concrete write type.
+    #[must_use]
+    pub fn known_data_type(&self) -> Option<u16> {
         match self {
-            PlcValue::Bool(_) => 0x00C1,
-            PlcValue::Sint(_) => 0x00C2,
-            PlcValue::Int(_) => 0x00C3,
-            PlcValue::Dint(_) => 0x00C4,
-            PlcValue::Lint(_) => 0x00C5,
-            PlcValue::Usint(_) => 0x00C6,
-            PlcValue::Uint(_) => 0x00C7,
-            PlcValue::Udint(_) => 0x00C8,
-            PlcValue::Ulint(_) => 0x00C9,
-            PlcValue::Real(_) => 0x00CA,
-            PlcValue::Lreal(_) => 0x00CB,
-            PlcValue::String(_) => 0x00CE,
-            PlcValue::Udt(_) => 0x00A0,
+            PlcValue::Bool(_) => Some(0x00C1),
+            PlcValue::Sint(_) => Some(0x00C2),
+            PlcValue::Int(_) => Some(0x00C3),
+            PlcValue::Dint(_) => Some(0x00C4),
+            PlcValue::Lint(_) => Some(0x00C5),
+            PlcValue::Usint(_) => Some(0x00C6),
+            PlcValue::Uint(_) => Some(0x00C7),
+            PlcValue::Udint(_) => Some(0x00C8),
+            PlcValue::Ulint(_) => Some(0x00C9),
+            PlcValue::Real(_) => Some(0x00CA),
+            PlcValue::Lreal(_) => Some(0x00CB),
+            PlcValue::String(_) => Some(0x00CE),
+            PlcValue::Udt(udt_data) => {
+                (udt_data.symbol_id > 0).then(|| 0x02A0u16.wrapping_add(udt_data.symbol_id as u16))
+            }
         }
     }
 }

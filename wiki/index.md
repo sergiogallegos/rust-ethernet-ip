@@ -60,6 +60,7 @@ Status values:
 - [investigations/sibling-crate-boundaries-2026-05-24.md](investigations/sibling-crate-boundaries-2026-05-24.md) — Current workspace crate split for shared types, protocol codecs, tag-path parsing, and UDT helpers. `active`
 - [investigations/documentation-state-2026-04-20.md](investigations/documentation-state-2026-04-20.md) — Current documentation-health assessment, including active docs that are healthy and older docs that need clearer historical framing. `active`
 - [investigations/test-coverage-strength-2026-05-18.md](investigations/test-coverage-strength-2026-05-18.md) — Current assessment of Rust, C#, and Python test strength, local command results, and prioritized coverage gaps. `active`
+- [investigations/dotnet-testhost-shutdown-2026-05-26.md](investigations/dotnet-testhost-shutdown-2026-05-26.md) — Ubuntu .NET 10 testhost shutdown failure analysis and current CI mitigation. `active`
 
 ## Planned High-Value Pages
 

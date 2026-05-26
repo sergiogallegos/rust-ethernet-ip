@@ -21,8 +21,8 @@ pub const UDT: u16 = 0x00A0;
 pub const AB_UDT: u16 = 0x02A0;
 
 pub fn write_data_type(value: &PlcValue) -> u16 {
-    if let PlcValue::Udt(udt_data) = value {
-        AB_UDT.wrapping_add(udt_data.symbol_id as u16)
+    if let PlcValue::Udt(_) = value {
+        value.known_data_type().unwrap_or(UDT)
     } else {
         value.get_data_type()
     }
@@ -53,7 +53,7 @@ pub fn encode_payload(value: &PlcValue, buf: &mut BytesMut) {
 }
 
 pub fn encode_type_prefixed(value: &PlcValue, buf: &mut BytesMut) {
-    buf.put_u16_le(value.get_data_type());
+    buf.put_u16_le(write_data_type(value));
     match value {
         PlcValue::String(v) => {
             let length = v.len().min(82) as u32;
@@ -161,15 +161,9 @@ pub fn decode_payload(data_type: u16, value_data: &[u8]) -> Result<PlcValue> {
                     value_data[2],
                     value_data[3],
                 ])))
-            } else if value_data.len() >= 8 {
-                Ok(PlcValue::Ulint(u64::from_le_bytes(
-                    value_data[..8]
-                        .try_into()
-                        .expect("length checked before fixed-width BOOL array decode"),
-                )))
             } else {
                 Err(ProtocolError::new(
-                    "Insufficient data for ULINT/DWORD value".to_string(),
+                    "Insufficient data for DWORD value".to_string(),
                 ))
             }
         }

@@ -22,7 +22,7 @@ pub struct PlcConfig {
 impl Default for PlcConfig {
     fn default() -> Self {
         Self {
-            address: "127.0.0.1:44818".parse().unwrap(),
+            address: SocketAddr::from(([127, 0, 0, 1], 44818)),
             max_connections: 5,
             connection_timeout: Duration::from_secs(5),
             health_check_interval: Duration::from_secs(30),
@@ -91,9 +91,6 @@ pub struct PlcManager {
     configs: HashMap<SocketAddr, PlcConfig>,
     /// Active connections for each PLC
     connections: HashMap<SocketAddr, Vec<PlcConnection>>,
-    /// Health check interval
-    #[allow(dead_code)]
-    health_check_interval: Duration,
 }
 
 impl Default for PlcManager {
@@ -108,7 +105,6 @@ impl PlcManager {
         Self {
             configs: HashMap::new(),
             connections: HashMap::new(),
-            health_check_interval: Duration::from_secs(30),
         }
     }
 
@@ -123,44 +119,60 @@ impl PlcManager {
             .configs
             .get(&address)
             .ok_or_else(|| EtherNetIpError::Connection("PLC not configured".to_string()))?;
+        let max_connections = config.max_connections as usize;
+        let max_packet_size = config.max_packet_size as u32;
 
         // First check if we have any connections for this address
         if let std::collections::hash_map::Entry::Vacant(e) = self.connections.entry(address) {
             // No connections exist, create a new one
             let mut client = EipClient::new(&address.to_string()).await?;
-            client.set_max_packet_size(config.max_packet_size as u32);
+            client.set_max_packet_size(max_packet_size);
             let mut new_conn = PlcConnection::new(client);
             new_conn.last_used = Instant::now();
             e.insert(vec![new_conn]);
-            return Ok(&mut self.connections.get_mut(&address).unwrap()[0].client);
+            let connections = self.connections.get_mut(&address).ok_or_else(|| {
+                EtherNetIpError::Connection("connection pool missing after insert".to_string())
+            })?;
+            let connection = connections.first_mut().ok_or_else(|| {
+                EtherNetIpError::Connection("connection pool was empty after insert".to_string())
+            })?;
+            return Ok(&mut connection.client);
         }
 
         // Get mutable access to the connections
-        let connections = self.connections.get_mut(&address).unwrap();
+        let connections = self
+            .connections
+            .get_mut(&address)
+            .ok_or_else(|| EtherNetIpError::Connection("connection pool missing".to_string()))?;
 
         // First try to find an inactive connection
-        for (i, connection) in connections.iter_mut().enumerate() {
-            if !connection.health.is_active {
-                let mut client = EipClient::new(&address.to_string()).await?;
-                client.set_max_packet_size(config.max_packet_size as u32);
-                connection.client = client;
-                connection.health.is_active = true;
-                connection.health.last_success = Instant::now();
-                connection.health.failed_attempts = 0;
-                connection.health.latency = Duration::from_millis(0);
-                connection.last_used = Instant::now();
-                return Ok(&mut connections[i].client);
-            }
+        if let Some(i) = connections
+            .iter()
+            .position(|connection| !connection.health.is_active)
+        {
+            let mut client = EipClient::new(&address.to_string()).await?;
+            client.set_max_packet_size(max_packet_size);
+            let connection = &mut connections[i];
+            connection.client = client;
+            connection.health.is_active = true;
+            connection.health.last_success = Instant::now();
+            connection.health.failed_attempts = 0;
+            connection.health.latency = Duration::from_millis(0);
+            connection.last_used = Instant::now();
+            return Ok(&mut connection.client);
         }
 
         // If we have room for more connections, create a new one
-        if connections.len() < config.max_connections as usize {
+        if connections.len() < max_connections {
             let mut client = EipClient::new(&address.to_string()).await?;
-            client.set_max_packet_size(config.max_packet_size as u32);
+            client.set_max_packet_size(max_packet_size);
             let mut new_conn = PlcConnection::new(client);
             new_conn.last_used = Instant::now();
             connections.push(new_conn);
-            return Ok(&mut connections.last_mut().unwrap().client);
+            let connection = connections.last_mut().ok_or_else(|| {
+                EtherNetIpError::Connection("connection pool was empty after push".to_string())
+            })?;
+            return Ok(&mut connection.client);
         }
 
         // Pool is full: return the least-recently-used existing connection.
@@ -170,7 +182,7 @@ impl PlcManager {
             .enumerate()
             .min_by_key(|(_, conn)| conn.last_used)
             .map(|(i, _)| i)
-            .unwrap();
+            .ok_or_else(|| EtherNetIpError::Connection("connection pool is empty".to_string()))?;
 
         // Mark usage and return the existing client to maximize reuse.
         connections[lru_index].last_used = Instant::now();
@@ -180,8 +192,6 @@ impl PlcManager {
     /// Performs health checks on all connections
     pub async fn check_health(&mut self) {
         for (address, connections) in &mut self.connections {
-            let _config = self.configs.get(address).unwrap();
-
             for conn in connections.iter_mut() {
                 if !conn.health.is_active {
                     let new_client = EipClient::new(&address.to_string()).await;

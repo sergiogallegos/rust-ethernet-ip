@@ -178,6 +178,19 @@ Sources used:
 - `tests/subscription_tests.rs`
 - `tests/array_read_write_tests.rs`
 - `tests/batch_operations_tests.rs`
+
+## [2026-05-26] ingest | post-1.0.0 polish and .NET CI failure
+
+- Added a .NET testhost shutdown investigation page for the Ubuntu stable CI failure in GitHub Actions run `26424069105`.
+- Updated the index to register the CI investigation.
+- Recorded the current mitigation: remove the preview .NET 10 channel from CI and update the C# test runner stack before deeper simulator/native-unload investigation.
+
+Sources used:
+
+- `.github/workflows/ci.yml`
+- `csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj`
+- `csharp/RustEtherNetIp.Tests/SimulatorTestHarness.cs`
+- GitHub Actions run `26424069105`
 - `tests/udt_data_tests.rs`
 - `src/ffi.rs`
 

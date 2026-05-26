@@ -51,7 +51,6 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
-        dotnet-quality: 'preview'
 
     - name: Run C# tests
       run: dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release
@@ -238,7 +237,6 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
-        dotnet-quality: 'preview'
 
     - name: Setup Python
       uses: actions/setup-python@v5
@@ -288,7 +286,6 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
-        dotnet-quality: 'preview'
 
     - name: Build C# library
       if: matrix.os == 'ubuntu-latest'

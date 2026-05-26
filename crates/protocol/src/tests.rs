@@ -129,6 +129,31 @@ fn write_data_type_uses_udt_symbol_id() {
     assert_eq!(values::write_data_type(&value), 0x14D4);
 }
 
+#[test]
+fn unknown_udt_type_remains_generic_structure_marker() {
+    let value = PlcValue::Udt(UdtData {
+        symbol_id: 0,
+        data: vec![1, 2],
+    });
+    assert_eq!(value.known_data_type(), None);
+    assert_eq!(values::write_data_type(&value), values::UDT);
+    assert_eq!(value.get_data_type(), values::UDT);
+}
+
+#[test]
+fn udt_type_prefixed_encode_uses_symbol_derived_type() {
+    let value = PlcValue::Udt(UdtData {
+        symbol_id: 0x1234,
+        data: vec![1, 2, 3, 4],
+    });
+
+    let mut encoded = BytesMut::new();
+    value.encode(&mut encoded);
+
+    assert_eq!(&encoded[..2], &0x14D4u16.to_le_bytes());
+    assert_eq!(&encoded[2..], &[1, 2, 3, 4]);
+}
+
 fn round_trip_header(command: u16) {
     let header = EncapsulationHeader {
         command,

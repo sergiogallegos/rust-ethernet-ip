@@ -42,16 +42,10 @@ Resume order recommended by Claude. Each candidate brief is unwritten; the entry
 
 These are non-breaking improvements deferred until after v1.0.0 ships. They are not yet briefed; the entries below summarise what each brief would cover. When the maintainer is ready to resume, claude authors the brief, codex implements, claude reviews.
 
-1. **CODEX-G — `plc_manager.rs` unwrap cleanup.** `submitted 2026-05-26`: live-path connection-pool unwraps now return `EtherNetIpError::Connection`; `PlcConfig::default` no longer parses a string literal at runtime.
-2. **CODEX-H — dead-code purge.** `partially submitted 2026-05-26`: removed `PlcManager::health_check_interval` and the dead BOOL-array `len >= 8` branch. `TagCache` remains public API via `src/lib.rs` and is deferred unless a SemVer break is acceptable. Remaining `src/client.rs` allow-list audit is still open.
-   - `TagCache` struct in `src/tag_manager.rs:73-113` — entirely `#[allow(dead_code)]`; never wired into `TagManager`. Either build the feature or delete the type.
-   - `PlcManager::health_check_interval` field at `src/plc_manager.rs:95` — initialized to default, never read.
-   - Nine `#[allow(dead_code)]` annotations in `src/client.rs` (lines 1617, 2112, 2163, 3326, 3837, 6486, 6597, 6607, 6628). Per-method audit needed; most are unused FFI helpers or half-finished features.
-   - `BOOL_ARRAY_DWORD` dead `else if` branch at `src/protocol/values.rs:158-176` — preserved from pre-CODEX-D inline code, but `len >= 4` always matches before `len >= 8`. Tidy.
+1. **CODEX-H residual — dead-code purge (remaining items).** The first pass merged at `2690669` (2026-05-26) removed `PlcManager::health_check_interval` and the dead BOOL-array `len >= 8` decode branch. These items remain:
+   - `TagCache` struct in `src/tag_manager.rs:73-113` — entirely `#[allow(dead_code)]`; deferred because it's publicly re-exported at `src/lib.rs:150` (`pub use tag_manager::{TagCache, ...}`). Removal is SemVer-major and belongs in the 1.0.0 release-window bundle (CODEX-K), not a patch.
+   - Nine `#[allow(dead_code)]` annotations in `src/client.rs` (lines 1617, 2112, 2163, 3326, 3837, 6486, 6597, 6607, 6628). Per-method audit needed; most are unused FFI helpers or half-finished features. Patch-eligible if all are internal.
    - Leftover `#[allow(dead_code)] fn serialize_value` at `src/client.rs:3326` — pre-existing dead method.
-
-   Note: removing `TagCache` from the public re-export at `src/lib.rs:150` (`pub use tag_manager::{TagCache, ...}`) is technically a SemVer-major change — verify it's actually re-exported and decide whether to defer that one item to the 1.0.0 brief.
-3. **CODEX-I — real codec benchmarks.** `submitted 2026-05-26`: `benches/performance_benchmark.rs` now benchmarks value encode/decode, encapsulation-header encode, CIP request encode, and CIP response/value decode instead of enum construction/no-op placeholders.
 4. **CODEX-J — sub-split `client.rs`.** Still 6762 lines after CODEX-D. Codec extraction made these boundaries natural — see the audit table in this turn's chat record for line ranges. Suggested submodules:
    - `client::tag_io` (read_tag, write_tag, read_bit, write_bit, read_array_range — ~530 lines)
    - `client::udt` (read_udt_chunked, read_udt_member, write_udt_member, get_udt_definition, get_tag_attributes — ~1321 lines)
@@ -81,7 +75,6 @@ These are non-breaking improvements deferred until after v1.0.0 ships. They are 
 
 These items came from the 2026-05-18 architecture review at [`wiki/investigations/architecture-review-2026-05-18.md`](../../wiki/investigations/architecture-review-2026-05-18.md). They change observable behavior (request ordering, cancellation, clone semantics, event surface) and must be treated as semver-meaningful, *not* internal refactors. Each requires its own wrapper-level compatibility test pass.
 
-6. **CODEX-O — `PlcValue::Udt::get_data_type()` placeholder honesty.** `submitted 2026-05-26`: added `PlcValue::known_data_type() -> Option<u16>` so unknown UDT type codes can be represented honestly without breaking the existing `get_data_type() -> u16` API; protocol type-prefixed encoding now uses the symbol-derived UDT write type and has a regression test.
 7. **CODEX-P — Request-correlator actor + cloneable `Client` handle.** Internal worker task owns the TCP stream; the public `Client` becomes a cheap-clone handle that sends `(request_bytes, oneshot::Sender<response_bytes>)` over an mpsc to the actor. Solves the cancellation-safety issue (a dropped future no longer leaves half-read response bytes on the wire) and removes the documented "wrap me in `Arc<Mutex<EipClient>>`" pattern. **Behaviorally breaking** — request ordering, cancellation, clone-share semantics are observable contract. Requires C# and Python wrapper smoke tests as part of acceptance. Runs after CODEX-J (mechanical split) so the actor lives in its own submodule.
 8. **CODEX-R — `Client::events()` connection state stream.** Public method returning a `Stream<ConnectionEvent>` (Connected, Reconnecting, Disconnected, SessionRecycled). Today consumers learn about connection loss only by getting `ConnectionLost` back from a *next* operation; HMIs need a push notification. Sourced from the actor — depends on CODEX-P.
 
@@ -128,6 +121,10 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-AE | Cross-binding hardware harness — shared tag manifest, JSON output, granular firmware classification, preflight inventory check | codex | `59a2176` |
 | CODEX-AF | Full-coverage exerciser — cwd-independent manifest resolution across all three bindings | codex | `6ec3f8d` |
 | CODEX-AG | cross_language_compatibility_tests — honor SKIP_PLC_TESTS + TEST_PLC_ADDRESS, migrate to gTest* tag set | codex | `fe5059c` |
+| CODEX-G | `plc_manager.rs` unwrap cleanup — return `EtherNetIpError::Connection` on pool lookups | codex | `2690669` |
+| CODEX-H (partial) | Dead-code purge — `PlcManager::health_check_interval` + dead BOOL `len >= 8` branch (TagCache + `client.rs` allow-list deferred) | codex | `2690669` |
+| CODEX-I | Real codec benchmarks — replace placeholder no-ops with PlcValue/EncapsulationHeader/CipRequest encode/decode | codex | `2690669` |
+| CODEX-O | `PlcValue::Udt::get_data_type()` placeholder honesty — added `known_data_type() -> Option<u16>` + symbol-derived UDT type-prefixed encode | codex | `2690669` |
 
 ## Project context
 

@@ -122,7 +122,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-AF | Full-coverage exerciser — cwd-independent manifest resolution across all three bindings | codex | `6ec3f8d` |
 | CODEX-AG | cross_language_compatibility_tests — honor SKIP_PLC_TESTS + TEST_PLC_ADDRESS, migrate to gTest* tag set | codex | `fe5059c` |
 | CODEX-G | `plc_manager.rs` unwrap cleanup — return `EtherNetIpError::Connection` on pool lookups | codex | `2690669` |
-| CODEX-H (partial) | Dead-code purge — `PlcManager::health_check_interval` + dead BOOL `len >= 8` branch (TagCache + `client.rs` allow-list deferred) | codex | `2690669` |
+| CODEX-H | Dead-code purge (partial) — `PlcManager::health_check_interval` + dead BOOL `len >= 8` branch (TagCache + `client.rs` allow-list deferred) | codex | `2690669` |
 | CODEX-I | Real codec benchmarks — replace placeholder no-ops with PlcValue/EncapsulationHeader/CipRequest encode/decode | codex | `2690669` |
 | CODEX-O | `PlcValue::Udt::get_data_type()` placeholder honesty — added `known_data_type() -> Option<u16>` + symbol-derived UDT type-prefixed encode | codex | `2690669` |
 

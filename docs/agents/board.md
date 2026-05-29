@@ -4,9 +4,7 @@
 
 ## Open
 
-| Id | Title | Owner | Status |
-|---|---|---|---|
-| CODEX-AH | [Bump MSRV to Rust 1.96 + adopt `std::assert_matches` in tests](tasks/CODEX-AH-rust-1.96-msrv-and-assert-matches.md) | codex | open |
+_(no open briefs)_
 
 > 2026-05-24 release status: **v1.0.0 shipped**. `main` is at `f02eef5`; annotated tag `v1.0.0` pushed to origin. Five crates published to crates.io (`rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, `rust-ethernet-ip`), all at `1.0.0`. NuGet `RustEtherNetIp 1.0.0` ships via the GitHub release workflow triggered by the tag (assuming `NUGET_API_KEY` is configured). Single residual: multi-hop ethernet hardware validation remains a documented confidence upgrade — see post-1.0.0 polish list.
 >
@@ -127,6 +125,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-H | Dead-code purge (partial) — `PlcManager::health_check_interval` + dead BOOL `len >= 8` branch (TagCache + `client.rs` allow-list deferred) | codex | `2690669` |
 | CODEX-I | Real codec benchmarks — replace placeholder no-ops with PlcValue/EncapsulationHeader/CipRequest encode/decode | codex | `2690669` |
 | CODEX-O | `PlcValue::Udt::get_data_type()` placeholder honesty — added `known_data_type() -> Option<u16>` + symbol-derived UDT type-prefixed encode | codex | `2690669` |
+| CODEX-AH | Bump MSRV to Rust 1.96 + adopt `std::assert_matches` in tests | codex | `e8e336b` |
 
 ## Project context
 

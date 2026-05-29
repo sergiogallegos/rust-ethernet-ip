@@ -10,7 +10,7 @@ homepage = "https://github.com/sergiogallegos/rust-ethernet-ip"
 documentation = "https://docs.rs/rust-ethernet-ip-tag-path"
 keywords = ["ethernet-ip", "plc", "allen-bradley", "logix", "parser"]
 categories = ["parser-implementations", "network-programming"]
-rust-version = "1.95"
+rust-version = "1.96"
 
 [lib]
 name = "rust_ethernet_ip_tag_path"

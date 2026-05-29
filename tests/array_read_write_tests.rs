@@ -14,6 +14,7 @@
 #[cfg(test)]
 mod tests {
     use rust_ethernet_ip::{EipClient, PlcValue};
+    use std::assert_matches;
     use std::env;
     use tokio::time::{Duration, timeout};
     // Helper function to get test PLC address from environment or use default
@@ -45,7 +46,7 @@ mod tests {
             match client.read_tag(&tag_name).await {
                 Ok(value) => {
                     tracing::info!("Read {}: {:?}", tag_name, value);
-                    assert!(matches!(value, PlcValue::Dint(_)));
+                    assert_matches!(value, PlcValue::Dint(_));
                 }
                 Err(e) => {
                     tracing::error!("Failed to read {}: {}", tag_name, e);
@@ -79,7 +80,7 @@ mod tests {
             match client.read_tag(&tag_name).await {
                 Ok(value) => {
                     tracing::info!("Read {}: {:?}", tag_name, value);
-                    assert!(matches!(value, PlcValue::Dint(_)));
+                    assert_matches!(value, PlcValue::Dint(_));
                 }
                 Err(e) => {
                     tracing::error!("Failed to read {}: {}", tag_name, e);
@@ -162,7 +163,7 @@ mod tests {
             match client.read_tag(&tag_name).await {
                 Ok(value) => {
                     tracing::info!("Read {}: {:?}", tag_name, value);
-                    assert!(matches!(value, PlcValue::Bool(_)));
+                    assert_matches!(value, PlcValue::Bool(_));
                 }
                 Err(e) => {
                     tracing::error!("Failed to read {}: {}", tag_name, e);
@@ -257,7 +258,7 @@ mod tests {
                     tag_name,
                     value
                 );
-                assert!(matches!(value, PlcValue::Dint(_)));
+                assert_matches!(value, PlcValue::Dint(_));
             }
             Err(e) => {
                 tracing::error!("Failed to read {}: {}", tag_name, e);
@@ -296,7 +297,7 @@ mod tests {
             match client.read_tag(&tag_name).await {
                 Ok(value) => {
                     tracing::info!("Read {}: {:?}", tag_name, value);
-                    assert!(matches!(value, PlcValue::Dint(_)));
+                    assert_matches!(value, PlcValue::Dint(_));
                 }
                 Err(e) => {
                     tracing::error!("Failed to read {}: {}", tag_name, e);
@@ -397,7 +398,7 @@ mod tests {
                     tag_name,
                     value
                 );
-                assert!(matches!(value, PlcValue::Dint(_)));
+                assert_matches!(value, PlcValue::Dint(_));
             }
             Err(e) => {
                 tracing::error!("Failed to read {}: {}", tag_name, e);

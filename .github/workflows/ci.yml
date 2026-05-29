@@ -117,11 +117,11 @@ jobs:
       run: python -m unittest discover -v tests
 
   msrv:
-    name: MSRV (1.95)
+    name: MSRV (1.96)
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@1.95.0
+    - uses: dtolnay/rust-toolchain@1.96.0
     - uses: Swatinem/rust-cache@v2
       with:
         shared-key: msrv

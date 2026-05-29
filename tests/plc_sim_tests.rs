@@ -3,6 +3,7 @@ mod plc_sim;
 use plc_sim::{SimBehavior, SimulatedPlc};
 use rust_ethernet_ip::error::EtherNetIpError;
 use rust_ethernet_ip::{BatchError, EipClient, PlcValue};
+use std::assert_matches;
 
 #[tokio::test]
 async fn simulated_plc_read_write_dint() {
@@ -158,13 +159,13 @@ async fn simulated_plc_nested_bool_array_element_read_write() {
         assert_eq!(value, PlcValue::Bool(expected), "index {index}");
     }
 
-    assert!(matches!(
+    assert_matches!(
         client
             .read_tag("UDT_ARRAY[3].BOOL_NESTED[0]")
             .await
             .expect("read nested bit 0"),
         PlcValue::Bool(_)
-    ));
+    );
 
     client
         .write_tag("UDT_ARRAY[3].BOOL_NESTED[5]", PlcValue::Bool(true))

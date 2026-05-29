@@ -10,7 +10,7 @@ You are working inside the repository `rust-ethernet-ip`.
   - a C# wrapper
   - tests, examples, docs, build scripts, and release notes
 - The current working line in this repo is `1.0.0`, not `0.8.0`.
-- The Rust baseline is already on Rust 2024 and `rust-version = "1.95"`.
+- The Rust baseline is already on Rust 2024 and `rust-version = "1.96"`.
 - The C# wrapper targets `.NET 10` and `C# 14`.
 
 ## Strategic Goal

@@ -21,7 +21,7 @@ documentation = "https://docs.rs/rust_ethernet_ip"
 readme = "README.md"
 keywords = ["ethernet-ip", "plc", "industrial", "automation", "allen-bradley"]
 categories = ["network-programming", "embedded", "api-bindings"]
-rust-version = "1.95"
+rust-version = "1.96"
 
 # Publish only the Rust crate payload needed by consumers.
 include = [

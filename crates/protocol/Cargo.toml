@@ -10,7 +10,7 @@ homepage = "https://github.com/sergiogallegos/rust-ethernet-ip"
 documentation = "https://docs.rs/rust-ethernet-ip-protocol"
 keywords = ["ethernet-ip", "cip", "plc", "allen-bradley", "industrial"]
 categories = ["network-programming", "encoding"]
-rust-version = "1.95"
+rust-version = "1.96"
 
 [lib]
 name = "rust_ethernet_ip_protocol"

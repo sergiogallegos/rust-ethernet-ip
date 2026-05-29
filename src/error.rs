@@ -144,6 +144,7 @@ impl From<rust_ethernet_ip_udt::UdtError> for EtherNetIpError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
     use std::sync::Mutex;
 
     fn convert_poison_error() -> Result<()> {
@@ -163,6 +164,6 @@ mod tests {
     #[test]
     fn poison_error_converts_to_other_variant() {
         let err = convert_poison_error().expect_err("poisoned mutex should convert into an error");
-        assert!(matches!(err, EtherNetIpError::Other(message) if message == "lock poisoned"));
+        assert_matches!(err, EtherNetIpError::Other(message) if message == "lock poisoned");
     }
 }

@@ -24,3 +24,5 @@ regex|CHANGELOG.md|latest [X.Y.Z] heading|(?m)^## \[([0-9]+\.[0-9]+\.[0-9]+)\] -
 regex|examples/AspNetExample/AspNetExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}
 regex|examples/WpfExample/WpfExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}
 regex|examples/WinFormsExample/WinFormsExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}
+regex|csharp/RustEtherNetIp.Tests/AbiContractTests.cs|library-version assertion|Assert\.Equal\("([^"]+)", NativeRuntime\.LibraryVersion\)|{version}
+regex|python/tests/test_abi_contract.py|library-version fake|eip_library_version = FakeFunction\(b"([^"]+)"\)|{version}

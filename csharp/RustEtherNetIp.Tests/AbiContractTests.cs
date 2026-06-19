@@ -15,7 +15,7 @@ namespace RustEtherNetIp.Tests
         [Fact]
         public void NativeRuntimeReportsLibraryVersion()
         {
-            Assert.Equal("1.0.0", NativeRuntime.LibraryVersion);
+            Assert.Equal("1.1.0", NativeRuntime.LibraryVersion);
         }
 
         [Fact]

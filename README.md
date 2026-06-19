@@ -42,15 +42,15 @@ This project exists to fill that gap with a single, MIT-licensed protocol implem
 
 ## Version Status
 
-- Current stable release: `1.0.0` (tagged 2026-05-24, crates.io + NuGet)
-- Previous stable release: `0.7.0`
-- Earlier stable release: `0.6.3`
+- Current stable release: `1.1.0` (tagged 2026-06-19, crates.io + NuGet + PyPI)
+- Previous stable release: `1.0.0`
+- Earlier stable release: `0.7.0`
 - Real-hardware validation evidence is included for the release
 
 Release snapshot:
-- `1.0.0` bundles SemVer-major cleanup (CODEX-K release-window), actor-backed cloneable client (CODEX-P), service-layer helpers (CODEX-Q), connection event stream (CODEX-R), retry primitive (CODEX-S), fleet pool (CODEX-T), and sibling-crate workspace structure (CODEX-U).
-- Rust + C# + Python full-coverage hardware exercisers all pass against ControlLogix 1756-L75 fw33 (2026-05-24): 2299/2299 reads, 2206/2206 writes, 2206/2206 verify on the C# and Python paths (Rust 1806/1806 writes; the gap is exerciser-side classification, not a library defect).
-- crates.io ships five workspace artifacts at `1.0.0`: `rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, and the top-level `rust-ethernet-ip`. NuGet ships `RustEtherNetIp 1.0.0` from the GitHub release workflow on tag push.
+- `1.1.0` is a non-breaking correctness + cleanup + feature release: client-side bit access (read-modify-write), C# UDT-write/Dispose/finalizer fixes, `RoutePath::add_port` fix, a Python wheel that bundles the native library, richer errors via `eip_get_last_error` (`CAP_LAST_ERROR`) surfaced through C# `PlcException` and Python, a C# async API, `thiserror` 2.0 + trimmed `tokio` features, and automated crates.io/PyPI/multi-RID-NuGet release packaging. The public Rust API and the C ABI (version 1) are unchanged. See [`CHANGELOG.md`](CHANGELOG.md).
+- Rust + C# + Python full-coverage hardware exercisers all pass against CompactLogix 5069-L330ERM fw38 (2026-06-19): byte-identical 2299/2299 reads, 2206/2206 writes, 2206/2206 verify, 60 firmware-blocked-as-expected, 0 unexpected anomalies.
+- crates.io ships five workspace artifacts at `1.1.0`: `rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, and the top-level `rust-ethernet-ip`. NuGet ships `RustEtherNetIp 1.1.0` and PyPI ships `rust-ethernet-ip 1.1.0` from the GitHub release workflow on tag push.
 
 ## Project Focus
 
@@ -105,30 +105,34 @@ Detailed technical background and examples:
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "1.0.0"
+rust-ethernet-ip = "1.1.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
 ### C#
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="1.0.0" />
+<PackageReference Include="RustEtherNetIp" Version="1.1.0" />
 ```
 
 Or from the CLI:
 
 ```bash
-dotnet add package RustEtherNetIp --version 1.0.0
+dotnet add package RustEtherNetIp --version 1.1.0
 ```
 
 Current NuGet packaging note:
-- `RustEtherNetIp` `1.0.0` is published on NuGet
-- the packaged native runtime asset is currently targeted at Windows `win-x64`
+- `RustEtherNetIp` `1.1.0` is published on NuGet
+- the package bundles native runtimes for `win-x64`, `linux-x64`, `osx-x64`, and `osx-arm64`
 - the managed package currently targets `.NET 10`
 
 ### Python
 
-The Python wrapper ships in-repo at `1.0.0` alongside the Rust and C# wrappers; PyPI publish is not yet wired up (see board agenda for the future brief).
+```bash
+pip install rust-ethernet-ip==1.1.0
+```
+
+The wheel bundles the native library, so a plain `pip install` works with no separate build. (The Rust and C# wrappers ship alongside it from the same release.)
 
 See:
 

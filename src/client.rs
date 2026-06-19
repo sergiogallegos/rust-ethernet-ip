@@ -1584,39 +1584,6 @@ impl EipClient {
         Ok(())
     }
 
-    /// Builds a write request for an entire array (legacy method - writes from element 0)
-    ///
-    /// Reference: 1756-PM020, Page 318-357 (Write Tag Service)
-    #[allow(dead_code)]
-    fn build_write_array_request(
-        &self,
-        tag_name: &str,
-        data_type: u16,
-        element_count: u16,
-        data: &[u8],
-    ) -> crate::error::Result<Vec<u8>> {
-        let mut cip_request = Vec::new();
-
-        // Service: Write Tag Service (0x4D)
-        // Reference: 1756-PM020, Page 318
-        cip_request.push(0x4D);
-
-        // Build the path
-        let path = self.build_tag_path(tag_name);
-        cip_request.push((path.len() / 2) as u8);
-        cip_request.extend_from_slice(&path);
-
-        // Data type and element count
-        // Reference: 1756-PM020, Page 335-337 (Request Data format)
-        cip_request.extend_from_slice(&data_type.to_le_bytes());
-        cip_request.extend_from_slice(&element_count.to_le_bytes());
-
-        // Array data
-        cip_request.extend_from_slice(data);
-
-        Ok(cip_request)
-    }
-
     /// Builds a CIP Write Tag Service request for array elements with element addressing
     ///
     /// This method uses proper CIP element addressing (0x28/0x29/0x2A segments) in the
@@ -2051,112 +2018,6 @@ impl EipClient {
             symbol_id,
             data: all_data,
         }))
-    }
-
-    /// Reads a UDT in chunks to handle large structures
-    #[allow(dead_code)]
-    async fn read_udt_in_chunks(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
-        const MAX_CHUNK_SIZE: usize = 1000; // Conservative chunk size
-        let mut all_data = Vec::new();
-        let mut offset = 0;
-        let mut chunk_size = MAX_CHUNK_SIZE;
-
-        loop {
-            // Try to read a chunk
-            match self.read_udt_chunk(tag_name, offset, chunk_size).await {
-                Ok(chunk_data) => {
-                    all_data.extend_from_slice(&chunk_data);
-                    offset += chunk_data.len();
-
-                    // If we got less data than requested, we're done
-                    if chunk_data.len() < chunk_size {
-                        break;
-                    }
-                }
-                Err(crate::error::EtherNetIpError::Protocol(msg))
-                    if msg.contains("Partial transfer") =>
-                {
-                    // Reduce chunk size and try again
-                    chunk_size /= 2;
-                    if chunk_size < 100 {
-                        return Err(crate::error::EtherNetIpError::Protocol(
-                            "UDT too large even for smallest chunk size".to_string(),
-                        ));
-                    }
-                    continue;
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        // Get symbol_id from tag attributes
-        let symbol_id = self
-            .get_tag_attributes(tag_name)
-            .await
-            .ok()
-            .and_then(|attr| attr.template_instance_id)
-            .unwrap_or(0) as i32;
-
-        // Return raw UDT data (generic approach - no parsing)
-        Ok(PlcValue::Udt(UdtData {
-            symbol_id,
-            data: all_data,
-        }))
-    }
-
-    /// Reads a specific chunk of a UDT
-    #[allow(dead_code)]
-    async fn read_udt_chunk(
-        &mut self,
-        tag_name: &str,
-        offset: usize,
-        size: usize,
-    ) -> crate::error::Result<Vec<u8>> {
-        // Build a read request for a specific range
-        let mut request = Vec::new();
-
-        // Service: Read Tag (0x4C)
-        request.push(0x4C);
-
-        // Path size (in words) - tag name + array index
-        let path_size = 2 + tag_name.len().div_ceil(2); // Round up for word alignment
-        request.push(path_size as u8);
-
-        // Path: tag name
-        request.extend_from_slice(tag_name.as_bytes());
-        if !tag_name.len().is_multiple_of(2) {
-            request.push(0); // Pad to word boundary
-        }
-
-        // Array index for chunk reading
-        request.push(0x28); // Array index symbol
-        request.push(0x02); // 2 bytes for index
-        request.extend_from_slice(&(offset as u16).to_le_bytes());
-
-        // Element count
-        request.push(0x28); // Element count symbol
-        request.push(0x02); // 2 bytes for count
-        request.extend_from_slice(&(size as u16).to_le_bytes());
-
-        // Data type (assume DINT for raw data)
-        request.push(0x00);
-        request.push(0x01);
-
-        // Send the request
-        let response = self.send_cip_request(&request).await?;
-        let cip_data = self.extract_cip_from_response(&response)?;
-
-        // Parse the response to get raw data
-        if cip_data.len() < 2 {
-            return Err(crate::error::EtherNetIpError::Protocol(
-                "Response too short".to_string(),
-            ));
-        }
-
-        let _data_type = u16::from_le_bytes([cip_data[0], cip_data[1]]);
-        let data = &cip_data[2..];
-
-        Ok(data.to_vec())
     }
 
     /// Reads a specific UDT member by offset
@@ -3271,14 +3132,6 @@ impl EipClient {
         Ok(cip_request.to_vec())
     }
 
-    /// Serializes a `PlcValue` into bytes for transmission
-    #[allow(dead_code)]
-    fn serialize_value(&self, value: &PlcValue) -> crate::error::Result<Vec<u8>> {
-        let mut data = BytesMut::new();
-        value.encode(&mut data);
-        Ok(data.to_vec())
-    }
-
     pub fn build_list_tags_request(&self) -> Vec<u8> {
         tracing::debug!("Building list tags request");
 
@@ -3604,7 +3457,6 @@ impl EipClient {
     }
 
     /// Writes raw data to a tag
-    #[allow(dead_code)]
     async fn write_tag_raw(&mut self, tag_name: &str, data: &[u8]) -> crate::error::Result<()> {
         let request = self.build_write_request_raw(tag_name, data)?;
         let response = self.send_cip_request(&request).await?;
@@ -4251,153 +4103,6 @@ impl EipClient {
         Ok(session)
     }
 
-    /// Enhanced UDT structure parser - tries multiple parsing strategies
-    #[allow(dead_code)]
-    fn parse_udt_structure(&self, data: &[u8]) -> crate::error::Result<PlcValue> {
-        tracing::debug!("Parsing UDT structure with {} bytes", data.len());
-
-        // Strategy 1: Try to parse as TestTagUDT structure (DINT, DINT, REAL)
-        if data.len() >= 12 {
-            let _offset = 0;
-
-            // Try different byte alignments and interpretations
-            for alignment in 0..4 {
-                if alignment + 12 <= data.len() {
-                    let aligned_data = &data[alignment..];
-
-                    // Parse first DINT
-                    if aligned_data.len() >= 4 {
-                        let dint1_bytes = [
-                            aligned_data[0],
-                            aligned_data[1],
-                            aligned_data[2],
-                            aligned_data[3],
-                        ];
-                        let dint1_value = i32::from_le_bytes(dint1_bytes);
-
-                        // Parse second DINT
-                        if aligned_data.len() >= 8 {
-                            let dint2_bytes = [
-                                aligned_data[4],
-                                aligned_data[5],
-                                aligned_data[6],
-                                aligned_data[7],
-                            ];
-                            let dint2_value = i32::from_le_bytes(dint2_bytes);
-
-                            // Parse REAL
-                            if aligned_data.len() >= 12 {
-                                let real_bytes = [
-                                    aligned_data[8],
-                                    aligned_data[9],
-                                    aligned_data[10],
-                                    aligned_data[11],
-                                ];
-                                let real_value = f32::from_le_bytes(real_bytes);
-
-                                tracing::trace!(
-                                    "Alignment {}: DINT1={}, DINT2={}, REAL={}",
-                                    alignment,
-                                    dint1_value,
-                                    dint2_value,
-                                    real_value
-                                );
-
-                                // Check if this looks like reasonable values
-                                if self.is_reasonable_udt_values(
-                                    dint1_value,
-                                    dint2_value,
-                                    real_value,
-                                ) {
-                                    // Legacy parsing - return raw data with symbol_id=0
-                                    // Note: These methods are deprecated in favor of generic UdtData approach
-                                    tracing::debug!(
-                                        "Found reasonable UDT values at alignment {}",
-                                        alignment
-                                    );
-                                    return Ok(PlcValue::Udt(UdtData {
-                                        symbol_id: 0, // Not available in this context
-                                        data: data.to_vec(),
-                                    }));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Strategy 2: Try to parse as simple packed structure
-        if data.len() >= 4 {
-            // Try different interpretations of the data
-            let interpretations = vec![
-                ("DINT_at_start", 0, 4),
-                ("DINT_at_end", data.len().saturating_sub(4), data.len()),
-                ("DINT_middle", data.len() / 2, data.len() / 2 + 4),
-            ];
-
-            for (name, start, end) in interpretations {
-                if end <= data.len() && end > start {
-                    let bytes = &data[start..end];
-                    if bytes.len() == 4 {
-                        let dint_value =
-                            i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                        tracing::trace!("{}: DINT = {}", name, dint_value);
-
-                        if self.is_reasonable_value(dint_value) {
-                            // Legacy parsing - return raw data with symbol_id=0
-                            return Ok(PlcValue::Udt(UdtData {
-                                symbol_id: 0, // Not available in this context
-                                data: data.to_vec(),
-                            }));
-                        }
-                    }
-                }
-            }
-        }
-
-        Err(crate::error::EtherNetIpError::Protocol(
-            "Could not parse UDT structure".to_string(),
-        ))
-    }
-
-    /// Simple UDT parser fallback
-    /// Note: This is a legacy method. New code should use generic UdtData approach.
-    #[allow(dead_code)]
-    fn parse_udt_simple(&self, data: &[u8]) -> crate::error::Result<PlcValue> {
-        // Legacy parsing - return raw data with symbol_id=0
-        Ok(PlcValue::Udt(UdtData {
-            symbol_id: 0, // Not available in this context
-            data: data.to_vec(),
-        }))
-    }
-
-    /// Check if UDT values look reasonable
-    #[allow(dead_code)]
-    fn is_reasonable_udt_values(&self, dint1: i32, dint2: i32, real: f32) -> bool {
-        // Check for reasonable ranges
-        let dint1_reasonable = (-1000..=1000).contains(&dint1);
-        let dint2_reasonable = (-1000..=1000).contains(&dint2);
-        let real_reasonable = (-1000.0..=1000.0).contains(&real) && real.is_finite();
-
-        tracing::trace!(
-            "Reasonableness check: DINT1={} ({}), DINT2={} ({}), REAL={} ({})",
-            dint1,
-            dint1_reasonable,
-            dint2,
-            dint2_reasonable,
-            real,
-            real_reasonable
-        );
-
-        dint1_reasonable && dint2_reasonable && real_reasonable
-    }
-
-    /// Check if a single value looks reasonable
-    #[allow(dead_code)]
-    fn is_reasonable_value(&self, value: i32) -> bool {
-        (-1000..=1000).contains(&value)
-    }
 }
 
 #[cfg(test)]

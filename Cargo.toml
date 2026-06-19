@@ -39,10 +39,6 @@ include = [
 name = "rust_ethernet_ip"
 crate-type = ["rlib", "cdylib"]
 
-[[bin]]
-name = "enip-test"
-path = "src/main.rs"
-
 [[bench]]
 name = "performance_benchmark"
 harness = false

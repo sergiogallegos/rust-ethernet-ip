@@ -320,12 +320,30 @@ class Client:
             raise PlcConnectionError("Client is not connected")
         return self._client_id
 
+    def _native_error(self, client_id: int) -> str | None:
+        """Best-effort retrieval of the native library's last error message."""
+        try:
+            buffer = create_string_buffer(1024)
+            written = self._lib.eip_get_last_error(client_id, buffer, 1024)
+            if written <= 0:
+                return None
+            return buffer.value.decode("utf-8", errors="replace")
+        except Exception:
+            return None
+
+    def _operation_error(self, message: str, client_id: int) -> PlcOperationError:
+        """Builds a PlcOperationError, appending the native reason when available."""
+        native = self._native_error(client_id)
+        if native:
+            return PlcOperationError(f"{message} (native: {native})")
+        return PlcOperationError(message)
+
     def read_tag(self, tag_name: str) -> object:
         client_id = self._require_client_id()
         buffer = create_string_buffer(READ_BUFFER_SIZE)
         rc = self._lib.eip_read_tag(client_id, tag_name.encode("utf-8"), buffer, READ_BUFFER_SIZE)
         if rc != 0:
-            raise PlcOperationError(f"Failed to read tag '{tag_name}'")
+            raise self._operation_error(f"Failed to read tag '{tag_name}'", client_id)
 
         try:
             decoded = json.loads(buffer.value.decode("utf-8"))
@@ -382,8 +400,9 @@ class Client:
             raise ValueError(f"Unsupported PLC value type for single-tag write: {kind}")
 
         if rc != 0:
-            raise PlcOperationError(
-                f"Failed to write tag '{tag_name}' via {kind} typed FFI export (rc={rc})"
+            raise self._operation_error(
+                f"Failed to write tag '{tag_name}' via {kind} typed FFI export (rc={rc})",
+                client_id,
             )
 
     def read_tags(self, tag_names: list[str]) -> dict[str, object]:
@@ -396,7 +415,7 @@ class Client:
         buffer = create_string_buffer(RESULT_BUFFER_SIZE)
         rc = self._lib.eip_read_tags_batch(client_id, array, len(encoded), buffer, RESULT_BUFFER_SIZE)
         if rc != 0:
-            raise PlcOperationError("Batch read call failed")
+            raise self._operation_error("Batch read call failed", client_id)
 
         try:
             payload = json.loads(buffer.value.decode("utf-8"))

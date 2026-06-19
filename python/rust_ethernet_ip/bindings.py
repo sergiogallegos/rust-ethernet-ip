@@ -15,6 +15,7 @@ CAP_ROUTE_PATH_ORDERED_HOPS = 0x0000_0000_0000_0001
 CAP_BATCH_EXECUTE_V1 = 0x0000_0000_0000_0002
 CAP_DIAGNOSTICS_JSON = 0x0000_0000_0000_0004
 CAP_TAG_GROUP_SUBSCRIPTIONS = 0x0000_0000_0000_0008
+CAP_LAST_ERROR = 0x0000_0000_0000_0010
 
 ABI_VERSION: int | None = None
 LIBRARY_VERSION: str | None = None
@@ -66,6 +67,9 @@ def _configure_function_signatures(lib: ctypes.CDLL) -> ctypes.CDLL:
 
     lib.eip_connect.argtypes = [ctypes.c_char_p]
     lib.eip_connect.restype = ctypes.c_int
+
+    lib.eip_get_last_error.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    lib.eip_get_last_error.restype = ctypes.c_int
 
     lib.eip_connect_with_route.argtypes = [
         ctypes.c_char_p,

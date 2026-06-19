@@ -26,6 +26,8 @@ class FakeNativeLibrary:
         self.typed_write_calls: list[tuple[str, str, object]] = []
         self.typed_write_result = 0
         self.health_result = 1
+        self.read_tag_rc = 0
+        self.last_error = b""
 
     def eip_connect(self, address: bytes) -> int:
         self.connected_addresses.append(address.decode("utf-8"))
@@ -64,11 +66,22 @@ class FakeNativeLibrary:
 
     def eip_read_tag(self, client_id: int, tag_name: bytes, buffer, capacity: int) -> int:
         self.read_calls.append(tag_name.decode("utf-8"))
+        if self.read_tag_rc != 0:
+            return self.read_tag_rc
         payload = json.dumps(self.read_tag_result).encode("utf-8")
         if len(payload) + 1 > capacity:
             return -1
         buffer.value = payload
         return 0
+
+    def eip_get_last_error(self, client_id: int, buffer, max_len: int) -> int:
+        if not self.last_error:
+            buffer.value = b""
+            return 0
+        if len(self.last_error) + 1 > max_len:
+            return -1
+        buffer.value = self.last_error
+        return len(self.last_error)
 
     def eip_read_tags_batch(self, client_id: int, tag_names, tag_count: int, buffer, capacity: int) -> int:
         payload = json.dumps(self.batch_read_payload).encode("utf-8")
@@ -232,6 +245,25 @@ class ClientContractTests(unittest.TestCase):
         with patch.object(client_module, "load_native_library", return_value=lib):
             with self.assertRaises(PlcConnectionError):
                 Client("127.0.0.1:44818")
+
+    def test_read_failure_includes_native_error(self) -> None:
+        lib = FakeNativeLibrary()
+        lib.read_tag_rc = -1
+        lib.last_error = b"CIP 0x04: path segment error"
+        with patch.object(client_module, "load_native_library", return_value=lib):
+            plc = Client("127.0.0.1:44818")
+            with self.assertRaises(PlcOperationError) as ctx:
+                plc.read_tag("BadTag")
+            self.assertIn("native: CIP 0x04: path segment error", str(ctx.exception))
+
+    def test_read_failure_without_native_error_uses_plain_message(self) -> None:
+        lib = FakeNativeLibrary()
+        lib.read_tag_rc = -1
+        with patch.object(client_module, "load_native_library", return_value=lib):
+            plc = Client("127.0.0.1:44818")
+            with self.assertRaises(PlcOperationError) as ctx:
+                plc.read_tag("BadTag")
+            self.assertNotIn("native:", str(ctx.exception))
 
     def test_connect_with_route_passes_ordered_hops(self) -> None:
         lib = FakeNativeLibrary()

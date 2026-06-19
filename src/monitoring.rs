@@ -145,7 +145,6 @@ pub struct DiagnosticsSnapshot {
 pub struct ProductionMonitor {
     metrics: Arc<RwLock<MonitoringMetrics>>,
     start_time: Instant,
-    system_start_time: SystemTime,
 }
 
 impl Default for ProductionMonitor {
@@ -220,7 +219,6 @@ impl ProductionMonitor {
                 },
             })),
             start_time: Instant::now(),
-            system_start_time: SystemTime::now(),
         }
     }
 
@@ -571,7 +569,6 @@ impl Clone for ProductionMonitor {
         Self {
             metrics: Arc::clone(&self.metrics),
             start_time: self.start_time,
-            system_start_time: self.system_start_time,
         }
     }
 }

@@ -15,6 +15,10 @@ jobs:
   build-native:
     name: Build native (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
+    # Safety net: GitHub's macOS Intel (macos-13) free runners can queue for a
+    # very long time. Cap each native build so a stuck runner can't block the
+    # whole release indefinitely.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -25,12 +29,13 @@ jobs:
           - os: windows-latest
             rid: win-x64
             lib: rust_ethernet_ip.dll
-          - os: macos-13
-            rid: osx-x64
-            lib: librust_ethernet_ip.dylib
           - os: macos-14
             rid: osx-arm64
             lib: librust_ethernet_ip.dylib
+    # Note: osx-x64 (Intel Mac) is intentionally omitted — the macos-13 free
+    # runner is unreliable. Apple Silicon (osx-arm64) covers modern Macs; Intel
+    # Mac consumers can build from source. Re-add a macos-13 entry here if a
+    # reliable Intel runner becomes available.
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -83,7 +88,7 @@ jobs:
           name: nuget-package
           path: artifacts/nuget/*.nupkg
       - name: Publish to NuGet
-        if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_API_KEY != ''
+        if: (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) && env.NUGET_API_KEY != ''
         shell: pwsh
         run: |
           $package = Get-ChildItem -Path artifacts/nuget -Filter *.nupkg |
@@ -137,8 +142,6 @@ jobs:
             rid: linux-x64
           - os: windows-latest
             rid: win-x64
-          - os: macos-13
-            rid: osx-x64
           - os: macos-14
             rid: osx-arm64
     steps:
@@ -178,7 +181,7 @@ jobs:
 
   pypi-publish:
     name: Publish PyPI
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     needs: pypi-wheels
     runs-on: ubuntu-latest
     env:

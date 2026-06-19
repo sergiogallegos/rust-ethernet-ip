@@ -10,51 +10,206 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  nuget-windows:
-    name: NuGet Windows Package
-    runs-on: windows-latest
-    permissions:
-      contents: read
-
+  # 1) Build the native cdylib on every supported platform/RID and upload each
+  #    as an artifact for the NuGet (multi-RID) and PyPI (wheel) packaging jobs.
+  build-native:
+    name: Build native (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            lib: librust_ethernet_ip.so
+          - os: windows-latest
+            rid: win-x64
+            lib: rust_ethernet_ip.dll
+          - os: macos-13
+            rid: osx-x64
+            lib: librust_ethernet_ip.dylib
+          - os: macos-14
+            rid: osx-arm64
+            lib: librust_ethernet_ip.dylib
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build cdylib
+        run: cargo build --release --features ffi --locked
+      - name: Stage native library
+        shell: bash
+        run: |
+          mkdir -p "staging/${{ matrix.rid }}"
+          cp "target/release/${{ matrix.lib }}" "staging/${{ matrix.rid }}/${{ matrix.lib }}"
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: staging/${{ matrix.rid }}/*
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+  # 2) Assemble a single multi-RID NuGet package from the per-platform natives.
+  nuget:
+    name: NuGet (multi-RID)
+    needs: build-native
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-
-      - name: Build Windows native library
-        run: cargo build --release --features ffi
-
-      - name: Pack NuGet package
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: runtimes
+      - name: Pack multi-RID NuGet package
         shell: pwsh
-        run: ./scripts/pack-nuget.ps1 -OutputDir ./artifacts/nuget
-
+        run: |
+          # download-artifact lays out runtimes/native-<rid>/<lib>; normalize to
+          # runtimes/<rid>/<lib> for pack-nuget.ps1 -RuntimesDir.
+          Get-ChildItem -Path runtimes -Directory | ForEach-Object {
+            $rid = $_.Name -replace '^native-', ''
+            if ($rid -ne $_.Name) { Rename-Item $_.FullName (Join-Path $_.Parent.FullName $rid) }
+          }
+          ./scripts/pack-nuget.ps1 -OutputDir ./artifacts/nuget -RuntimesDir ./runtimes
       - name: Upload NuGet artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nuget-windows-package
+          name: nuget-package
           path: artifacts/nuget/*.nupkg
-
       - name: Publish to NuGet
         if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_API_KEY != ''
         shell: pwsh
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           $package = Get-ChildItem -Path artifacts/nuget -Filter *.nupkg |
             Where-Object { $_.Name -notlike "*.symbols.nupkg" } |
             Select-Object -First 1
-
-          if ($null -eq $package) {
-            throw "No NuGet package found in artifacts/nuget"
-          }
-
+          if ($null -eq $package) { throw "No NuGet package found" }
           dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source "https://api.nuget.org/v3/index.json" --skip-duplicate
+
+  # 3) Publish the five crates to crates.io in dependency order. Gated on the
+  #    CARGO_REGISTRY_TOKEN secret; no-ops if it is not configured.
+  crates-io:
+    name: Publish crates.io
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish crates in dependency order
+        if: env.CARGO_REGISTRY_TOKEN != ''
+        run: |
+          set -euo pipefail
+          for crate in \
+            rust-ethernet-ip-types \
+            rust-ethernet-ip-tag-path \
+            rust-ethernet-ip-protocol \
+            rust-ethernet-ip-udt \
+            rust-ethernet-ip; do
+            echo "::group::publish $crate"
+            # Tolerate an already-published version so re-runs are idempotent.
+            cargo publish -p "$crate" || echo "publish of $crate failed (already published?); continuing"
+            echo "::endgroup::"
+            # Give the index time to propagate before the dependent crate builds.
+            sleep 60
+          done
+      - name: Skip notice
+        if: env.CARGO_REGISTRY_TOKEN == ''
+        run: echo "CARGO_REGISTRY_TOKEN not set; skipping crates.io publish."
+
+  # 4) Build platform wheels (with the native lib bundled), then publish to PyPI.
+  pypi-wheels:
+    name: Build wheel (${{ matrix.rid }})
+    needs: build-native
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-13
+            rid: osx-x64
+          - os: macos-14
+            rid: osx-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download native for this RID
+        uses: actions/download-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: native
+      - name: Stage native lib into the package
+        shell: bash
+        run: cp native/* python/rust_ethernet_ip/
+      - name: Build wheel
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip build
+          cd python
+          python -m build --wheel
+      - name: Repair Linux wheel to manylinux
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update && sudo apt-get install -y patchelf
+          python -m pip install auditwheel
+          cd python
+          for whl in dist/*linux_x86_64.whl; do
+            auditwheel repair "$whl" -w dist/
+            rm -f "$whl"
+          done
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.rid }}
+          path: python/dist/*.whl
+
+  pypi-publish:
+    name: Publish PyPI
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: pypi-wheels
+    runs-on: ubuntu-latest
+    env:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade build
+          cd python
+          python -m build --sdist
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist-wheels
+          merge-multiple: true
+      - name: Collect distributions
+        run: |
+          mkdir -p dist
+          cp python/dist/*.tar.gz dist/ || true
+          cp dist-wheels/*.whl dist/ || true
+          ls -l dist
+      - name: Publish to PyPI
+        if: env.PYPI_API_TOKEN != ''
+        run: |
+          python -m pip install --upgrade twine
+          twine upload --skip-existing -u __token__ -p "$PYPI_API_TOKEN" dist/*
+      - name: Skip notice
+        if: env.PYPI_API_TOKEN == ''
+        run: echo "PYPI_API_TOKEN not set; skipping PyPI publish."

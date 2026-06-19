@@ -2,7 +2,7 @@
 //!
 //! `rust-ethernet-ip` provides async Rust APIs for explicit EtherNet/IP and CIP
 //! tag operations, plus FFI surfaces used by the repository's .NET wrapper.
-//! The current released crate line is `1.0.0`.
+//! The current released crate line is `1.1.0`.
 //!
 //! ## Highlights
 //!
@@ -45,7 +45,7 @@
 //!
 //! ## Known PLC/Firmware Limits
 //!
-//! Real-hardware validation for the `1.0.0` release line confirmed that some
+//! Real-hardware validation for the `1.1.0` release line confirmed that some
 //! direct write shapes are controller/firmware limitations rather than library
 //! protocol defects:
 //!

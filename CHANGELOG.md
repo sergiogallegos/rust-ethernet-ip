@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Target next release: TBD.
 
+## [1.1.0] - 2026-06-19
+
+Post-1.0.0 review pass: correctness fixes across all three language bindings,
+tech-debt cleanup, and additive feature work. No breaking changes to the public
+Rust API or the C ABI — the ABI version remains `1` and a new capability bit
+`CAP_LAST_ERROR` is advertised. MSRV remains 1.96.
+
+### Fixed
+- Bit access (`MyDINT.15`, `read_bit`/`write_bit`) now resolves the bit entirely
+  client-side (mask on read, read-modify-write on write); the previous wire
+  encoding emitted a malformed logical-member segment. Hardware-validated.
+- C#: typed UDT writes (`WriteUdt`/`WriteUdtData`) serialize `data` as a byte
+  array matching the native `Vec<u8>`, so they no longer fail silently.
+- C#: a failed scalar write no longer re-issues the write to the PLC to harvest
+  an error message, which previously double-applied side-effecting writes.
+- C#: added a finalizer and a thread-safe `Dispose`, so a forgotten `Dispose()`
+  no longer leaks the native session and teardown no longer races keep-alive.
+- `RoutePath::add_port` / `RoutePath.AddPort` before an address no longer
+  silently drops the port (Rust and C#).
+- Python: a generic UDT is no longer mis-decoded as a STRING (the headerless
+  decode now requires zero padding past the length and valid UTF-8).
+- Subscription `change_threshold` is documented as the absolute deadband it
+  implements (not a percentage).
+- `TagManager` tag-list parsing reads the item count at the correct offset when
+  additional-status words are present.
+- `build.rs` / `version.rs` tolerate building without a git checkout (a
+  crates.io tarball) instead of failing.
+
+### Added
+- FFI: `eip_get_last_error(client_id, buffer, max_len)` (capability
+  `CAP_LAST_ERROR`) exposes the underlying failure reason. C# surfaces it via a
+  new `PlcException` (`NativeError` property); Python appends it to
+  `PlcOperationError` (e.g. "CIP Error 0x04: Path segment error").
+- C#: asynchronous API — `ReadDintAsync` / `WriteBoolAsync` / `ReadStringAsync`
+  / batch / `CheckHealthAsync` etc. (Task.Run wrappers) so callers can `await`
+  operations and keep UI threads responsive.
+- Python: the wheel now bundles the native library and is platform-tagged, so a
+  plain `pip install` yields a working package.
+- Docs: `docs/API_STABILITY.md` (SemVer/MSRV/ABI policy) and
+  `docs/MIGRATION_0.7_to_1.0.md`.
+
+### Changed
+- Dependencies: `thiserror` 2.0; removed unused `log` and `env_logger`; `tokio`
+  trimmed from the `full` feature to the set actually used (`rt-multi-thread`,
+  `macros`, `net`, `time`, `sync`, `io-util`).
+- Internal: the 22 scalar FFI wrappers are macro-generated (ABI-identical); the
+  standalone `enip-test` harness and vestigial dead code were removed from the
+  published crate; the unrunnable `examples/rust_examples/` tree was deleted.
+- Release packaging now builds multi-RID NuGet and per-platform PyPI wheels and
+  publishes the five crates to crates.io in dependency order.
+
 ## [1.0.0] - 2026-05-24
 
 > Release-window cut. Bundles every deferred SemVer-major change (CODEX-K) with the actor refactor (CODEX-P), event stream (CODEX-R), service layer (CODEX-Q), retry primitive (CODEX-S), FFI clone-semantics fix (CODEX-M Phase B), `client.rs` mechanical split (CODEX-J), fleet pool (CODEX-T), and sibling-crate workspace structure (CODEX-U). The four sibling crates (`rust-ethernet-ip-{types,protocol,tag-path,udt}`) are publishable as independent crates.io artifacts; release-day publish order is `types` + `tag-path`, then `protocol` + `udt`, then `rust-ethernet-ip`.

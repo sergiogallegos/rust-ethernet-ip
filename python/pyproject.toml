@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rust-ethernet-ip"
-version = "1.0.0"
+version = "1.1.0"
 description = "Thin Python wrapper for the rust-ethernet-ip native library"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,3 +1,5 @@
+> **Historical reference.** This document records past work and may not reflect the current 1.0.0 codebase.
+
 # PDF Extraction Summary - 1756-PM020
 
 This document summarizes the key information extracted from Allen-Bradley Publication 1756-PM020: Logix Controller Access Data, specifically pages 13-29 and 63.

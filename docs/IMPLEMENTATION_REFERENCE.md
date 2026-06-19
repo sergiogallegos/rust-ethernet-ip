@@ -1,3 +1,5 @@
+> **Historical reference.** This document records past work and may not reflect the current 1.0.0 codebase.
+
 # Implementation Reference - 1756-PM020
 
 This document provides code snippets and implementation patterns directly from the Allen-Bradley documentation for reference during implementation.

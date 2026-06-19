@@ -1,3 +1,5 @@
+> **Historical reference.** This document records past work and may not reflect the current 1.0.0 codebase.
+
 # Array Implementation Fixes - Based on 1756-PM020
 
 This document provides the corrected implementation for array read/write operations based on the official Allen-Bradley documentation (1756-PM020, Pages 603-919).

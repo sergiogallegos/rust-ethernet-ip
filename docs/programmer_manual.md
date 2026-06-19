@@ -5,9 +5,8 @@ Practical manual for developers integrating the library in Rust projects or thro
 - Last updated: `2026-05-24`
 - Source baseline commit: `ecadf95`
 
-- Working draft crate line: `1.0.0` (not tagged or published)
-- Last published stable crate line: `0.7.0`
-- Previous stable crate line: `0.6.3`
+- Current published stable crate line: `1.0.0` (crates.io + NuGet)
+- Previous stable crate line: `0.7.0`
 - Target PLCs: CompactLogix / ControlLogix
 
 ## Contents
@@ -57,11 +56,11 @@ MixerRecipe.Stage[2].TemperatureSetpoint
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "0.7.0"
+rust-ethernet-ip = "1.0.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
-For source builds from `main`, the repository is currently prepared as `1.0.0`. The crates.io release still requires the staged sibling-crate publish sequence documented in [agents/board.md](agents/board.md).
+`1.0.0` is the current published stable release on crates.io and NuGet. The crate re-exports four publishable sibling crates (`rust-ethernet-ip-{types,protocol,tag-path,udt}`); source builds from `main` track the same line.
 
 ### Quick Start
 
@@ -215,10 +214,10 @@ if (client.Connect("192.168.1.100:44818"))
 | Subscriptions | `SubscribeToTag`, `UnsubscribeFromTag`, `UnsubscribeFromAllTags` |
 | Health / Utility | `CheckHealth`, `CheckHealthDetailed`, `SetMaxPacketSize` |
 
-### Batch Notes (`0.7.0` Release Line)
+### Batch Notes
 
 - `WriteTagsBatch(...)` and `ExecuteBatch(...)` are native typed FFI-backed.
-- `ReadTagsBatch(...)` uses the native batch-read FFI path first on the released `0.7.0` line.
+- `ReadTagsBatch(...)` uses the native batch-read FFI path first.
 - On the validated CompactLogix `5069-L320ERMS3` / firmware `35`, mixed native batch reads now include controller BOOL array elements correctly.
 - `ConfigureBatchOperations(...)` and `GetBatchConfig()` are intentionally unsupported in wrapper/runtime right now.
 - Rust `execute_batch(...)` may regroup mixed operations for packet optimization, so callers should correlate results by operation metadata rather than assuming strict mixed-input ordering.
@@ -385,4 +384,4 @@ Recommended workaround pattern in both Rust and C#: read full UDT/element, modif
 - Run sustained read/write soak tests in your target network topology.
 - Capture error handling for disconnects, timeouts, and type mismatches.
 - Lock down network access (firewall/VLAN) because EtherNet/IP has limited built-in security.
-- Pin stable crate versions in production deployments (`0.7.0` is currently published; `1.0.0` is the current release candidate).
+- Pin stable crate versions in production deployments (`1.0.0` is the current published stable release).

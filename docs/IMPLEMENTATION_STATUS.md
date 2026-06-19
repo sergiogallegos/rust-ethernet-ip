@@ -1,3 +1,5 @@
+> **Historical reference.** This document records past work and may not reflect the current 1.0.0 codebase.
+
 # Implementation Status - Array and UDT Fixes
 
 ## UDT Implementation ✅ COMPLETE

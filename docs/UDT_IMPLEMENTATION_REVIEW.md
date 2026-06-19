@@ -1,3 +1,5 @@
+> **Historical reference.** This document records past work and may not reflect the current 1.0.0 codebase.
+
 # UDT Implementation Review - 1756-PM020 Compliance
 
 **Date:** 2025-01-XX  

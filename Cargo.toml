@@ -47,6 +47,10 @@ path = "src/main.rs"
 name = "performance_benchmark"
 harness = false
 
+[[bench]]
+name = "udt_discovery_benchmark"
+harness = false
+
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }
 libc = "0.2"

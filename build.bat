@@ -1,5 +1,5 @@
 @echo off
-echo Building Rust EtherNet/IP Library (0.7.0 hardening line)...
+echo Building Rust EtherNet/IP Library (1.0.0)...
 echo =============================================
 
 echo.

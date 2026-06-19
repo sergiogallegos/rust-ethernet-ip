@@ -1,13 +1,16 @@
-FROM rust:1.95-bookworm AS builder
+FROM rust:1.96-bookworm AS builder
 
 WORKDIR /workspace
 
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock build.rs VERSION ./
+COPY crates ./crates
 COPY src ./src
 COPY examples ./examples
 COPY python ./python
 
-RUN cargo build --release
+# The Python wrapper loads the FFI exports, which are gated behind the `ffi`
+# feature.
+RUN cargo build --release --features ffi
 
 FROM python:3.12-slim-bookworm
 

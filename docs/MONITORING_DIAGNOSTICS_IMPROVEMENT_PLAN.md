@@ -1,3 +1,5 @@
+> **Historical reference.** This document records past work and may not reflect the current 1.0.0 codebase.
+
 # Monitoring and Diagnostics Improvement Plan
 
 Date: 2026-04-19

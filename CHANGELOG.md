@@ -69,10 +69,10 @@ Target next release: TBD.
 - **Sibling workspace crates**: Promoted shared PLC value types, EtherNet/IP protocol codecs, Logix tag-path parsing, and UDT helpers into `rust-ethernet-ip-types`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-tag-path`, and `rust-ethernet-ip-udt` while preserving main-crate re-exports/wrappers.
 
 ### ✅ Verification
-- `cargo clippy --lib -p rust-ethernet-ip --` passes on Rust `1.95.0`.
-- `cargo clippy --all-targets -- -D warnings` passes on Rust `1.95.0`.
+- `cargo clippy --lib -p rust-ethernet-ip --` passes on Rust `1.96.0`.
+- `cargo clippy --all-targets -- -D warnings` passes on Rust `1.96.0`.
 - `cargo test --workspace --all-targets` passes when run with local TCP listener permissions for simulator-backed tests.
-- `cargo build --release` passes on Rust `1.95.0`.
+- `cargo build --release` passes on Rust `1.96.0`.
 - `PYTHONPATH=python python3 -m unittest discover -s python/tests` passes.
 - `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal` passes: 42/42 tests.
 - Real ControlLogix validation on 2026-04-16 passed for the exercised Rust and C# wrapper feature sets on `1756-L81ES` via `1756-EN3TR` slot `0`; the remaining 59/392 matrix failures match documented PLC firmware limitations.

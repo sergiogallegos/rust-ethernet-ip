@@ -47,7 +47,7 @@ The important design goals are:
 - stable public APIs for Rust users and wrapper consumers
 - thin wrappers that do not reimplement PLC protocol logic
 - high confidence through unit, simulator, wrapper, and hardware validation
-- conservative refactors that preserve compatibility through the current `v1.0.0` released line
+- conservative refactors that preserve compatibility across the `v1.0.0` released line
 - clear post-1.0 handling of any new public API and ABI debt
 
 Key constraints:
@@ -57,8 +57,8 @@ Key constraints:
 - real hardware validation is required for PLC-specific behavior
 - some Allen-Bradley firmware limitations are external constraints, not library
   bugs
-- compatibility matters more than architectural purity while `v1.0.0` is being
-  stabilized
+- compatibility matters more than architectural purity on the released `v1.0.0`
+  line
 
 ## Architecture Summary
 
@@ -110,6 +110,26 @@ The intended ownership rule is simple:
 - [src/plc_manager.rs](../src/plc_manager.rs): pooled PLC connection management.
 - [src/monitoring.rs](../src/monitoring.rs): diagnostics, metrics, and health.
 - [src/config.rs](../src/config.rs): production configuration data model.
+
+### Workspace Crate Decomposition
+
+The repository is a Cargo workspace. The main `rust-ethernet-ip` crate re-exports
+four publishable sibling crates that hold the shared, wrapper-independent core:
+
+- `rust-ethernet-ip-types` ([crates/types/](../crates/types/)): `PlcValue`,
+  `UdtData`, `ConnectedSession`, and `ConnectionParameters`.
+- `rust-ethernet-ip-tag-path` ([crates/tag-path/](../crates/tag-path/)): the
+  `TagPath` parser for arrays, bits, program scope, and nested UDT members.
+- `rust-ethernet-ip-protocol` ([crates/protocol/](../crates/protocol/)): the
+  `Encode`/`Decode` wire codec boundary — encapsulation framing, CIP framing, and
+  `PlcValue` codecs.
+- `rust-ethernet-ip-udt` ([crates/udt/](../crates/udt/)): UDT discovery and
+  serialization.
+
+Because of this split, [src/protocol/mod.rs](../src/protocol/mod.rs),
+[src/tag_path.rs](../src/tag_path.rs), and [src/udt.rs](../src/udt.rs) are thin
+re-export shims over the corresponding sibling crates rather than standalone
+implementations; the entries above describe the logical surface they expose.
 
 ## Runtime Flow
 

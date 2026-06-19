@@ -14,7 +14,6 @@
 // =========================================================================
 
 use rust_ethernet_ip::{EipClient, PlcValue};
-use std::collections::HashMap;
 use std::error::Error;
 
 #[tokio::main]
@@ -286,7 +285,7 @@ async fn demonstrate_real_plc_data_types(client: &mut EipClient) -> Result<(), B
     // UDT operations
     // To write a UDT, first read it to get the symbol_id, then modify and write back
     match client.read_tag("TestUdt").await {
-        Ok(PlcValue::Udt(mut udt_data)) => {
+        Ok(PlcValue::Udt(udt_data)) => {
             // Modify the UDT data if needed, then write back
             match client.write_tag("TestUdt", PlcValue::Udt(udt_data)).await {
                 Ok(_) => println!("   ✅ UDT written successfully"),

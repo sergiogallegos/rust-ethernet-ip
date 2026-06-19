@@ -88,6 +88,7 @@ def _decode_logix_string_payload(payload: object) -> str | None:
     buffer = bytes(data)
     for header_size in (2, 0):
         if header_size == 2:
+            # Strong signal: Logix structure-typed STRING header (0x0FCE).
             if len(buffer) < 6 or buffer[:2] != b"\xCE\x0F":
                 continue
         elif len(buffer) < 4:
@@ -103,7 +104,22 @@ def _decode_logix_string_payload(payload: object) -> str | None:
         if length > 82 or length > len(string_data):
             continue
 
-        return string_data[:length].decode("utf-8", errors="replace")
+        used = string_data[:length]
+
+        if header_size == 0:
+            # The headerless layout has no magic to distinguish a real STRING
+            # from an arbitrary UDT whose leading bytes merely look like one, so
+            # decoding it eagerly mis-renders binary UDTs as garbage strings.
+            # Require the bytes past the declared length to be zero padding (as
+            # Logix STRING DATA is) and the used bytes to be valid UTF-8.
+            if any(byte != 0 for byte in string_data[length:]):
+                continue
+            try:
+                return used.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+
+        return used.decode("utf-8", errors="replace")
 
     return None
 

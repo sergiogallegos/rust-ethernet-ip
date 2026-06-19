@@ -90,6 +90,21 @@ class ClientValueMappingTests(unittest.TestCase):
         value = {"Udt": {"symbol_id": 123, "data": [1, 2, 3, 4]}}
         self.assertEqual(_decode_plc_value(value), {"symbol_id": 123, "data": [1, 2, 3, 4]})
 
+    def test_headerless_binary_udt_not_misdecoded_as_string(self) -> None:
+        # Leading bytes look like a length-3 STRING ("ABC"), but the trailing
+        # bytes are non-zero (not STRING padding), so a generic UDT must be
+        # preserved rather than mis-decoded as a garbage string.
+        value = {"Udt": {"symbol_id": 5, "data": [3, 0, 0, 0, 65, 66, 67, 1, 2, 3]}}
+        self.assertEqual(
+            _decode_plc_value(value),
+            {"symbol_id": 5, "data": [3, 0, 0, 0, 65, 66, 67, 1, 2, 3]},
+        )
+
+    def test_headerless_string_with_zero_padding_decodes(self) -> None:
+        # length-3 "ABC" with zero padding past the used length decodes as STRING.
+        value = {"Udt": {"symbol_id": 5, "data": [3, 0, 0, 0, 65, 66, 67, 0, 0]}}
+        self.assertEqual(_decode_plc_value(value), "ABC")
+
     def test_infer_value_type(self) -> None:
         self.assertEqual(_infer_value_type(True), "BOOL")
         self.assertEqual(_infer_value_type("abc"), "STRING")

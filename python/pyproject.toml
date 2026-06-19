@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -13,7 +13,7 @@ authors = [
   { name = "Sergio Gallegos" }
 ]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "Intended Audience :: Manufacturing",
   "License :: OSI Approved :: MIT License",
@@ -27,8 +27,13 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/sergiogallegos/rust-ethernet-ip"
+Repository = "https://github.com/sergiogallegos/rust-ethernet-ip"
+Issues = "https://github.com/sergiogallegos/rust-ethernet-ip/issues"
+
 [project.optional-dependencies]
-dev = []
+dev = ["pytest>=8.0"]
 analytics = ["pandas>=2.0"]
 api = ["fastapi>=0.115", "uvicorn>=0.30"]
 mqtt = ["paho-mqtt>=2.1"]
@@ -39,3 +44,9 @@ package-dir = {"" = "."}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["rust_ethernet_ip*"]
+
+# The native library (built by cargo and staged into the package by
+# scripts/stage_native_lib.py) ships inside the wheel so a plain
+# `pip install` works without a source checkout.
+[tool.setuptools.package-data]
+rust_ethernet_ip = ["*.so", "*.dll", "*.dylib", "_native/*"]

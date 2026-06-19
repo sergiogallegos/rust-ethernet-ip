@@ -35,8 +35,18 @@ def _candidate_paths() -> list[Path]:
     if env_path:
         candidates.append(Path(env_path))
 
-    repo_root = Path(__file__).resolve().parents[2]
     names = _native_file_names()
+
+    # 1) Bundled inside the installed package (the pip/wheel install path). This
+    #    must come before the repo-relative locations so an installed wheel works
+    #    without a source checkout.
+    package_dir = Path(__file__).resolve().parent
+    for name in names:
+        candidates.append(package_dir / name)
+        candidates.append(package_dir / "_native" / name)
+
+    # 2) Repo-relative locations, for running against a local source build.
+    repo_root = Path(__file__).resolve().parents[2]
     for name in names:
         candidates.extend(
             [

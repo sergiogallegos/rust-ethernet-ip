@@ -105,24 +105,24 @@ Detailed technical background and examples:
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "0.7.0"
+rust-ethernet-ip = "1.0.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
 ### C#
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="0.7.0" />
+<PackageReference Include="RustEtherNetIp" Version="1.0.0" />
 ```
 
 Or from the CLI:
 
 ```bash
-dotnet add package RustEtherNetIp --version 0.7.0
+dotnet add package RustEtherNetIp --version 1.0.0
 ```
 
 Current NuGet packaging note:
-- `RustEtherNetIp` `0.7.0` is published on NuGet
+- `RustEtherNetIp` `1.0.0` is published on NuGet
 - the packaged native runtime asset is currently targeted at Windows `win-x64`
 - the managed package currently targets `.NET 10`
 

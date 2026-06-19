@@ -560,20 +560,26 @@ impl TagManager {
             ));
         }
 
-        // Skip service reply (1), reserved (1), status (1), additional status size (1)
-        // Then get item count (4 bytes)
-        let item_count = u32::from_le_bytes([response[4], response[5], response[6], response[7]]);
+        // Any additional-status words sit between AdditionalStatusSize (byte 3)
+        // and ItemCount, so the count is NOT at a fixed offset of 4 — it starts
+        // at 4 + additional_status_size*2. On a success reply the size is 0.
+        let additional_status_bytes = response[3] as usize * 2;
+        let item_count_at = 4 + additional_status_bytes;
+        if response.len() < item_count_at + 4 {
+            return Err(crate::error::EtherNetIpError::Protocol(
+                "Response too short for tag list item count".to_string(),
+            ));
+        }
+        let item_count = u32::from_le_bytes([
+            response[item_count_at],
+            response[item_count_at + 1],
+            response[item_count_at + 2],
+            response[item_count_at + 3],
+        ]);
         tracing::debug!("Detected item count: {}", item_count);
 
-        // Calculate offset: ServiceReply(1) + Reserved(1) + Status(1) + AdditionalStatusSize(1) + ItemCount(4) = 8
-        // Then add any additional status data if present
-        let mut offset = 8;
-        if response.len() > 4 {
-            let additional_status_size = response[3] as usize;
-            if additional_status_size > 0 {
-                offset += additional_status_size * 2; // Additional status is in words (2 bytes each)
-            }
-        }
+        // Items begin immediately after the 4-byte ItemCount.
+        let mut offset = item_count_at + 4;
 
         // Parse each tag entry
         while offset < response.len() {

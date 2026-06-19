@@ -229,4 +229,32 @@ mod tests {
 
         tracing::info!("Route path with multiple slots set successfully");
     }
+
+    // ----- Pure unit tests (no PLC required) -----
+
+    #[test]
+    fn add_port_after_address_sets_port() {
+        // Legacy "late port" ordering: address first, then port.
+        let route = RoutePath::new()
+            .add_slot(0)
+            .add_address("192.168.1.100".to_string())
+            .add_port(3);
+        assert_eq!(route.ports(), vec![3]);
+    }
+
+    #[test]
+    fn add_port_before_address_applies_to_next_address() {
+        // Previously this ordering silently dropped the port (defaulted to 2).
+        let route = RoutePath::new()
+            .add_slot(0)
+            .add_port(3)
+            .add_address("192.168.1.100".to_string());
+        assert_eq!(route.ports(), vec![3]);
+    }
+
+    #[test]
+    fn add_address_without_port_uses_default_ethernet_port() {
+        let route = RoutePath::new().add_address("192.168.1.100".to_string());
+        assert_eq!(route.ports(), vec![2]);
+    }
 }

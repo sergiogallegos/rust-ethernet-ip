@@ -36,17 +36,33 @@ pub const PATCH_VERSION: u32 = 0;
 /// Version string in format "v0.1.0"
 pub const VERSION_STRING: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 
+// The VERGEN_* vars come from `build.rs`. They are absent when building without
+// a git checkout (e.g. a crates.io tarball), so use `option_env!` with a literal
+// fallback rather than `env!`, which would fail to compile when a var is unset.
+
 /// Build date and time
-pub const BUILD_DATE: &str = env!("VERGEN_BUILD_TIMESTAMP");
+pub const BUILD_DATE: &str = match option_env!("VERGEN_BUILD_TIMESTAMP") {
+    Some(v) => v,
+    None => "unknown",
+};
 
 /// Git commit hash
-pub const GIT_HASH: &str = env!("VERGEN_GIT_SHA");
+pub const GIT_HASH: &str = match option_env!("VERGEN_GIT_SHA") {
+    Some(v) => v,
+    None => "unknown",
+};
 
 /// Git commit date
-pub const GIT_COMMIT_DATE: &str = env!("VERGEN_GIT_COMMIT_TIMESTAMP");
+pub const GIT_COMMIT_DATE: &str = match option_env!("VERGEN_GIT_COMMIT_TIMESTAMP") {
+    Some(v) => v,
+    None => "unknown",
+};
 
 /// Git branch
-pub const GIT_BRANCH: &str = env!("VERGEN_GIT_BRANCH");
+pub const GIT_BRANCH: &str = match option_env!("VERGEN_GIT_BRANCH") {
+    Some(v) => v,
+    None => "unknown",
+};
 
 /// Get the library version as a string
 #[must_use]

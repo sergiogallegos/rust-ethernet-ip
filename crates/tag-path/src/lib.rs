@@ -239,19 +239,16 @@ impl TagPath {
 
             TagPath::Bit {
                 base_path,
-                bit_index,
+                bit_index: _,
             } => {
-                // Build base path first
+                // Allen-Bradley Logix has no CIP path segment for addressing an
+                // individual bit of an atomic tag. (The previous `0x29 + 1 byte`
+                // encoding was a malformed 16-bit logical-member segment, which
+                // expects a pad byte plus two value bytes.) The bit is resolved
+                // entirely client-side — read-modify-write for writes and a mask
+                // for reads — so the wire path addresses only the parent word.
+                // See `EipClient::read_bit` / `EipClient::write_bit`.
                 base_path.build_cip_path(path)?;
-
-                // Pad to even length if necessary before adding bit segment
-                if !path.len().is_multiple_of(2) {
-                    path.push(0x00);
-                }
-
-                // Add bit segment
-                path.push(0x29); // Bit segment
-                path.push(*bit_index);
             }
 
             TagPath::Member {
@@ -658,6 +655,27 @@ mod tests {
         } else {
             panic!("Expected Bit path");
         }
+    }
+
+    #[test]
+    fn test_bit_path_emits_base_path_only() {
+        // Logix bits of atomic tags are resolved client-side, so the wire path
+        // must address only the parent word — no (malformed) bit segment.
+        let bit_path = TagPath::parse("StatusWord.15")
+            .unwrap()
+            .to_cip_path()
+            .unwrap();
+        let base_path = TagPath::parse("StatusWord").unwrap().to_cip_path().unwrap();
+        assert_eq!(
+            bit_path, base_path,
+            "bit path should encode identically to its parent tag"
+        );
+        // Explicit bytes: ANSI symbol segment 0x91, len 10, then "StatusWord".
+        let mut expected = vec![0x91, 0x0A];
+        expected.extend_from_slice(b"StatusWord");
+        assert_eq!(bit_path, expected);
+        // The old 16-bit-member marker must not appear.
+        assert!(!bit_path.contains(&0x29));
     }
 
     #[test]

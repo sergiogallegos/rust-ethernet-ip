@@ -11,7 +11,10 @@ use futures::{Stream, stream};
 pub struct SubscriptionOptions {
     /// Update rate in milliseconds
     pub update_rate: u32,
-    /// Change threshold for numeric values
+    /// Absolute change threshold (deadband) applied to floating-point values: a
+    /// REAL/LREAL update notifies only when `|new - old| >= change_threshold`.
+    /// This is an absolute delta, not a percentage. Non-float types notify on
+    /// any change regardless of this value.
     pub change_threshold: f32,
     /// Timeout in milliseconds
     pub timeout: u32,
@@ -21,7 +24,7 @@ impl Default for SubscriptionOptions {
     fn default() -> Self {
         Self {
             update_rate: 100,        // 100ms default update rate
-            change_threshold: 0.001, // 0.1% change threshold
+            change_threshold: 0.001, // absolute deadband for REAL/LREAL
             timeout: 5000,           // 5 second timeout
         }
     }
@@ -220,5 +223,50 @@ impl SubscriptionManager {
             .iter()
             .find(|sub| sub.tag_path == tag_name)
             .cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn real_deadband_is_absolute_not_relative() {
+        // change_threshold is an absolute deadband: a delta below it is
+        // suppressed, a delta at/above it notifies, regardless of magnitude.
+        let threshold = 0.001_f32;
+        // Below the deadband -> no notification.
+        assert!(!TagSubscription::value_changed(
+            &PlcValue::Real(1000.0),
+            &PlcValue::Real(1000.0005),
+            threshold
+        ));
+        // At/above the deadband -> notify.
+        assert!(TagSubscription::value_changed(
+            &PlcValue::Real(1000.0),
+            &PlcValue::Real(1000.002),
+            threshold
+        ));
+        // Same absolute delta near zero behaves identically (proves absolute,
+        // not relative/percentage, semantics).
+        assert!(TagSubscription::value_changed(
+            &PlcValue::Real(0.0),
+            &PlcValue::Real(0.002),
+            threshold
+        ));
+    }
+
+    #[test]
+    fn non_float_types_notify_on_any_change() {
+        assert!(TagSubscription::value_changed(
+            &PlcValue::Dint(1),
+            &PlcValue::Dint(2),
+            0.001
+        ));
+        assert!(!TagSubscription::value_changed(
+            &PlcValue::Dint(5),
+            &PlcValue::Dint(5),
+            0.001
+        ));
     }
 }

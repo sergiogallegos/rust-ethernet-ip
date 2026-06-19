@@ -886,13 +886,11 @@ impl EipClient {
                 "bit_index must be 0..32 for DINT bit access".to_string(),
             ));
         }
-        let path = format!("{}.{}", tag_base, bit_index);
-        match self.read_tag(&path).await? {
+        // Logix has no wire-level bit segment for atomic tags, so read the
+        // parent word and extract the bit client-side.
+        match self.read_tag(tag_base).await? {
             PlcValue::Bool(b) => Ok(b),
-            PlcValue::Dint(n) => {
-                // Some PLCs/simulators return the full DINT for bit paths; extract the bit
-                Ok((n >> bit_index) & 1 != 0)
-            }
+            PlcValue::Dint(n) => Ok((n >> bit_index) & 1 != 0),
             other => Err(crate::error::EtherNetIpError::DataTypeMismatch {
                 expected: "BOOL or DINT".to_string(),
                 actual: format!("{:?}", other),
@@ -921,8 +919,27 @@ impl EipClient {
                 "bit_index must be 0..32 for DINT bit access".to_string(),
             ));
         }
-        let path = format!("{}.{}", tag_base, bit_index);
-        self.write_tag(&path, PlcValue::Bool(value)).await
+        // Logix cannot write a single bit of an atomic tag over CIP, so emulate
+        // it with a read-modify-write of the parent word. Note: this is not
+        // atomic across concurrent writers to the same word.
+        match self.read_tag(tag_base).await? {
+            PlcValue::Dint(current) => {
+                let mask = 1i32 << bit_index;
+                let updated = if value {
+                    current | mask
+                } else {
+                    current & !mask
+                };
+                self.write_tag(tag_base, PlcValue::Dint(updated)).await
+            }
+            PlcValue::Bool(_) if bit_index == 0 => {
+                self.write_tag(tag_base, PlcValue::Bool(value)).await
+            }
+            other => Err(crate::error::EtherNetIpError::DataTypeMismatch {
+                expected: "DINT".to_string(),
+                actual: format!("{:?}", other),
+            }),
+        }
     }
 
     /// Parses array element access syntax (e.g., "ArrayName[0]") and returns (base_name, index)

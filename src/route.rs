@@ -12,6 +12,9 @@ pub enum RouteHop {
 #[derive(Debug, Clone)]
 pub struct RoutePath {
     hops: Vec<RouteHop>,
+    /// Port staged by `add_port` to apply to the next `add_address` when no
+    /// Ethernet hop exists yet (supports the `add_port(p).add_address(a)` order).
+    pending_port: Option<u8>,
 }
 
 impl RoutePath {
@@ -21,7 +24,10 @@ impl RoutePath {
     /// Creates a new route path
     #[must_use]
     pub fn new() -> Self {
-        Self { hops: Vec::new() }
+        Self {
+            hops: Vec::new(),
+            pending_port: None,
+        }
     }
 
     /// Adds a backplane slot to the route
@@ -34,16 +40,24 @@ impl RoutePath {
         self
     }
 
-    /// Adds a network port to the route
+    /// Sets the network port for the most recently added Ethernet hop.
+    ///
+    /// If no Ethernet hop exists yet, the port is staged and applied to the next
+    /// `add_address` call, so both `add_address(a).add_port(p)` and
+    /// `add_port(p).add_address(a)` produce the intended port. Previously the
+    /// latter ordering silently dropped the port.
     #[must_use]
     pub fn add_port(mut self, port: u8) -> Self {
-        let port_index = self
+        if let Some(RouteHop::Ethernet { port: hop_port, .. }) = self
             .hops
-            .iter()
-            .filter(|hop| matches!(hop, RouteHop::Ethernet { .. }))
-            .count()
-            .saturating_sub(1);
-        self.update_ethernet_hop_port(port_index, port);
+            .iter_mut()
+            .rev()
+            .find(|hop| matches!(hop, RouteHop::Ethernet { .. }))
+        {
+            *hop_port = port;
+        } else {
+            self.pending_port = Some(port);
+        }
         self
     }
 
@@ -51,7 +65,9 @@ impl RoutePath {
     #[must_use]
     pub fn add_address(mut self, address: String) -> Self {
         let port = self
-            .pending_ethernet_port()
+            .pending_port
+            .take()
+            .or_else(|| self.pending_ethernet_port())
             .unwrap_or(Self::DEFAULT_ETHERNET_PORT);
         self.hops.push(RouteHop::Ethernet { port, address });
         self
@@ -159,20 +175,6 @@ impl RoutePath {
         path.push(0x00);
         if !(address.len() + 1).is_multiple_of(2) {
             path.push(0x00);
-        }
-    }
-
-    fn update_ethernet_hop_port(&mut self, port_index: usize, port: u8) -> bool {
-        if let Some(RouteHop::Ethernet { port: hop_port, .. }) = self
-            .hops
-            .iter_mut()
-            .filter(|hop| matches!(hop, RouteHop::Ethernet { .. }))
-            .nth(port_index)
-        {
-            *hop_port = port;
-            true
-        } else {
-            false
         }
     }
 

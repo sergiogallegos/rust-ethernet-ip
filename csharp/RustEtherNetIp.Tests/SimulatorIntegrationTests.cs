@@ -61,6 +61,23 @@ namespace RustEtherNetIp.Tests
         }
 
         [Fact]
+        public async Task AsyncWrappers_RoundTripThroughNativeWrapper_WithSimulator()
+        {
+            using var sim = new SimulatorTestHarness();
+            using var client = sim.ConnectClient();
+
+            Assert.Equal(1234, await client.ReadDintAsync("DINT_TAG"));
+
+            await client.WriteDintAsync("DINT_TAG", 9999);
+            Assert.Equal(9999, await client.ReadDintAsync("DINT_TAG"));
+
+            await client.WriteBoolAsync("BOOL_TAG", false);
+            Assert.False(await client.ReadBoolAsync("BOOL_TAG"));
+
+            Assert.True(await client.CheckHealthAsync());
+        }
+
+        [Fact]
         public void BatchReadWriteAndExecuteBatch_PreservePerTagResults_WithSimulator()
         {
             using var sim = new SimulatorTestHarness();

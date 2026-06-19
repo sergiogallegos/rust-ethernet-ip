@@ -155,7 +155,7 @@ namespace RustEtherNetIp
                         Marshal.FreeHGlobal(resultPtr);
                     }
 
-                        throw new Exception($"Failed to read BOOL tag '{tagName}'. Check tag exists and is BOOL type.");
+                        throw OperationFailure($"Failed to read BOOL tag '{tagName}'. Check tag exists and is BOOL type.");
                     }
                     finally
                     {
@@ -236,7 +236,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_sint(_clientId, tagPtr, out sbyte value);
                     if (result != 0)
-                        throw new Exception($"Failed to read SINT tag '{tagName}'. Check tag exists and is SINT type.");
+                        throw OperationFailure($"Failed to read SINT tag '{tagName}'. Check tag exists and is SINT type.");
                     return value;
                 }
                 finally
@@ -261,7 +261,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_sint(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write SINT tag '{tagName}'. Check tag exists and is writable.");
+                        throw OperationFailure($"Failed to write SINT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -311,7 +311,7 @@ namespace RustEtherNetIp
                         Marshal.FreeHGlobal(resultPtr);
                     }
 
-                    throw new Exception($"Failed to read INT tag '{tagName}'. Check tag exists and is INT type.");
+                    throw OperationFailure($"Failed to read INT tag '{tagName}'. Check tag exists and is INT type.");
                 }
                 finally
                 {
@@ -360,7 +360,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_dint(_clientId, tagPtr, out int value);
                     if (result != 0)
-                        throw new Exception($"Failed to read DINT tag '{tagName}'. Check tag exists and is DINT type.");
+                        throw OperationFailure($"Failed to read DINT tag '{tagName}'. Check tag exists and is DINT type.");
                     return value;
                 }
                 finally
@@ -410,7 +410,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_lint(_clientId, tagPtr, out long value);
                     if (result != 0)
-                        throw new Exception($"Failed to read LINT tag '{tagName}'. Check tag exists and is LINT type.");
+                        throw OperationFailure($"Failed to read LINT tag '{tagName}'. Check tag exists and is LINT type.");
                     return value;
                 }
                 finally
@@ -435,7 +435,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_lint(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write LINT tag '{tagName}'. Check tag exists and is writable.");
+                        throw OperationFailure($"Failed to write LINT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -464,7 +464,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_usint(_clientId, tagPtr, out byte value);
                     if (result != 0)
-                        throw new Exception($"Failed to read USINT tag '{tagName}'. Check tag exists and is USINT type.");
+                        throw OperationFailure($"Failed to read USINT tag '{tagName}'. Check tag exists and is USINT type.");
                     return value;
                 }
                 finally
@@ -489,7 +489,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_usint(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write USINT tag '{tagName}'. Check tag exists and is writable.");
+                        throw OperationFailure($"Failed to write USINT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -514,7 +514,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_uint(_clientId, tagPtr, out ushort value);
                     if (result != 0)
-                        throw new Exception($"Failed to read UINT tag '{tagName}'. Check tag exists and is UINT type.");
+                        throw OperationFailure($"Failed to read UINT tag '{tagName}'. Check tag exists and is UINT type.");
                     return value;
                 }
                 finally
@@ -539,7 +539,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_uint(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write UINT tag '{tagName}'. Check tag exists and is writable.");
+                        throw OperationFailure($"Failed to write UINT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -564,7 +564,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_udint(_clientId, tagPtr, out uint value);
                     if (result != 0)
-                        throw new Exception($"Failed to read UDINT tag '{tagName}'. Check tag exists and is UDINT type.");
+                        throw OperationFailure($"Failed to read UDINT tag '{tagName}'. Check tag exists and is UDINT type.");
                     return value;
                 }
                 finally
@@ -589,7 +589,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_udint(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write UDINT tag '{tagName}'. Check tag exists and is writable.");
+                        throw OperationFailure($"Failed to write UDINT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -614,7 +614,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_ulint(_clientId, tagPtr, out ulong value);
                     if (result != 0)
-                        throw new Exception($"Failed to read ULINT tag '{tagName}'. Check tag exists and is ULINT type.");
+                        throw OperationFailure($"Failed to read ULINT tag '{tagName}'. Check tag exists and is ULINT type.");
                     return value;
                 }
                 finally
@@ -639,7 +639,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_ulint(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write ULINT tag '{tagName}'. Check tag exists and is writable.");
+                        throw OperationFailure($"Failed to write ULINT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -668,7 +668,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_real(_clientId, tagPtr, out double value);
                     if (result != 0)
-                        throw new Exception($"Failed to read REAL tag '{tagName}'. Check tag exists and is REAL type.");
+                        throw OperationFailure($"Failed to read REAL tag '{tagName}'. Check tag exists and is REAL type.");
                     return (float)value;
                 }
                 finally
@@ -718,7 +718,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_lreal(_clientId, tagPtr, out double value);
                     if (result != 0)
-                        throw new Exception($"Failed to read LREAL tag '{tagName}'. Check tag exists and is LREAL type.");
+                        throw OperationFailure($"Failed to read LREAL tag '{tagName}'. Check tag exists and is LREAL type.");
                     return value;
                 }
                 finally
@@ -743,7 +743,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_lreal(_clientId, tagPtr, value);
                     if (result != 0)
-                        throw new Exception($"Failed to write LREAL tag '{tagName}'. Check tag exists and is writable.");
+                        throw OperationFailure($"Failed to write LREAL tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -812,7 +812,7 @@ namespace RustEtherNetIp
                         Marshal.FreeHGlobal(resultPtr2);
                     }
 
-                    throw new Exception($"Failed to read STRING tag '{tagName}'. Check tag exists and is STRING type.");
+                    throw OperationFailure($"Failed to read STRING tag '{tagName}'. Check tag exists and is STRING type.");
                 }
                 finally
                 {
@@ -1008,7 +1008,7 @@ namespace RustEtherNetIp
                 }
                 else
                 {
-                    throw new Exception($"Failed to read UDT tag '{tagName}' with chunked reading. Check tag exists and is UDT type.");
+                    throw OperationFailure($"Failed to read UDT tag '{tagName}' with chunked reading. Check tag exists and is UDT type.");
                 }
             }
             finally
@@ -1078,7 +1078,7 @@ namespace RustEtherNetIp
                     {
                         int result = eip_write_udt(_clientId, tagPtr, valuePtr, jsonValue.Length);
                         if (result != 0)
-                            throw new Exception($"Failed to write UDT tag '{tagName}'. Check tag exists and is writable.");
+                            throw OperationFailure($"Failed to write UDT tag '{tagName}'. Check tag exists and is writable.");
                     }
                     finally
                     {
@@ -1222,7 +1222,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_udt_chunked(_clientId, tagPtr, resultPtr, 16384);
                     if (result != 0)
-                        throw new Exception($"Failed to read UDT tag '{tagName}' with chunked reading. Check tag exists and is UDT type.");
+                        throw OperationFailure($"Failed to read UDT tag '{tagName}' with chunked reading. Check tag exists and is UDT type.");
                     
                     // Convert the JSON result to PlcValue
                     string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
@@ -1269,7 +1269,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_udt_member_by_offset(_clientId, udtPtr, memberOffset, memberSize, dataType, resultPtr, 1024);
                     if (result != 0)
-                        throw new Exception($"Failed to read UDT member at offset {memberOffset} from '{udtName}'. Check UDT exists and offset is valid.");
+                        throw OperationFailure($"Failed to read UDT member at offset {memberOffset} from '{udtName}'. Check UDT exists and offset is valid.");
                     
                     // Convert the JSON result to PlcValue
                     string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
@@ -1312,7 +1312,7 @@ namespace RustEtherNetIp
                     {
                         int result = eip_write_udt_member_by_offset(_clientId, udtPtr, memberOffset, memberSize, dataType, valuePtr, jsonValue.Length);
                         if (result != 0)
-                            throw new Exception($"Failed to write UDT member at offset {memberOffset} to '{udtName}'. Check UDT exists and offset is valid.");
+                            throw OperationFailure($"Failed to write UDT member at offset {memberOffset} to '{udtName}'. Check UDT exists and offset is valid.");
                     }
                     finally
                     {
@@ -1352,7 +1352,7 @@ namespace RustEtherNetIp
                         string error = PtrToStringAnsiSafe(native.ErrorMessage);
                         if (string.IsNullOrWhiteSpace(error))
                             error = "Unknown error";
-                        throw new Exception($"Failed to get UDT definition for '{udtName}': {error}");
+                        throw OperationFailure($"Failed to get UDT definition for '{udtName}': {error}");
                     }
 
                     var template = new UdtTemplate
@@ -1425,7 +1425,7 @@ namespace RustEtherNetIp
                         string error = PtrToStringAnsiSafe(native.ErrorMessage);
                         if (string.IsNullOrWhiteSpace(error))
                             error = "Unknown error";
-                        throw new Exception($"Failed to get tag attributes for '{tagName}': {error}");
+                        throw OperationFailure($"Failed to get tag attributes for '{tagName}': {error}");
                     }
 
                     string typeName = PtrToStringAnsiSafe(native.DataTypeName);
@@ -1471,7 +1471,7 @@ namespace RustEtherNetIp
                         string error = PtrToStringAnsiSafe(native.ErrorMessage);
                         if (string.IsNullOrWhiteSpace(error))
                             error = "Unknown error";
-                        throw new Exception($"Failed to discover tags: {error}");
+                        throw OperationFailure($"Failed to discover tags: {error}");
                     }
 
                     var tags = new List<TagAttributes>();
@@ -2440,7 +2440,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_tag(_clientId, tagPtr, resultPtr, 4096);
                     if (result != 0)
-                        throw new Exception($"Failed to read tag '{tagName}'");
+                        throw OperationFailure($"Failed to read tag '{tagName}'");
 
                     string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
                     if (string.IsNullOrEmpty(jsonResult))
@@ -2589,7 +2589,7 @@ namespace RustEtherNetIp
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to read tag '{tagNames[i]}': {ex.Message}", ex);
+                        throw OperationFailure($"Failed to read tag '{tagNames[i]}': {ex.Message}", ex);
                     }
                 }
                 return results;
@@ -2672,7 +2672,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_read_array_range(_clientId, namePtr, startIndex, elementCount, resultPtr, 65536);
                     if (result != 0)
-                        throw new Exception($"Failed to read array range '{baseArrayName}[{startIndex}..{startIndex + elementCount - 1}]'.");
+                        throw OperationFailure($"Failed to read array range '{baseArrayName}[{startIndex}..{startIndex + elementCount - 1}]'.");
 
                     string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
                     if (string.IsNullOrWhiteSpace(jsonResult))
@@ -2789,7 +2789,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_get_tag_metadata(_clientId, tagPtr, out TagMetadata metadata);
                     if (result != 0)
-                        throw new Exception($"Failed to get metadata for tag '{tagName}'. Check tag exists.");
+                        throw OperationFailure($"Failed to get metadata for tag '{tagName}'. Check tag exists.");
                     return metadata;
                 }
                 finally

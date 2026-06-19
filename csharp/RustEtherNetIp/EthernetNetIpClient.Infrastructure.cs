@@ -17,8 +17,9 @@ namespace RustEtherNetIp
             // the operation, and on a transiently-writable tag it could even
             // mask the original failure. The scalar write FFI only returns a
             // status code, so surface the best heuristic explanation we have.
-            // (Richer native error propagation is tracked for a later change.)
-            throw new Exception(InferKnownWriteLimitation(tagName, value, fallbackMessage));
+            throw new PlcException(
+                InferKnownWriteLimitation(tagName, value, fallbackMessage),
+                TryGetNativeError());
         }
 
         private static string InferKnownWriteLimitation(string tagName, PlcValue value, string fallbackMessage)
@@ -59,6 +60,44 @@ namespace RustEtherNetIp
             if (_clientId < 0)
                 throw new InvalidOperationException("Not connected to PLC. Call Connect() first.");
         }
+
+        /// <summary>
+        /// Retrieves the most recent native error message for this client, or null
+        /// if none is available. Best-effort: never throws.
+        /// </summary>
+        internal string? TryGetNativeError()
+        {
+            if (_clientId < 0)
+                return null;
+
+            const int bufferSize = 1024;
+            IntPtr buffer = Marshal.AllocHGlobal(bufferSize);
+            try
+            {
+                int written = eip_get_last_error(_clientId, buffer, bufferSize);
+                if (written <= 0)
+                    return null;
+                return Marshal.PtrToStringUTF8(buffer);
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        /// <summary>
+        /// Builds a <see cref="PlcException"/> for a failed operation, attaching the
+        /// native library's last-error message when available.
+        /// </summary>
+        private PlcException OperationFailure(string message)
+            => new PlcException(message, TryGetNativeError());
+
+        private PlcException OperationFailure(string message, Exception innerException)
+            => new PlcException(message, TryGetNativeError(), innerException);
 
         private T ExecuteWithLock<T>(Func<T> operation)
         {

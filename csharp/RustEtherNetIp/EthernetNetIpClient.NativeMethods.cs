@@ -14,6 +14,9 @@ namespace RustEtherNetIp
         private static extern int eip_connect(IntPtr address);
 
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_get_last_error(int client_id, IntPtr buffer, int max_len);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
         private static extern int eip_connect_with_route(
             IntPtr address,
             byte[] slots,

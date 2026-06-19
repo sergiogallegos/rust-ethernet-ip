@@ -2935,7 +2935,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "rust-ethernet-ip"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bytes",
  "criterion",
@@ -2960,7 +2960,7 @@ dependencies = [
 
 [[package]]
 name = "rust-ethernet-ip-protocol"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bytes",
  "rust-ethernet-ip-types",
@@ -2968,14 +2968,14 @@ dependencies = [
 
 [[package]]
 name = "rust-ethernet-ip-tag-path"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "tracing",
 ]
 
 [[package]]
 name = "rust-ethernet-ip-types"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bytes",
  "serde",
@@ -2983,7 +2983,7 @@ dependencies = [
 
 [[package]]
 name = "rust-ethernet-ip-udt"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "rust-ethernet-ip-types",
  "tracing",

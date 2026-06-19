@@ -4102,7 +4102,6 @@ impl EipClient {
 
         Ok(session)
     }
-
 }
 
 #[cfg(test)]

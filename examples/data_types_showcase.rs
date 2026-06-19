@@ -85,8 +85,11 @@ async fn demonstrate_data_types() -> Result<(), Box<dyn Error>> {
     );
 
     let lint_val = PlcValue::Lint(-9223372036854775808);
-    println!("   LINT:  {:?} -> CIP Type: 0x{:04X} (Range: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807)", 
-             lint_val, lint_val.get_data_type());
+    println!(
+        "   LINT:  {:?} -> CIP Type: 0x{:04X} (Range: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807)",
+        lint_val,
+        lint_val.get_data_type()
+    );
 
     // 3. Unsigned Integer Types
     println!("\n3. Unsigned Integer Types:");
@@ -391,7 +394,14 @@ mod tests {
         assert_eq!(PlcValue::Lreal(0.0).get_data_type(), 0x00CB);
         assert_eq!(PlcValue::String("".to_string()).get_data_type(), 0x00DA);
         use rust_ethernet_ip::UdtData;
-        assert_eq!(PlcValue::Udt(UdtData { symbol_id: 0, data: vec![] }).get_data_type(), 0x00A0);
+        assert_eq!(
+            PlcValue::Udt(UdtData {
+                symbol_id: 0,
+                data: vec![]
+            })
+            .get_data_type(),
+            0x00A0
+        );
     }
 
     #[test]

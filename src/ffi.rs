@@ -1772,6 +1772,24 @@ pub unsafe extern "C" fn eip_write_udt(
         return -1;
     };
 
+    // Generic UdtData format: {"symbol_id":N,"data":[..bytes..]}. This is the
+    // shape the C#/Python wrappers send for raw UDT writes and what the batch
+    // path uses. It is mutually exclusive with the member-dictionary shape
+    // below (the dict has no symbol_id/data fields), so try it first and write
+    // the raw bytes directly. A symbol_id of 0 triggers the read-before-write
+    // path inside write_tag.
+    if let Ok(udt_data) = serde_json::from_str::<crate::UdtData>(value_str) {
+        let mut client = match get_client(client_id) {
+            Ok(client) => client,
+            Err(_) => return -1,
+        };
+        return if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Udt(udt_data))).is_ok() {
+            0
+        } else {
+            -1
+        };
+    }
+
     // Deserialize JSON to UDT (HashMap format for backward compatibility)
     let udt_members: HashMap<String, PlcValue> = match serde_json::from_str(value_str) {
         Ok(data) => data,

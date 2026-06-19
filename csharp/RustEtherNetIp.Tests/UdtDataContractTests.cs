@@ -1,3 +1,4 @@
+using System.Text.Json;
 using RustEtherNetIp;
 using Xunit;
 
@@ -5,6 +6,34 @@ namespace RustEtherNetIp.Tests
 {
     public class UdtDataContractTests
     {
+        [Fact]
+        public void ToJson_EmitsDataAsByteArray_NotBase64()
+        {
+            // The native FFI deserializes `data` as a Rust Vec<u8> (a JSON number
+            // array). Emitting base64 here made typed UDT writes silently fail.
+            var data = new UdtData(7, new byte[] { 0xCF, 0x78, 0x02, 0x00 });
+
+            using var doc = JsonDocument.Parse(data.ToJson());
+            var root = doc.RootElement;
+
+            Assert.Equal(7, root.GetProperty("symbol_id").GetInt32());
+            var dataElement = root.GetProperty("data");
+            Assert.Equal(JsonValueKind.Array, dataElement.ValueKind);
+            Assert.Equal(new byte[] { 0xCF, 0x78, 0x02, 0x00 },
+                System.Linq.Enumerable.ToArray(
+                    System.Linq.Enumerable.Select(dataElement.EnumerateArray(), e => (byte)e.GetInt32())));
+        }
+
+        [Fact]
+        public void ToJson_RoundTripsThroughFromJson()
+        {
+            var original = new UdtData(42, new byte[] { 1, 2, 3, 250 });
+            var restored = UdtData.FromJson(original.ToJson());
+
+            Assert.Equal(original.SymbolId, restored.SymbolId);
+            Assert.Equal(original.Data, restored.Data);
+        }
+
         [Fact]
         public void ToDictionary_ParsesTemplateMembersWithOffsets()
         {

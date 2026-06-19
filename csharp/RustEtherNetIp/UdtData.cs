@@ -51,14 +51,23 @@ namespace RustEtherNetIp
         }
 
         /// <summary>
-        /// Converts the UdtData to JSON format for transmission to the Rust library
+        /// Converts the UdtData to JSON format for transmission to the Rust library.
         /// </summary>
+        /// <remarks>
+        /// The native FFI deserializes <c>data</c> as a byte array (Rust
+        /// <c>Vec&lt;u8&gt;</c>), so it is emitted as an array of integers — the
+        /// same shape the batch-write path uses. (It was previously emitted as a
+        /// base64 string, which the native side could not deserialize, so typed
+        /// UDT writes silently failed.)
+        /// </remarks>
         public string ToJson()
         {
+            // System.Text.Json serializes byte[] as a base64 string, so project to
+            // an int[] to force a JSON number array matching Rust's Vec<u8>.
             var obj = new
             {
                 symbol_id = SymbolId,
-                data = Convert.ToBase64String(Data)
+                data = Array.ConvertAll(Data, b => (int)b)
             };
             return JsonSerializer.Serialize(obj);
         }

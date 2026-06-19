@@ -34,6 +34,10 @@ namespace RustEtherNetIp
     {
         private readonly List<RouteHop> _hops = new List<RouteHop>();
 
+        // Port staged by AddPort to apply to the next AddAddress when no Ethernet
+        // hop exists yet (supports the AddPort(p).AddAddress(a) ordering).
+        private byte? _pendingPort;
+
         /// <summary>
         /// Creates a new empty route path
         /// </summary>
@@ -79,9 +83,12 @@ namespace RustEtherNetIp
                 if (_hops[i].Kind == RouteHopKind.Ethernet)
                 {
                     _hops[i] = RouteHop.Ethernet(port, _hops[i].Address!);
-                    break;
+                    return this;
                 }
             }
+            // No Ethernet hop yet: stage the port for the next AddAddress so the
+            // AddPort(p).AddAddress(a) ordering no longer silently drops it.
+            _pendingPort = port;
             return this;
         }
 
@@ -102,8 +109,11 @@ namespace RustEtherNetIp
         {
             if (string.IsNullOrEmpty(address))
                 throw new ArgumentException("Address cannot be null or empty", nameof(address));
-            
-            return AddEthernet(2, address);
+
+            byte port = _pendingPort ?? 2;
+            _pendingPort = null;
+            _hops.Add(RouteHop.Ethernet(port, address));
+            return this;
         }
 
         public RoutePath AddEthernet(byte port, string address)

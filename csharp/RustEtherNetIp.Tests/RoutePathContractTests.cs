@@ -34,6 +34,38 @@ namespace RustEtherNetIp.Tests
             Assert.Equal(3, route.Hops.Count);
         }
 
+        [Fact]
+        public void AddPort_BeforeAddress_AppliesPortToNextAddress()
+        {
+            // Previously AddPort before any Ethernet hop silently dropped the
+            // port (the address defaulted to port 2).
+            var route = new RoutePath()
+                .AddSlot(0)
+                .AddPort(3)
+                .AddAddress("192.168.1.100");
+
+            Assert.Equal(new byte[] { 3 }, route.Ports);
+        }
+
+        [Fact]
+        public void AddPort_AfterAddress_SetsPortOnExistingHop()
+        {
+            var route = new RoutePath()
+                .AddSlot(0)
+                .AddAddress("192.168.1.100")
+                .AddPort(3);
+
+            Assert.Equal(new byte[] { 3 }, route.Ports);
+        }
+
+        [Fact]
+        public void AddAddress_WithoutPort_UsesDefaultEthernetPort()
+        {
+            var route = new RoutePath().AddAddress("192.168.1.100");
+
+            Assert.Equal(new byte[] { 2 }, route.Ports);
+        }
+
         [Theory]
         [InlineData("")]
         [InlineData(null)]

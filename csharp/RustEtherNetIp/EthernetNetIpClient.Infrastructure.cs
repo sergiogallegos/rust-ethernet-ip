@@ -11,56 +11,13 @@ namespace RustEtherNetIp
     {
         private void ThrowDetailedWriteException(string tagName, PlcValue value, string fallbackMessage)
         {
-            try
-            {
-                var request = new List<FfiWriteBatchRequestItem>
-                {
-                    new()
-                    {
-                        tag_name = tagName,
-                        value_type = ToRustValueType(value),
-                        value = ToJsonElement(ToRustRawValue(value))
-                    }
-                };
-
-                string payload = JsonSerializer.Serialize(request);
-                IntPtr payloadPtr = Marshal.StringToHGlobalAnsi(payload);
-                IntPtr resultPtr = IntPtr.Zero;
-
-                try
-                {
-                    resultPtr = Marshal.AllocHGlobal(65536);
-                    int rc = eip_write_tags_batch(_clientId, payloadPtr, 1, resultPtr, 65536);
-                    string json = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
-                    if (!string.IsNullOrWhiteSpace(json))
-                    {
-                        var nativeResults = JsonSerializer.Deserialize<List<FfiWriteBatchResultItem>>(json) ?? new();
-                        var nativeResult = nativeResults.FirstOrDefault(r => r.tag_name == tagName);
-                        if (nativeResult != null)
-                        {
-                            if (!string.IsNullOrWhiteSpace(nativeResult.error))
-                                throw new Exception(nativeResult.error);
-
-                            if (!nativeResult.success)
-                                throw new Exception(InferKnownWriteLimitation(tagName, value, fallbackMessage));
-
-                            if (rc != 0)
-                                throw new Exception(fallbackMessage);
-                        }
-                    }
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(payloadPtr);
-                    if (resultPtr != IntPtr.Zero)
-                        Marshal.FreeHGlobal(resultPtr);
-                }
-            }
-            catch (Exception ex) when (!string.IsNullOrWhiteSpace(ex.Message))
-            {
-                throw new Exception(ex.Message);
-            }
-
+            // The scalar write that just failed must NOT be re-issued to the PLC
+            // merely to obtain a richer error message: for side-effecting tags
+            // (counters, momentary bits, event triggers) that would double-apply
+            // the operation, and on a transiently-writable tag it could even
+            // mask the original failure. The scalar write FFI only returns a
+            // status code, so surface the best heuristic explanation we have.
+            // (Richer native error propagation is tracked for a later change.)
             throw new Exception(InferKnownWriteLimitation(tagName, value, fallbackMessage));
         }
 
@@ -133,25 +90,58 @@ namespace RustEtherNetIp
 
         public void Dispose()
         {
-            if (!_isDisposed)
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        // Finalizer: if Dispose() was never called, still release the native
+        // session so the Rust-side client (and its TCP socket) is not leaked for
+        // the process lifetime. Only native state is touched here.
+        ~EtherNetIpClient()
+        {
+            Dispose(false);
+        }
+
+        private void Dispose(bool disposing)
+        {
+            lock (_lock)
             {
-                UnsubscribeFromAllTags();
-                lock (_tagGroupLock)
+                if (_isDisposed)
+                    return;
+
+                if (disposing)
                 {
-                    foreach (var group in _tagGroups.Values)
+                    // Managed cleanup must run before _isDisposed is set: several
+                    // teardown helpers (e.g. UnsubscribeFromAllTags) short-circuit
+                    // once the client is marked disposed.
+                    try
                     {
-                        group.Group?.Dispose();
+                        UnsubscribeFromAllTags();
+                        lock (_tagGroupLock)
+                        {
+                            foreach (var group in _tagGroups.Values)
+                            {
+                                group.Group?.Dispose();
+                            }
+                            _tagGroups.Clear();
+                        }
+                        StopKeepAlive();
+                        _keepAliveCts.Dispose();
+                        _operationLock.Dispose();
                     }
-                    _tagGroups.Clear();
+                    catch
+                    {
+                        // Best-effort managed teardown; never throw from Dispose.
+                    }
                 }
-                StopKeepAlive();
-                _keepAliveCts.Dispose();
+
+                // Native cleanup always runs (both Dispose and finalizer).
                 if (_clientId >= 0)
                 {
                     eip_disconnect(_clientId);
                     _clientId = -1;
                 }
-                _operationLock.Dispose();
+
                 _isDisposed = true;
             }
         }

@@ -1113,6 +1113,7 @@ pub unsafe extern "C" fn eip_read_tag(
         }
         Err(e) => {
             tracing::error!("[FFI] Read tag '{}' failed: {}", tag_name_str, e);
+            set_last_error(client_id, e.to_string());
             return -1;
         }
     };
@@ -1142,6 +1143,13 @@ pub unsafe extern "C" fn eip_read_tag(
             tag_name_str,
             bytes.len(),
             max_size
+        );
+        set_last_error(
+            client_id,
+            format!(
+                "read result for '{tag_name_str}' too large for buffer ({} > {max_size} bytes)",
+                bytes.len()
+            ),
         );
         return -1; // JSON too long
     }

@@ -18,6 +18,10 @@ const EIP_ERROR_RUNTIME_INIT: c_int = -2;
 static FFI_CLIENTS: LazyLock<Mutex<HashMap<i32, EipClient>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static FFI_NEXT_ID: LazyLock<Mutex<i32>> = LazyLock::new(|| Mutex::new(1));
+/// Per-client last error message, set when an FFI operation returns a failure
+/// code so wrappers can retrieve a human-readable reason via `eip_get_last_error`.
+static FFI_LAST_ERRORS: LazyLock<Mutex<HashMap<i32, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 static RUNTIME_INIT_LOG: Once = Once::new();
 #[cfg(test)]
 static FORCE_RUNTIME_INIT_ERROR: std::sync::atomic::AtomicBool =
@@ -112,6 +116,136 @@ fn store_client(client_id: c_int, client: EipClient) -> Result<(), ()> {
     let mut clients = lock_clients()?;
     clients.insert(client_id, client);
     Ok(())
+}
+
+/// Records the last error message for a client so wrappers can surface a
+/// human-readable reason after a failure code. Best-effort: a poisoned lock is
+/// ignored rather than panicking across the FFI boundary.
+fn set_last_error(client_id: c_int, message: impl Into<String>) {
+    if let Ok(mut errors) = FFI_LAST_ERRORS.lock() {
+        errors.insert(client_id, message.into());
+    }
+}
+
+/// Copies the most recent error message for `client_id` into `buffer` as a
+/// NUL-terminated UTF-8 string. Returns the number of bytes written (excluding
+/// the NUL), 0 if there is no recorded error, or -1 on a null buffer / capacity
+/// overflow. Part of capability `CAP_LAST_ERROR`.
+///
+/// # Safety
+///
+/// `buffer` must be a valid, writable pointer to at least `max_len` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn eip_get_last_error(
+    client_id: c_int,
+    buffer: *mut c_char,
+    max_len: c_int,
+) -> c_int {
+    if buffer.is_null() || max_len <= 0 {
+        return -1;
+    }
+    let message = match FFI_LAST_ERRORS.lock() {
+        Ok(errors) => errors.get(&client_id).cloned(),
+        Err(_) => return -1,
+    };
+    let Some(message) = message else {
+        // No recorded error: write an empty string.
+        unsafe { *buffer = 0 };
+        return 0;
+    };
+    let Ok(c_message) = CString::new(message) else {
+        return -1;
+    };
+    let bytes = c_message.as_bytes_with_nul();
+    if bytes.len() > max_len as usize {
+        return -1;
+    }
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr().cast::<c_char>(), buffer, bytes.len());
+    }
+    // Bytes written excluding the trailing NUL.
+    (bytes.len() - 1) as c_int
+}
+
+/// Generates an `eip_read_<type>` scalar FFI wrapper. The `|$v| $conv` argument
+/// binds the inner `PlcValue` payload to `$v` and converts it to the C result
+/// type; failures record a last-error message for `eip_get_last_error`.
+macro_rules! ffi_read_scalar {
+    ($name:ident, $ctype:ty, $variant:ident, |$v:ident| $conv:expr) => {
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn $name(
+            client_id: c_int,
+            tag_name: *const c_char,
+            result: *mut $ctype,
+        ) -> c_int {
+            if tag_name.is_null() || result.is_null() {
+                return -1;
+            }
+            let Ok(tag_name_str) = (unsafe { CStr::from_ptr(tag_name) }).to_str() else {
+                return -1;
+            };
+            let mut client = match get_client(client_id) {
+                Ok(client) => client,
+                Err(_) => return -1,
+            };
+            match ffi_block_on!(client.read_tag(tag_name_str)) {
+                Ok(PlcValue::$variant($v)) => {
+                    unsafe {
+                        *result = $conv;
+                    }
+                    0
+                }
+                Ok(other) => {
+                    set_last_error(
+                        client_id,
+                        format!(
+                            "tag '{}': expected {} but got {:?}",
+                            tag_name_str,
+                            stringify!($variant),
+                            other
+                        ),
+                    );
+                    -1
+                }
+                Err(e) => {
+                    set_last_error(client_id, e.to_string());
+                    -1
+                }
+            }
+        }
+    };
+}
+
+/// Generates an `eip_write_<type>` scalar FFI wrapper. The `|$v| $conv` argument
+/// binds the C value parameter to `$v` and converts it to the inner `PlcValue`
+/// payload; failures record a last-error message for `eip_get_last_error`.
+macro_rules! ffi_write_scalar {
+    ($name:ident, $ctype:ty, $variant:ident, |$v:ident| $conv:expr) => {
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn $name(
+            client_id: c_int,
+            tag_name: *const c_char,
+            $v: $ctype,
+        ) -> c_int {
+            if tag_name.is_null() {
+                return -1;
+            }
+            let Ok(tag_name_str) = (unsafe { CStr::from_ptr(tag_name) }).to_str() else {
+                return -1;
+            };
+            let mut client = match get_client(client_id) {
+                Ok(client) => client,
+                Err(_) => return -1,
+            };
+            match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::$variant($conv))) {
+                Ok(_) => 0,
+                Err(e) => {
+                    set_last_error(client_id, e.to_string());
+                    -1
+                }
+            }
+        }
+    };
 }
 
 unsafe fn build_route_path_from_grouped_fields(
@@ -665,650 +799,30 @@ pub unsafe extern "C" fn eip_disconnect(client_id: c_int) -> c_int {
     }
 }
 
-/// Read a boolean tag
-///
-/// # Safety
-///
-/// This function is unsafe because:
-/// - `tag_name` must be a valid null-terminated C string pointer
-/// - `result` must be a valid mutable pointer to a `c_int`
-/// - The caller must ensure both pointers remain valid for the duration of the call
-/// - `client_id` must be a valid client ID returned from `eip_connect`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_bool(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut c_int,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Bool(value)) => {
-            unsafe {
-                *result = i32::from(value);
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-/// Write a boolean tag
-///
-/// # Safety
-///
-/// This function is unsafe because:
-/// - `tag_name` must be a valid null-terminated C string pointer
-/// - The caller must ensure the pointer remains valid for the duration of the call
-/// - `client_id` must be a valid client ID returned from `eip_connect`
-/// - The tag name must be a valid PLC tag identifier
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_bool(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: c_int,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let bool_value = value != 0;
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Bool(bool_value))).is_ok() {
-        0
-    } else {
-        -1
-    }
-}
-
-// SINT (8-bit signed integer) operations
-/// Read a signed 8-bit integer tag
-///
-/// # Safety
-///
-/// This function is unsafe because:
-/// - `tag_name` must be a valid null-terminated C string pointer
-/// - `result` must be a valid mutable pointer to an i8
-/// - The caller must ensure both pointers remain valid for the duration of the call
-/// - `client_id` must be a valid client ID returned from `eip_connect`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_sint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut i8,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Sint(value)) => {
-            unsafe {
-                *result = value;
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-/// Write a signed 8-bit integer tag
-///
-/// # Safety
-///
-/// This function is unsafe because:
-/// - `tag_name` must be a valid null-terminated C string pointer
-/// - The caller must ensure the pointer remains valid for the duration of the call
-/// - `client_id` must be a valid client ID returned from `eip_connect`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_sint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: i8,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Sint(value))).is_ok() {
-        0
-    } else {
-        -1
-    }
-}
-
-// INT (16-bit signed integer) operations
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_int(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut i16,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Int(value)) => {
-            unsafe {
-                *result = value;
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_int(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: i16,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Int(value))) {
-        Ok(_) => 0,
-        Err(_) => -1,
-    }
-}
-
-/// Read a DINT tag
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_dint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut c_int,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => {
-            tracing::error!("[FFI] Client ID {} not found", client_id);
-            return -1;
-        }
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Dint(value)) => {
-            unsafe {
-                *result = value;
-            }
-            0
-        }
-        Ok(other_value) => {
-            tracing::error!("[FFI] Expected DINT but got: {:?}", other_value);
-            -1
-        }
-        Err(e) => {
-            tracing::error!("[FFI] Read tag '{}' failed: {}", tag_name_str, e);
-            -1
-        }
-    }
-}
-
-/// Write a DINT tag
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_dint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: c_int,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Dint(value))) {
-        Ok(_) => 0,
-        Err(_) => -1,
-    }
-}
-
-// LINT (64-bit signed integer) operations
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_lint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut i64,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Lint(value)) => {
-            unsafe {
-                *result = value;
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_lint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: i64,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Lint(value))) {
-        Ok(_) => 0,
-        Err(_) => -1,
-    }
-}
-
-// USINT (8-bit unsigned integer) operations
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_usint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut u8,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Usint(value)) => {
-            unsafe {
-                *result = value;
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_usint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: u8,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Usint(value))) {
-        Ok(_) => 0,
-        Err(_) => -1,
-    }
-}
-
-// UINT (16-bit unsigned integer) operations
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_uint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut u16,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Uint(value)) => {
-            unsafe {
-                *result = value;
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_uint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: u16,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Uint(value))) {
-        Ok(_) => 0,
-        Err(_) => -1,
-    }
-}
-
-// UDINT (32-bit unsigned integer) operations
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_udint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut u32,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Udint(value)) => {
-            unsafe {
-                *result = value;
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_udint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: u32,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Udint(value))) {
-        Ok(_) => 0,
-        Err(_) => -1,
-    }
-}
-
-// ULINT (64-bit unsigned integer) operations
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_ulint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut u64,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Ulint(value)) => {
-            unsafe {
-                *result = value;
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_ulint(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: u64,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Ulint(value))).is_ok() {
-        0
-    } else {
-        -1
-    }
-}
-
-/// Read a REAL tag
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_real(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut f64,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Real(value)) => {
-            unsafe {
-                *result = f64::from(value);
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-/// Write a REAL tag
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_real(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: f64,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Real(value as f32))) {
-        Ok(_) => 0,
-        Err(_) => -1,
-    }
-}
-
-// LREAL (64-bit double precision) operations
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_read_lreal(
-    client_id: c_int,
-    tag_name: *const c_char,
-    result: *mut f64,
-) -> c_int {
-    if tag_name.is_null() || result.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    match ffi_block_on!(client.read_tag(tag_name_str)) {
-        Ok(PlcValue::Lreal(value)) => {
-            unsafe {
-                *result = value;
-            }
-            0
-        }
-        _ => -1,
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_write_lreal(
-    client_id: c_int,
-    tag_name: *const c_char,
-    value: f64,
-) -> c_int {
-    if tag_name.is_null() {
-        return -1;
-    }
-
-    let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Lreal(value))).is_ok() {
-        0
-    } else {
-        -1
-    }
-}
+// Scalar read/write FFI wrappers. Generated by ffi_read_scalar! / ffi_write_scalar!,
+// which record a last-error message on failure (see eip_get_last_error).
+ffi_read_scalar!(eip_read_bool, c_int, Bool, |v| i32::from(v));
+ffi_write_scalar!(eip_write_bool, c_int, Bool, |v| v != 0);
+ffi_read_scalar!(eip_read_sint, i8, Sint, |v| v);
+ffi_write_scalar!(eip_write_sint, i8, Sint, |v| v);
+ffi_read_scalar!(eip_read_int, i16, Int, |v| v);
+ffi_write_scalar!(eip_write_int, i16, Int, |v| v);
+ffi_read_scalar!(eip_read_dint, c_int, Dint, |v| v);
+ffi_write_scalar!(eip_write_dint, c_int, Dint, |v| v);
+ffi_read_scalar!(eip_read_lint, i64, Lint, |v| v);
+ffi_write_scalar!(eip_write_lint, i64, Lint, |v| v);
+ffi_read_scalar!(eip_read_usint, u8, Usint, |v| v);
+ffi_write_scalar!(eip_write_usint, u8, Usint, |v| v);
+ffi_read_scalar!(eip_read_uint, u16, Uint, |v| v);
+ffi_write_scalar!(eip_write_uint, u16, Uint, |v| v);
+ffi_read_scalar!(eip_read_udint, u32, Udint, |v| v);
+ffi_write_scalar!(eip_write_udint, u32, Udint, |v| v);
+ffi_read_scalar!(eip_read_ulint, u64, Ulint, |v| v);
+ffi_write_scalar!(eip_write_ulint, u64, Ulint, |v| v);
+ffi_read_scalar!(eip_read_real, f64, Real, |v| f64::from(v));
+ffi_write_scalar!(eip_write_real, f64, Real, |v| v as f32);
+ffi_read_scalar!(eip_read_lreal, f64, Lreal, |v| v);
+ffi_write_scalar!(eip_write_lreal, f64, Lreal, |v| v);
 
 /// Read a STRING tag
 ///
@@ -3028,5 +2542,41 @@ mod tests {
 
         assert_eq!(rc, EIP_ERROR_RUNTIME_INIT);
         assert_eq!(rc_again, EIP_ERROR_RUNTIME_INIT);
+    }
+
+    #[test]
+    fn last_error_roundtrips_through_buffer() {
+        let client_id = -987; // arbitrary id unused by real clients
+        set_last_error(client_id, "boom: tag not found");
+
+        let mut buf = [0_i8; 64];
+        let written =
+            unsafe { eip_get_last_error(client_id, buf.as_mut_ptr(), buf.len() as c_int) };
+        assert_eq!(written, "boom: tag not found".len() as c_int);
+
+        let msg = unsafe { CStr::from_ptr(buf.as_ptr()) }
+            .to_str()
+            .expect("utf-8");
+        assert_eq!(msg, "boom: tag not found");
+    }
+
+    #[test]
+    fn last_error_absent_writes_empty_string() {
+        let mut buf = [0x7f_i8; 8];
+        let written = unsafe { eip_get_last_error(-12_345, buf.as_mut_ptr(), buf.len() as c_int) };
+        assert_eq!(written, 0);
+        assert_eq!(buf[0], 0, "buffer should be an empty C string");
+    }
+
+    #[test]
+    fn last_error_overflow_returns_error() {
+        let client_id = -988;
+        set_last_error(
+            client_id,
+            "this message is definitely longer than the buffer",
+        );
+        let mut buf = [0_i8; 4];
+        let rc = unsafe { eip_get_last_error(client_id, buf.as_mut_ptr(), buf.len() as c_int) };
+        assert_eq!(rc, -1);
     }
 }

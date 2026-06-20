@@ -50,9 +50,24 @@ jobs:
     # shutdown (native Tokio runtime threads torn down by the host); the Rust
     # side is already covered by `cargo test` on beta. See
     # wiki/investigations/dotnet-testhost-shutdown-2026-05-26.md.
-    - name: Build release cdylib for C# tests
+    - name: Build release cdylib (ffi) for C# tests
       if: matrix.rust == 'stable'
-      run: cargo build --release --workspace --all-features --locked
+      shell: bash
+      run: |
+        # Remove any cached/stale cdylib so the C# harness can't pick up a
+        # non-ffi build (which intermittently caused EntryPointNotFound for
+        # eip_connect on the Ubuntu leg), then build a fresh ffi cdylib.
+        rm -f target/release/librust_ethernet_ip.so \
+              target/release/librust_ethernet_ip.dylib \
+              target/release/rust_ethernet_ip.dll
+        cargo build --release --features ffi --locked
+        # Point the harness directly at this known-good ffi cdylib.
+        case "${{ runner.os }}" in
+          Windows) f="rust_ethernet_ip.dll";;
+          macOS)   f="librust_ethernet_ip.dylib";;
+          *)       f="librust_ethernet_ip.so";;
+        esac
+        echo "RUST_ETHERNET_IP_NATIVE_LIB=$GITHUB_WORKSPACE/target/release/$f" >> "$GITHUB_ENV"
 
     - name: Setup .NET
       if: matrix.rust == 'stable'

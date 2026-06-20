@@ -8,6 +8,15 @@
 
 ## 1.2.0 — next minor (additive, non-breaking)
 
+Recommended sequencing for this release line:
+
+1. Documentation refresh plus Rust API positioning.
+2. Placeholder / passive-surface decisions, so public APIs stop implying
+   unsupported capability.
+3. Python parity expansion, but only on top of native surfaces that are honest
+   and stable.
+4. Platform/package coverage and internal refactors as capacity allows.
+
 ### 1. Full documentation refresh  *(priority for this release)*
 The 1.1.0 version bump only swept the 22 release-readiness-checked files plus the
 root and C# READMEs. A complete pass is owed:
@@ -27,7 +36,8 @@ root and C# READMEs. A complete pass is owed:
   crate-level `//!` docs likely missing on the siblings).
 - **Historical-doc triage** — finish the archive/banner pass started in the 1.0.0
   cleanup (the empty `docs/api`/`docs/protocol`/`docs/examples` dirs, the
-  duplicate `RUST_*TEST_RESULTS.md`, the Python-expansion planning docs).
+  duplicate `RUST_*TEST_RESULTS.md`, the Python-expansion planning docs, and
+  stale wiki pages that still describe pre-1.1.0 architecture as current).
 - Add `README.md` historical-note + compat-matrix links refresh, and keep
   `docs/API_STABILITY.md` / `docs/MIGRATION_*` current.
 
@@ -54,31 +64,152 @@ with an `Arc<tokio::sync::Mutex<EipClient>>` registry, removing the
 copied-field-mutation footgun the reviews flagged as "correct today, brittle."
 Behavior-preserving; verify against the Rust/C#/Python FFI suites.
 
+### 6. Rust high-level API stabilization pass
+`Client`, `RetryClient`, `Fleet`, connection events, and the service-layer helper
+APIs are now public alongside the older `EipClient` facade, but the docs and
+examples still mostly teach `EipClient` plus manual `Arc<Mutex<_>>` sharing.
+Decide and document the recommended Rust entry point for new applications:
+
+- Promote actor-backed `Client` / `Fleet` examples where appropriate, or clearly
+  mark them as advanced APIs.
+- Clarify how `Client`, `Fleet`, `PlcManager`, `RetryPolicy`, and `EipClient`
+  relate so users do not pick the wrong abstraction.
+- Document current event semantics (`Connected`, `Disconnected`,
+  `WorkerStopped`) and what is not promised yet, such as reconnect/session
+  recycled events.
+- Decide whether wrappers should ever adopt actor semantics, or whether the
+  FFI registry remains the wrapper boundary.
+
+### 7. Python wrapper parity expansion
+The Python package is installable and covers connection, routing, scalar
+read/write, batch read/write, health, diagnostics, and last-error mapping. It
+does not yet expose the richer native surface that Rust/C# expose or imply:
+
+- Tag discovery / detailed discovery, tag attributes, and UDT definition APIs.
+- Array-range reads and UDT/member helper APIs.
+- Tag group / subscription ergonomics, if those remain a supported wrapper
+  concept.
+- Package-level examples for data collection and schema inspection that match
+  the current FFI instead of historical Python planning docs.
+- Parity tests that prove Python/C#/Rust agree on error mapping and JSON value
+  decoding for scalar, array, STRING, and UDT payloads.
+
+Keep this additive. Do not widen the Python API just to mirror every internal
+Rust type; prioritize surfaces that are already stable through FFI. Do not build
+Python parity on top of placeholder native exports such as `eip_get_tag_metadata`
+until those exports are either implemented or explicitly retired.
+
+### 8. Placeholder native/API surface decisions
+C# exposes `ConfigureBatchOperations()` and `GetBatchConfig()`, but they
+intentionally throw `NotSupportedException`; native `eip_configure_batch_operations`
+and `eip_get_batch_config` are also placeholders. Native `eip_discover_tags` /
+`eip_get_tag_metadata` are also legacy placeholder exports, while newer detailed
+discovery / attribute APIs exist separately. Pick explicit directions:
+
+- Prefer deprecating batch-configuration methods now, then remove them in 2.0,
+  unless a concrete product need appears for configurable native batch packing.
+- Either implement `eip_get_tag_metadata` / `eip_discover_tags` through the
+  maintained detailed discovery path, or mark the legacy exports unsupported and
+  move wrappers to the maintained exports.
+- Add Rust/C#/Python contract tests for whichever direction is chosen.
+
+### 9. Diagnostics and passive-config honesty pass
+Diagnostics snapshots currently carry `system_metrics_are_placeholders: true`
+and placeholder CPU / memory readings. Before promoting diagnostics as an
+operational feature, either replace those values with real cross-platform
+metrics or split unsupported system metrics out so consumers cannot mistake
+placeholders for telemetry.
+
+`ProductionConfig` has rich fields and validation, but the client consumes only a
+small portion of that configuration surface. In the same pass, document which
+fields are declarative only, wire fields that should affect runtime behavior, or
+trim/deprecate passive settings that imply enforcement the client does not do.
+
+### 10. C# wrapper maintainability split
+`EtherNetIpClient.cs` remains the largest wrapper file and mixes scalar access,
+UDT helpers, batch operations, discovery, configuration, statistics, and native
+interop structures. Split it into behavior-focused partials without changing the
+public API, similar to the existing async/native-method partials. This should be
+paired with contract tests so the split is mechanical and low risk.
+
+### 11. Test-suite quality pass
+Several `#[ignore]` hardware-oriented tests still return early on connection
+failure or swallow operational failures, which means they can pass without
+proving behavior. `tests/TEST_COVERAGE_SUMMARY.md` is also stale relative to the
+current simulator, wrapper, and release-gate coverage.
+
+- Port tests to the deterministic simulator where protocol behavior is not
+  hardware-specific.
+- For real-hardware tests, make missing PLC configuration skip explicitly and
+  make configured runs assert failures unconditionally.
+- Update the coverage summary so it reflects Rust, C#, Python, simulator,
+  package, and real-hardware coverage by current release line.
+
+### 12. Supply-chain policy gate
+CI runs `cargo-audit`, but it does not yet enforce license, duplicate-version,
+source, or banned-dependency policy with `cargo-deny`. Add a checked-in
+`deny.toml` and CI job with a pragmatic initial policy:
+
+- fail on known-bad advisories and disallowed licenses;
+- warn or fail on duplicate dependencies once the baseline is understood;
+- restrict registry/git sources to intentional sources;
+- document how to update the policy during dependency upgrades.
+
 ## 2.0.0 — next major (SemVer-breaking)
 
-### 6. Remove dead public surface
+### 13. Remove dead public surface
 - Delete the dead `TagCache` struct (`src/tag_manager.rs`) — entirely
   `#[allow(dead_code)]`, only deferred because it's publicly re-exported at
   `src/lib.rs` (removal is SemVer-major).
 - Delete the unused `PlcConnection::update_health` (publicly re-exported), or
   wire it into the connection-pool health-reset paths that currently duplicate
   its logic inline.
+- Remove any deprecated placeholder exports or wrapper methods from item 8 if
+  they were not implemented in the 1.x line.
 
-### 7. C# true non-blocking async (optional, larger)
+### 14. C# true non-blocking async (optional, larger)
 The 1.1.0 C# async API is `Task.Run` wrappers over blocking FFI (one pool thread
 per in-flight call). True non-blocking would need async FFI entry points that
 don't occupy a thread — a meaningful ABI addition (bump `ABI_VERSION` /
-capability). Evaluate demand before committing.
+capability). Evaluate demand before committing. If this stays deferred, consider
+adding an async interface for the existing `Task.Run` methods so DI/test users
+can depend on the async surface without binding to the concrete class.
 
 ## Validation / ops (any release)
 
-### 8. Multi-chassis / multi-hop Ethernet routing — hardware validation
+### 15. Multi-chassis / multi-hop Ethernet routing — hardware validation
 `RouteHop::Ethernet` ASCII extended-link-address encoding (from CODEX-F) has
 only been validated on direct-connect / single-chassis hardware. It needs a real
 **2-chassis ControlLogix bench** (e.g. local rack → 1756-EN2T → remote chassis)
 to exercise a true multi-hop route end-to-end. On success, promote
 `wiki/protocol/route-path-behavior.md` from `likely` to `confirmed`. Not
 blocking — the wire format is unchanged from validated single-hop paths.
+
+### 16. Restricted-write and metadata simulator expansion
+The simulator and wrapper tests cover the broad happy paths, but several
+high-value behaviors still depend on real PLC validation or thin contract tests:
+
+- UDT definition discovery, tag attributes, detailed tag discovery, and schema
+  export.
+- STRING writes and UDT member / UDT array member restricted-write helpers,
+  including expected firmware failures.
+- Wrapper value decoding for binary UDT payloads that must not be mistaken for
+  Logix STRING data.
+
+Add deterministic simulator coverage where possible, then reserve real hardware
+only for firmware-specific behavior.
+
+### 17. Cross-registry package install smoke matrix
+The 1.1.0 release gates now prove built artifacts before upload. Add a separate
+post-publish or manual gate that installs from the public registries and runs a
+minimal import/load smoke for:
+
+- crates.io main crate plus sibling crates;
+- NuGet package on `win-x64`, `linux-x64`, `osx-arm64`, and any newly added RIDs;
+- PyPI wheels/sdist on Windows, macOS, Linux x86_64, and future Linux arm64.
+
+This is not a substitute for release CI; it catches registry metadata, packaging
+selection, and native-library loading issues after publication.
 
 ---
 

@@ -1003,3 +1003,28 @@ Sources used:
 - `docs/agents/board.md`
 - `CHANGELOG.md`
 - `src/version.rs`
+
+## [2026-06-20] query | review post-1.1.0 roadmap gaps
+
+- Added `wiki/investigations/roadmap-gap-review-2026-06-20.md`.
+- Updated `wiki/index.md` to register the review.
+- Updated `docs/ROADMAP.md` with additional next-version candidates covering Rust API positioning, Python parity, placeholder/passive-surface decisions, diagnostics placeholders, C# wrapper maintainability, test-suite quality, supply-chain policy, simulator expansion, and post-publish package smoke checks.
+
+Sources used:
+
+- `docs/ROADMAP.md`
+- `src/lib.rs`
+- `src/client.rs`
+- `src/client/actor.rs`
+- `src/client/service_layer.rs`
+- `src/fleet.rs`
+- `src/ffi.rs`
+- `src/monitoring.rs`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.cs`
+- `csharp/RustEtherNetIp/README.md`
+- `python/rust_ethernet_ip/client.py`
+- `python/rust_ethernet_ip/bindings.py`
+- `wiki/investigations/client-actor-service-retry-2026-05-24.md`
+- `wiki/investigations/fleet-api-2026-05-24.md`
+- `wiki/investigations/python-wrapper-strategy-2026-04-19.md`
+- `wiki/investigations/test-coverage-strength-2026-05-18.md`

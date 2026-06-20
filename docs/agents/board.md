@@ -4,11 +4,9 @@
 
 ## Open
 
-| Id | Title | Status | Owner |
-|---|---|---|---|
-| CODEX-AI | [Publish a manylinux Linux x86_64 Python wheel to PyPI](tasks/CODEX-AI-manylinux-python-wheel.md) | open | codex |
+_(no open briefs)_
 
-> CODEX-AI follow-up (2026-06-19): the 1.1.0 release shipped Windows + macOS PyPI wheels + sdist but **no Linux wheel** — the prebuilt-cdylib + setuptools layout fails `auditwheel` ("shared library in purelib"), so `linux-x64` is omitted from `release.yml`'s `pypi-wheels` matrix. The brief covers building/repairing a `manylinux_*_x86_64` wheel (preferably inside a manylinux container) so `pip install` works on Linux. Lands in the next release; 1.1.0 on PyPI is immutable.
+> CODEX-AI merged (2026-06-19): the manylinux Linux x86_64 wheel now ships. Root cause was a platlib-layout bug (native lib routed to `.data/purelib/`, rejected by auditwheel); fixed with an `install_lib = install_platlib` override in `python/setup.py`. `release.yml` builds the cdylib + wheel inside a `manylinux_2_28` container, auditwheel-repairs it, and a blocking smoke job installs+imports it in a clean container before publish. `rust_ethernet_ip-1.1.0-py3-none-manylinux_2_28_x86_64.whl` was added to the existing PyPI 1.1.0 release (no version bump) — `pip install` now works on Linux x86_64.
 
 > 2026-06-19 **1.1.0 SHIPPED** — merged to `main`, tagged `v1.1.0`, and published to crates.io (×5), NuGet (multi-RID), and PyPI (Windows/macOS wheels + sdist; Linux wheel deferred → CODEX-AI). Originated as branch `review-fixes-v1.1`. Post-1.0.0 file-by-file review drove a three-tier fix bundle: Tier 1 correctness (client-side bit RMW — hardware-validated; C# UDT-write serialization + `eip_write_udt` `{symbol_id,data}` shape; C# no-double-write; C# finalizer/Dispose; `add_port` Rust+C#; Python UDT→STRING guard; subscription deadband; tag-list offset; no-git build; Python wheel native-lib bundling), Tier 2 debt (docs sweep + API_STABILITY/MIGRATION; deleted `examples/rust_examples/`; `client.rs` dead-code purge; `enip-test` moved out of the published crate; Docker/bench fixes), Tier 3 features (`thiserror` 2.0 + dep trim; macro-generated scalar FFI wrappers; `eip_get_last_error` + `CAP_LAST_ERROR` → C# `PlcException`/Python error detail; C# Task.Run async API; crates.io/PyPI/multi-RID-NuGet release automation). Version bumped to 1.1.0 across all 22 readiness-checked locations + CHANGELOG. Recommended as a **minor** (additive public API). Deferred (with reason): FFI registry `Arc<Mutex>`, `TagCache`/`update_health` (SemVer-major), data-type-table dedup. Hardware-validated on CompactLogix 5069-L330ERM @ 192.168.0.101: all three bindings byte-identical 2299/2206/2206/60/0. New release secrets needed for full automation: `CARGO_REGISTRY_TOKEN`, `PYPI_API_TOKEN` (both jobs no-op without them).
 >
@@ -98,6 +96,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-AI | Publish a manylinux Linux x86_64 Python wheel to PyPI | codex | `98fc460` |
 | CODEX-A | FFI safety, runtime hardening, and lint baseline | codex | `3d98abf` |
 | CODEX-B | Contained API cleanup — thiserror, dead deps, dead state, must_use | codex | `9aca8d2` |
 | CODEX-E | Small polish — runtime-init log dedupe, regex caching, re-export merge, dev-dep audit | codex | `fc63735` |

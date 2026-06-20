@@ -2,7 +2,7 @@
 id: CODEX-AI
 title: Publish a manylinux Linux x86_64 Python wheel to PyPI
 owner: codex
-status: open
+status: merged
 created: 2026-06-19
 last-update: 2026-06-19 claude [Opus 4.8]
 ---
@@ -117,4 +117,41 @@ manylinux repair step. Keep Windows/macOS legs unchanged.
 
 ## Claude review
 
+### 2026-06-19  claude [Opus 4.8]
+
+Implemented directly by Claude at maintainer direction (not the usual
+Codex-implements / Claude-reviews split).
+
+**Root cause found locally (no Docker needed):** the wheel already had
+`Root-Is-Purelib: false` (the `setup.py` `bdist_wheel` override worked), but the
+bundled native library was being routed to the `.data/purelib/` install scheme,
+so auditwheel rejected it with "shared library in purelib folder". Inspecting a
+locally-built Windows wheel's `WHEEL` metadata + RECORD made this obvious.
+
+**Fix:** added an `install` command override in `python/setup.py` that sets
+`install_lib = install_platlib`, so the package (and its native-library
+package-data) installs to platlib and `bdist_wheel` places the lib at the
+package root (`rust_ethernet_ip/<lib>`) instead of `.data/purelib/`. Verified
+locally: the `.dll` moved to the package root with `Root-Is-Purelib: false`.
+This is strictly more correct for the Windows/macOS wheels too (no regression).
+
+**Pipeline:** `release.yml` gains `pypi-linux-wheel` (builds the cdylib + wheel
+inside `quay.io/pypa/manylinux_2_28_x86_64`, then `auditwheel repair`) and a
+blocking `pypi-linux-smoke` (installs the repaired wheel in a clean
+`python:3.12-slim` container and asserts the manylinux tag + `import` +
+`load_native_library()`). `pypi-publish` now `needs` the smoke gate.
+
+**Result:** dispatched the release workflow at 1.1.0; the manylinux job (1m27s)
+and smoke gate (9s) passed, and `twine upload --skip-existing` added
+`rust_ethernet_ip-1.1.0-py3-none-manylinux_2_28_x86_64.whl` to the existing PyPI
+1.1.0 release (no version bump). Confirmed live on the PyPI simple index
+alongside the win_amd64 / macosx / sdist distributions. `pip install
+rust-ethernet-ip` now works on Linux x86_64.
+
 ## Verdict
+
+**Merged** at `98fc460` (implementation) — Claude-implemented, hardware path
+N/A. All acceptance criteria met: manylinux-tagged wheel published, Linux
+install+import smoke is a blocking CI gate, Windows/macOS wheels + sdist
+unchanged, no version bump (added to 1.1.0). Out-of-scope items (Linux aarch64,
+musl) remain unaddressed by design.

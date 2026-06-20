@@ -15,10 +15,10 @@ Validated scope today:
 
 ## Package Status
 
-- current published package: `1.0.0`
-- previous published package: `0.7.0`
+- current published package: `1.1.0`
+- previous published package: `1.0.0`
 - current published package target: `.NET 10`
-- current packaged native runtime focus: Windows `win-x64`
+- current packaged native runtimes: `win-x64`, `linux-x64`, `osx-arm64`
 
 If you are evaluating deployment, read:
 
@@ -30,13 +30,13 @@ If you are evaluating deployment, read:
 ### NuGet
 
 ```bash
-dotnet add package RustEtherNetIp --version 1.0.0
+dotnet add package RustEtherNetIp --version 1.1.0
 ```
 
 Or:
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="1.0.0" />
+<PackageReference Include="RustEtherNetIp" Version="1.1.0" />
 ```
 
 ### Source-based builds
@@ -529,7 +529,15 @@ The project is also open to:
 
 ## Version History
 
-### v1.0.0 (Current Stable)
+### v1.1.0 (Current Stable)
+- ✅ New async API — `ReadDintAsync` / `WriteBoolAsync` / `ReadStringAsync` / batch / `CheckHealthAsync` (Task.Run wrappers) so calls are awaitable and UI threads stay responsive
+- ✅ Richer errors — operations now throw `PlcException` carrying the native CIP failure reason via `eip_get_last_error` (capability `CAP_LAST_ERROR`), e.g. "CIP Error 0x04: Path segment error"
+- ✅ Fixed: typed UDT writes (`WriteUdt`/`WriteUdtData`) serialize correctly; a failed scalar write is no longer re-issued to the PLC; added a finalizer + thread-safe `Dispose`; `RoutePath.AddPort` before an address no longer drops the port
+- ✅ Multi-RID NuGet package: native runtimes for `win-x64`, `linux-x64`, `osx-arm64`
+- ✅ Real CompactLogix 5069-L330ERM fw38 validation: 2299/2299 reads, 2206/2206 writes, 2206/2206 verify, 0 anomalies
+- No breaking changes to the public API or the C ABI (ABI version still `1`)
+
+### v1.0.0
 - ✅ SemVer-major release-window bundle (`#[non_exhaustive]` on public enums, `RoutePath` private storage, typed `try_init_tracing`, etc.)
 - ✅ Native FFI ABI version + capability handshake — wrapper rejects mismatched native libraries at load time via `BadImageFormatException`
 - ✅ BOOL-array DWORD-offset fix: `gTestArray_BOOL[i]` for `i >= 32` now addresses the correct DWORD instead of aliasing to DWORD[0]

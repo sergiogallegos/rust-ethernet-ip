@@ -530,7 +530,7 @@ The project is also open to:
 ## Version History
 
 ### v1.1.0 (Current Stable)
-- ✅ New async API — `ReadDintAsync` / `WriteBoolAsync` / `ReadStringAsync` / batch / `CheckHealthAsync` (Task.Run wrappers) so calls are awaitable and UI threads stay responsive
+- ✅ New async API — `ReadDintAsync` / `WriteBoolAsync` / `ReadStringAsync` / batch / `CheckHealthAsync`. **Note:** these are `Task.Run` wrappers over the blocking native calls — they let you `await` and keep UI threads responsive, but they do **not** make the underlying socket I/O non-blocking (one thread-pool thread is occupied per in-flight call). True non-blocking FFI is future work.
 - ✅ Richer errors — operations now throw `PlcException` carrying the native CIP failure reason via `eip_get_last_error` (capability `CAP_LAST_ERROR`), e.g. "CIP Error 0x04: Path segment error"
 - ✅ Fixed: typed UDT writes (`WriteUdt`/`WriteUdtData`) serialize correctly; a failed scalar write is no longer re-issued to the PLC; added a finalizer + thread-safe `Dispose`; `RoutePath.AddPort` before an address no longer drops the port
 - ✅ Multi-RID NuGet package: native runtimes for `win-x64`, `linux-x64`, `osx-arm64`

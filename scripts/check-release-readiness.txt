@@ -26,3 +26,5 @@ regex|examples/WpfExample/WpfExample.csproj|<Version>|<Version>([^<]+)</Version>
 regex|examples/WinFormsExample/WinFormsExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}
 regex|csharp/RustEtherNetIp.Tests/AbiContractTests.cs|library-version assertion|Assert\.Equal\("([^"]+)", NativeRuntime\.LibraryVersion\)|{version}
 regex|python/tests/test_abi_contract.py|library-version fake|eip_library_version = FakeFunction\(b"([^"]+)"\)|{version}
+regex|README.md|Rust install snippet|(?m)^rust-ethernet-ip = "([^"]+)"|{version}
+regex|csharp/RustEtherNetIp/README.md|current published package|current published package: `([^`]+)`|{version}

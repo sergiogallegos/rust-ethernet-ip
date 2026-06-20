@@ -81,6 +81,11 @@ jobs:
             $rid = $_.Name -replace '^native-', ''
             if ($rid -ne $_.Name) { Rename-Item $_.FullName (Join-Path $_.Parent.FullName $rid) }
           }
+          # The wrapper csproj copies target/release/<native> during its build,
+          # but this runner never built the cdylib (it downloaded artifacts), so
+          # place the Linux native there to satisfy the build-time copy.
+          New-Item -ItemType Directory -Force -Path target/release | Out-Null
+          Copy-Item runtimes/linux-x64/librust_ethernet_ip.so target/release/librust_ethernet_ip.so -Force
           ./scripts/pack-nuget.ps1 -OutputDir ./artifacts/nuget -RuntimesDir ./runtimes
       - name: Upload NuGet artifact
         uses: actions/upload-artifact@v4
@@ -137,9 +142,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # NOTE: linux-x64 wheel is intentionally omitted for now. A compliant
+        # Linux wheel must be manylinux-tagged (PyPI rejects a raw linux_x86_64
+        # tag), which requires building/repairing inside a manylinux container —
+        # tracked as a follow-up. Windows/macOS wheels + the sdist ship here.
         include:
-          - os: ubuntu-latest
-            rid: linux-x64
           - os: windows-latest
             rid: win-x64
           - os: macos-14
@@ -163,16 +170,6 @@ jobs:
           python -m pip install --upgrade pip build
           cd python
           python -m build --wheel
-      - name: Repair Linux wheel to manylinux
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update && sudo apt-get install -y patchelf
-          python -m pip install auditwheel
-          cd python
-          for whl in dist/*linux_x86_64.whl; do
-            auditwheel repair "$whl" -w dist/
-            rm -f "$whl"
-          done
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:

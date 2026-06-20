@@ -24,6 +24,15 @@ _(no open briefs)_
 
 ## Next agenda
 
+> **Canonical post-1.1.0 backlog: [`docs/ROADMAP.md`](../ROADMAP.md).** That doc
+> is the current source of truth for future work — grouped by target release
+> (1.2.0 minor, 2.0.0 major, and validation/ops). It supersedes the
+> 1.0.0-era candidate entries below for planning purposes. Highlights: **full
+> documentation refresh** (1.2.0 priority), Linux aarch64 + macOS-Intel wheels,
+> data-type-table dedup, FFI registry `Arc<Mutex>`, the 2.0 dead-public-surface
+> removals (`TagCache` / `update_health`), and **multi-chassis Ethernet routing
+> hardware validation**.
+
 Resume order recommended by Claude. Each candidate brief is unwritten; the entry below summarises what the brief would cover so the next session can author and execute it without re-deriving context from chat history.
 
 ### v1.0.0 release sequence — completed 2026-05-24

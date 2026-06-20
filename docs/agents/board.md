@@ -4,9 +4,9 @@
 
 ## Open
 
-| id | title | status | owner |
+| Id | Title | Status | Owner |
 |---|---|---|---|
-| [CODEX-AI](tasks/CODEX-AI-manylinux-python-wheel.md) | Publish a manylinux Linux x86_64 Python wheel to PyPI | open | codex |
+| CODEX-AI | [Publish a manylinux Linux x86_64 Python wheel to PyPI](tasks/CODEX-AI-manylinux-python-wheel.md) | open | codex |
 
 > CODEX-AI follow-up (2026-06-19): the 1.1.0 release shipped Windows + macOS PyPI wheels + sdist but **no Linux wheel** — the prebuilt-cdylib + setuptools layout fails `auditwheel` ("shared library in purelib"), so `linux-x64` is omitted from `release.yml`'s `pypi-wheels` matrix. The brief covers building/repairing a `manylinux_*_x86_64` wheel (preferably inside a manylinux container) so `pip install` works on Linux. Lands in the next release; 1.1.0 on PyPI is immutable.
 

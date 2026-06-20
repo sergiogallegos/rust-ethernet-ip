@@ -8,6 +8,7 @@ default ``py3-none-any`` (otherwise pip would install a Windows wheel on Linux).
 """
 
 from setuptools import setup
+from setuptools.command.install import install as _install
 from setuptools.dist import Distribution
 
 # bdist_wheel moved from the `wheel` package into setuptools; support both.
@@ -24,6 +25,17 @@ class BinaryDistribution(Distribution):
         return True
 
 
+class install(_install):
+    """Route the package (and its bundled native library package-data) to the
+    platlib scheme so bdist_wheel places it at the package root rather than under
+    ``.data/purelib/``. auditwheel only repairs platlib-compliant wheels, so this
+    is required for the Linux manylinux wheel."""
+
+    def finalize_options(self) -> None:
+        super().finalize_options()
+        self.install_lib = self.install_platlib
+
+
 class bdist_wheel(_bdist_wheel):
     def finalize_options(self) -> None:
         super().finalize_options()
@@ -37,4 +49,7 @@ class bdist_wheel(_bdist_wheel):
         return "py3", "none", plat
 
 
-setup(distribution_class=BinaryDistribution, cmdclass={"bdist_wheel": bdist_wheel})
+setup(
+    distribution_class=BinaryDistribution,
+    cmdclass={"bdist_wheel": bdist_wheel, "install": install},
+)

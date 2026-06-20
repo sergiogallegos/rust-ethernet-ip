@@ -142,10 +142,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # NOTE: linux-x64 wheel is intentionally omitted for now. A compliant
-        # Linux wheel must be manylinux-tagged (PyPI rejects a raw linux_x86_64
-        # tag), which requires building/repairing inside a manylinux container —
-        # tracked as a follow-up. Windows/macOS wheels + the sdist ship here.
+        # Windows/macOS wheels build here on their native runners. The Linux
+        # wheel must be manylinux-tagged (PyPI rejects raw linux_x86_64), so it
+        # is built separately in the `pypi-linux-wheel` job below inside a
+        # manylinux container.
         include:
           - os: windows-latest
             rid: win-x64
@@ -176,10 +176,69 @@ jobs:
           name: wheel-${{ matrix.rid }}
           path: python/dist/*.whl
 
+  # Linux wheel: build the cdylib AND the wheel inside a manylinux container so
+  # the .so links an old, portable glibc, then auditwheel-repair to a
+  # manylinux_* tag that PyPI accepts.
+  pypi-linux-wheel:
+    name: Build wheel (manylinux x86_64)
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_28_x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+      - name: Build cdylib (ffi) against manylinux glibc
+        run: |
+          source "$HOME/.cargo/env"
+          cargo build --release --features ffi --locked
+      - name: Stage native lib and build wheel
+        run: |
+          PY=/opt/python/cp312-cp312/bin/python
+          "$PY" python/scripts/stage_native_lib.py --profile release
+          "$PY" -m pip install --upgrade build
+          ( cd python && "$PY" -m build --wheel )
+      - name: Repair to manylinux
+        run: |
+          mkdir -p python/wheelhouse
+          for whl in python/dist/*linux_x86_64.whl; do
+            auditwheel repair "$whl" -w python/wheelhouse/
+          done
+          ls -l python/wheelhouse
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux-x64
+          path: python/wheelhouse/*.whl
+
+  # Blocking gate: install the repaired Linux wheel in a clean (non-manylinux)
+  # container and confirm the package imports and the native library loads.
+  pypi-linux-smoke:
+    name: Smoke-test manylinux wheel
+    needs: pypi-linux-wheel
+    runs-on: ubuntu-latest
+    container: python:3.12-slim
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-linux-x64
+          path: dist
+      - name: Verify manylinux tag, install, and import
+        run: |
+          ls -l dist
+          ls dist/*.whl | grep -E 'manylinux.*x86_64' \
+            || { echo "ERROR: Linux wheel is not manylinux-tagged"; exit 1; }
+          pip install dist/*.whl
+          python - <<'PY'
+          from rust_ethernet_ip import bindings
+          lib = bindings.load_native_library()
+          print("manylinux wheel OK: native lib loaded, ABI", bindings.ABI_VERSION)
+          PY
+
   pypi-publish:
     name: Publish PyPI
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    needs: pypi-wheels
+    needs: [pypi-wheels, pypi-linux-smoke]
     runs-on: ubuntu-latest
     env:
       PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}

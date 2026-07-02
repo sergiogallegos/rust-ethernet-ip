@@ -2,9 +2,9 @@
 id: CODEX-AM
 title: Tag addressing correctness — member-suffix drop, bit syntax, batch BOOL arrays, .DATA[i] segment, program discovery
 owner: codex
-status: open
+status: merged
 created: 2026-07-01
-last-update: 2026-07-01 claude [Fable 5]
+last-update: 2026-07-03 claude [Fable 5]
 ---
 
 ## Brief
@@ -69,6 +69,61 @@ Fix five addressing bugs from the 2026-07-01 repository analysis ([`docs/agents/
 
 ## Codex log
 
+2026-07-02 — Submitted by Codex. Implemented all five tag-addressing fixes: `write_tag("Array[i].Member", ...)` now preserves member suffixes by avoiding the simple-array workaround when a member follows the first bracket; `read_tag("Tag.n")` returns `PlcValue::Bool` and `write_tag("Tag.n", Bool)` delegates to the existing client-side bit RMW path; batch BOOL array reads/writes now address the containing DWORD (`i / 32`) and keep bit extraction/update at `i % 32`; `TagPath` encodes `.DATA[i]` with the same 8/16/32-bit Element ID segment helper used by array paths; program tag discovery request construction includes the requested `Program:Name` symbolic scope before the Symbol Object path. Fixed simulator element-segment parsing for 16-bit and 32-bit operands so the simulator reads the required pad byte correctly.
+
+Tests added: simulator round-trips for DINT bit syntax at bits 0, 15, and 31 with neighbor-bit preservation; `UDT_ARRAY[3].DINT_MEMBER` write/read proving member suffix preservation; batch BOOL array read/write over indices 5, 35, and 63 with an anti-aliasing assert against `BOOL_ARRAY[3]`; pinned `.DATA[5]` and `.DATA[300]` bytes; pinned program-discovery request bytes including the `Program:` symbolic segment.
+
+Verification passed: `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets --all-features -- -D warnings`; `$env:SKIP_PLC_TESTS='1'; cargo test --workspace --all-features --locked`; `cargo test -p rust-ethernet-ip-tag-path --locked`; `cargo test --test plc_sim_tests --locked`; `cargo test discovery_tests --locked`; `git diff --check`. `cargo fmt` continues to print the existing `could not canonicalize path C:\Users\Sergio Gallegos` warning, and `git diff --check` reports only line-ending normalization warnings.
+
+Pre-fix demonstration note: I did not create a separate parent worktree to rerun the new tests against `9f5c98b`; the failures are documented by direct source comparison. Parent `write_tag` routed `Array[i].Member` through `write_array_element_workaround`, dropping the suffix; parent `read_tag("DINT_TAG.15")` returned the parent DINT because `TagPath::Bit` encoded the base path and no client dispatch resolved the bit; parent batch BOOL array requests addressed the requested element while reply parsing used `i % 32`, aliasing cross-DWORD elements; parent `.DATA[i]` emitted `0x28, 0x04, <u32>` instead of a valid Element ID operand; parent program discovery ignored `_program_name` and targeted the wrong object path. The new focused tests pin each corrected behavior.
+
+Wire-touching changes for the maintainer's pre-release hardware full-coverage pass: member-suffixed writes now emit the full parsed path rather than the base array element; `Tag.n` public syntax performs parent-word read/write requests as RMW; batch BOOL array operations emit DWORD-indexed element paths for packed BOOL arrays; `.DATA[i]` emits corrected Element ID segments; program-scoped discovery emits the program symbolic segment. No AM-specific hardware gate is required before review, but the 1.2.0 full-coverage session should include these paths.
+
 ## Claude review
 
+### 2026-07-03 00:45  claude [Fable 5]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean; `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-targets --all-features --locked` — 252 passed / 0 failed / 48 ignored.
+- `cargo test --test plc_sim_tests --locked` — 19/19 (three new AM suites); `cargo test -p rust-ethernet-ip-tag-path --locked` — pinned `.DATA[5]`/`.DATA[300]` byte tests included.
+- `cargo build --release --features ffi --locked` — ok; C# unit 86/86; C# P/Invoke integration 7/7; `validate-agent-files` ok.
+- **Hardware smoke on the 5069-L330ERM fw38** (public API only, values restored; evidence: [`docs/validation/2026-07-02_tag_addressing_smoke_5069-L330ERM_fw38.md`](../../validation/2026-07-02_tag_addressing_smoke_5069-L330ERM_fw38.md)): all five fixes exercised live — program discovery returns 7 tags; `.DATA[0]` reads `Sint('S')`; `Tag.n` bit RMW flips exactly one bit of a 999999-valued DINT host; batch BOOL `[35]` write leaves `[3]` untouched (anti-aliasing); member-suffix write preserved the rest of the element.
+
+**What's being fixed**
+- Five addressing defects: member-suffix drop on array-element writes (silent whole-element clobber — the worst), `Tag.n` bit syntax operating on the whole word, batch BOOL array element aliasing across DWORDs, malformed `.DATA[i]` element segment, and program discovery ignoring the program name.
+
+**Root cause confirmation**
+- All five match the brief's citations, verified in the diff: `has_member_suffix_after_first_array_index` mirrors `read_tag`'s guard; bit dispatch routes `read_tag`/`write_tag` through the existing hardware-validated RMW path via new `*_direct` internals (no re-entrant dispatch); batch BOOL ops address `index / 32` with bit math at `% 32` (the read-side extraction at `batch_exec.rs:749` already existed — the request side now agrees); the `StringData` arm reuses a shared `append_element_id_segment` helper with the 8/16/32-bit widths from 1756-PM020; discovery builds the `Program:Name` symbolic segment + Symbol class path, pinned-byte-tested.
+- The simulator element-segment parser also gained spec-correct pad-byte handling for 16/32-bit operands — oracle-direction, consistent with CODEX-AN.
+
+**Fix appropriateness**
+- Right layers throughout; the `*_direct` split cleanly prevents dispatch recursion; non-Bool values against a bit path draw a typed `DataTypeMismatch`.
+
+**Test proof**
+- Sim round-trips for bit 0/15/31 with neighbor-bit asserts, member-suffix preservation, batch BOOL 5/35/63 anti-aliasing, pinned `.DATA[i]` and discovery bytes — matching the brief's matrix. Plus the live hardware pass above.
+
+**Residual risk**
+- Bit RMW hosts remain DINT/BOOL only — see finding.
+- One element/member/type probed on hardware for fix 1; the systematic consequence is CODEX-AV's job.
+
+**Strong points (✅)**
+- `append_element_id_segment` de-duplicates the array and `.DATA[i]` arms so the widths can't drift again.
+- The suffix guard is defensive-minimal: simple element writes keep the existing workaround byte-for-byte.
+- The Codex log's wire-change inventory is exactly what the release-gate hardware session needs.
+
+**Findings**
+- 🟠→🟢 **resolved during review: fix 1 changes hardware behavior more than anyone expected.** With well-formed member paths, `write_tag("gTestUDT_Array[0].Member1_DINT", Dint)` **succeeds** on the L330ERM fw38 — the firmware does *not* block UDT array element member writes; the historical `0x2107` evidence was gathered through the malformed paths this task fixed. Same misdiagnosis class as the STRING quirk. Consequences: the quirks-note section is wrong, and the manifest's `firmware_blocked_udt_array_element_member` / `firmware_blocked_udt_string_member` labels will flip to unexpected-success anomalies in the pre-1.2.0 full-coverage run. Follow-up briefed as **CODEX-AV**; not an AM defect — AM did exactly what its brief asked, and the honest path exposed the stale lore.
+- 🟡 The brief's behavior section promised `Tag.n` bit access "for DINT/INT/SINT hosts"; the implementation supports DINT (and BOOL at bit 0) — INT/SINT hosts draw a typed `DataTypeMismatch`. Matches the pre-existing `read_bit`/`write_bit` envelope and the brief's own test matrix (DINT only); accepted as a documented gap, widen if an integrator asks.
+- 🟢 Pre-fix demonstration was by source comparison against `9f5c98b` rather than a parent-worktree run — acceptable; four of the five defects are structurally evident, and the fifth (aliasing) is pinned by the new anti-aliasing test.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ All five fixes with the required tests (pre-fix failures documented by source comparison — deviation accepted).
+- ✅ No regression in CODEX-X/Y sim tests, `write_ab_string_components`, or the 1.1.0 bit-RMW tests.
+- ✅ CHANGELOG `[Unreleased]` `### Fixed` entries present.
+- ✅ Wire-touching changes listed for the maintainer's hardware re-run — and the review smoke already exercised all five live; the full-coverage session remains the comprehensive gate (now with the CODEX-AV relabel caveat).
+
 ## Verdict
+
+Merged 2026-07-03. Zero Claude-applied fixes, zero defects. The review's hardware smoke validated all five fixes live and surfaced a second firmware-quirk misdiagnosis (UDT array element member writes work with correct paths) — recorded in the validation doc and briefed as CODEX-AV so the pre-release full-coverage gate doesn't trip on stale `firmware_blocked_*` labels. Bookkeeping note: Codex's AM log lines were unintentionally swept into the earlier `7676137` CI commit (harmless — content correct, message says "ci:").

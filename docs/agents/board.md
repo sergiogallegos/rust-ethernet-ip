@@ -8,12 +8,11 @@
 >
 > CODEX-AT and CODEX-AU (2026-07-02, maintainer-requested) sit outside the analysis set. AT is grounded in new hardware evidence ([`../validation/2026-07-02_string_write_probe_5069-L330ERM_fw38.md`](../validation/2026-07-02_string_write_probe_5069-L330ERM_fw38.md)) that **disproves the STRING-write firmware quirk** — it answers CODEX-AP's item 5 decision point and shares files with AM (`.DATA[i]` consumer note), AN (`tests/plc_sim.rs`), and AP (`client/string.rs`, 0x2107 text); whichever lands second rebases. AU is packaging-only (C header + C++ example + Qt guide) and should sequence after AS if AS is in flight (AS privatizes three raw exports the header must exclude).
 >
-> **1.2.0 release plan (2026-07-02 maintainer direction).** The open CODEX-AJ…AU set accumulates on `main` with no interim releases. When the set is merged: full local matrix, then a maintainer hardware full-coverage pass (all three bindings; after CODEX-AT the two plain STRING tags must move from `blocked_as_expected` to write-verified, so expect the baseline matrix to shift from 60 blocked to 58 and writes from 2206 to 2208; zero unexpected anomalies required), then version bump and publish as **1.2.0** — minor, not major: the set is behavioral fixes, deprecations, and additive surface (header, C++ example) with no signature breaks; the deferred deletions stay queued for 2.0 per `docs/ROADMAP.md`. Packet captures for CODEX-AO phase 2 should be bundled into that same hardware session. Recommended implementation order: **AK → AJ → AT → AM → AN → AL → AS → AP → AQ → AR → AU**, with AO phase 1 free to interleave anywhere. Decisions relayed for open questions: AK item 4 resolves as "omit `authors` entirely from all five manifests" (matches the sibling-crate convention); AU waits for AS.
+> **1.2.0 release plan (2026-07-02 maintainer direction).** The open CODEX-AJ…AU set accumulates on `main` with no interim releases. When the set is merged: full local matrix, then a maintainer hardware full-coverage pass (all three bindings; expected counts are a moving target: CODEX-AT relabeled the two plain STRING tags, and the CODEX-AM review smoke proved UDT array element member writes also work with correct paths, so the remaining `firmware_blocked_*` labels must be re-validated by CODEX-AV **before** the gate run or it will trip on stale expectations; zero unexpected anomalies required against the AV-corrected manifest), then version bump and publish as **1.2.0** — minor, not major: the set is behavioral fixes, deprecations, and additive surface (header, C++ example) with no signature breaks; the deferred deletions stay queued for 2.0 per `docs/ROADMAP.md`. Packet captures for CODEX-AO phase 2 should be bundled into that same hardware session. Recommended implementation order: **AK → AJ → AT → AM → AN → AL → AS → AP → AQ → AR → AU**, with AO phase 1 free to interleave anywhere. Decisions relayed for open questions: AK item 4 resolves as "omit `authors` entirely from all five manifests" (matches the sibling-crate convention); AU waits for AS.
 
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
 | CODEX-AL | Transport & session hardening — timeout desync, sender-context correlation, shared session handle | codex | open | 2026-07-01 |
-| CODEX-AM | Tag addressing correctness — member-suffix drop, bit syntax, batch BOOL arrays, .DATA[i] segment, program discovery | codex | open | 2026-07-01 |
 | CODEX-AN | read_array_range + get_tag_attributes wire fixes; make the simulator an oracle, not a mirror | codex | open | 2026-07-01 |
 | CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open | 2026-07-01 |
 | CODEX-AP | Retire the string/UDT strategy graveyard — never-worked public paths return honest errors | codex | open | 2026-07-01 |
@@ -21,6 +20,7 @@
 | CODEX-AR | Subscription, fleet, and event lifecycle — stop() stops, no blocked poll tasks, lag-tolerant forwarding | codex | open | 2026-07-01 |
 | CODEX-AS | FFI polish — private raw-pointer exports, unwind guard, SAFETY discipline, last-error lifecycle; Python residuals | codex | open | 2026-07-01 |
 | CODEX-AU | C++ consumer support — C header with parity gate, RAII example, Qt integration guide | codex | open | 2026-07-02 |
+| CODEX-AV | Re-validate the firmware_blocked_* write labels — the 0x2107 lore is falling to correct paths | codex | open | 2026-07-03 |
 
 > CODEX-AI merged (2026-06-19): the manylinux Linux x86_64 wheel now ships. Root cause was a platlib-layout bug (native lib routed to `.data/purelib/`, rejected by auditwheel); fixed with an `install_lib = install_platlib` override in `python/setup.py`. `release.yml` builds the cdylib + wheel inside a `manylinux_2_28` container, auditwheel-repairs it, and a blocking smoke job installs+imports it in a clean container before publish. `rust_ethernet_ip-1.1.0-py3-none-manylinux_2_28_x86_64.whl` was added to the existing PyPI 1.1.0 release (no version bump) — `pip install` now works on Linux x86_64.
 
@@ -121,6 +121,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-AM | Tag addressing correctness — member-suffix drop, bit syntax, batch BOOL arrays, .DATA[i] segment, program discovery | codex | `4ec2cec` |
 | CODEX-AT | STRING wire format — direct structure writes work; fix encoding, decode reads, retire the firmware-quirk misdiagnosis | codex | `026c4e2` |
 | CODEX-AK | Hygiene hotfixes — semver baseline, dependency scoping, release publish error handling, dead test files, doc corrections | codex | `2cf2d96` |
 | CODEX-AJ | C# wrapper critical fixes — WriteUdtMember deadlock, UTF-8 marshalling, keep-alive serialization + native P/Invoke integration tests | codex | `2cf2d96` |

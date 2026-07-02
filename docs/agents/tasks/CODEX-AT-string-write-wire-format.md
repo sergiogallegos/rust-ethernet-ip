@@ -35,6 +35,8 @@ This task makes STRING round-trips honest end to end:
 
 `crates/protocol/src/values.rs` (+ its pinned-byte tests in `crates/protocol/src/tests.rs`), `src/client.rs` (build_write_request seam, Known Limitations docs, 0x2107 text), `src/monitoring.rs` (0x2107 text), `tests/plc_sim.rs`, `tests/plc_sim_tests.rs`, `docs/agents/notes/ab-firmware-quirks.md`, `examples/full_coverage_tags.json` + the three full-coverage runners, `CHANGELOG.md`, plus any docs the limitation-claim grep surfaces.
 
+Also `examples/data_types_showcase.rs`: its embedded `#[cfg(test)]` tests (run only under `--all-targets`, so invisible to the normal gate) pin stale STRING expectations — type code `0x00DA` and a u8-length short-string payload (`[2, 72, 105]`) — that contradict both the library's current `0x00CE`/u32-length behavior and this task's target encoding (found 2026-07-02 during the CODEX-AK review; pre-existing, two tests fail at lines ~395/~426). Update those expectations to the fixed wire format as part of this task.
+
 ### Behavior
 
 - `write_tag("AnyStringTag", PlcValue::String(s))` succeeds against the sim (and hardware) in one request for `s.len() <= 82`; longer input keeps the existing `StringTooLong`-class rejection.

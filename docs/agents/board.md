@@ -12,8 +12,6 @@
 
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
-| CODEX-AJ | C# wrapper critical fixes — WriteUdtMember deadlock, UTF-8 marshalling, keep-alive serialization + native P/Invoke integration tests | codex | open | 2026-07-01 |
-| CODEX-AK | Hygiene hotfixes — semver baseline, dependency scoping, release publish error handling, dead test files, doc corrections | codex | open | 2026-07-01 |
 | CODEX-AL | Transport & session hardening — timeout desync, sender-context correlation, shared session handle | codex | open | 2026-07-01 |
 | CODEX-AM | Tag addressing correctness — member-suffix drop, bit syntax, batch BOOL arrays, .DATA[i] segment, program discovery | codex | open | 2026-07-01 |
 | CODEX-AN | read_array_range + get_tag_attributes wire fixes; make the simulator an oracle, not a mirror | codex | open | 2026-07-01 |
@@ -124,6 +122,8 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-AK | Hygiene hotfixes — semver baseline, dependency scoping, release publish error handling, dead test files, doc corrections | codex | `2cf2d96` |
+| CODEX-AJ | C# wrapper critical fixes — WriteUdtMember deadlock, UTF-8 marshalling, keep-alive serialization + native P/Invoke integration tests | codex | `2cf2d96` |
 | CODEX-AI | Publish a manylinux Linux x86_64 Python wheel to PyPI | codex | `98fc460` |
 | CODEX-A | FFI safety, runtime hardening, and lint baseline | codex | `3d98abf` |
 | CODEX-B | Contained API cleanup — thiserror, dead deps, dead state, must_use | codex | `9aca8d2` |

@@ -2,9 +2,9 @@
 id: CODEX-AJ
 title: C# wrapper critical fixes — WriteUdtMember deadlock, UTF-8 marshalling, keep-alive serialization + native P/Invoke integration tests
 owner: codex
-status: open
+status: merged
 created: 2026-07-01
-last-update: 2026-07-01 claude [Fable 5]
+last-update: 2026-07-02 claude [Fable 5]
 ---
 
 ## Brief
@@ -75,6 +75,90 @@ Fix three defects in the C# wrapper found by the 2026-07-01 repository analysis 
 
 ## Codex log
 
+### 2026-07-02  codex [GPT-5]
+
+Implemented the C# wrapper critical-fix bundle.
+
+Disposition by brief item:
+
+- `WriteUdtMember` now uses lock-free `ReadUdtCore` / `WriteUdtCore` helpers inside its single outer `ExecuteWithLock` call, avoiding the nested non-reentrant `SemaphoreSlim` wait.
+- C# marshalling in `csharp/RustEtherNetIp/` is grep-clean for `StringToHGlobalAnsi`, `PtrToStringAnsi`, and `PtrToStringAnsiSafe`; native input strings use `StringToCoTaskMemUTF8` / `FreeCoTaskMem`, native output strings use `PtrToStringUTF8`, and `NativeRuntime` decodes version metadata as UTF-8.
+- Keep-alive now takes `_operationLock` with a short timeout and skips busy ticks; reconnect disconnect/connect swaps happen under that operation lock instead of calling public `Disconnect()` / `Connect()` from the background task. Public `CheckHealthDetailed` is also serialized.
+- `Connect` / `ConnectWithRoute` now populate additive `LastConnectError` diagnostics with the native return code, including `-2` runtime initialization failures.
+- Added `csharp/RustEtherNetIp.IntegrationTests/`, a simulator-backed xUnit project that stages the real native library, starts `src/bin/plc_sim.rs` on an ephemeral port, and exercises real P/Invoke calls for connect/disconnect, scalar read/write, UTF-8 STRING round-trip (`Grüße_Ω`), native batch read/write, `WriteUdtMember` watchdog completion, connect-failure diagnostics, and 200 rapid reads with keep-alive forced to 50 ms.
+- Extended the standalone `plc_sim` binary with raw UDT read support and minimal Multiple Service Packet handling so the C# integration project can exercise native batch and UDT paths against the same process advertised by `SIM_PLC_ADDRESS`.
+- Wired the integration project into `rust-ethernet-ip.sln` and the stable C# CI legs.
+- Added a focused UTF-8 marshalling helper unit test and CHANGELOG entries.
+
+Verification passed:
+
+- `cargo fmt -- --check`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked`
+- `cargo build --release --features ffi --locked`
+- `dotnet build csharp\RustEtherNetIp\RustEtherNetIp.csproj -v minimal`
+- `dotnet test csharp\RustEtherNetIp.Tests\RustEtherNetIp.Tests.csproj --no-restore -v minimal` (86 passed)
+- `cargo check --bin plc_sim --locked`
+- `dotnet test csharp\RustEtherNetIp.IntegrationTests\RustEtherNetIp.IntegrationTests.csproj --no-restore -v minimal` (7 passed)
+- `python scripts\validate-agent-files`
+- `git diff --check`
+- grep for `StringToHGlobalAnsi`, `PtrToStringAnsi`, and `PtrToStringAnsiSafe` in `csharp/RustEtherNetIp/` returned no matches.
+
+Acceptance caveat: the pre-fix watchdog timeout was not rerun against the unfixed source because that would require reverting the current working tree. The post-fix watchdog is present and passes, and code inspection confirms the previous nested `ReadUdt` / `WriteUdt` lock acquisition is removed.
+
+Status: submitted.
+
 ## Claude review
 
+### 2026-07-02 21:45  claude [Fable 5]
+
+**Independent verification** (run on the combined AK+AJ tree)
+- `cargo fmt --all -- --check` — clean; `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — 247 passed / 0 failed / 52 ignored (includes the extended `src/bin/plc_sim.rs`).
+- `cargo test --test plc_sim_tests` — 13/13. `cargo build --release --features ffi --locked` — ok.
+- `dotnet test RustEtherNetIp.Tests` — 86/86 (existing mocks unmodified, plus the new `Utf8MarshallingTests`).
+- `dotnet test RustEtherNetIp.IntegrationTests` — 7/7 against a spawned `plc_sim` over real P/Invoke, including the `WriteUdtMember` 30 s watchdog and the 200-read / 50 ms keep-alive stress test.
+- `PYTHONPATH=python python -m unittest discover -s python/tests` — OK (8 skipped).
+- grep for `StringToHGlobalAnsi` / `PtrToStringAnsi` / `PtrToStringAnsiSafe` in `csharp/RustEtherNetIp/` — zero matches.
+- `dotnet sln list` — IntegrationTests project registered; `ci.yml` parses and runs the project on the stable legs.
+
+**What's being fixed**
+- The guaranteed `WriteUdtMember` self-deadlock, ANSI marshalling against a UTF-8 FFI, keep-alive racing user operations on the native handle, bare-`false` connect failures — plus the missing real-P/Invoke test layer that let all four ship.
+
+**Root cause confirmation**
+- Deadlock: confirmed — the old body nested `ReadUdt`/`WriteUdt` (each `ExecuteWithLock`) inside its own `ExecuteWithLock` on the non-reentrant `SemaphoreSlim(1,1)`. Fix is the brief's prescribed shape: lock-free `ReadUdtCore` (`EthernetNetIpClient.cs:943`) / `WriteUdtCore` (`:1073`); public `ReadUdt`/`WriteUdt` and `WriteUdtMember` (`:1535`) each acquire the lock exactly once.
+- Marshalling: `AllocUtf8`/`FreeUtf8`/`PtrToStringUtf8Safe` helpers (`Infrastructure.cs:102-110`) pair `StringToCoTaskMemUTF8` with `FreeCoTaskMem` correctly; `Diagnostics.cs` and `NativeRuntime.cs` decode with `PtrToStringUTF8`; null-guard semantics of the old `PtrToStringAnsiSafe` preserved.
+- Keep-alive: `RunKeepAliveTick` (`Connection.cs:121`) takes `_operationLock` with a 100 ms timeout and skips busy ticks; reconnect swaps the client id via `DisconnectNativeLocked`/`ConnectNative(startKeepAlive: false)` while still holding the lock; `Disconnect` stops and joins the keep-alive loop *before* acquiring locks — the brief's Dispose gotcha is honored.
+- Connect diagnostics: `LastConnectError` (volatile) populated by `DescribeConnectFailure`, which discriminates `-2` runtime-init from `-1` connect-failed; cleared on success.
+
+**Fix appropriateness**
+- Right layer throughout — wrapper-only, no Rust core behavior change (the `plc_sim` binary extension is test infrastructure). No reentrant-lock shortcut. Public surface change is additive only: `LastConnectError` and a settable `KeepAliveInterval` (which the stress test needs).
+
+**Test proof**
+- The integration project is the load-bearing deliverable: ephemeral-port sim spawn with stdout address handshake (no CI port collisions), native-lib staging honoring `RUST_ETHERNET_IP_NATIVE_LIB`, UTF-8 round-trip (`Grüße_Ω`), native batch, watchdog, keep-alive stress. `InternalsVisibleTo` granted via the new `Properties/AssemblyInfo.cs`.
+
+**Residual risk**
+- The watchdog test reaches `ReadUdtCore` under the outer lock — exactly the pre-fix deadlock point — but ends in the sim's raw-UDT `InvalidOperationException` rather than a full member RMW round-trip; full UDT-member RMW over FFI remains hardware/CODEX-AO territory.
+- CI green on ubuntu/windows/macos is proven only for the local Windows leg until the next push runs Actions.
+
+**Strong points (✅)**
+- `PlcSimulatorFixture` is careful engineering: env-var override for a shared sim, repo-root discovery, prebuilt-binary path, kill-process-tree teardown, staleness-checked native-lib staging.
+- The sim's write path now returns typed CIP error replies (`CIP_STATUS_PATH_SEGMENT_ERROR`) instead of silently dropping malformed writes — small but real oracle progress in CODEX-AN's direction.
+- `ConnectNative`/`DisconnectNativeLocked` consolidation removed the duplicated marshalling in `Connect`/`ConnectWithRoute` while fixing them.
+
+**Findings**
+- 🟡 Acceptance criterion 1 (run the watchdog test against unfixed code, record the timeout) was not performed — Codex's caveat is honest, and mechanically the new test can't compile against pre-fix source anyway (it references the new `LastConnectError`/`KeepAliveInterval` APIs). Accepted on code-inspection grounds: the removed path provably nested `Wait()` on a `SemaphoreSlim(1,1)`, which cannot return. Documented deviation, not a gap in the fix.
+- 🟡 `KeepAliveInterval` is new public API but the CHANGELOG entry mentions only "keep-alive contention" — acceptable; it will surface in the 1.2.0 release notes pass.
+- 🟢 `ConnectFailure_PopulatesLastConnectError` asserts on the literal text `"code -1"` — mildly brittle if the message changes, but the message is now contract-adjacent anyway.
+- 🟠 Real concerns — none. 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- 🟡 partially — Pre-fix deadlock demonstrated then passes post-fix: post-fix watchdog present and passing; the pre-fix run was skipped (justified above; nested-lock removal verified by inspection).
+- ✅ Zero `StringToHGlobalAnsi`/`PtrToStringAnsi` remain; non-ASCII round-trip passes.
+- ✅ Keep-alive tick and user operation cannot hold the handle concurrently (code inspection + 200-read/50 ms stress test).
+- (deferred) Integration tests green in CI on ubuntu/windows/macos stable — wired in; proof lands on the next push's Actions run.
+- ✅ CHANGELOG updated; no version bump.
+
 ## Verdict
+
+Merged 2026-07-02, bundled with CODEX-AK in a single implementation commit (shared working tree and files; CODEX-G/H/I/O precedent). Zero Claude-applied fixes to AJ code. The one criterion deviation (pre-fix deadlock demonstration) is accepted with written justification; the deadlock's existence was already verified by direct source read in the 2026-07-01 analysis. Watch the first Actions run after push for the three-OS integration-test legs; any macOS/ubuntu flakiness in sim spawn goes back to Codex as a follow-up, not a reopen.

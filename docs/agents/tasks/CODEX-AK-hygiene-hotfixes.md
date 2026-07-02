@@ -2,9 +2,9 @@
 id: CODEX-AK
 title: Hygiene hotfixes — semver baseline, dependency scoping, release publish error handling, dead test files, doc corrections
 owner: codex
-status: open
+status: merged
 created: 2026-07-01
-last-update: 2026-07-01 claude [Fable 5]
+last-update: 2026-07-02 claude [Fable 5]
 ---
 
 ## Brief
@@ -71,6 +71,97 @@ No library behavior changes. `cargo build` (default features) no longer compiles
 
 ## Codex log
 
+### 2026-07-02 11:54  codex [GPT-5]
+
+Implemented the hygiene hotfix bundle.
+
+Disposition by brief item:
+
+- SemVer baseline: `.github/workflows/ci.yml` now checks `cargo semver-checks check-release --baseline-version 1.1.0`.
+- Dependency scope: root `Cargo.toml` drops runtime `vergen`; `libc` is optional and enabled only by `ffi = ["dep:libc"]`. `Cargo.lock` did not need a rewrite.
+- Authors metadata: removed the root manifest placeholder `authors` field per maintainer direction; sibling manifests already omitted it.
+- Release publish handling: `.github/workflows/release.yml` now fails genuine `cargo publish` errors and only continues for already-published versions.
+- Audit scheduling: CI now has a weekly schedule trigger.
+- Dead tests: deleted tracked scratch files under `tests/unit/` and `test_isolated/`; generated files under `test_isolated/` were removed with the directory.
+- Release-readiness shell suite: wired `tests/release_readiness_tests.sh` into CI and fixed the suite to derive the current version and copy `README.md` into its temp fixture.
+- NuGet RID docs: root README now lists the shipped `win-x64`, `linux-x64`, and `osx-arm64` RIDs.
+- FFI build docs: `CLAUDE.md` and the C# wrapper README now use `cargo build --release --features ffi`.
+- Local NuGet layout: `RustEtherNetIp.csproj` now packs the build-OS native library under `runtimes/<rid>/native/`; local Windows pack inspection confirmed `runtimes/win-x64/native/rust_ethernet_ip.dll`.
+- CHANGELOG: added `[Unreleased]` Fixed/Changed/Removed entries for the AK changes. The pre-existing `futures` `default-features = false` change from `47b99a4` was not folded in because this task had no explicit maintainer direction to claim that earlier change here.
+
+Verification passed:
+
+- `cargo build --locked`
+- `cargo build --features ffi --locked`
+- `cargo build --release --features ffi --locked`
+- `cargo fmt -- --check`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked`
+- `cargo test --test plc_sim_tests --locked`
+- `cargo semver-checks check-release --baseline-version 1.1.0`
+- `python scripts/check-release-readiness 1.1.0 --skip-package`
+- `tests/release_readiness_tests.sh` via Git Bash with a local `python3` shim, because this Windows environment's `python3` shim is not executable from Git Bash
+- `dotnet pack csharp/RustEtherNetIp/RustEtherNetIp.csproj -c Release -o dist-nuget-ak`, followed by nupkg layout inspection; `dist-nuget-ak` was deleted afterward
+- `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj --no-restore -v minimal`
+- `PYTHONPATH=python python -m unittest discover -s python/tests`
+- `python scripts/validate-agent-files`
+- `git diff --check`
+
+Non-gating note: an extra exploratory `cargo test --workspace --all-targets --locked` run failed in `examples/data_types_showcase.rs` on existing STRING example expectations. This is outside CODEX-AK's required gate and no STRING code was changed.
+
+Status: submitted.
+
 ## Claude review
 
+### 2026-07-02 21:30  claude [Fable 5]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — 247 passed / 0 failed / 52 ignored.
+- `cargo test --test plc_sim_tests` — 13/13.
+- `cargo build --locked` and `cargo build --release --features ffi --locked` — both succeed.
+- `cargo tree -e normal | grep -c libc` — 0 without features, 1 with `--features ffi`: the optional gating is real.
+- `cargo semver-checks check-release --baseline-version 1.1.0` — 223 checks pass, no semver update required.
+- `dotnet test` (unit suite) — 86/86. `dotnet pack -c Release` + `unzip -l` — native lib at `runtimes/win-x64/native/rust_ethernet_ip.dll`, managed lib at `lib/net10.0/`.
+- `tests/release_readiness_tests.sh` — passes with `PYTHONIOENCODING=utf-8`; see finding below.
+- Both workflow YAMLs parse (`yaml.safe_load`).
+- Greps: no `sergio@example.com` anywhere; `vergen` only under `[build-dependencies]`; `tests/unit/` and `test_isolated/` gone; `rust-ethernet-ip.sln` never referenced `test_isolated`; `Cargo.lock` untouched (correct — no package-set change).
+- Reproduced the non-gating note: `cargo test --workspace --all-targets --locked` fails two embedded tests in `examples/data_types_showcase.rs` (stale `0x00DA`/u8-length STRING expectations at lines ~395/~426). The file is untouched by this task and the failure predates it — verified pre-existing.
+
+**What's being fixed**
+- Eleven mechanical hygiene items from the 2026-07-01 analysis §6: CI gates that don't gate, dependency scoping, publish error handling, dead files, and doc drift.
+
+**Root cause confirmation**
+- Confirmed per item by diff read; each matches the analysis citation (semver baseline in `ci.yml`, `vergen`/`libc` in root `Cargo.toml`, publish loop in `release.yml:125`, csproj `Content` triplication).
+
+**Fix appropriateness**
+- All changes land at the declared layer; no library behavior touched. The csproj consolidation (single `NativeRuntimeIdentifier`-driven `Content` item with `Pack`/`PackagePath`) is cleaner than the brief demanded and keeps the release pipeline's multi-RID staging untouched.
+
+**Test proof**
+- Gates above; pack layout inspected byte-level; the de-hardcoded `release_readiness_tests.sh` now derives the version from `Cargo.toml` so the suite stops rotting at every bump — an improvement beyond the brief.
+
+**Residual risk**
+- The weekly `schedule:` trigger fires the whole workflow (see finding); publish-error discrimination is proven by code read only — the true already-published path exercises on the next release run.
+
+**Strong points (✅)**
+- `release.yml` publish loop uses `PIPESTATUS[0]` + an `already (uploaded|exists)` grep — idempotent re-runs preserved, genuine failures now fail (`release.yml:125-140`).
+- `release_readiness_tests.sh` version de-hardcoding.
+- Scope discipline on the CHANGELOG `futures` folding: declined without maintainer direction and said so in the log.
+
+**Findings**
+- 🟡 The weekly `schedule:` is workflow-level, so *all* CI jobs (3-OS × 2-toolchain matrix included) run weekly, not just `cargo audit`. GitHub offers no job-level trigger, so the alternatives were a separate workflow file or `if:` gates on every other job. Accepted as-is — it doubles as a toolchain-drift canary; revisit if Actions minutes become a concern.
+- 🟢 `tests/release_readiness_tests.sh` fails on Windows consoles with cp1252 stdout (the readiness script prints `✓`); passes with `PYTHONIOENCODING=utf-8`. Pre-existing environment artifact, matches the Codex log's shim note; the CI leg runs ubuntu (UTF-8) so the gate is sound.
+- 🟢 The `data_types_showcase` pre-existing failures are STRING wire-format territory — folded into CODEX-AT's brief (files-to-modify amended 2026-07-02).
+- 🟢 CHANGELOG `futures` folding: maintainer direction obtained during merge; Claude applied the two-line entry (see Verdict).
+- 🟠 Real concerns — none. 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ All 11 items done (item 4 resolved per maintainer direction: `authors` omitted, matching siblings).
+- ✅ grep proves: no `vergen` under `[dependencies]`; `libc` optional; no `tests/unit/`; no `test_isolated/`.
+- ✅ CI YAML parses; semver baseline `1.1.0`; audit has a `schedule:`; `release_readiness_tests.sh` runs in CI.
+- ✅ CHANGELOG `[Unreleased]` updated; the `futures` `47b99a4` folding was applied during merge with maintainer direction.
+
 ## Verdict
+
+Merged 2026-07-02, bundled with CODEX-AJ in a single implementation commit (both changesets were submitted from one working tree and share `ci.yml`/`CHANGELOG.md`/board/log — same precedent as the CODEX-G/H/I/O bundle). One Claude-applied fix during merge: the two-line CHANGELOG entry recording the pre-existing `futures` default-features trim from `47b99a4`, per the brief's maintainer-consent clause. Zero defects. The publish-error discrimination gets its first live proof at the 1.2.0 release run.

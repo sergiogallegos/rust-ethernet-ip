@@ -212,28 +212,8 @@ impl TagPath {
                     path.push(0x00);
                 }
 
-                // Add array indices using proper Element ID segment format
-                // Reference: 1756-PM020, Pages 603-611, 870-890
-                // Element ID segments use different sizes based on index value:
-                // - 0-255: 8-bit Element ID (0x28 + 1 byte value)
-                // - 256-65535: 16-bit Element ID (0x29 0x00 + 2 bytes low, high)
-                // - 65536+: 32-bit Element ID (0x2A 0x00 + 4 bytes lowest to highest)
                 for &index in indices {
-                    if index <= 255 {
-                        // 8-bit Element ID: 0x28 + index (2 bytes total)
-                        path.push(0x28);
-                        path.push(index as u8);
-                    } else if index <= 65535 {
-                        // 16-bit Element ID: 0x29, 0x00, low_byte, high_byte (4 bytes total)
-                        path.push(0x29);
-                        path.push(0x00); // Padding byte
-                        path.extend_from_slice(&(index as u16).to_le_bytes());
-                    } else {
-                        // 32-bit Element ID: 0x2A, 0x00, byte0, byte1, byte2, byte3 (6 bytes total)
-                        path.push(0x2A);
-                        path.push(0x00); // Padding byte
-                        path.extend_from_slice(&index.to_le_bytes());
-                    }
+                    append_element_id_segment(path, index);
                 }
             }
 
@@ -303,11 +283,7 @@ impl TagPath {
                     path.push(0x00);
                 }
 
-                // Add array index
-                path.push(0x28); // Element segment
-                path.push(0x04); // Size: 4 bytes for 32-bit index (DINT)
-                let index_u32 = *index;
-                path.extend_from_slice(&index_u32.to_le_bytes());
+                append_element_id_segment(path, *index);
             }
         }
 
@@ -351,6 +327,27 @@ impl TagPath {
             TagPath::StringData { base_path, .. } => base_path.program_name(),
             TagPath::Controller { .. } => None,
         }
+    }
+}
+
+/// Adds a CIP Element ID segment using the smallest valid operand width.
+///
+/// Reference: 1756-PM020, Pages 603-611, 870-890.
+/// - 0..=255: 8-bit Element ID (`0x28`, value)
+/// - 256..=65535: 16-bit Element ID (`0x29`, pad, low, high)
+/// - 65536+: 32-bit Element ID (`0x2A`, pad, byte0..byte3)
+fn append_element_id_segment(path: &mut Vec<u8>, index: u32) {
+    if index <= 255 {
+        path.push(0x28);
+        path.push(index as u8);
+    } else if index <= 65535 {
+        path.push(0x29);
+        path.push(0x00);
+        path.extend_from_slice(&(index as u16).to_le_bytes());
+    } else {
+        path.push(0x2A);
+        path.push(0x00);
+        path.extend_from_slice(&index.to_le_bytes());
     }
 }
 
@@ -727,6 +724,39 @@ mod tests {
         } else {
             panic!("Expected StringData path");
         }
+    }
+
+    #[test]
+    fn test_string_data_cip_path_uses_8_bit_element_segment() {
+        let path = TagPath::parse("MyString.DATA[5]")
+            .unwrap()
+            .to_cip_path()
+            .unwrap();
+
+        let mut expected = vec![0x91, 0x08];
+        expected.extend_from_slice(b"MyString");
+        expected.extend_from_slice(&[0x91, 0x04]);
+        expected.extend_from_slice(b"DATA");
+        expected.extend_from_slice(&[0x28, 0x05]);
+
+        assert_eq!(path, expected);
+    }
+
+    #[test]
+    fn test_string_data_cip_path_uses_16_bit_element_segment() {
+        let path = TagPath::parse("MyString.DATA[300]")
+            .unwrap()
+            .to_cip_path()
+            .unwrap();
+
+        let mut expected = vec![0x91, 0x08];
+        expected.extend_from_slice(b"MyString");
+        expected.extend_from_slice(&[0x91, 0x04]);
+        expected.extend_from_slice(b"DATA");
+        expected.extend_from_slice(&[0x29, 0x00]);
+        expected.extend_from_slice(&300u16.to_le_bytes());
+
+        assert_eq!(path, expected);
     }
 
     #[test]

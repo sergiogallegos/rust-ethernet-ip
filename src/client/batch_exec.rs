@@ -374,7 +374,7 @@ impl EipClient {
         let mut results = Vec::with_capacity(operations.len());
 
         // Build Multiple Service Packet request
-        let cip_request = self.build_multiple_service_packet(operations)?;
+        let cip_request = self.build_multiple_service_packet(operations).await?;
 
         // Send request and get response
         let response = self.send_cip_request(&cip_request).await?;
@@ -410,8 +410,8 @@ impl EipClient {
     }
 
     /// Builds a CIP Multiple Service Packet request
-    fn build_multiple_service_packet(
-        &self,
+    async fn build_multiple_service_packet(
+        &mut self,
         operations: &[BatchOperation],
     ) -> crate::error::Result<Vec<u8>> {
         let mut packet = Vec::with_capacity(8 + (operations.len() * 2));
@@ -435,12 +435,7 @@ impl EipClient {
 
         for operation in operations {
             // Build individual service request
-            let service_request = match operation {
-                BatchOperation::Read { tag_name } => self.build_read_request(tag_name)?,
-                BatchOperation::Write { tag_name, value } => {
-                    self.build_write_request(tag_name, value)?
-                }
-            };
+            let service_request = self.build_batch_service_request(operation).await?;
 
             service_requests.push(service_request);
         }
@@ -463,6 +458,56 @@ impl EipClient {
         );
 
         Ok(packet)
+    }
+
+    async fn build_batch_service_request(
+        &mut self,
+        operation: &BatchOperation,
+    ) -> crate::error::Result<Vec<u8>> {
+        match operation {
+            BatchOperation::Read { tag_name } => {
+                if let Some((base_name, index)) = self.parse_array_element_access(tag_name)
+                    && self.detect_bool_array_path(&base_name).await?
+                {
+                    return Ok(self.build_read_array_request(&base_name, index / 32, 1));
+                }
+
+                self.build_read_request(tag_name)
+            }
+            BatchOperation::Write { tag_name, value } => {
+                if let PlcValue::Bool(bit_value) = value
+                    && let Some((base_name, index)) = self.parse_array_element_access(tag_name)
+                    && self.detect_bool_array_path(&base_name).await?
+                {
+                    let dword_index = index / 32;
+                    let bit_index = index % 32;
+                    let response = self
+                        .send_cip_request(&self.build_read_array_request(
+                            &base_name,
+                            dword_index,
+                            1,
+                        ))
+                        .await?;
+                    let cip_data = self.extract_cip_from_response(&response)?;
+                    let mut dword = self.parse_bool_array_dword_response(&cip_data)?;
+                    if *bit_value {
+                        dword |= 1u32 << bit_index;
+                    } else {
+                        dword &= !(1u32 << bit_index);
+                    }
+
+                    return self.build_write_array_request_with_index(
+                        &base_name,
+                        dword_index,
+                        1,
+                        values::BOOL_ARRAY_DWORD,
+                        &dword.to_le_bytes(),
+                    );
+                }
+
+                self.build_write_request(tag_name, value)
+            }
+        }
     }
 
     /// Parses a Multiple Service Packet response

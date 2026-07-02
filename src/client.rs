@@ -814,6 +814,13 @@ impl EipClient {
     pub async fn read_tag(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         self.validate_session().await?;
 
+        if let Some((base_path, bit_index)) = self.parse_bit_access(tag_name) {
+            return self
+                .read_bit_base_direct(&base_path, bit_index)
+                .await
+                .map(PlcValue::Bool);
+        }
+
         // Check if this is a simple array element access (e.g., "ArrayName[0]")
         // BUT NOT if it has member access after (e.g., "ArrayName[0].Member")
         // Complex paths like "gTestUDT_Array[0].Member1_DINT" should use TagPath::parse()
@@ -862,6 +869,10 @@ impl EipClient {
                 .await;
         }
 
+        self.read_tag_direct(tag_name).await
+    }
+
+    async fn read_tag_direct(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         let response = self
             .send_cip_request(&self.build_read_request(tag_name)?)
             .await?;
@@ -880,6 +891,15 @@ impl EipClient {
     /// let bit_5 = client.read_bit("StatusWord", 5).await?;
     /// ```
     pub async fn read_bit(&mut self, tag_base: &str, bit_index: u8) -> crate::error::Result<bool> {
+        self.validate_session().await?;
+        self.read_bit_base_direct(tag_base, bit_index).await
+    }
+
+    async fn read_bit_base_direct(
+        &mut self,
+        tag_base: &str,
+        bit_index: u8,
+    ) -> crate::error::Result<bool> {
         if bit_index >= 32 {
             return Err(crate::error::EtherNetIpError::Protocol(
                 "bit_index must be 0..32 for DINT bit access".to_string(),
@@ -887,7 +907,7 @@ impl EipClient {
         }
         // Logix has no wire-level bit segment for atomic tags, so read the
         // parent word and extract the bit client-side.
-        match self.read_tag(tag_base).await? {
+        match self.read_tag_direct(tag_base).await? {
             PlcValue::Bool(b) => Ok(b),
             PlcValue::Dint(n) => Ok((n >> bit_index) & 1 != 0),
             other => Err(crate::error::EtherNetIpError::DataTypeMismatch {
@@ -913,6 +933,16 @@ impl EipClient {
         bit_index: u8,
         value: bool,
     ) -> crate::error::Result<()> {
+        self.validate_session().await?;
+        self.write_bit_base_direct(tag_base, bit_index, value).await
+    }
+
+    async fn write_bit_base_direct(
+        &mut self,
+        tag_base: &str,
+        bit_index: u8,
+        value: bool,
+    ) -> crate::error::Result<()> {
         if bit_index >= 32 {
             return Err(crate::error::EtherNetIpError::Protocol(
                 "bit_index must be 0..32 for DINT bit access".to_string(),
@@ -921,7 +951,7 @@ impl EipClient {
         // Logix cannot write a single bit of an atomic tag over CIP, so emulate
         // it with a read-modify-write of the parent word. Note: this is not
         // atomic across concurrent writers to the same word.
-        match self.read_tag(tag_base).await? {
+        match self.read_tag_direct(tag_base).await? {
             PlcValue::Dint(current) => {
                 let mask = 1i32 << bit_index;
                 let updated = if value {
@@ -929,10 +959,12 @@ impl EipClient {
                 } else {
                     current & !mask
                 };
-                self.write_tag(tag_base, PlcValue::Dint(updated)).await
+                self.write_tag_direct(tag_base, &PlcValue::Dint(updated))
+                    .await
             }
             PlcValue::Bool(_) if bit_index == 0 => {
-                self.write_tag(tag_base, PlcValue::Bool(value)).await
+                self.write_tag_direct(tag_base, &PlcValue::Bool(value))
+                    .await
             }
             other => Err(crate::error::EtherNetIpError::DataTypeMismatch {
                 expected: "DINT".to_string(),
@@ -958,6 +990,27 @@ impl EipClient {
             }
         }
         None
+    }
+
+    fn has_member_suffix_after_first_array_index(&self, tag_name: &str) -> bool {
+        if let Some(bracket_start) = tag_name.find('[')
+            && let Some(bracket_end_rel) = tag_name[bracket_start..].find(']')
+        {
+            let bracket_end_abs = bracket_start + bracket_end_rel;
+            return tag_name[bracket_end_abs + 1..].starts_with('.');
+        }
+
+        false
+    }
+
+    fn parse_bit_access(&self, tag_name: &str) -> Option<(String, u8)> {
+        match TagPath::parse(tag_name).ok()? {
+            TagPath::Bit {
+                base_path,
+                bit_index,
+            } => Some((base_path.as_string(), bit_index)),
+            _ => None,
+        }
     }
 
     fn parse_final_array_element_access(&self, tag_name: &str) -> Option<(String, u32)> {
@@ -2673,15 +2726,38 @@ impl EipClient {
         Ok(request)
     }
 
-    /// Builds CIP request for program-scoped tag list discovery
-    fn build_program_tag_list_request(&self, _program_name: &str) -> crate::error::Result<Vec<u8>> {
+    /// Builds CIP request for program-scoped tag list discovery.
+    fn build_program_tag_list_request(&self, program_name: &str) -> crate::error::Result<Vec<u8>> {
+        let scoped_program = if program_name.starts_with("Program:") {
+            program_name.to_string()
+        } else {
+            format!("Program:{program_name}")
+        };
+
+        let mut path = Vec::new();
+        path.push(0x91);
+        path.push(scoped_program.len() as u8);
+        path.extend_from_slice(scoped_program.as_bytes());
+        if !path.len().is_multiple_of(2) {
+            path.push(0x00);
+        }
+        path.extend_from_slice(&[
+            // Symbol Object (Class 0x6B), start instance 0.
+            0x20, 0x6B, 0x25, 0x00, 0x00, 0x00,
+        ]);
+
+        let path_words = u8::try_from(path.len() / 2).map_err(|_| {
+            crate::error::EtherNetIpError::Protocol(format!(
+                "Program tag discovery path too long for '{}'",
+                program_name
+            ))
+        })?;
+
         let mut request = vec![
             // Service: Get Instance Attribute List (0x55)
-            0x55, // Path size: 3 words (6 bytes)
-            0x03, // Path: Program Object (Class 0x6C), instance 0 placeholder.
-            0x20, 0x6C, 0x25,
+            0x55, path_words,
         ];
-        request.extend_from_slice(&[0x00, 0x00, 0x00]);
+        request.extend_from_slice(&path);
 
         // Attribute count
         request.extend_from_slice(&[0x02, 0x00]); // 2 attributes
@@ -2944,16 +3020,39 @@ impl EipClient {
             value
         };
 
-        // Check if this is array element access (e.g., "ArrayName[0]")
+        if let Some((base_path, bit_index)) = self.parse_bit_access(tag_name) {
+            return match value {
+                PlcValue::Bool(bit_value) => {
+                    self.write_bit_base_direct(&base_path, bit_index, bit_value)
+                        .await
+                }
+                other => Err(crate::error::EtherNetIpError::DataTypeMismatch {
+                    expected: "BOOL".to_string(),
+                    actual: format!("{:?}", other),
+                }),
+            };
+        }
+
+        // Check if this is simple array element access (e.g., "ArrayName[0]").
+        // Member paths such as "ArrayName[0].Member" must use TagPath so the
+        // suffix is preserved instead of writing the whole element/base path.
         if let Some((base_name, index)) = self.parse_array_element_access(tag_name) {
+            if !self.has_member_suffix_after_first_array_index(tag_name) {
+                tracing::debug!(
+                    "Detected array element write: {}[{}], using workaround",
+                    base_name,
+                    index
+                );
+                return self
+                    .write_array_element_workaround(&base_name, index, value)
+                    .await;
+            }
+
             tracing::debug!(
-                "Detected array element write: {}[{}], using workaround",
+                "Array element '{}[{}]' has member access, using TagPath::parse()",
                 base_name,
                 index
             );
-            return self
-                .write_array_element_workaround(&base_name, index, value)
-                .await;
         }
 
         if let PlcValue::Bool(_) = value
@@ -2965,12 +3064,15 @@ impl EipClient {
                 .await;
         }
 
-        // Use specialized AB STRING format for STRING writes (required for proper Allen-Bradley STRING handling)
-        // All data types including strings now use the standard write path
-        // The PlcValue::to_bytes() method handles the correct format for each type
+        self.write_tag_direct(tag_name, &value).await
+    }
 
-        // Use standard unconnected messaging for other data types
-        let cip_request = self.build_write_request(tag_name, &value)?;
+    async fn write_tag_direct(
+        &mut self,
+        tag_name: &str,
+        value: &PlcValue,
+    ) -> crate::error::Result<()> {
+        let cip_request = self.build_write_request(tag_name, value)?;
 
         let response = self.send_cip_request(&cip_request).await?;
 
@@ -4132,6 +4234,26 @@ mod discovery_tests {
         assert_eq!(request[0], 0x55);
         assert_eq!(request[1], 0x03);
         assert_eq!(&request[2..8], &[0x20, 0x6B, 0x25, 0x00, 0x78, 0x56]);
+    }
+
+    #[test]
+    fn build_program_tag_list_request_includes_program_symbol_scope() {
+        let client = EipClient::new_unconnected_for_testing();
+        let request = client
+            .build_program_tag_list_request("MainProgram")
+            .expect("request should build");
+
+        let mut expected = vec![0x55, 0x0E, 0x91, 0x13];
+        expected.extend_from_slice(b"Program:MainProgram");
+        expected.push(0x00);
+        expected.extend_from_slice(&[
+            0x20, 0x6B, 0x25, 0x00, 0x00, 0x00, // Symbol class, instance 0
+            0x02, 0x00, // attribute count
+            0x01, 0x00, // Symbol Name
+            0x02, 0x00, // Symbol Type
+        ]);
+
+        assert_eq!(request, expected);
     }
 
     #[test]

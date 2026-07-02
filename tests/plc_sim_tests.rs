@@ -25,6 +25,72 @@ async fn simulated_plc_read_write_dint() {
 }
 
 #[tokio::test]
+async fn simulated_plc_read_write_dint_bit_syntax() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    client
+        .write_tag("DINT_TAG", PlcValue::Dint(0))
+        .await
+        .expect("clear DINT");
+
+    assert_eq!(
+        client.read_tag("DINT_TAG.0").await.expect("read bit 0"),
+        PlcValue::Bool(false)
+    );
+    assert_eq!(
+        client.read_tag("DINT_TAG.15").await.expect("read bit 15"),
+        PlcValue::Bool(false)
+    );
+    assert_eq!(
+        client.read_tag("DINT_TAG.31").await.expect("read bit 31"),
+        PlcValue::Bool(false)
+    );
+
+    client
+        .write_tag("DINT_TAG.0", PlcValue::Bool(true))
+        .await
+        .expect("write bit 0");
+    client
+        .write_tag("DINT_TAG.15", PlcValue::Bool(true))
+        .await
+        .expect("write bit 15");
+    client
+        .write_tag("DINT_TAG.31", PlcValue::Bool(true))
+        .await
+        .expect("write bit 31");
+
+    assert_eq!(
+        client.read_tag("DINT_TAG.0").await.expect("read bit 0"),
+        PlcValue::Bool(true)
+    );
+    assert_eq!(
+        client.read_tag("DINT_TAG.15").await.expect("read bit 15"),
+        PlcValue::Bool(true)
+    );
+    assert_eq!(
+        client.read_tag("DINT_TAG.31").await.expect("read bit 31"),
+        PlcValue::Bool(true)
+    );
+    assert_eq!(
+        client.read_tag("DINT_TAG").await.expect("read DINT"),
+        PlcValue::Dint(0x8000_8001u32 as i32)
+    );
+
+    client
+        .write_tag("DINT_TAG.15", PlcValue::Bool(false))
+        .await
+        .expect("clear bit 15");
+
+    assert_eq!(
+        client.read_tag("DINT_TAG").await.expect("read DINT"),
+        PlcValue::Dint(0x8000_0001u32 as i32)
+    );
+}
+
+#[tokio::test]
 async fn simulated_plc_read_write_bool_real_string() {
     let sim = SimulatedPlc::start().await;
     let addr = format!("{}", sim.address);
@@ -135,6 +201,35 @@ async fn simulated_plc_read_write_dint_array_element() {
 }
 
 #[tokio::test]
+async fn simulated_plc_write_array_element_member_preserves_member_suffix() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    assert_eq!(
+        client
+            .read_tag("UDT_ARRAY[3].DINT_MEMBER")
+            .await
+            .expect("initial read"),
+        PlcValue::Dint(30)
+    );
+
+    client
+        .write_tag("UDT_ARRAY[3].DINT_MEMBER", PlcValue::Dint(77))
+        .await
+        .expect("write member");
+
+    assert_eq!(
+        client
+            .read_tag("UDT_ARRAY[3].DINT_MEMBER")
+            .await
+            .expect("updated read"),
+        PlcValue::Dint(77)
+    );
+}
+
+#[tokio::test]
 async fn simulated_plc_bool_array_cross_dword_read_write() {
     let sim = SimulatedPlc::start().await;
     let addr = format!("{}", sim.address);
@@ -173,6 +268,51 @@ async fn simulated_plc_bool_array_cross_dword_read_write() {
     assert_eq!(
         client.read_tag("BOOL_ARRAY[63]").await.expect("read [63]"),
         PlcValue::Bool(false)
+    );
+}
+
+#[tokio::test]
+async fn simulated_plc_batch_bool_array_cross_dword_read_write() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    let writes = vec![
+        ("BOOL_ARRAY[5]", PlcValue::Bool(true)),
+        ("BOOL_ARRAY[35]", PlcValue::Bool(false)),
+        ("BOOL_ARRAY[63]", PlcValue::Bool(false)),
+    ];
+    let write_results = client.write_tags_batch(&writes).await.expect("batch write");
+    assert_eq!(write_results.len(), 3);
+    for (tag, result) in write_results {
+        result.unwrap_or_else(|err| panic!("{tag} batch write failed: {err:?}"));
+    }
+
+    // BOOL_ARRAY[35] shares bit position 3 with BOOL_ARRAY[3], but lives in
+    // DWORD[1]. Writing [35] must not alias back onto DWORD[0].
+    assert_eq!(
+        client.read_tag("BOOL_ARRAY[3]").await.expect("read [3]"),
+        PlcValue::Bool(true)
+    );
+
+    let reads = client
+        .read_tags_batch(&["BOOL_ARRAY[5]", "BOOL_ARRAY[35]", "BOOL_ARRAY[63]"])
+        .await
+        .expect("batch read");
+
+    assert_eq!(reads.len(), 3);
+    assert_eq!(
+        reads[0].1.as_ref().expect("BOOL_ARRAY[5] read"),
+        &PlcValue::Bool(true)
+    );
+    assert_eq!(
+        reads[1].1.as_ref().expect("BOOL_ARRAY[35] read"),
+        &PlcValue::Bool(false)
+    );
+    assert_eq!(
+        reads[2].1.as_ref().expect("BOOL_ARRAY[63] read"),
+        &PlcValue::Bool(false)
     );
 }
 

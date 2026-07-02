@@ -599,23 +599,23 @@ fn parse_tag_and_path(cip_request: &[u8]) -> Option<(String, Option<usize>)> {
                 pos += 2;
             }
             0x29 => {
-                if pos + 2 >= path.len() {
+                if pos + 3 >= path.len() {
                     break;
                 }
-                element_index = Some(u16::from_le_bytes([path[pos + 1], path[pos + 2]]) as usize);
-                pos += 3;
+                element_index = Some(u16::from_le_bytes([path[pos + 2], path[pos + 3]]) as usize);
+                pos += 4;
             }
             0x2A => {
-                if pos + 4 >= path.len() {
+                if pos + 5 >= path.len() {
                     break;
                 }
                 element_index = Some(u32::from_le_bytes([
-                    path[pos + 1],
                     path[pos + 2],
                     path[pos + 3],
                     path[pos + 4],
+                    path[pos + 5],
                 ]) as usize);
-                pos += 5;
+                pos += 6;
             }
             _ => {
                 pos += 1;

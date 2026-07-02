@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Target next release: TBD.
 
 ### Fixed
+- Tag addressing now preserves member suffixes on writes such as
+  `Array[i].Member`, routes `Tag.n` bit syntax through client-side bit
+  read-modify-write, addresses batch BOOL array elements by containing DWORD,
+  emits well-formed `.DATA[i]` element segments, and includes the requested
+  program scope in program tag discovery requests.
 - Standard Logix `STRING` writes now use the hardware-validated structure
   encoding (`0x02A0` + `0x0FCE` handle, 88-byte payload), batch STRING writes
   use the same path, and standard STRING read replies decode from the

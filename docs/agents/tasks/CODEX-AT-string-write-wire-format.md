@@ -2,7 +2,7 @@
 id: CODEX-AT
 title: STRING wire format — direct structure writes work; fix the encoding, decode reads, retire the firmware-quirk misdiagnosis
 owner: codex
-status: open
+status: merged
 created: 2026-07-02
 last-update: 2026-07-02 claude [Fable 5]
 ---
@@ -76,6 +76,61 @@ Also `examples/data_types_showcase.rs`: its embedded `#[cfg(test)]` tests (run o
 
 ## Codex log
 
+2026-07-02 — Submitted by Codex. Implemented standard Logix STRING wire format end to end: `write_tag(PlcValue::String)` and batch type-prefixed encoding emit `A0 02 CE 0F`, element count `01 00`, and the 88-byte `LEN u32 + DATA[82] + 2 pad` payload; standard STRING structure reads (`0x02A0` with handle `0x0FCE`) now decode to `PlcValue::String`, while unknown structure handles remain `Udt`. Updated both simulators to serve hardware-shaped STRING reads and reject the old atomic `0x00CE` write shape with `0xFF/0x2107`. Added pinned request/encoding/decode tests plus sim single, batch, short-over-long, and atomic-shape rejection coverage. Relabeled only `ctrl.STRING` and `prog.STRING` to `writeable` in `examples/full_coverage_tags.json`, removed the plain-STRING blocked mode from the three full-coverage runners, corrected `0x2107` text to Read/Write Tag data-type mismatch, and swept current README/C#/Python/example docs away from the firmware-blocked top-level STRING claim while leaving UDT STRING member limitations intact.
+
+Verification passed: `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets --all-features -- -D warnings`; `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked`; `cargo test --test plc_sim_tests --locked`; `cargo test --workspace --all-targets --all-features --locked`; `cargo test --example data_types_showcase --locked`; `cargo build --release --features ffi --locked`; `dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj --no-restore` (86/86); `dotnet test csharp/RustEtherNetIp.IntegrationTests/RustEtherNetIp.IntegrationTests.csproj --no-restore` (7/7); `PYTHONPATH=python python -m unittest discover -s python/tests` (39 tests, 8 skipped); `python scripts/validate-agent-files`; `git diff --check`; stale-claim grep clean except this brief's own relabel instruction. Initial `dotnet test` without `--no-restore` was blocked by an external NuGet scratch lock under `C:\Temp\NuGetScratch`; no code failure.
+
+Pre-fix demonstrations: the new public sim round-trip tests exercise behavior that the old simulator could not validate because it served STRING reads as atomic `0x00CE` and accepted the old atomic write shape. The explicit atomic-shape rejection test is pinned at the simulator function boundary; on the parent implementation that branch parsed `0x00CE` as a STRING write and returned success rather than `0xFF/0x2107`, so the failure is demonstrated by direct code comparison rather than a parent-commit rerun. Maintainer hardware full-coverage re-run is still required before release to prove the manifest relabel on real PLCs; expected matrix shifts the two plain STRING tags from blocked to write-verified.
+
 ## Claude review
+
+### 2026-07-02 23:30  claude [Fable 5]
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean; `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-targets --all-features --locked` — 246 passed / 0 failed / 48 ignored, including the previously-failing `data_types_showcase` embedded tests.
+- `cargo test --test plc_sim_tests --locked` — 16/16 (13 prior + the three new STRING round-trip/residue/batch tests).
+- `cargo build --release --features ffi --locked` — ok; C# unit 86/86; C# P/Invoke integration 7/7 (STRING UTF-8 round-trip now exercises the new wire shape end-to-end through the FFI); Python 39 passed / 8 skipped; `validate-agent-files` ok.
+- **Hardware smoke on the 5069-L330ERM fw38 at 192.168.0.101, via the fixed library's public API** (tag values restored afterwards): read decodes to `PlcValue::String`; single-write round-trips pass for `gTest_STRING` **and** `Program:TestProgram.gTest_STRING`; shorter-over-longer leaves no residue; **batch STRING-only write passes**; mixed batch read passes. Recorded in the validation doc's "Post-fix review smoke" section. This closes the two extrapolations the submission carried: the program-scope relabel and the batch claim are now hardware-proven, not just sim-proven.
+
+**What's being fixed**
+- The STRING wire format end-to-end: write encoding (single + batch), read decoding, simulator fidelity, error-text honesty, and the retirement of the "firmware blocks direct STRING writes" misdiagnosis across docs and the coverage manifest.
+
+**Root cause confirmation**
+- Confirmed at the protocol layer: `write_data_type_bytes` emits `A0 02 CE 0F` for `PlcValue::String` (`crates/protocol/src/values.rs:36`); `encode_standard_string_payload` produces the exact 88-byte payload the hardware probe pinned; `decode_structure_payload` peeks handle `0x0FCE` and falls back to `Udt` for any other handle — correctly scoped away from CODEX-AO's territory.
+- `build_write_request` (`src/client.rs:3104`) now rejects >82-char strings with `StringTooLong` instead of silently truncating — an improvement over the old truncation behavior and per the brief.
+
+**Fix appropriateness**
+- Right layer throughout: one encoding seam in the protocol crate serves single writes, batch writes (`build_multiple_service_packet` reuses `build_write_request`), and the FFI/C#/Python surfaces without wrapper wire changes. The C# change is correctly limited to removing the pre-write "STRING not supported" guard and stale doc text.
+- Both simulators now serve hardware-shaped reads and reject the old atomic `0x00CE` write with `0xFF`/`0x2107`, citing the validation doc — the sim moved toward oracle, per CODEX-AN's direction.
+
+**Test proof**
+- Pinned-byte tests for the full write request and `encode_type_prefixed`; decode fixtures for the hardware shape, truncation error, and unknown-handle `Udt` fallback; sim round-trips (single, batch, residue); the atomic-shape rejection regression test at `tests/plc_sim.rs:1036`.
+- Pre-fix demonstration handled by code comparison rather than parent-commit rerun (the old sim accepted the old shape by construction) — acceptable here since the hardware evidence, not the sim, is the ground truth being pinned.
+
+**Residual risk**
+- Custom-length `STRINGnn` types still take the standard-STRING encoding if written as `PlcValue::String` (documented out-of-scope; a wrong-handle write will draw `0x2107` from the controller — loud, not silent).
+- UDT STRING member labels remain `firmware_blocked_*` — correctly untouched pending hardware evidence.
+- The maintainer full-coverage re-run before release remains the comprehensive gate; the review smoke covered the relabeled tags directly but not the other 2297.
+
+**Strong points (✅)**
+- The `STANDARD_STRING_*` constants shared between library and both sims keep the 88-byte contract in one place per codebase.
+- Honest scope lines everywhere: quirks note, `lib.rs`, C# docs all distinguish "proven for standalone STRINGs" from "still restricted for UDT members".
+- The manifest relabel is exactly the two entries the brief authorized.
+
+**Findings**
+- 🟢 The review's hardware smoke initially reproduced a batch `0x1E` failure — traced to a nonexistent tag in the same MSP, not to the STRING write (which the controller applied). `parse_multiple_service_response` attributed the MSP-level `0x1E` to the whole batch instead of reading per-service embedded replies; the historical "batch STRING writes fail with 0x1E" lore may trace to this attribution gap. Recorded in the validation doc; flagged as input to CODEX-AN's response-parsing scope (not an AT defect — AT only changed the message text).
+- 🟡 `decode_standard_string_structure` requires the full 90 bytes (`2 + 88`); a hypothetical controller replying with an unpadded 88-byte structure would error rather than fall back to `Udt`. Matches all observed hardware; acceptable strictness, revisit only if a real capture disagrees.
+- 🟠 Real concerns — none. 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ Items 1–6 implemented with the required tests (pre-fix demonstration via code comparison, noted in the Codex log).
+- ✅ No remaining code or doc claims that direct STRING writes are firmware-blocked; quirks note links the validation doc.
+- ✅ Manifest relabel limited to the two plain STRING entries; UDT-member labels untouched.
+- ✅ Wire-touching change flagged for the maintainer full-coverage re-run — and the review smoke already hardware-proved the two relabeled tags (single + batch + program scope) ahead of that run.
+
+## Verdict
+
+Merged 2026-07-02. Zero Claude-applied fixes. The review added a live hardware pass on the 5069-L330ERM that converted the submission's two extrapolations (program-scope relabel, batch STRING writes) into verified facts, and surfaced one adjacent pre-existing gap (MSP per-service error attribution) now recorded for CODEX-AN. The full-coverage hardware re-run before the 1.2.0 release remains scheduled as the comprehensive gate.
 
 ## Verdict

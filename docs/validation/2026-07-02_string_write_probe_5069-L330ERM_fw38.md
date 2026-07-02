@@ -46,3 +46,18 @@ Supporting observations:
 ## Follow-up
 
 Remediation is briefed as **CODEX-AT** (`docs/agents/tasks/CODEX-AT-string-write-wire-format.md`): fix the write encoding, decode standard STRING reads to `PlcValue::String`, correct the quirks note and manifest labels, and align the simulator with the hardware-observed format.
+
+## Post-fix review smoke — same day, same controller
+
+After the CODEX-AT implementation, a second hardware session ran the *fixed library's public API* against the same 5069-L330ERM fw38 (values restored afterwards):
+
+| Check | Result |
+|---|---|
+| `read_tag("gTest_STRING")` decodes to `PlcValue::String` (not `Udt`) | ✅ |
+| `write_tag(PlcValue::String)` round-trip, controller-scoped | ✅ |
+| `write_tag(PlcValue::String)` round-trip, **program-scoped** (`Program:TestProgram.gTest_STRING` — not covered by the original probe; proves the manifest relabel) | ✅ |
+| Shorter-over-longer write leaves no residue | ✅ |
+| **Batch (Multiple Service Packet) STRING-only write** | ✅ |
+| Batch STRING + DINT-array-element mixed read | ✅ |
+
+One instructive false alarm: a first batch attempt paired the STRING write with a nonexistent tag name. The controller answered MSP general status `0x1E` (embedded service error) for the *bad tag's* service — while still applying the valid STRING write — but the library's `parse_multiple_service_response` attributed the MSP-level failure to the batch wholesale, reporting the STRING write as failed even though it had landed. Two lessons: (1) the historical "batch STRING writes fail with 0x1E" observation may trace to exactly this attribution behavior; (2) per-service reply attribution when the MSP-level status is nonzero is a real gap — relevant to CODEX-AN's response-parsing scope.

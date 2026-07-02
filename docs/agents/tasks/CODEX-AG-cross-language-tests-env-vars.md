@@ -69,7 +69,7 @@ Map legacy `TestTag*` names to current `gTest*` equivalents. Suggested mapping:
 
 If `test_ffi_compatibility` or `test_memory_safety` are iterating across "a list of tag names" rather than testing a single tag, pick a representative subset from the manifest (e.g. `gTestArray_DINT[0]`, `gTestArray_REAL[0]`, `gTestArray_BOOL[0]`, `gTestUDT.Member1_DINT`) so the test exercises multiple types without re-implementing the full-coverage exerciser.
 
-Do NOT include firmware-blocked write paths (top-level STRING, UDT-array-element members) in the new tag list — those would correctly fail with CIP `0x2107` and confuse the skip logic.
+Do NOT include firmware-blocked write paths (UDT STRING members, UDT-array-element members) in the new tag list — those would correctly fail with CIP `0x2107` and confuse the skip logic. Superseded by CODEX-AT: top-level standard STRING tags are writeable with the structure encoding.
 
 ### Test requirements
 

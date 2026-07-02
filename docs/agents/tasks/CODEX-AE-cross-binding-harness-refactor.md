@@ -88,7 +88,7 @@ Items #2-6 from Codex's 2026-05-25 cross-binding parity recommendation, bundled 
 
 - `writeable` — direct write succeeds (the runner attempts the write and counts it toward `writes_ok`).
 - `read_only` — never attempted as a write (e.g. discovery-only tags). Phase 2/3/4/5 skip these.
-- `firmware_blocked_string` — direct write to a top-level STRING tag (e.g. `gTest_STRING`); rejects with CIP 0x2107 client-side. Phase 4 attempts the write expecting failure and counts `blocked_as_expected`.
+- Superseded by CODEX-AT: top-level standard STRING tags are now `writeable` when encoded as the Logix structure type; do not reintroduce a plain-STRING firmware-blocked bucket.
 - `firmware_blocked_udt_string_member` — STRING member inside a UDT (e.g. `gTestUDT.Member5_String`); same expected-failure path.
 - `firmware_blocked_udt_array_element_member` — Member1-5 directly under a UDT array element (e.g. `gTestUDT_Array[i].Member1_DINT`); same expected-failure path.
 - `service_layer_writeable` (reserved; not used yet) — for the future CODEX-Q service-layer methods that work around the firmware blocks via RMW. Documented in the schema so future bindings can graduate categories without changing the runner contract.
@@ -219,7 +219,7 @@ Ran the manifest-driven full-coverage hardware validation against ControlLogix `
 
 **Fix appropriateness**
 - Manifest schema at `examples/full_coverage_tags.json` is data-driven and reviewable; new categories or sites are added there, not in runner code. Matches the brief's "single source of truth" intent.
-- The 6-variant writeability enum (`writeable`, `read_only`, `firmware_blocked_string`, `firmware_blocked_udt_string_member`, `firmware_blocked_udt_array_element_member`, `service_layer_writeable`) directly replaces the over-broad single `FirmwareBlocked` bucket that caused the AD-fixed drift. `service_layer_writeable` is reserved for future use per the brief.
+- The writeability enum directly replaces the over-broad single `FirmwareBlocked` bucket that caused the AD-fixed drift. CODEX-AT later removed the plain-STRING blocked variant; current active values are `writeable`, `read_only`, `firmware_blocked_udt_string_member`, `firmware_blocked_udt_array_element_member`, and `service_layer_writeable`. `service_layer_writeable` is reserved for future use per the brief.
 - Per-member writeability override (e.g. `ctrl.UDT_members` where Member1-4 are `writeable` but Member5_String is `firmware_blocked_udt_string_member`) is the right factoring — keeps mixed-category groups expressible without forcing them into separate categories.
 - Output schema in the JSON artifacts matches the brief's documented shape: top-level `binding`, `binding_version`, `result`, `anomalies`, `tag_count`, plus `phases.{preflight,phase1_read,...,phase6_verify_settle}` with `ok` + `fail` + `elapsed_ms` per phase, plus a `categories` breakdown.
 - Preflight phase implemented; reported separately from Phase 1 reads per the brief (preflight establishes PLC project ↔ manifest match, Phase 1 measures library read behavior).

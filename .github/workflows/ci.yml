@@ -299,8 +299,13 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: cargo package (validates publishable crate)
-      run: cargo package --locked
+    # --no-verify: tarball verification compiles against the *published*
+    # sibling crates from crates.io, so any mid-cycle cross-crate API addition
+    # (e.g. a new protocol-crate function used by the main crate) fails until
+    # the siblings ship. Full verified packaging in dependency order is
+    # release-day work: `scripts/check-release-readiness X.Y.Z --strict`.
+    - name: cargo package (validates packageable crate)
+      run: cargo package --locked --no-verify
 
     - name: Build release cdylib (NuGet bundles it)
       run: cargo build --release --features ffi --locked

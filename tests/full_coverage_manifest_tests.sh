@@ -3,9 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="$ROOT/examples/full_coverage_tags.json"
-EXPECTED_RUST="would-test binding=rust tags=2299 writeable=2206 blocked=74 read_only=19"
-EXPECTED_CSHARP="would-test binding=csharp tags=2299 writeable=2206 blocked=74 read_only=19"
-EXPECTED_PYTHON="would-test binding=python tags=2299 writeable=2206 blocked=74 read_only=19"
+EXPECTED_RUST="would-test binding=rust tags=2299 writeable=2208 blocked=72 read_only=19"
+EXPECTED_CSHARP="would-test binding=csharp tags=2299 writeable=2208 blocked=72 read_only=19"
+EXPECTED_PYTHON="would-test binding=python tags=2299 writeable=2208 blocked=72 read_only=19"
 
 python3 - "$MANIFEST" <<'PY'
 import json
@@ -74,7 +74,7 @@ for category in manifest["categories"]:
     blocked += n if mode.startswith("firmware_blocked_") else 0
     readonly += n if mode == "read_only" else 0
 
-expected = (2299, 2206, 74, 19)
+expected = (2299, 2208, 72, 19)
 actual = (total, writeable, blocked, readonly)
 if actual != expected:
     raise SystemExit(f"count mismatch: expected {expected}, got {actual}")

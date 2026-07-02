@@ -7,6 +7,8 @@
 > The ten CODEX-AJ…CODEX-AS briefs originate from the 2026-07-01 repository analysis ([`repo-analysis-2026-07-01.md`](repo-analysis-2026-07-01.md)) — read its executive summary before picking any of them up. Suggested sequencing: AJ and AK are independent and immediate; AL before AS (AS rebases on AL's `ffi.rs` changes); AM and AN are independent sim-verifiable wire fixes (AN starts with a reconciliation step against the full-coverage evidence); AO phase 2 is **blocked on maintainer packet captures** (phase 1 can land any time); AP after AM (item 5 depends on AM's `.DATA[i]` fix) and it removes the connected-messaging code AL deliberately scoped out; AQ and AR are independent of the rest but AQ's diagnostics counters coordinate with AL if concurrent.
 >
 > CODEX-AT and CODEX-AU (2026-07-02, maintainer-requested) sit outside the analysis set. AT is grounded in new hardware evidence ([`../validation/2026-07-02_string_write_probe_5069-L330ERM_fw38.md`](../validation/2026-07-02_string_write_probe_5069-L330ERM_fw38.md)) that **disproves the STRING-write firmware quirk** — it answers CODEX-AP's item 5 decision point and shares files with AM (`.DATA[i]` consumer note), AN (`tests/plc_sim.rs`), and AP (`client/string.rs`, 0x2107 text); whichever lands second rebases. AU is packaging-only (C header + C++ example + Qt guide) and should sequence after AS if AS is in flight (AS privatizes three raw exports the header must exclude).
+>
+> **1.2.0 release plan (2026-07-02 maintainer direction).** The open CODEX-AJ…AU set accumulates on `main` with no interim releases. When the set is merged: full local matrix, then a maintainer hardware full-coverage pass (all three bindings; after CODEX-AT the two plain STRING tags must move from `blocked_as_expected` to write-verified, so expect the baseline matrix to shift from 60 blocked to 58 and writes from 2206 to 2208; zero unexpected anomalies required), then version bump and publish as **1.2.0** — minor, not major: the set is behavioral fixes, deprecations, and additive surface (header, C++ example) with no signature breaks; the deferred deletions stay queued for 2.0 per `docs/ROADMAP.md`. Packet captures for CODEX-AO phase 2 should be bundled into that same hardware session. Recommended implementation order: **AK → AJ → AT → AM → AN → AL → AS → AP → AQ → AR → AU**, with AO phase 1 free to interleave anywhere. Decisions relayed for open questions: AK item 4 resolves as "omit `authors` entirely from all five manifests" (matches the sibling-crate convention); AU waits for AS.
 
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
@@ -160,9 +162,9 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 ## Project context
 
-- **Current released version:** `v1.0.0` (tagged 2026-05-24, `f02eef5`; published to crates.io as 5 workspace artifacts; NuGet release workflow triggered by the tag).
-- **Previous released version:** `v0.7.0` (tagged 2026-04-07; see CHANGELOG).
-- **Active development line:** `1.0.x` patch line — non-breaking polish briefs (CODEX-G, -H, -I, -O) and the post-1.0.0 multi-hop ethernet hardware validation are the eligible follow-ups.
+- **Current released version:** `v1.1.0` (tagged 2026-06-19; published to crates.io ×5, NuGet multi-RID, PyPI incl. the CODEX-AI manylinux wheel).
+- **Previous released version:** `v1.0.0` (tagged 2026-05-24, `f02eef5`).
+- **Active development line:** the CODEX-AJ…AU remediation set on `main`, targeting **1.2.0** after a full hardware validation pass (see the 1.2.0 release plan note in `## Open`).
 - **Current development focus:** the .NET stack — C# wrappers and examples (per `CLAUDE.md` Project Overview).
 - **Hardware validation gate:** integration tests against real CompactLogix / ControlLogix PLCs are the maintainer's responsibility; CI runs `SKIP_PLC_TESTS=1` plus simulator-backed `plc_sim_tests`.
 

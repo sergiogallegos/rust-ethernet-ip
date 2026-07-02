@@ -64,6 +64,58 @@ async fn simulated_plc_read_write_bool_real_string() {
 }
 
 #[tokio::test]
+async fn simulated_plc_string_write_shorter_value_clears_residue() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    client
+        .write_tag("STRING_TAG", PlcValue::String("LongerValue".to_string()))
+        .await
+        .expect("write longer string");
+    client
+        .write_tag("STRING_TAG", PlcValue::String("Hi".to_string()))
+        .await
+        .expect("write shorter string");
+
+    let updated = client.read_tag("STRING_TAG").await.expect("read");
+    assert_eq!(updated, PlcValue::String("Hi".to_string()));
+}
+
+#[tokio::test]
+async fn simulated_plc_batch_string_write_read_round_trip() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    let writes = vec![
+        ("STRING_TAG", PlcValue::String("Batch Updated".to_string())),
+        ("DINT_TAG", PlcValue::Dint(2468)),
+    ];
+    let write_results = client.write_tags_batch(&writes).await.expect("batch write");
+    assert_eq!(write_results.len(), 2);
+    for (tag, result) in write_results {
+        result.unwrap_or_else(|err| panic!("{tag} batch write failed: {err:?}"));
+    }
+
+    let reads = client
+        .read_tags_batch(&["STRING_TAG", "DINT_TAG"])
+        .await
+        .expect("batch read");
+    assert_eq!(reads.len(), 2);
+    assert_eq!(
+        reads[0].1.as_ref().expect("STRING read"),
+        &PlcValue::String("Batch Updated".to_string())
+    );
+    assert_eq!(
+        reads[1].1.as_ref().expect("DINT read"),
+        &PlcValue::Dint(2468)
+    );
+}
+
+#[tokio::test]
 async fn simulated_plc_read_write_dint_array_element() {
     let sim = SimulatedPlc::start().await;
     let addr = format!("{}", sim.address);

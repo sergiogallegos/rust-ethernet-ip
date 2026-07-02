@@ -47,16 +47,16 @@
 //!
 //! Real-hardware validation for the `1.1.0` release line confirmed that some
 //! direct write shapes are controller/firmware limitations rather than library
-//! protocol defects:
+//! protocol defects. A later 2026-07-02 probe also confirmed that standalone
+//! standard Logix `STRING` tags write successfully when encoded as the standard
+//! `0x02A0`/`0x0FCE` structure:
 //!
-//! - Direct writes to standalone `STRING` tags can fail
 //! - Direct writes to `STRING` members inside UDTs can fail
 //! - Direct writes to members of UDT array elements can fail
 //!
 //! On the validated CompactLogix `5069-L320ERMS3` firmware `35` and
 //! ControlLogix `1756-L81ES` firmware `37` targets, these failures surfaced as
-//! `0x2107` and, for some batch STRING cases, batch-level `0x1E` embedded
-//! service errors.
+//! `0x2107` Read/Write Tag data-type mismatch errors.
 //!
 //! Recommended pattern for restricted cases: read-modify-write the full UDT or
 //! UDT array element instead of directly writing the nested restricted member.

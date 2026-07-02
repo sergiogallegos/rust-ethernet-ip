@@ -565,8 +565,7 @@ public class PlcController : ControllerBase
 
     /// <summary>
     /// Write a STRING tag to the PLC.
-    /// ⚠️ WARNING: This operation will fail due to PLC firmware limitations (CIP Error 0x2107).
-    /// STRING tags cannot be written directly. This is a PLC firmware restriction, not a library bug.
+    /// Standard top-level STRING tags use the validated Logix structure encoding.
     /// For STRING members in UDTs, use the workaround: read entire UDT, modify STRING member, write entire UDT back.
     /// </summary>
     [HttpPost("string/{tagName}")]
@@ -601,9 +600,8 @@ public class PlcController : ControllerBase
             string errorMsg = ex.Message;
             if (errorMsg.Contains("0x2107") || errorMsg.Contains("2107"))
             {
-                errorMsg = "PLC firmware limitation (CIP Error 0x2107): STRING tags cannot be written directly. " +
-                          "This is a PLC restriction, not a library bug. " +
-                          "For STRING members in UDTs, use the LogixString helper and write the entire UDT.";
+                errorMsg = "CIP Error 0x2107 indicates a Read/Write Tag data-type mismatch. " +
+                          "Check that the target is a standard top-level STRING; for STRING members in UDTs, write the entire UDT.";
             }
             return StatusCode(500, new { success = false, message = errorMsg, isPlcLimitation = errorMsg.Contains("0x2107") || errorMsg.Contains("2107") });
         }

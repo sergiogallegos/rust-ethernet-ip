@@ -5,7 +5,7 @@ A comprehensive ASP.NET Core Web API demonstrating batch operations and STRING h
 Release-readiness note:
 - The ASP.NET sample builds cleanly against the current wrapper.
 - Batch-config endpoints intentionally return `501` when the wrapper/runtime exposes batch config as unsupported.
-- Direct STRING writes on CompactLogix/ControlLogix remain subject to PLC firmware restrictions and should not be treated as API regressions.
+- Standard top-level STRING writes use the validated Logix structure encoding; UDT STRING members remain subject to controller restrictions.
 
 ## 🎯 Features
 

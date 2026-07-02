@@ -68,12 +68,10 @@ python test_all_tags.py
 
 All three tests should produce similar results:
 
-- ✅ **~333 tags** (84.9%) should pass successfully
-- ❌ **~59 tags** will fail due to PLC firmware limitations (not library bugs):
+- ✅ **~335 tags** should pass successfully
+- ❌ **~57 tags** will fail due to PLC firmware limitations (not library bugs):
   - **55 tags**: UDT array element member writes (Error 0x2107)
     - Example: `gTestUDT_Array[0].Member1_DINT`
-  - **2 tags**: Simple STRING tag writes (Error 0x2107)
-    - Example: `gTest_STRING`
   - **2 tags**: STRING member writes in UDTs (Error 0x2107)
     - Example: `gTestUDT.Member5_String`
 
@@ -101,7 +99,6 @@ Each test provides a detailed failure summary that:
 - Identifies known PLC limitations (Error 0x2107)
 - Categorizes failures:
   - UDT array element member writes
-  - STRING tag writes
   - STRING member writes in UDTs
 - Shows affected tags with pattern grouping (e.g., `gTestUDT_Array[*].Member1_DINT`)
 

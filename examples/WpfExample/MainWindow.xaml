@@ -490,7 +490,7 @@
                         <!-- Limitations Notice -->
                         <Border Grid.Row="0" Background="#FFFBF7" BorderBrush="#FCD34D" BorderThickness="1" 
                                 CornerRadius="4" Padding="8" Margin="0,0,0,16">
-                            <TextBlock Text="⚠️ PLC LIMITATIONS: direct STRING writes can fail on CompactLogix/ControlLogix due to firmware restrictions.&#x0a;✅ STRING tags CAN be read successfully.&#x0a;💡 Workaround: if STRING is part of a UDT, read the full UDT, modify the member, and write the full structure back."
+                            <TextBlock Text="✅ Top-level standard STRING tags can be read and written.&#x0a;⚠️ UDT STRING members remain restricted on some controllers.&#x0a;💡 Workaround: if STRING is part of a UDT, read the full UDT, modify the member, and write the full structure back."
                                        FontSize="12" Foreground="#A16207" TextWrapping="Wrap"/>
                         </Border>
                         

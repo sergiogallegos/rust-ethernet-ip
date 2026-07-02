@@ -30,7 +30,6 @@ class Kind(Enum):
 class Mode(Enum):
     WRITEABLE = "writeable"
     READ_ONLY = "read_only"
-    FIRMWARE_BLOCKED_STRING = "firmware_blocked_string"
     FIRMWARE_BLOCKED_UDT_STRING_MEMBER = "firmware_blocked_udt_string_member"
     FIRMWARE_BLOCKED_UDT_ARRAY_ELEMENT_MEMBER = "firmware_blocked_udt_array_element_member"
     SERVICE_LAYER_WRITEABLE = "service_layer_writeable"
@@ -47,7 +46,6 @@ class Mode(Enum):
 
     def is_firmware_blocked(self) -> bool:
         return self in {
-            Mode.FIRMWARE_BLOCKED_STRING,
             Mode.FIRMWARE_BLOCKED_UDT_STRING_MEMBER,
             Mode.FIRMWARE_BLOCKED_UDT_ARRAY_ELEMENT_MEMBER,
         }

@@ -29,9 +29,6 @@ namespace RustEtherNetIp
     /// These limitations are inherent to the Allen-Bradley PLC firmware and cannot be bypassed at the library level.
     /// </para>
     /// <list type="bullet">
-    /// <item><description><strong>STRING Tags:</strong> Cannot write directly to STRING tags (e.g., "gTest_STRING", "Program:TestProgram.gTest_STRING").
-    /// This is a PLC firmware limitation (CIP Error 0x2107). STRING tags can be read successfully but cannot be written directly.
-    /// For STRING members in UDTs, use the workaround: read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
     /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs
     /// (e.g., "gTestUDT.Member5_String"). Must read the entire UDT structure, modify the STRING member in memory, then write the entire UDT back.</description></item>
     /// <item><description><strong>UDT Array Element Members:</strong> Cannot write directly to members of UDT array elements
@@ -838,16 +835,11 @@ namespace RustEtherNetIp
         /// </summary>
         /// <param name="tagName">Name of the PLC tag to write to.</param>
         /// <param name="value">String value to write.</param>
-        /// <exception cref="Exception">Thrown if the write operation fails. Note: STRING tag writes may fail with CIP Error 0x2107
-        /// due to PLC firmware limitations. STRING tags can be read but not written directly.</exception>
+        /// <exception cref="Exception">Thrown if the write operation fails.</exception>
         /// <remarks>
-        /// <para><strong>⚠️ PLC Limitation:</strong> Most PLCs do not support direct writes to STRING tags (CIP Error 0x2107).
-        /// This is a firmware restriction, not a library bug. STRING tags can be read successfully, but writes will fail.</para>
-        /// <para>If you need to modify STRING values, consider:</para>
-        /// <list type="bullet">
-        /// <item><description>Using ladder logic or other PLC-side mechanisms to update STRING values</description></item>
-        /// <item><description>If the STRING is part of a UDT, write the entire UDT structure (though STRING members in UDTs also have limitations)</description></item>
-        /// </list>
+        /// <para>Writes standard top-level Logix STRING tags using the structure encoding
+        /// validated against real hardware. STRING members inside UDTs remain a separate
+        /// restricted path and should be updated by writing the containing UDT.</para>
         /// </remarks>
         public void WriteString(string tagName, string value)
         {
@@ -877,12 +869,11 @@ namespace RustEtherNetIp
         /// </summary>
         /// <param name="tagName">Name of the PLC tag to write to.</param>
         /// <param name="logixString">LogixString structure containing the string data.</param>
-        /// <exception cref="Exception">Thrown if the write operation fails. Note: STRING tag writes may fail
-        /// with CIP Error 0x2107 due to PLC firmware limitations.</exception>
+        /// <exception cref="Exception">Thrown if the write operation fails.</exception>
         /// <remarks>
-        /// <para><strong>⚠️ PLC Limitation:</strong> Most PLCs do not support direct writes to STRING tags
-        /// (CIP Error 0x2107). This is a firmware restriction, not a library bug. STRING tags can be read
-        /// successfully, but writes will typically fail even when using the structured format.</para>
+        /// <para>Standard top-level STRING tags are written by <see cref="WriteString(string, string)"/>
+        /// using the validated structure encoding. This helper remains for callers that already
+        /// model STRING values as <see cref="LogixString"/>.</para>
         /// <para>This method converts the LogixString structure to a UDT format and attempts to write it.
         /// The LogixString structure matches the Allen-Bradley STRING format: len (DINT) + data (SINT array).</para>
         /// </remarks>
@@ -890,9 +881,8 @@ namespace RustEtherNetIp
         {
             _ = logixString ?? throw new ArgumentNullException(nameof(logixString));
 
-            // Note: This method attempts to write a STRING tag as a UDT structure.
-            // However, due to PLC firmware limitations (CIP Error 0x2107), STRING tag writes
-            // typically fail even when using the structured format.
+            // Prefer WriteString for standard top-level STRING tags. This legacy helper keeps
+            // the older field-oriented behavior for callers that explicitly use LogixString.
             //
             // The LogixString structure represents: len (DINT) + data (SINT array)
             // For now, we'll attempt to write the LEN field separately as a workaround.
@@ -903,8 +893,7 @@ namespace RustEtherNetIp
                 // Attempt to write LEN field directly
                 WriteDint($"{tagName}.LEN", logixString.len);
 
-                // Note: Writing the DATA array field directly also fails due to PLC limitations.
-                // The full STRING structure write is not supported by the PLC firmware.
+                // The full direct STRING structure write is handled by WriteString.
             }
             catch
             {
@@ -1849,7 +1838,7 @@ namespace RustEtherNetIp
                         catch (Exception ex)
                         {
                             lastException = ex;
-                            // STRING reads are supported, but direct STRING writes are limited by PLC firmware.
+                            // STRING read failed; continue probing other scalar types.
                         }
                     }
 

@@ -252,9 +252,9 @@ Wrapper non-responsibilities:
 ## Firmware and Controller Behavior
 
 Some behavior is constrained by Allen-Bradley firmware rather than this library.
-Examples include direct STRING writes and certain UDT member write paths. These
-rules should be represented as documented Rust behavior and surfaced consistently
-through wrappers.
+Examples include certain UDT member write paths and the exact Logix STRING
+structure encoding required on the wire. These rules should be represented as
+documented Rust behavior and surfaced consistently through wrappers.
 
 Preferred direction:
 

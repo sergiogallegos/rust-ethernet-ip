@@ -19,12 +19,28 @@ pub const ALT_STRING: u16 = 0x00DA;
 pub const BOOL_ARRAY_DWORD: u16 = 0x00D3;
 pub const UDT: u16 = 0x00A0;
 pub const AB_UDT: u16 = 0x02A0;
+pub const STANDARD_STRING_HANDLE: u16 = 0x0FCE;
+pub const STANDARD_STRING_DATA_LEN: usize = 82;
+pub const STANDARD_STRING_PAD_LEN: usize = 2;
+pub const STANDARD_STRING_PAYLOAD_LEN: usize =
+    4 + STANDARD_STRING_DATA_LEN + STANDARD_STRING_PAD_LEN;
 
 pub fn write_data_type(value: &PlcValue) -> u16 {
     if let PlcValue::Udt(_) = value {
         value.known_data_type().unwrap_or(UDT)
     } else {
         value.get_data_type()
+    }
+}
+
+pub fn write_data_type_bytes(value: &PlcValue) -> Vec<u8> {
+    if matches!(value, PlcValue::String(_)) {
+        let mut bytes = Vec::with_capacity(4);
+        bytes.extend_from_slice(&AB_UDT.to_le_bytes());
+        bytes.extend_from_slice(&STANDARD_STRING_HANDLE.to_le_bytes());
+        bytes
+    } else {
+        write_data_type(value).to_le_bytes().to_vec()
     }
 }
 
@@ -41,28 +57,15 @@ pub fn encode_payload(value: &PlcValue, buf: &mut BytesMut) {
         PlcValue::Ulint(v) => buf.put_u64_le(*v),
         PlcValue::Real(v) => buf.put_slice(&v.to_le_bytes()),
         PlcValue::Lreal(v) => buf.put_slice(&v.to_le_bytes()),
-        PlcValue::String(v) => {
-            let length = v.len().min(82) as u32;
-            buf.put_u32_le(length);
-            let string_bytes = v.as_bytes();
-            let data_len = string_bytes.len().min(82);
-            buf.put_slice(&string_bytes[..data_len]);
-        }
+        PlcValue::String(v) => encode_standard_string_payload(v, buf),
         PlcValue::Udt(udt_data) => buf.put_slice(&udt_data.data),
     }
 }
 
 pub fn encode_type_prefixed(value: &PlcValue, buf: &mut BytesMut) {
-    buf.put_u16_le(write_data_type(value));
+    buf.put_slice(&write_data_type_bytes(value));
     match value {
-        PlcValue::String(v) => {
-            let length = v.len().min(82) as u32;
-            buf.put_u32_le(length);
-            let string_bytes = v.as_bytes();
-            let data_len = string_bytes.len().min(82);
-            buf.put_slice(&string_bytes[..data_len]);
-            buf.resize(buf.len() + (82 - data_len), 0);
-        }
+        PlcValue::String(v) => encode_standard_string_payload(v, buf),
         PlcValue::Udt(udt_data) => buf.put_slice(&udt_data.data),
         _ => encode_payload(value, buf),
     }
@@ -149,10 +152,7 @@ pub fn decode_payload(data_type: u16, value_data: &[u8]) -> Result<PlcValue> {
         }
         STRING => decode_dint_string(value_data),
         ALT_STRING => decode_short_string(value_data),
-        AB_UDT | UDT => Ok(PlcValue::Udt(UdtData {
-            symbol_id: 0,
-            data: value_data.to_vec(),
-        })),
+        AB_UDT | UDT => decode_structure_payload(value_data),
         BOOL_ARRAY_DWORD => {
             if value_data.len() >= 4 {
                 Ok(PlcValue::Udint(u32::from_le_bytes([
@@ -175,6 +175,51 @@ pub fn decode_payload(data_type: u16, value_data: &[u8]) -> Result<PlcValue> {
 
 pub fn decode_array_element(data_type: u16, chunk: &[u8]) -> Result<PlcValue> {
     decode_payload(data_type, chunk)
+}
+
+fn encode_standard_string_payload(value: &str, buf: &mut BytesMut) {
+    let string_bytes = value.as_bytes();
+    let data_len = string_bytes.len().min(STANDARD_STRING_DATA_LEN);
+    buf.put_u32_le(data_len as u32);
+    buf.put_slice(&string_bytes[..data_len]);
+    buf.resize(buf.len() + (STANDARD_STRING_DATA_LEN - data_len), 0);
+    buf.resize(buf.len() + STANDARD_STRING_PAD_LEN, 0);
+}
+
+fn decode_structure_payload(value_data: &[u8]) -> Result<PlcValue> {
+    if value_data.len() >= 2 {
+        let handle = u16::from_le_bytes([value_data[0], value_data[1]]);
+        if handle == STANDARD_STRING_HANDLE {
+            return decode_standard_string_structure(value_data);
+        }
+    }
+
+    Ok(PlcValue::Udt(UdtData {
+        symbol_id: 0,
+        data: value_data.to_vec(),
+    }))
+}
+
+fn decode_standard_string_structure(value_data: &[u8]) -> Result<PlcValue> {
+    let required = 2 + STANDARD_STRING_PAYLOAD_LEN;
+    if value_data.len() < required {
+        return Err(ProtocolError::new(format!(
+            "Insufficient data for standard STRING structure: need {required} bytes, have {} bytes",
+            value_data.len()
+        )));
+    }
+
+    let payload = &value_data[2..];
+    let length = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]) as usize;
+    if length > STANDARD_STRING_DATA_LEN {
+        return Err(ProtocolError::new(format!(
+            "Invalid standard STRING length: {length} > {STANDARD_STRING_DATA_LEN}"
+        )));
+    }
+
+    Ok(PlcValue::String(
+        String::from_utf8_lossy(&payload[4..4 + length]).to_string(),
+    ))
 }
 
 fn decode_dint_string(value_data: &[u8]) -> Result<PlcValue> {

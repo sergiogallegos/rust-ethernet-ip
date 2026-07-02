@@ -93,7 +93,7 @@ LogixString:
   - data : byte[] (SINT array, default 82 bytes)
 ```
 
-**Note:** Even with this approach, writing standalone STRING tags may still fail due to PLC firmware limitations. The workaround is most effective when the STRING is part of a larger UDT structure.
+**Note:** Standard standalone Logix STRING tags should be written through the direct STRING path, which emits the validated structure type and standard STRING handle. The UDT read-modify-write workaround is for STRING members inside larger UDT structures.
 
 **Option 3: Use an intermediary tag**
 
@@ -195,17 +195,10 @@ client.WriteTag("gTestUDT", udt);
 
 **If STRING is standalone:**
 ```csharp
-// ❌ Direct write does NOT work
-client.WriteString("gTest_STRING", "Hello");  // Fails with CIP Error 0x2107
+// ✅ Direct write uses the standard Logix STRING structure encoding
+client.WriteString("gTest_STRING", "Hello");
 
-// ❌ Writing .DATA and .LEN separately also does NOT work
-client.WriteDint("gTest_STRING.LEN", 5);  // Fails
-client.WriteUdt("gTest_STRING.DATA", data);  // Fails
-
-// 💡 Alternative: Use PLC ladder logic intermediary
-// 1. Create atomic buffer tag in PLC (e.g., StringBuffer : SINT[84])
-// 2. Write to buffer from external device
-// 3. Use ladder logic (COP instruction) to copy to STRING tag
+// Direct .DATA/.LEN component writes are no longer the preferred path.
 ```
 
 ### For UDT Array Element Members

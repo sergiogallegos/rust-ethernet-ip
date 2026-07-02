@@ -262,10 +262,6 @@ namespace CSharpWrapperTest
                             {
                                 errorKey = "PLC does not support writing to STRING members in UDTs directly (Error 0x2107)";
                             }
-                            else if (tagName == "gTest_STRING" || tagName == "Program:TestProgram.gTest_STRING")
-                            {
-                                errorKey = "PLC does not support writing to STRING tags directly (Error 0x2107)";
-                            }
                             else
                             {
                                 errorKey = $"Error 0x2107: {error}";

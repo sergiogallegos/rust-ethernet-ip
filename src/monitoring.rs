@@ -404,8 +404,7 @@ impl ProductionMonitor {
         if status == Some(0x1E) || lower.contains("embedded service error") {
             return ErrorCategory::BatchEmbeddedService;
         }
-        if lower.contains("0x2107")
-            || lower.contains("controller rejected")
+        if lower.contains("controller rejected")
             || lower.contains("does not support writing to udt array element members")
         {
             return ErrorCategory::KnownControllerLimitation;
@@ -427,6 +426,8 @@ impl ProductionMonitor {
             return ErrorCategory::NotFound;
         }
         if lower.contains("data type")
+            || lower.contains("data-type")
+            || lower.contains("0x2107")
             || lower.contains("invalid string")
             || lower.contains("utf-8")
         {
@@ -596,9 +597,9 @@ mod tests {
     fn classify_known_controller_limitation_and_embedded_service() {
         assert_eq!(
             ProductionMonitor::classify_error(&EtherNetIpError::Protocol(
-                "Vendor-specific or composite extended error: 0x2107".to_string()
+                "Read/Write Tag data-type mismatch extended error: 0x2107".to_string()
             )),
-            ErrorCategory::KnownControllerLimitation
+            ErrorCategory::DataType
         );
         assert_eq!(
             ProductionMonitor::classify_error(&EtherNetIpError::WriteError {

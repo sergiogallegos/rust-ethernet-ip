@@ -414,7 +414,7 @@ async fn overview(State(state): State<AppState>) -> Json<DashboardOverviewRespon
             "Route-path access is validated for the current ControlLogix topology using backplane slot routing.".to_string(),
         ],
         known_limitations: vec![
-            "Direct writes to standalone STRING tags are a documented controller limitation.".to_string(),
+            "Standalone standard STRING writes require the Logix structure encoding.".to_string(),
             "Direct writes to STRING members inside UDTs are a documented controller limitation.".to_string(),
             "Direct writes to UDT array element members are a documented controller limitation; use whole-structure read-modify-write.".to_string(),
         ],

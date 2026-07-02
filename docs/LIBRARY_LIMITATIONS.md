@@ -8,24 +8,25 @@ The Rust EtherNet/IP library has certain limitations due to PLC firmware restric
 
 ## Known Limitations
 
-### 1. STRING Tags Cannot Be Written Directly
+### 1. Top-Level STRING Tags
 
-**Error Code:** CIP Error 0x2107 (Vendor Specific Error)
+Standard top-level Logix `STRING` tags can be read and written directly when encoded as the Logix structure type.
 
 **Affected Operations:**
-- Writing to simple STRING tags (e.g., `gTest_STRING`)
-- Writing to program-scoped STRING tags (e.g., `Program:TestProgram.gTest_STRING`)
+- Reading simple STRING tags (e.g., `gTest_STRING`)
+- Writing simple STRING tags (e.g., `gTest_STRING`)
+- Reading/writing program-scoped STRING tags (e.g., `Program:TestProgram.gTest_STRING`)
 
 **What Works:**
 - ✅ Reading STRING tags (both controller and program-scoped)
+- ✅ Writing standalone standard STRING tags
 - ✅ Reading STRING members within UDTs
 
 **What Doesn't Work:**
-- ❌ Writing STRING tags directly
 - ❌ Writing STRING members in UDTs directly
 
 **Workaround:**
-For STRING values that are part of a UDT, read the entire UDT, modify the STRING member in memory, then write the entire UDT back. For standalone STRING tags, consider using ladder logic or other PLC-side mechanisms.
+For STRING values that are part of a UDT, read the entire UDT, modify the STRING member in memory, then write the entire UDT back.
 
 ### 2. STRING Members in UDTs Cannot Be Written Directly
 
@@ -68,17 +69,16 @@ Read the entire UDT array element, modify the member in memory, then write the e
 
 Based on comprehensive testing with 392 tags:
 
-- ✅ **333/392 tags** (84.9%) successfully read and written
-- ❌ **59/392 tags** failed:
+- ✅ **335/392 tags** successfully read and written
+- ❌ **57/392 tags** failed:
   - 55 tags: UDT array element member writes (PLC limitation)
-  - 2 tags: Simple STRING tag writes (PLC limitation)
   - 2 tags: STRING member writes in UDTs (PLC limitation)
 
 ## Error Handling
 
 When encountering Error 0x2107, check the tag path to determine which limitation applies:
 
-1. **Simple STRING tag:** `gTest_STRING` → STRING tag limitation
+1. **Malformed/simple STRING request:** `gTest_STRING` with the wrong type bytes → request data-type mismatch
 2. **STRING member in UDT:** `gTestUDT.Member5_String` → STRING member limitation
 3. **UDT array element member:** `gTestUDT_Array[0].Member1_DINT` → UDT array element member limitation
 

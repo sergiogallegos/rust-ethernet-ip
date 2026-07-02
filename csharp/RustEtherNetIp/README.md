@@ -290,19 +290,18 @@ catch (Exception ex)
 
 The following operations are **not supported** due to PLC firmware restrictions. These limitations are inherent to the Allen-Bradley PLC firmware and cannot be bypassed at the library level.
 
-### STRING Tag Writing
+### STRING Writing
 
-**Cannot write directly to STRING tags** (e.g., `gTest_STRING`, `Program:TestProgram.gTest_STRING`).
+Top-level standard Logix `STRING` tags can be written directly with the structure encoding used by the Rust core.
 
-**Root Cause:** PLC firmware limitation. On validated CompactLogix hardware this can surface either as batch-level `0x1E` (`Embedded service error`) or extended `0x2107`, depending on the request path.
+Direct writes to `STRING` members inside UDTs remain a restricted hardware path until separately validated.
 
 **What Works:**
 - ✅ Reading STRING tags: `gTest_STRING` (read successfully)
+- ✅ Writing top-level STRING tags: `gTest_STRING` (write successfully)
 - ✅ Reading STRING members in UDTs: `gTestUDT.Member5_String` (read successfully)
 
 **What Doesn't Work:**
-- ❌ Writing simple STRING tags: `gTest_STRING` (write fails - PLC limitation)
-- ❌ Writing program-scoped STRING tags: `Program:TestProgram.gTest_STRING` (write fails)
 - ❌ Writing STRING members in UDTs directly: `gTestUDT.Member5_String` (write fails)
 
 **Workaround for STRING Members in UDTs:**
@@ -316,8 +315,6 @@ var udt = client.ReadUdt("gTestUDT");
 // Write entire UDT back
 client.WriteUdt("gTestUDT", udt);
 ```
-
-**Note:** For standalone STRING tags (not part of a UDT), there is no workaround at the communication library level.
 
 ### UDT Array Element Member Writing
 
@@ -354,7 +351,7 @@ client.WriteUdt("gTestUDT_Array[0]", element);
 - The library correctly implements the EtherNet/IP and CIP protocols
 - All read operations work correctly for all tag types
 - Workarounds are available for UDT array element members and STRING members in UDTs
-- Standalone STRING tag writes have no workaround at the communication library level
+- Standalone standard STRING tag writes are supported through the direct `WriteString` API
 - Real-hardware validation on `5069-L320ERMS3` firmware `35` is recorded in:
   - `docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md`
 

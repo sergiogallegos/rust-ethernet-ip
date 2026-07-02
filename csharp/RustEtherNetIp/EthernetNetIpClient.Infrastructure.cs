@@ -29,9 +29,9 @@ namespace RustEtherNetIp
                 return $"Direct writes to UDT array element members are not supported by this PLC/firmware path (commonly surfaced as CIP extended error 0x2107): '{tagName}'. Write the whole UDT element instead.";
             }
 
-            if (value.Type == PlcValueType.String || LooksLikeStringMemberPath(tagName))
+            if (LooksLikeStringMemberPath(tagName))
             {
-                return $"Direct STRING writes are not supported on this PLC/firmware path for '{tagName}' (commonly surfaced as embedded service error 0x1E or extended error 0x2107).";
+                return $"Direct writes to STRING members inside UDTs are not supported on this PLC/firmware path for '{tagName}'. Write the containing UDT instead.";
             }
 
             return fallbackMessage;

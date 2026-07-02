@@ -102,16 +102,16 @@ pub(crate) static RUNTIME: LazyLock<std::io::Result<Runtime>> = LazyLock::new(Ru
 /// ## UDT Array Element Member Writes
 ///
 /// **Cannot write directly to UDT array element members** (e.g., `gTestUDT_Array[0].Member1_DINT`).
-/// This is a PLC firmware limitation, not a library bug. The PLC returns CIP Error 0x2107
-/// (Vendor Specific Error) when attempting to write to such paths.
+/// This is a PLC firmware limitation, not a library bug. The PLC returns CIP extended
+/// error 0x2107 (Read/Write Tag data-type mismatch) when attempting to write to such paths.
 ///
 /// ## STRING Tags and STRING Members in UDTs
 ///
-/// **Cannot write directly to STRING tags or STRING members in UDTs**.
-/// This is a PLC firmware limitation (CIP Error 0x2107). Both simple STRING tags
-/// (e.g., `gTest_STRING`) and STRING members within UDTs (e.g., `gTestUDT.Member5_String`)
-/// cannot be written directly. STRING values must be written as part of the entire UDT
-/// structure, not as individual tags or members.
+/// Standalone Logix `STRING` tags can be written directly with the standard structure
+/// encoding. Direct writes to `STRING` members within UDTs (e.g.,
+/// `gTestUDT.Member5_String`) are still treated as restricted until hardware validation
+/// proves otherwise. For those nested members, write the entire UDT structure instead
+/// of writing the member path directly.
 ///
 /// **What works:**
 /// - ✅ Reading UDT array element members: `gTestUDT_Array[0].Member1_DINT` (read)
@@ -119,13 +119,12 @@ pub(crate) static RUNTIME: LazyLock<std::io::Result<Runtime>> = LazyLock::new(Ru
 /// - ✅ Writing UDT members (non-STRING): `gTestUDT.Member1_DINT` (write DINT/REAL/BOOL/INT members)
 /// - ✅ Writing array elements: `gArray[5]` (write element of simple array)
 /// - ✅ Reading STRING tags: `gTest_STRING` (read)
+/// - ✅ Writing STRING tags: `gTest_STRING` (write standard top-level STRING)
 /// - ✅ Reading STRING members in UDTs: `gTestUDT.Member5_String` (read)
 ///
 /// **What doesn't work:**
 /// - ❌ Writing UDT array element members: `gTestUDT_Array[0].Member1_DINT` (write)
 /// - ❌ Writing program-scoped UDT array element members: `Program:TestProgram.gTestUDT_Array[0].Member1_DINT` (write)
-/// - ❌ Writing simple STRING tags: `gTest_STRING` (write) - PLC limitation
-/// - ❌ Writing program-scoped STRING tags: `Program:TestProgram.gTest_STRING` (write) - PLC limitation
 /// - ❌ Writing STRING members in UDTs: `gTestUDT.Member5_String` (write) - must write entire UDT
 /// - ❌ Writing program-scoped STRING members: `Program:TestProgram.gTestUDT.Member5_String` (write) - must write entire UDT
 ///
@@ -3102,8 +3101,17 @@ impl EipClient {
         // Use the same path building logic as read operations
         let path = self.build_tag_path(tag_name);
 
+        if let PlcValue::String(string_value) = value
+            && string_value.len() > values::STANDARD_STRING_DATA_LEN
+        {
+            return Err(EtherNetIpError::StringTooLong {
+                max_length: values::STANDARD_STRING_DATA_LEN,
+                actual_length: string_value.len(),
+            });
+        }
+
         let mut data = BytesMut::new();
-        data.extend_from_slice(&values::write_data_type(value).to_le_bytes());
+        data.extend_from_slice(&values::write_data_type_bytes(value));
         data.extend_from_slice(&[0x01, 0x00]); // Element count: 1
         values::encode_payload(value, &mut data);
 
@@ -3297,13 +3305,9 @@ impl EipClient {
                     0x002A => "Group 2 only server general failure (extended, BE)".to_string(),
                     0x002B => "Unknown Modbus error (extended, BE)".to_string(),
                     0x002C => "Attribute not gettable (extended, BE)".to_string(),
-                    // Check if it's a vendor-specific or composite error
                     _ if extended_error_code_le == 0x2107 || extended_error_code_be == 0x2107 => {
-                        // 0x2107 might be a composite error or vendor-specific
-                        // Bytes are [0x07, 0x21] - could be error 0x07 (Connection lost) with additional info 0x21
-                        // Or could be a vendor-specific extended error
                         format!(
-                            "Vendor-specific or composite extended error: 0x{extended_error_code_le:04X} (LE) / 0x{extended_error_code_be:04X} (BE). Raw bytes: [0x{:02X}, 0x{:02X}]. This may indicate the PLC does not support writing to UDT array element members directly.",
+                            "Read/Write Tag data-type mismatch extended error: 0x{extended_error_code_le:04X} (LE) / 0x{extended_error_code_be:04X} (BE). Raw bytes: [0x{:02X}, 0x{:02X}]. Check that the request data type matches the target tag; UDT array element member writes can also surface this controller rejection.",
                             cip_data[4], cip_data[5]
                         )
                     }
@@ -3416,7 +3420,7 @@ impl EipClient {
                 )
             })
         {
-            return "Multiple Service Response error: 0x1E (Embedded service error). On CompactLogix/ControlLogix this commonly indicates the controller rejected a direct STRING write in the batch request; treat it as a PLC firmware limitation, not a protocol bug.".to_string();
+            return "Multiple Service Response error: 0x1E (Embedded service error). A batched STRING write failed inside the controller; inspect the embedded reply for the rejected service and data-type details.".to_string();
         }
 
         format!("Multiple Service Response error: 0x{general_status:02X}")
@@ -4209,6 +4213,42 @@ mod discovery_tests {
                 structure_size_bytes: 88,
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod write_request_tests {
+    use super::EipClient;
+    use crate::PlcValue;
+    use crate::protocol::values;
+
+    #[test]
+    fn build_write_request_encodes_standard_string_structure() {
+        let client = EipClient::new_unconnected_for_testing();
+        let request = client
+            .build_write_request("Tag1", &PlcValue::String("AB".to_string()))
+            .expect("STRING request should build");
+
+        assert_eq!(
+            &request[..8],
+            &[0x4D, 0x03, 0x91, 0x04, b'T', b'a', b'g', b'1']
+        );
+        let data = &request[8..];
+        assert_eq!(&data[..6], &[0xA0, 0x02, 0xCE, 0x0F, 0x01, 0x00]);
+        assert_eq!(&data[6..12], &[2, 0, 0, 0, b'A', b'B']);
+        assert_eq!(data.len(), 6 + values::STANDARD_STRING_PAYLOAD_LEN);
+        assert!(data[12..].iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn build_write_request_rejects_overlong_standard_string() {
+        let client = EipClient::new_unconnected_for_testing();
+        let value = PlcValue::String("x".repeat(values::STANDARD_STRING_DATA_LEN + 1));
+        let err = client
+            .build_write_request("Tag1", &value)
+            .expect_err("overlong STRING should be rejected");
+
+        assert!(err.to_string().contains("String too long"));
     }
 }
 

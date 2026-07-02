@@ -186,8 +186,7 @@ namespace WinFormsExample
 
             var label = new Label
             {
-                Text = "⚠️ PLC Limitations: STRING tags cannot be written directly (Error 0x2107). " +
-                       "UDT array element members (e.g., gTestUDT_Array[0].Member1_DINT) cannot be written directly. " +
+                Text = "PLC Limitations: UDT array element members (e.g., gTestUDT_Array[0].Member1_DINT) cannot be written directly. " +
                        "STRING members in UDTs (e.g., gTestUDT.Member5_String) cannot be written directly. " +
                        "These are PLC firmware restrictions, not library bugs.",
                 Location = new Point(10, 5),
@@ -2637,8 +2636,8 @@ namespace WinFormsExample
                         {
                             if (ex.Message.Contains("0x2107") || ex.Message.Contains("2107"))
                             {
-                                Log($"❌ Write error: STRING tags cannot be written directly (PLC limitation - Error 0x2107). " +
-                                    $"Tag '{tagName}' can be read but not written. This is a PLC firmware restriction.");
+                                Log($"❌ Write error: STRING write failed with data-type mismatch (Error 0x2107). " +
+                                    $"Top-level standard STRING tags are supported; check whether '{tagName}' is a UDT member or custom STRING type.");
                             }
                             else
                             {
@@ -4342,8 +4341,8 @@ namespace WinFormsExample
 
             var limitationsLabel = new Label
             {
-                Text = "⚠️ PLC LIMITATIONS: STRING tags cannot be written directly due to PLC firmware restrictions (CIP Error 0x2107).\n" +
-                       "✅ STRING tags CAN be read successfully.\n" +
+                Text = "Top-level standard STRING tags can be read and written.\n" +
+                       "⚠️ UDT STRING members remain restricted on some controllers.\n" +
                        "💡 Workaround: If STRING is part of a UDT, read entire UDT, modify STRING member, then write entire UDT back.",
                 Location = new Point(5, 5),
                 Size = new Size(limitationsPanel.Width - 10, 90),
@@ -4838,9 +4837,8 @@ namespace WinFormsExample
                 string errorMsg = ex.Message;
                 if (errorMsg.Contains("0x2107") || errorMsg.Contains("2107"))
                 {
-                    errorMsg = "PLC firmware limitation (CIP Error 0x2107): STRING tags cannot be written directly. " +
-                              "This is a PLC restriction, not a library bug. " +
-                              "For STRING members in UDTs, use the LogixString helper and write the entire UDT.";
+                    errorMsg = "CIP Error 0x2107 indicates a Read/Write Tag data-type mismatch. " +
+                              "Top-level standard STRING tags are supported; for STRING members in UDTs, write the entire UDT.";
                 }
                 resultLabel.Text = $"❌ {errorMsg}";
                 resultLabel.ForeColor = Color.FromArgb(239, 68, 68);

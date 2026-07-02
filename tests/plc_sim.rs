@@ -19,6 +19,8 @@ const CIP_REPLY_MULTIPLE_SERVICE_PACKET: u8 = 0x8A;
 
 const CIP_STATUS_SUCCESS: u8 = 0x00;
 const CIP_STATUS_PATH_SEGMENT_ERROR: u8 = 0x04;
+const CIP_STATUS_EXTENDED_ERROR: u8 = 0xFF;
+const CIP_EXT_STATUS_TYPE_MISMATCH: u16 = 0x2107;
 
 const CIP_TYPE_BOOL: u16 = 0x00C1;
 const CIP_TYPE_SINT: u16 = 0x00C2;
@@ -33,7 +35,12 @@ const CIP_TYPE_REAL: u16 = 0x00CA;
 const CIP_TYPE_LREAL: u16 = 0x00CB;
 const CIP_TYPE_STRING: u16 = 0x00CE;
 const CIP_TYPE_BOOL_ARRAY_DWORD: u16 = 0x00D3;
-const CIP_TYPE_STRUCTURE: u16 = 0x02A0; // Used by library for STRING writes
+const CIP_TYPE_STRUCTURE: u16 = 0x02A0;
+const CIP_STANDARD_STRING_HANDLE: u16 = 0x0FCE;
+const CIP_STANDARD_STRING_DATA_LEN: usize = 82;
+const CIP_STANDARD_STRING_PAD_LEN: usize = 2;
+const CIP_STANDARD_STRING_PAYLOAD_LEN: usize =
+    4 + CIP_STANDARD_STRING_DATA_LEN + CIP_STANDARD_STRING_PAD_LEN;
 
 #[derive(Clone, Debug)]
 enum TagValue {
@@ -394,7 +401,19 @@ fn handle_write_cip_request(
     }
 
     let data_type = u16::from_le_bytes([cip_request[path_end], cip_request[path_end + 1]]);
-    let data_start = path_end + 4;
+    let mut data_start = path_end + 4;
+    let mut structure_handle = None;
+    if data_type == CIP_TYPE_STRUCTURE {
+        if cip_request.len() < path_end + 6 {
+            return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
+        }
+
+        structure_handle = Some(u16::from_le_bytes([
+            cip_request[path_end + 2],
+            cip_request[path_end + 3],
+        ]));
+        data_start = path_end + 6;
+    }
 
     if data_type == CIP_TYPE_BOOL_ARRAY_DWORD {
         if cip_request.len() < data_start + 4 {
@@ -528,25 +547,17 @@ fn handle_write_cip_request(
                 ])))
             }
         }
-        CIP_TYPE_STRING | CIP_TYPE_STRUCTURE => {
-            // Library uses 0x02A0 (structure type) for STRING writes
-            if cip_request.len() < data_start + 4 {
-                None
-            } else {
-                let length = u32::from_le_bytes([
-                    cip_request[data_start],
-                    cip_request[data_start + 1],
-                    cip_request[data_start + 2],
-                    cip_request[data_start + 3],
-                ]) as usize;
-                let string_start = data_start + 4;
-                if cip_request.len() < string_start + length {
-                    None
-                } else {
-                    let raw = &cip_request[string_start..string_start + length];
-                    Some(TagValue::String(String::from_utf8_lossy(raw).to_string()))
-                }
-            }
+        CIP_TYPE_STRING => {
+            // Hardware validation 2026-07-02: atomic 0x00CE writes to Logix
+            // STRING tags are rejected as tag type mismatch (0x2107). The
+            // accepted form is the structure marker plus standard STRING handle.
+            return build_cip_extended_error_reply(CIP_REPLY_WRITE, CIP_EXT_STATUS_TYPE_MISMATCH);
+        }
+        CIP_TYPE_STRUCTURE if structure_handle == Some(CIP_STANDARD_STRING_HANDLE) => {
+            parse_standard_string_payload(&cip_request[data_start..])
+        }
+        CIP_TYPE_STRUCTURE => {
+            return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
         }
         _ => None,
     };
@@ -574,6 +585,39 @@ fn build_cip_ok_write_reply() -> Vec<u8> {
 
 fn build_cip_error_reply(reply_service: u8, status: u8) -> Vec<u8> {
     vec![reply_service, 0x00, status, 0x00]
+}
+
+fn build_cip_extended_error_reply(reply_service: u8, extended_status: u16) -> Vec<u8> {
+    let mut reply = vec![reply_service, 0x00, CIP_STATUS_EXTENDED_ERROR, 0x01];
+    reply.extend_from_slice(&extended_status.to_le_bytes());
+    reply
+}
+
+fn parse_standard_string_payload(data: &[u8]) -> Option<TagValue> {
+    if data.len() < CIP_STANDARD_STRING_PAYLOAD_LEN {
+        return None;
+    }
+
+    let length = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    if length > CIP_STANDARD_STRING_DATA_LEN {
+        return None;
+    }
+
+    let raw = &data[4..4 + length];
+    Some(TagValue::String(String::from_utf8_lossy(raw).to_string()))
+}
+
+fn append_standard_string_payload(value: &str, response: &mut Vec<u8>) {
+    response.extend_from_slice(&CIP_STANDARD_STRING_HANDLE.to_le_bytes());
+    let string_bytes = value.as_bytes();
+    let data_len = string_bytes.len().min(CIP_STANDARD_STRING_DATA_LEN);
+    response.extend_from_slice(&(data_len as u32).to_le_bytes());
+    response.extend_from_slice(&string_bytes[..data_len]);
+    response.resize(
+        response.len() + (CIP_STANDARD_STRING_DATA_LEN - data_len),
+        0,
+    );
+    response.resize(response.len() + CIP_STANDARD_STRING_PAD_LEN, 0);
 }
 
 fn build_multiple_service_response(
@@ -839,9 +883,8 @@ fn build_value_response(
         }
         TagValue::String(v) => {
             let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
-            response.extend_from_slice(&CIP_TYPE_STRING.to_le_bytes());
-            response.extend_from_slice(&(v.len() as u32).to_le_bytes());
-            response.extend_from_slice(v.as_bytes());
+            response.extend_from_slice(&CIP_TYPE_STRUCTURE.to_le_bytes());
+            append_standard_string_payload(&v, &mut response);
             response
         }
     }
@@ -983,4 +1026,51 @@ fn parse_read_element_count(cip_request: &[u8]) -> Option<u16> {
         return None;
     }
     Some(u16::from_le_bytes([cip_request[pos], cip_request[pos + 1]]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_string_write_shape_is_rejected_with_type_mismatch() {
+        let tags = Arc::new(Mutex::new(HashMap::new()));
+        let behavior = Arc::new(SimRuntimeBehavior {
+            config: SimBehavior::default(),
+            send_rr_count: AtomicUsize::new(0),
+        });
+        let request = atomic_string_write_request("STRING_TAG", "OldShape");
+
+        let reply = handle_write_cip_request(&request, &tags, &behavior);
+
+        assert_eq!(
+            reply,
+            vec![
+                CIP_REPLY_WRITE,
+                0x00,
+                CIP_STATUS_EXTENDED_ERROR,
+                0x01,
+                0x07,
+                0x21
+            ]
+        );
+    }
+
+    fn atomic_string_write_request(tag: &str, value: &str) -> Vec<u8> {
+        let mut path = Vec::new();
+        path.push(0x91);
+        path.push(tag.len() as u8);
+        path.extend_from_slice(tag.as_bytes());
+        if !tag.len().is_multiple_of(2) {
+            path.push(0);
+        }
+
+        let mut request = vec![CIP_WRITE_TAG, (path.len() / 2) as u8];
+        request.extend_from_slice(&path);
+        request.extend_from_slice(&CIP_TYPE_STRING.to_le_bytes());
+        request.extend_from_slice(&1u16.to_le_bytes());
+        request.extend_from_slice(&(value.len() as u32).to_le_bytes());
+        request.extend_from_slice(value.as_bytes());
+        request
+    }
 }

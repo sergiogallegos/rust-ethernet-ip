@@ -392,7 +392,7 @@ mod tests {
         assert_eq!(PlcValue::Ulint(0).get_data_type(), 0x00C9);
         assert_eq!(PlcValue::Real(0.0).get_data_type(), 0x00CA);
         assert_eq!(PlcValue::Lreal(0.0).get_data_type(), 0x00CB);
-        assert_eq!(PlcValue::String("".to_string()).get_data_type(), 0x00DA);
+        assert_eq!(PlcValue::String("".to_string()).get_data_type(), 0x00CE);
         use rust_ethernet_ip::UdtData;
         assert_eq!(
             PlcValue::Udt(UdtData {
@@ -423,6 +423,9 @@ mod tests {
 
         // Test string encoding
         let string_val = PlcValue::String("Hi".to_string());
-        assert_eq!(string_val.to_bytes(), vec![2, b'H', b'i']);
+        let bytes = string_val.to_bytes();
+        assert_eq!(bytes.len(), 88);
+        assert_eq!(&bytes[..6], &[2, 0, 0, 0, b'H', b'i']);
+        assert!(bytes[6..].iter().all(|byte| *byte == 0));
     }
 }

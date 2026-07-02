@@ -7,7 +7,7 @@
     { "name": "ctrl.BOOL_array", "scope": "controller", "pattern": "gTestArray_BOOL[{i}]", "indices": { "range": [0, 128] }, "kind": "Bool", "writeability": "writeable" },
     { "name": "ctrl.INT_array", "scope": "controller", "pattern": "gTestArray_INT[{i}]", "indices": { "range": [0, 200] }, "kind": "Int", "writeability": "writeable" },
     { "name": "ctrl.Large_DINT", "scope": "controller", "pattern": "gTestArray_Large[{i}]", "indices": { "range": [0, 1000] }, "kind": "Dint", "writeability": "writeable" },
-    { "name": "ctrl.STRING", "scope": "controller", "pattern": "gTest_STRING", "kind": "String", "writeability": "firmware_blocked_string" },
+    { "name": "ctrl.STRING", "scope": "controller", "pattern": "gTest_STRING", "kind": "String", "writeability": "writeable" },
     { "name": "ctrl.UDT_whole", "scope": "controller", "pattern": "gTestUDT", "kind": "Udt", "writeability": "read_only" },
     {
       "name": "ctrl.UDT_members",
@@ -60,7 +60,7 @@
     { "name": "prog.DINT_array", "scope": "program", "pattern": "Program:TestProgram.gTestArray_DINT[{i}]", "indices": { "range": [0, 100] }, "kind": "Dint", "writeability": "writeable" },
     { "name": "prog.REAL_array", "scope": "program", "pattern": "Program:TestProgram.gTestArray_REAL[{i}]", "indices": { "range": [0, 50] }, "kind": "Real", "writeability": "writeable" },
     { "name": "prog.BOOL_array", "scope": "program", "pattern": "Program:TestProgram.gTestArray_BOOL[{i}]", "indices": { "range": [0, 100] }, "kind": "Bool", "writeability": "writeable" },
-    { "name": "prog.STRING", "scope": "program", "pattern": "Program:TestProgram.gTest_STRING", "kind": "String", "writeability": "firmware_blocked_string" },
+    { "name": "prog.STRING", "scope": "program", "pattern": "Program:TestProgram.gTest_STRING", "kind": "String", "writeability": "writeable" },
     { "name": "prog.UDT_whole", "scope": "program", "pattern": "Program:TestProgram.gTestUDT", "kind": "Udt", "writeability": "read_only" },
     {
       "name": "prog.UDT_members",

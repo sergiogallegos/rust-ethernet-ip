@@ -1605,10 +1605,8 @@ namespace WpfExample.ViewModels
                     errorMsg.Contains("0x1E", StringComparison.OrdinalIgnoreCase) ||
                     errorMsg.Contains("Embedded service error", StringComparison.OrdinalIgnoreCase))
                 {
-                    errorMsg = "PLC firmware limitation: direct STRING writes can fail on CompactLogix/ControlLogix " +
-                              "(commonly surfaced as 0x1E or 0x2107). " +
-                              "This is a PLC restriction, not a library bug. " +
-                              "For STRING members in UDTs, use the LogixString helper and write the entire UDT.";
+                    errorMsg = "STRING write failed with a controller data-type error. " +
+                              "Top-level standard STRING tags are supported; for STRING members in UDTs, write the entire UDT.";
                 }
                 StringWriteResult = $"❌ {errorMsg}";
                 LogMessage($"❌ Write error: {errorMsg}");

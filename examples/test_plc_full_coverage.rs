@@ -105,7 +105,6 @@ enum Kind {
 enum WriteMode {
     Writeable,
     ReadOnly,
-    FirmwareBlockedString,
     FirmwareBlockedUdtStringMember,
     FirmwareBlockedUdtArrayElementMember,
     ServiceLayerWriteable,
@@ -119,9 +118,7 @@ impl WriteMode {
     fn is_firmware_blocked(self) -> bool {
         matches!(
             self,
-            Self::FirmwareBlockedString
-                | Self::FirmwareBlockedUdtStringMember
-                | Self::FirmwareBlockedUdtArrayElementMember
+            Self::FirmwareBlockedUdtStringMember | Self::FirmwareBlockedUdtArrayElementMember
         )
     }
 }

@@ -25,10 +25,9 @@ dotnet run
 
 ## Expected Results
 
-- ✅ **~333 tags** should pass (84.9% success rate)
-- ❌ **~59 tags** will fail due to PLC firmware limitations:
+- ✅ **~335 tags** should pass
+- ❌ **~57 tags** will fail due to PLC firmware limitations:
   - 55 tags: UDT array element member writes (Error 0x2107)
-  - 2 tags: Simple STRING tag writes (Error 0x2107)
   - 2 tags: STRING member writes in UDTs (Error 0x2107)
 
 These failures are expected and documented as PLC firmware limitations, not library bugs.

@@ -38,7 +38,7 @@ Data engineering, analytics, historian ingestion, MES bridges, and machine learn
 
 There is no widely-adopted, modern, open-source EtherNet/IP library for Allen-Bradley PLCs that is production-credible across the Rust, .NET, and Python ecosystems at the same time. Existing options tend to be closed-source vendor SDKs with restrictive licensing, aging C libraries with thin or stale language bindings, or per-team rewrites that never get hardened against real PLC firmware quirks.
 
-This project exists to fill that gap with a single, MIT-licensed protocol implementation the industrial automation community can build on, audit, and extend — and to make the firmware-imposed limitations (STRING writes, UDT array element writes, route-path quirks) explicit and documented rather than rediscovered by every new integrator.
+This project exists to fill that gap with a single, MIT-licensed protocol implementation the industrial automation community can build on, audit, and extend — and to make the protocol details and firmware-imposed limitations (STRING structure encoding, UDT array element writes, route-path quirks) explicit and documented rather than rediscovered by every new integrator.
 
 ## Version Status
 
@@ -77,7 +77,6 @@ Release snapshot:
 
 Some write behaviors are restricted by PLC firmware (not library protocol implementation):
 
-- Direct writes to standalone `STRING` tags can fail on some controllers
 - Direct writes to `STRING` members inside UDTs can fail on some controllers
 - Direct writes to UDT array element members (for example `MyUdtArray[0].Member`) can fail
 
@@ -86,9 +85,8 @@ Real-hardware note from the `0.7.0` release validation:
 - Validated on `1756-L81ES`, firmware `37`, via `1756-EN3TR` slot `0` at `192.168.0.101:44818`
 - On that CompactLogix target, normal reads/writes, route-path access, subscriptions, UDT reads, and batch operations are working
 - On that ControlLogix target, the same main read/write, route-path, subscription, UDT-read, and batch paths are working
-- On that same target, the remaining observed firmware-imposed limits are:
-  - direct `STRING` writes, which can surface as batch-level `0x1E` or extended `0x2107`
-  - direct writes to UDT array element members, which surface as `0x2107`
+- On newer 2026-07-02 validation against 5069-L330ERM firmware 38, standalone standard `STRING` writes succeed when encoded as the Logix structure type (`0x02A0` + `0x0FCE` handle).
+- Remaining observed firmware-imposed limits include direct `STRING` member writes inside UDTs and direct writes to UDT array element members, which can surface as `0x2107` data-type mismatch errors.
 
 Recommended pattern for restricted cases: **read-modify-write the full UDT/array element**.
 

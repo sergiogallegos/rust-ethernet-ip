@@ -15,9 +15,9 @@ namespace RustEtherNetIp
     /// <item><description><strong>LEN:</strong> A DINT (32-bit) type describing the actual string length (not capacity)</description></item>
     /// <item><description><strong>DATA:</strong> An array of SINT (8-bit) bytes. Default is SINT[82], but custom strings may have different sizes.</description></item>
     /// </list>
-    /// <para><strong>⚠️ Writing Limitation:</strong> Most PLCs do not support direct writes to STRING tags 
-    /// (CIP Error 0x2107). This is a firmware restriction, not a library bug. STRING tags can be read 
-    /// successfully, but writes will typically fail.</para>
+    /// <para>Standard top-level Logix STRING tags can be written directly through the client
+    /// using the validated structure encoding. Direct STRING member writes inside UDTs remain
+    /// a separate restricted path.</para>
     /// <para>This class follows the ASComm.NET pattern for handling Logix strings.</para>
     /// </remarks>
     [StructLayout(LayoutKind.Sequential)]

@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Target next release: TBD.
 
 ### Fixed
+- Standard Logix `STRING` writes now use the hardware-validated structure
+  encoding (`0x02A0` + `0x0FCE` handle, 88-byte payload), batch STRING writes
+  use the same path, and standard STRING read replies decode from the
+  structure-shaped hardware payload back to `PlcValue::String`.
 - C# `WriteUdtMember` no longer self-deadlocks by recursively acquiring the
   wrapper operation lock during its read-modify-write path.
 - C# native marshalling now uses UTF-8 for tag names, JSON payloads, STRING

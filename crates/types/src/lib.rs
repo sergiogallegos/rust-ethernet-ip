@@ -1,6 +1,9 @@
 use bytes::{BufMut, BytesMut};
 use std::collections::HashMap;
 
+const STANDARD_STRING_DATA_LEN: usize = 82;
+const STANDARD_STRING_PAD_LEN: usize = 2;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeError {
     message: String,
@@ -120,13 +123,16 @@ fn encode_payload(value: &PlcValue, buf: &mut BytesMut) {
         PlcValue::Ulint(v) => buf.put_u64_le(*v),
         PlcValue::Real(v) => buf.put_slice(&v.to_le_bytes()),
         PlcValue::Lreal(v) => buf.put_slice(&v.to_le_bytes()),
-        PlcValue::String(v) => {
-            let length = v.len().min(82) as u32;
-            buf.put_u32_le(length);
-            let string_bytes = v.as_bytes();
-            let data_len = string_bytes.len().min(82);
-            buf.put_slice(&string_bytes[..data_len]);
-        }
+        PlcValue::String(v) => encode_standard_string_payload(v, buf),
         PlcValue::Udt(udt_data) => buf.put_slice(&udt_data.data),
     }
+}
+
+fn encode_standard_string_payload(value: &str, buf: &mut BytesMut) {
+    let string_bytes = value.as_bytes();
+    let data_len = string_bytes.len().min(STANDARD_STRING_DATA_LEN);
+    buf.put_u32_le(data_len as u32);
+    buf.put_slice(&string_bytes[..data_len]);
+    buf.resize(buf.len() + (STANDARD_STRING_DATA_LEN - data_len), 0);
+    buf.resize(buf.len() + STANDARD_STRING_PAD_LEN, 0);
 }

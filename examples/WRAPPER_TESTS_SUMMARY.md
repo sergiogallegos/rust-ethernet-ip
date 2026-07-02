@@ -81,12 +81,10 @@ All tests include the same ~392 tags:
 
 All three tests should produce similar results:
 
-- ✅ **~333 tags** (84.9%) should pass successfully
-- ❌ **~59 tags** will fail due to PLC firmware limitations:
+- ✅ **~335 tags** should pass successfully
+- ❌ **~57 tags** will fail due to PLC firmware limitations:
   - **55 tags**: UDT array element member writes (Error 0x2107)
     - Pattern: `gTestUDT_Array[*].Member*` and `Program:TestProgram.gTestUDT_Array[*].Member*`
-  - **2 tags**: Simple STRING tag writes (Error 0x2107)
-    - `gTest_STRING` and `Program:TestProgram.gTest_STRING`
   - **2 tags**: STRING member writes in UDTs (Error 0x2107)
     - `gTestUDT.Member5_String` and `Program:TestProgram.gTestUDT.Member5_String`
 
@@ -97,7 +95,6 @@ Each test provides a detailed failure summary that:
 - Identifies known PLC limitations (Error 0x2107)
 - Categorizes failures into:
   - UDT array element member writes
-  - STRING tag writes
   - STRING member writes in UDTs
 - Shows affected tags with pattern grouping (e.g., `gTestUDT_Array[*].Member1_DINT`)
 

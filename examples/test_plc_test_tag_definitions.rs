@@ -363,16 +363,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         || tag_name.ends_with(".Member5_String")
                     {
                         "PLC does not support writing to STRING members in UDTs directly (Error 0x2107)".to_string()
-                    }
-                    // Check if it's a simple STRING tag (e.g., gTest_STRING)
-                    else if tag_name == "gTest_STRING"
-                        || tag_name == "Program:TestProgram.gTest_STRING"
-                    {
-                        "PLC does not support writing to STRING tags directly (Error 0x2107)"
-                            .to_string()
-                    }
-                    // Other 0x2107 errors
-                    else {
+                    } else {
                         format!("Error 0x2107: {}", error)
                     }
                 } else if error.contains("UDT array element members directly") {

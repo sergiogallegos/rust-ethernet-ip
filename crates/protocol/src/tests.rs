@@ -107,6 +107,41 @@ fn decode_ab_string_payload_fixture() {
 }
 
 #[test]
+fn decode_standard_string_structure_payload_fixture() {
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&values::STANDARD_STRING_HANDLE.to_le_bytes());
+    payload.extend_from_slice(&5u32.to_le_bytes());
+    payload.extend_from_slice(b"Hello");
+    payload.resize(2 + values::STANDARD_STRING_PAYLOAD_LEN, 0);
+
+    let decoded = values::decode_payload(values::AB_UDT, &payload)
+        .expect("standard STRING structure should decode");
+    assert_eq!(decoded, PlcValue::String("Hello".to_string()));
+}
+
+#[test]
+fn decode_standard_string_structure_truncation_is_error() {
+    let payload = [0xCE, 0x0F, 5, 0, 0, 0, b'H', b'i'];
+    let err = values::decode_payload(values::AB_UDT, &payload)
+        .expect_err("truncated standard STRING structure should fail");
+    assert!(err.to_string().contains("Insufficient data"));
+}
+
+#[test]
+fn unknown_structure_handle_stays_udt() {
+    let payload = [0x34, 0x12, 1, 2, 3, 4];
+    let decoded = values::decode_payload(values::AB_UDT, &payload)
+        .expect("unknown structure should stay raw UDT");
+    assert_eq!(
+        decoded,
+        PlcValue::Udt(UdtData {
+            symbol_id: 0,
+            data: payload.to_vec()
+        })
+    );
+}
+
+#[test]
 fn decode_alt_string_payload_fixture() {
     let decoded = values::decode_payload(values::ALT_STRING, &[3, b'A', b'B', b'C'])
         .expect("alt string should decode");
@@ -351,6 +386,12 @@ fn value_payload_write_encoding_matches_pinned_dint() {
 fn value_type_prefixed_encoding_matches_pinned_string() {
     let mut buf = BytesMut::new();
     PlcValue::String("AB".to_string()).encode(&mut buf);
-    assert_eq!(&buf[..8], &[0xCE, 0x00, 2, 0, 0, 0, b'A', b'B']);
-    assert_eq!(buf.len(), 88);
+    // Hardware-verified standard Logix STRING shape:
+    // structure marker A0 02 + standard STRING handle CE 0F + 88-byte payload.
+    assert_eq!(
+        &buf[..10],
+        &[0xA0, 0x02, 0xCE, 0x0F, 2, 0, 0, 0, b'A', b'B']
+    );
+    assert_eq!(buf.len(), 4 + values::STANDARD_STRING_PAYLOAD_LEN);
+    assert!(buf[10..].iter().all(|byte| *byte == 0));
 }

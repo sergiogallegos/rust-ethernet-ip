@@ -13,7 +13,6 @@ internal enum WriteMode
 {
     Writeable,
     ReadOnly,
-    FirmwareBlockedString,
     FirmwareBlockedUdtStringMember,
     FirmwareBlockedUdtArrayElementMember,
     ServiceLayerWriteable,
@@ -126,7 +125,6 @@ internal static class Program
     {
         "writeable" => WriteMode.Writeable,
         "read_only" => WriteMode.ReadOnly,
-        "firmware_blocked_string" => WriteMode.FirmwareBlockedString,
         "firmware_blocked_udt_string_member" => WriteMode.FirmwareBlockedUdtStringMember,
         "firmware_blocked_udt_array_element_member" => WriteMode.FirmwareBlockedUdtArrayElementMember,
         "service_layer_writeable" => WriteMode.ServiceLayerWriteable,
@@ -137,8 +135,7 @@ internal static class Program
         mode is WriteMode.Writeable or WriteMode.ServiceLayerWriteable;
 
     private static bool IsFirmwareBlocked(WriteMode mode) =>
-        mode is WriteMode.FirmwareBlockedString
-            or WriteMode.FirmwareBlockedUdtStringMember
+        mode is WriteMode.FirmwareBlockedUdtStringMember
             or WriteMode.FirmwareBlockedUdtArrayElementMember;
 
     private static object? Rand(Kind k, Random rng) => k switch

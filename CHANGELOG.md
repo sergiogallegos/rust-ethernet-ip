@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Target next release: TBD.
 
+### Added
+- Added a Rust blocked-write-label hardware probe for CODEX-AV. It selects one
+  representative per current `firmware_blocked_*` class by default, can sweep
+  every blocked manifest tag with `--all-blocked`, verifies read-back and
+  sibling integrity, restores original values, and writes JSON evidence for the
+  1.2.0 manifest relabel decision.
+
 ### Fixed
 - Tag addressing now preserves member suffixes on writes such as
   `Array[i].Member`, routes `Tag.n` bit syntax through client-side bit
@@ -40,6 +47,10 @@ Target next release: TBD.
   `win-x64`, `linux-x64`, and `osx-arm64`.
 
 ### Changed
+- UDT array element member write documentation now reflects the CODEX-AM
+  hardware finding: at least one DINT member write succeeds with a correct path
+  on the 5069-L330ERM fw38, so the remaining `firmware_blocked_*` labels are
+  under CODEX-AV revalidation rather than treated as a blanket firmware rule.
 - C# CI now runs a simulator-backed P/Invoke integration test project on the
   stable toolchain legs, covering connect/disconnect, scalar and UTF-8 STRING
   round trips, native batch read/write, `WriteUdtMember` watchdog completion,

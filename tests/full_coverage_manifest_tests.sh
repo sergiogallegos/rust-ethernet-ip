@@ -6,6 +6,7 @@ MANIFEST="$ROOT/examples/full_coverage_tags.json"
 EXPECTED_RUST="would-test binding=rust tags=2299 writeable=2208 blocked=72 read_only=19"
 EXPECTED_CSHARP="would-test binding=csharp tags=2299 writeable=2208 blocked=72 read_only=19"
 EXPECTED_PYTHON="would-test binding=python tags=2299 writeable=2208 blocked=72 read_only=19"
+EXPECTED_BLOCKED_PROBE="would-probe binding=rust blocked_targets=11 all_blocked=false"
 
 python3 - "$MANIFEST" <<'PY'
 import json
@@ -135,6 +136,9 @@ assert_contains "$csharp_override" "$EXPECTED_CSHARP" "csharp manifest override 
 
 python_override="$(capture_or_die "python manifest override from /tmp" run_from_tmp env PYTHONPATH="$ROOT/python" python3 "$ROOT/python/examples/test_plc_full_coverage.py" --manifest "$MANIFEST" --dry-run)"
 assert_contains "$python_override" "$EXPECTED_PYTHON" "python manifest override from /tmp"
+
+blocked_probe="$(capture_or_die "blocked-label probe dry-run from /tmp" run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example probe_blocked_write_labels --locked -- --manifest "$MANIFEST" --dry-run)"
+assert_contains "$blocked_probe" "$EXPECTED_BLOCKED_PROBE" "blocked-label probe dry-run from /tmp"
 
 if rust_bad="$(run_from_tmp cargo run --manifest-path "$ROOT/Cargo.toml" --example test_plc_full_coverage --locked -- --manifest /tmp/nonexistent_full_coverage_tags.json --dry-run 2>&1)"; then
     printf 'rust bad manifest unexpectedly succeeded\n%s\n' "$rust_bad" >&2

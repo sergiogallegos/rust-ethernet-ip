@@ -45,21 +45,24 @@
 //!
 //! ## Known PLC/Firmware Limits
 //!
-//! Real-hardware validation for the `1.1.0` release line confirmed that some
-//! direct write shapes are controller/firmware limitations rather than library
-//! protocol defects. A later 2026-07-02 probe also confirmed that standalone
-//! standard Logix `STRING` tags write successfully when encoded as the standard
-//! `0x02A0`/`0x0FCE` structure:
+//! Real-hardware validation for the `1.1.0` release line classified some nested
+//! direct write shapes as controller/firmware limitations. Follow-up probes on
+//! 2026-07-02 corrected part of that picture: standalone standard Logix
+//! `STRING` tags write successfully when encoded as the standard
+//! `0x02A0`/`0x0FCE` structure, and at least one UDT array element DINT member
+//! writes successfully when the full member path is preserved.
 //!
 //! - Direct writes to `STRING` members inside UDTs can fail
-//! - Direct writes to members of UDT array elements can fail
+//! - Direct writes to members of UDT array elements are under hardware
+//!   revalidation before the 1.2.0 release manifest is relabeled
 //!
 //! On the validated CompactLogix `5069-L320ERMS3` firmware `35` and
 //! ControlLogix `1756-L81ES` firmware `37` targets, these failures surfaced as
 //! `0x2107` Read/Write Tag data-type mismatch errors.
 //!
-//! Recommended pattern for restricted cases: read-modify-write the full UDT or
-//! UDT array element instead of directly writing the nested restricted member.
+//! Recommended pattern for still-restricted or unvalidated cases:
+//! read-modify-write the full UDT or UDT array element instead of directly
+//! writing the nested member.
 
 #![deny(unused_must_use, unsafe_op_in_unsafe_fn)]
 #![cfg_attr(not(test), warn(clippy::print_stdout, clippy::dbg_macro))]

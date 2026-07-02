@@ -14,9 +14,20 @@ Verified against Allen-Bradley CompactLogix and ControlLogix CIP behavior, obser
 
 ## UDT array element member writes
 
-- Do not write an individual member of a UDT array element (e.g. `Cell_Data[5].Speed = 100`). Returns CIP `0x2107`.
-- Workaround: read the entire array element, modify the member in memory, write the whole element back. The library already does this for `write_tag` paths that resolve to a UDT array element member.
-- Do not add a blind retry branch for the same request shape; the controller will reject it for the same reason.
+- Historical validation classified direct writes to individual members of UDT
+  array elements (e.g. `Cell_Data[5].Speed = 100`) as firmware-blocked
+  `0x2107` cases. CODEX-AM disproved that blanket claim for one concrete path:
+  `write_tag("gTestUDT_Array[0].Member1_DINT", Dint(777))` succeeded on a
+  5069-L330ERM fw38 once the library preserved the full member path, and the
+  sibling member remained untouched.
+- Current status: **under revalidation**. Keep the manifest's
+  `firmware_blocked_udt_array_element_member` labels until CODEX-AV records the
+  full matrix, but do not treat `0x2107` as proof of an inherent firmware ban;
+  malformed paths can produce the same data-type mismatch.
+- Existing read-modify-write service-layer helpers remain the conservative
+  fallback until CODEX-AV proves which direct member writes are reliable across
+  scalar types and scopes.
+- Evidence: [2026-07-02 tag-addressing smoke](../../validation/2026-07-02_tag_addressing_smoke_5069-L330ERM_fw38.md).
 
 ## UDT writes always need a symbol_id
 
@@ -28,7 +39,8 @@ Verified against Allen-Bradley CompactLogix and ControlLogix CIP behavior, obser
 
 When a user reports CIP error `0x2107`, the layer is almost always one of:
 1. Request data type does not match the target tag, including malformed STRING writes.
-2. Direct UDT array element member write — fix by read-modify-write of the whole element.
+2. Direct UDT array element member write through a malformed or unvalidated path
+   — check CODEX-AV evidence before classifying it as a firmware limitation.
 3. Stale `symbol_id` — fix by reading the UDT first.
 4. Direct STRING member write inside a UDT — keep restricted until validated.
 

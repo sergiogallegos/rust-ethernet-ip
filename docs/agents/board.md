@@ -4,7 +4,20 @@
 
 ## Open
 
-_(no open briefs)_
+> The ten CODEX-AJ…CODEX-AS briefs originate from the 2026-07-01 repository analysis ([`repo-analysis-2026-07-01.md`](repo-analysis-2026-07-01.md)) — read its executive summary before picking any of them up. Suggested sequencing: AJ and AK are independent and immediate; AL before AS (AS rebases on AL's `ffi.rs` changes); AM and AN are independent sim-verifiable wire fixes (AN starts with a reconciliation step against the full-coverage evidence); AO phase 2 is **blocked on maintainer packet captures** (phase 1 can land any time); AP after AM (item 5 depends on AM's `.DATA[i]` fix) and it removes the connected-messaging code AL deliberately scoped out; AQ and AR are independent of the rest but AQ's diagnostics counters coordinate with AL if concurrent.
+
+| Id | Title | Owner | Status | Created |
+|---|---|---|---|---|
+| CODEX-AJ | C# wrapper critical fixes — WriteUdtMember deadlock, UTF-8 marshalling, keep-alive serialization + native P/Invoke integration tests | codex | open | 2026-07-01 |
+| CODEX-AK | Hygiene hotfixes — semver baseline, dependency scoping, release publish error handling, dead test files, doc corrections | codex | open | 2026-07-01 |
+| CODEX-AL | Transport & session hardening — timeout desync, sender-context correlation, shared session handle | codex | open | 2026-07-01 |
+| CODEX-AM | Tag addressing correctness — member-suffix drop, bit syntax, batch BOOL arrays, .DATA[i] segment, program discovery | codex | open | 2026-07-01 |
+| CODEX-AN | read_array_range + get_tag_attributes wire fixes; make the simulator an oracle, not a mirror | codex | open | 2026-07-01 |
+| CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open | 2026-07-01 |
+| CODEX-AP | Retire the string/UDT strategy graveyard — never-worked public paths return honest errors | codex | open | 2026-07-01 |
+| CODEX-AQ | Dead-stratum deprecation — TagManager UDT pipeline, ProductionMonitor/Config, PlcManager, SubscriptionManager, TagCache; diagnostics honesty | codex | open | 2026-07-01 |
+| CODEX-AR | Subscription, fleet, and event lifecycle — stop() stops, no blocked poll tasks, lag-tolerant forwarding | codex | open | 2026-07-01 |
+| CODEX-AS | FFI polish — private raw-pointer exports, unwind guard, SAFETY discipline, last-error lifecycle; Python residuals | codex | open | 2026-07-01 |
 
 > CODEX-AI merged (2026-06-19): the manylinux Linux x86_64 wheel now ships. Root cause was a platlib-layout bug (native lib routed to `.data/purelib/`, rejected by auditwheel); fixed with an `install_lib = install_platlib` override in `python/setup.py`. `release.yml` builds the cdylib + wheel inside a `manylinux_2_28` container, auditwheel-repairs it, and a blocking smoke job installs+imports it in a clean container before publish. `rust_ethernet_ip-1.1.0-py3-none-manylinux_2_28_x86_64.whl` was added to the existing PyPI 1.1.0 release (no version bump) — `pip install` now works on Linux x86_64.
 

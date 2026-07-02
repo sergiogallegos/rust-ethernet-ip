@@ -77,13 +77,37 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
+    # The ubuntu testhost intermittently crashes at teardown AFTER all tests
+    # pass (leaked native runtime threads racing process exit — see
+    # wiki/investigations/dotnet-testhost-shutdown-2026-05-26.md). One retry
+    # absorbs the flake; a genuine test failure still fails twice.
     - name: Run C# tests
       if: matrix.rust == 'stable'
-      run: dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release --blame-crash
+      shell: bash
+      run: |
+        dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release --blame-crash \
+          || dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release --blame-crash
 
     - name: Run C# native P/Invoke integration tests
       if: matrix.rust == 'stable'
-      run: dotnet test csharp/RustEtherNetIp.IntegrationTests/RustEtherNetIp.IntegrationTests.csproj -c Release --blame-crash
+      shell: bash
+      run: |
+        dotnet test csharp/RustEtherNetIp.IntegrationTests/RustEtherNetIp.IntegrationTests.csproj -c Release --blame-crash \
+          || dotnet test csharp/RustEtherNetIp.IntegrationTests/RustEtherNetIp.IntegrationTests.csproj -c Release --blame-crash
+
+    # Preserve --blame-crash dumps even when the retry absorbed the flake, so
+    # the open question in the testhost-shutdown investigation can be answered
+    # from a real stable-toolchain dump.
+    - name: Upload C# testhost crash dumps
+      if: matrix.rust == 'stable' && always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: csharp-testhost-dumps-${{ matrix.os }}-${{ github.run_id }}
+        path: |
+          csharp/**/TestResults/**/*crashdump*.dmp
+          csharp/**/TestResults/**/Sequence_*.xml
+        if-no-files-found: ignore
+        retention-days: 14
 
     - name: Install cargo-tarpaulin
       if: matrix.coverage

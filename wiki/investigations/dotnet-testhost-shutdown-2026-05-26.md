@@ -28,6 +28,14 @@
 
 `fix applied`: The C# test step (plus its cdylib build and .NET setup) is gated to `matrix.rust == 'stable'`. The C# wrapper P/Invokes a stable C ABI, so testing it against a stable-built cdylib is sufficient; the Rust code paths are still exercised by `cargo test` on beta, so no coverage is lost. `--blame-crash` was added to the surviving stable invocation so any future recurrence on stable produces a dump.
 
+## Update 2026-07-02 — recurred on ubuntu/stable; retry + dump-upload applied
+
+`confirmed`: The crash now reproduces on `Test (ubuntu-latest / stable)` — the leg the 2026-05-29 beta-scoping left as sole C# coverage. Runs `28567033593` (repo `b2fcf33`, docs-only push) and `28621972073` (repo `3caa686`) aborted with the same signature: all executed tests pass (78/78 in the latter), then "Test host process crashed" during teardown; run `28608241263` in between passed the same leg, confirming intermittency. The stable recurrence eliminates "beta-rustc regression" as the sole explanation — the native shutdown race (leaked global Tokio runtime threads vs. Linux testhost exit) stands as the primary hypothesis, pointing at the FFI teardown path (CODEX-AS territory).
+
+`fix applied`: Both C# test steps retry once on failure (a genuine test failure still fails twice; only the post-pass teardown crash is absorbed), and a `--blame-crash` dump/sequence-file artifact upload (`if: always()`, 14-day retention) now preserves the evidence the 2026-05-29 open question asked for — including dumps from crashes the retry absorbed.
+
+`next`: Pull `csharp-testhost-dumps-ubuntu-latest-*` from any run where the first attempt crashed and inspect whether the faulting thread is a Tokio worker inside the cdylib or the testhost's own teardown. A durable fix belongs to the FFI lifecycle work (CODEX-AS: unwind guard, teardown discipline), not to CI.
+
 ## Open Questions
 
 - Whether beta codegen exposes a real data race / UB in the FFI shutdown path (clients cloned out of `FFI_CLIENTS` while background timers/keep-alive tasks call `block_on`) versus a transient beta-rustc regression is still `unclear`. If the crash ever appears on `ubuntu/stable`, the `--blame-crash` dump should isolate `SimulatorTestHarness.Dispose()` versus native library shutdown.

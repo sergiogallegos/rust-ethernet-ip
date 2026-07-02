@@ -2,7 +2,7 @@
 id: CODEX-AV
 title: Re-validate the firmware_blocked_* write labels — the 0x2107 lore is falling to correct paths
 owner: codex
-status: open
+status: in-progress
 created: 2026-07-03
 last-update: 2026-07-03 claude [Fable 5]
 ---
@@ -71,6 +71,43 @@ A probe example or extension of the full-coverage runner (Codex's choice — pre
 
 ## Codex log
 
+2026-07-03 — Submitted by Codex, probe stage. Added `examples/probe_blocked_write_labels.rs`, a maintainer-run Rust hardware probe that expands `examples/full_coverage_tags.json`, selects one representative per current `firmware_blocked_*` class by default (11 targets), and can sweep every blocked manifest tag with `--all-blocked` (72 targets). Each probe target reads the original value, selects a kind-specific test value, writes through the public `write_tag` path, verifies read-back on success, checks a sibling member where the path has one, restores the original value, verifies restore, and writes JSON evidence under `examples/full_coverage_results/`. The probe exits non-zero on setup, verify, sibling-integrity, or restore failures; ordinary write failures are recorded as class evidence rather than treated as tool failures.
+
+Maintainer commands: `cargo run --example probe_blocked_write_labels --locked` for the representative matrix, or `cargo run --example probe_blocked_write_labels --locked -- --all-blocked` for the full 72-label sweep. Set `TEST_PLC_ADDRESS` and `TEST_PLC_SLOT` or pass `--plc-address` / `--plc-slot`. Added `docs/validation/2026-07-03_blocked_write_label_probe_plan.md` as the evidence template and runbook.
+
+Documentation changed without relabeling: `docs/agents/notes/ab-firmware-quirks.md`, `src/lib.rs`, and `src/client.rs` no longer state that all UDT array element member writes are inherently firmware-blocked. They now record the CODEX-AM DINT-member success, keep the manifest labels under CODEX-AV revalidation, and keep read-modify-write as the conservative fallback until the matrix proves which direct writes are reliable. `CHANGELOG.md` records the probe and documentation correction.
+
+Verification passed: `cargo fmt --all`; `cargo run --example probe_blocked_write_labels --locked -- --dry-run` (11 representative targets); `cargo run --example probe_blocked_write_labels --locked -- --dry-run --all-blocked` (72 targets); `cargo clippy --example probe_blocked_write_labels --locked -- -D warnings`; `cargo test --example probe_blocked_write_labels --locked`. `tests/full_coverage_manifest_tests.sh` could not run locally because this Windows environment has no WSL/bash distribution installed; its new assertion is covered by the direct probe dry-run command above and should run in CI's ubuntu shell.
+
+Pending hardware/evidence work: no manifest labels, full-coverage runner counts, or service-layer routing defaults were changed yet. Those are intentionally gated on the maintainer-run probe JSON and should land in the evidence/relabel follow-up commit.
+
 ## Claude review
+
+### 2026-07-03 02:00  claude [Fable 5] — probe stage review + hardware matrix executed
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean; `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `bash tests/full_coverage_manifest_tests.sh` — **ok on this host** (Git Bash; Codex's "no bash" note was over-cautious), including the new `blocked_targets=11` dry-run assertion.
+- Dry-runs: 11 representative / 72 all-blocked targets enumerate correctly from the manifest; no `Udt`-kind targets exist in the blocked set (the `candidate_value` `None` path is dead for current data — fine).
+- Probe source audited before any hardware use: per-target read-original → write-candidate → verify → sibling check → restore → verify-restore, non-zero exit on any discipline failure. Sound.
+- **Hardware matrix executed on the 5069-L330ERM fw38** (maintainer-authorized bench, both commands): representative 11 and full 72-target sweep, both `RESULT=PASS` with `unexpected=0` — every mutated value restored and verified, every sibling untouched. Evidence recorded in the plan doc (now the evidence doc) with JSON artifact names.
+
+**The matrix answer**
+- **All 60 scalar targets (DINT/REAL/BOOL/INT × controller/program × UDT-array elements) write successfully.**
+- **All 12 STRING-member targets fail with CIP `0xFF`/`0x2107`** — consistent, both scopes, standalone-UDT and array-element members alike. With the current encoding (`PlcValue::String` → standalone STRING handle `0x0FCE`), STRING members are genuinely refused; whether a member-tailored encoding exists is CODEX-AO wire-format territory, not a labeling question.
+- Manifest asymmetry surfaced: `prog.UDTarr_elem_members` lacks a blocked `Member5_String` entry that its controller-scope twin has — reconcile in the relabel.
+
+**Findings**
+- 🟢 Probe-stage scope discipline was exactly right: docs corrected without premature relabels, everything evidence-gated.
+- 🟡 The class-representative selector keys on `(scope, mode, category, member, kind)`, which made the default matrix 11 rather than a minimal 6 — harmless (more evidence), noted only so nobody "fixes" it into less coverage.
+- 🟠/🔴 none.
+
+**Directive for the relabel stage (now unblocked)**
+1. Flip the 60 scalar `firmware_blocked_udt_array_element_member` entries to writeable; update the three runners and the pinned counts (2299 / 2268 / 12 / 19 — recompute and verify via the shell suite) in the same commit.
+2. STRING members stay blocked; make the label/docs say what the evidence says (rejected `0x2107` under the current encoding, L330ERM fw38) and fix the prog-array `Member5_String` asymmetry.
+3. Quirks note: UDT-array-element section becomes scalar-vs-STRING-member split with links to the evidence doc.
+4. Item 4 (service layer): direct writes are proven for scalars — route scalar member writes direct with RMW fallback on `0x2107`; STRING members keep RMW unconditionally. Document.
+
+Probe stage approved and merged to `main`; task returns to `in-progress` for the relabel stage.
 
 ## Verdict

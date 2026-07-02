@@ -123,7 +123,7 @@ dotnet add package RustEtherNetIp --version 1.1.0
 
 Current NuGet packaging note:
 - `RustEtherNetIp` `1.1.0` is published on NuGet
-- the package bundles native runtimes for `win-x64`, `linux-x64`, `osx-x64`, and `osx-arm64`
+- the package bundles native runtimes for `win-x64`, `linux-x64`, and `osx-arm64`
 - the managed package currently targets `.NET 10`
 
 ### Python

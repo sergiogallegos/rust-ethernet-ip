@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Target next release: TBD.
 
+### Fixed
+- C# `WriteUdtMember` no longer self-deadlocks by recursively acquiring the
+  wrapper operation lock during its read-modify-write path.
+- C# native marshalling now uses UTF-8 for tag names, JSON payloads, STRING
+  values, native result strings, and runtime metadata instead of ANSI code-page
+  conversion.
+- C# keep-alive health checks now serialize with user operations on the native
+  handle and skip a tick if the operation lock is busy.
+- C# `Connect`/`ConnectWithRoute` now populate `LastConnectError` with the
+  native failure code, including the runtime-initialization failure case.
+- The standalone simulator now supports the C# native integration-test path,
+  including raw UDT reads and Multiple Service Packet batch requests.
+- CI now checks public API compatibility against the published `1.1.0`
+  baseline instead of the obsolete `0.7.0` baseline.
+- The crates.io release workflow now tolerates only already-published crate
+  versions; other `cargo publish` failures fail the job.
+- Local `dotnet pack` output for the C# wrapper now places the native library
+  under `runtimes/<rid>/native/` instead of package-root content.
+- NuGet runtime documentation now matches the shipped RID set:
+  `win-x64`, `linux-x64`, and `osx-arm64`.
+
+### Changed
+- C# CI now runs a simulator-backed P/Invoke integration test project on the
+  stable toolchain legs, covering connect/disconnect, scalar and UTF-8 STRING
+  round trips, native batch read/write, `WriteUdtMember` watchdog completion,
+  and keep-alive contention.
+- Cargo metadata no longer publishes the placeholder author email, matching the
+  sibling crates' manifest convention.
+- The FFI-only `libc` dependency is optional behind the `ffi` feature, and
+  `vergen` is no longer a runtime dependency.
+- The `futures` dependency no longer pulls its default features (landed earlier
+  as PR #24; recorded here for release visibility).
+- `cargo audit` runs weekly in CI, and the release-readiness shell test now runs
+  in CI.
+
+### Removed
+- Deleted stale, uncompiled scratch test files under `tests/unit/` and
+  `test_isolated/`.
+
 ## [1.1.0] - 2026-06-19
 
 Post-1.0.0 review pass: correctness fixes across all three language bindings,

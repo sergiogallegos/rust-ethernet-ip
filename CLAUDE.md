@@ -10,7 +10,7 @@ Rust EtherNet/IP is a high-performance EtherNet/IP communication library for All
 
 ```bash
 cargo build                          # Debug build
-cargo build --release                # Release build (needed for C# FFI .dll/.so/.dylib)
+cargo build --release --features ffi # Release cdylib with C FFI exports for C#/Python/C consumers
 cargo fmt -- --check                 # Check formatting (CI enforced)
 cargo clippy -- -D warnings          # Lint with warnings as errors (CI enforced)
 cargo test                           # Run all tests (integration tests need a PLC)

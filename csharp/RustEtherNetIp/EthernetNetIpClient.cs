@@ -17,28 +17,28 @@ namespace RustEtherNetIp
     /// This class manages the connection to a single PLC and provides methods to read/write
     /// all Allen-Bradley native data types. The underlying Rust library handles the EtherNet/IP protocol
     /// implementation, CIP messaging, advanced tag addressing, and network communications.
-    /// 
+    ///
     /// Performance: 1,500+ reads/sec, 800+ writes/sec
     /// Supported PLCs: CompactLogix L1x-L5x, ControlLogix L6x-L8x series
     /// Supported Data Types: BOOL, SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL, STRING, UDT
     /// Advanced Features: Program-scoped tags, array addressing, bit operations, UDT member access
-    /// 
+    ///
     /// <para><strong>⚠️ Known Limitations (PLC Firmware Restrictions):</strong></para>
     /// <para>
     /// The following operations are not supported due to PLC firmware restrictions.
     /// These limitations are inherent to the Allen-Bradley PLC firmware and cannot be bypassed at the library level.
     /// </para>
     /// <list type="bullet">
-    /// <item><description><strong>STRING Tags:</strong> Cannot write directly to STRING tags (e.g., "gTest_STRING", "Program:TestProgram.gTest_STRING"). 
+    /// <item><description><strong>STRING Tags:</strong> Cannot write directly to STRING tags (e.g., "gTest_STRING", "Program:TestProgram.gTest_STRING").
     /// This is a PLC firmware limitation (CIP Error 0x2107). STRING tags can be read successfully but cannot be written directly.
     /// For STRING members in UDTs, use the workaround: read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
-    /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs 
+    /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs
     /// (e.g., "gTestUDT.Member5_String"). Must read the entire UDT structure, modify the STRING member in memory, then write the entire UDT back.</description></item>
-    /// <item><description><strong>UDT Array Element Members:</strong> Cannot write directly to members of UDT array elements 
-    /// (e.g., "gTestUDT_Array[0].Member1_DINT", "Program:TestProgram.gTestUDT_Array[0].Member1_DINT"). 
+    /// <item><description><strong>UDT Array Element Members:</strong> Cannot write directly to members of UDT array elements
+    /// (e.g., "gTestUDT_Array[0].Member1_DINT", "Program:TestProgram.gTestUDT_Array[0].Member1_DINT").
     /// Must read the entire UDT array element, modify the member in memory, then write the entire element back.</description></item>
     /// </list>
-    /// 
+    ///
     /// <para><strong>✅ What Works:</strong></para>
     /// <list type="bullet">
     /// <item><description>Reading all tag types including STRING tags and UDT members</description></item>
@@ -48,7 +48,7 @@ namespace RustEtherNetIp
     /// <item><description>Writing simple array elements (e.g., "gArray[5]")</description></item>
     /// <item><description>Reading UDT array element members (e.g., "gTestUDT_Array[0].Member1_DINT")</description></item>
     /// </list>
-    /// 
+    ///
     /// <para><strong>💡 Workarounds:</strong></para>
     /// <list type="bullet">
     /// <item><description><strong>UDT Array Element Members:</strong> Read the entire UDT array element, modify the member in memory, then write the entire UDT array element back.</description></item>
@@ -66,12 +66,12 @@ namespace RustEtherNetIp
     ///     bool startButton = client.ReadBool("StartButton");
     ///     int counter = client.ReadDint("ProductionCount");
     ///     float temperature = client.ReadReal("BoilerTemp");
-    ///     
+    ///
     ///     // Advanced tag addressing
     ///     bool motorStatus = client.ReadBool("Program:MainProgram.Motor.Status");
     ///     int arrayElement = client.ReadDint("DataArray[5]");
     ///     bool bitAccess = client.ReadBool("StatusWord.15");
-    ///     
+    ///
     ///     // Write operations
     ///     client.WriteBool("StartButton", true);
     ///     client.WriteDint("SetPoint", 1500);
@@ -96,6 +96,18 @@ namespace RustEtherNetIp
         private readonly Dictionary<string, TagGroupRegistration> _tagGroups = new();
         private readonly object _tagGroupLock = new();
         private readonly ClientStatistics _statistics = new();
+        private volatile string? _lastConnectError;
+        private TimeSpan _keepAliveInterval = TimeSpan.FromSeconds(30);
+
+        public string? LastConnectError => _lastConnectError;
+
+        internal TimeSpan KeepAliveInterval
+        {
+            get => _keepAliveInterval;
+            set => _keepAliveInterval = value <= TimeSpan.Zero
+                ? throw new ArgumentOutOfRangeException(nameof(value))
+                : value;
+        }
 
         #region Boolean Operations
 
@@ -123,7 +135,7 @@ namespace RustEtherNetIp
                 try
                 {
                     CheckConnection();
-                    IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                    IntPtr tagPtr = AllocUtf8(tagName);
                     try
                     {
                         // First try the type-specific FFI function
@@ -141,7 +153,7 @@ namespace RustEtherNetIp
                         result = eip_read_tag(_clientId, tagPtr, resultPtr, 4096);
                         if (result == 0)
                         {
-                            string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                            string jsonResult = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                             if (!string.IsNullOrEmpty(jsonResult))
                             {
                                 var plcValue = PlcValue.FromJson(jsonResult);
@@ -159,7 +171,7 @@ namespace RustEtherNetIp
                     }
                     finally
                     {
-                        Marshal.FreeHGlobal(tagPtr);
+                        FreeUtf8(tagPtr);
                     }
                 }
                 catch
@@ -190,7 +202,7 @@ namespace RustEtherNetIp
                 try
                 {
                     CheckConnection();
-                    IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                    IntPtr tagPtr = AllocUtf8(tagName);
                     try
                     {
                         int result = eip_write_bool(_clientId, tagPtr, value ? 1 : 0);
@@ -200,7 +212,7 @@ namespace RustEtherNetIp
                     }
                     finally
                     {
-                        Marshal.FreeHGlobal(tagPtr);
+                        FreeUtf8(tagPtr);
                     }
                 }
                 catch
@@ -231,7 +243,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_read_sint(_clientId, tagPtr, out sbyte value);
@@ -241,7 +253,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -256,7 +268,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_sint(_clientId, tagPtr, value);
@@ -265,7 +277,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -282,7 +294,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     // First try the type-specific FFI function
@@ -297,7 +309,7 @@ namespace RustEtherNetIp
                         result = eip_read_tag(_clientId, tagPtr, resultPtr, 4096);
                         if (result == 0)
                         {
-                            string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                            string jsonResult = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                             if (!string.IsNullOrEmpty(jsonResult))
                             {
                                 var plcValue = PlcValue.FromJson(jsonResult);
@@ -315,7 +327,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -330,7 +342,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_int(_clientId, tagPtr, value);
@@ -339,7 +351,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -355,7 +367,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_read_dint(_clientId, tagPtr, out int value);
@@ -365,7 +377,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -380,7 +392,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_dint(_clientId, tagPtr, value);
@@ -389,7 +401,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -405,7 +417,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_read_lint(_clientId, tagPtr, out long value);
@@ -415,7 +427,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -430,7 +442,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_lint(_clientId, tagPtr, value);
@@ -439,7 +451,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -459,7 +471,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_read_usint(_clientId, tagPtr, out byte value);
@@ -469,7 +481,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -484,7 +496,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_usint(_clientId, tagPtr, value);
@@ -493,7 +505,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -509,7 +521,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_read_uint(_clientId, tagPtr, out ushort value);
@@ -519,7 +531,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -534,7 +546,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_uint(_clientId, tagPtr, value);
@@ -543,7 +555,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -559,7 +571,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_read_udint(_clientId, tagPtr, out uint value);
@@ -569,7 +581,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -584,7 +596,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_udint(_clientId, tagPtr, value);
@@ -593,7 +605,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -609,7 +621,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_read_ulint(_clientId, tagPtr, out ulong value);
@@ -619,7 +631,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -634,7 +646,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_ulint(_clientId, tagPtr, value);
@@ -643,7 +655,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -663,7 +675,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_read_real(_clientId, tagPtr, out double value);
@@ -673,7 +685,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -688,7 +700,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_real(_clientId, tagPtr, value);
@@ -697,7 +709,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -713,7 +725,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_read_lreal(_clientId, tagPtr, out double value);
@@ -723,7 +735,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -738,7 +750,7 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_write_lreal(_clientId, tagPtr, value);
@@ -747,7 +759,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -767,7 +779,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     // First try the type-specific FFI function with larger buffer
@@ -777,7 +789,7 @@ namespace RustEtherNetIp
                         int result = eip_read_string(_clientId, tagPtr, resultPtr, 512);
                         if (result == 0)
                         {
-                            string value = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                            string value = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                             return value; // Return even if empty (LEN=0 is valid for zeroed/cleared STRING tags)
                         }
                     }
@@ -793,7 +805,7 @@ namespace RustEtherNetIp
                         int result = eip_read_tag(_clientId, tagPtr, resultPtr2, 4096);
                         if (result == 0)
                         {
-                            string jsonResult = Marshal.PtrToStringAnsi(resultPtr2) ?? string.Empty;
+                            string jsonResult = Marshal.PtrToStringUTF8(resultPtr2) ?? string.Empty;
                             if (!string.IsNullOrEmpty(jsonResult))
                             {
                                 var plcValue = PlcValue.FromJson(jsonResult);
@@ -816,7 +828,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -826,10 +838,10 @@ namespace RustEtherNetIp
         /// </summary>
         /// <param name="tagName">Name of the PLC tag to write to.</param>
         /// <param name="value">String value to write.</param>
-        /// <exception cref="Exception">Thrown if the write operation fails. Note: STRING tag writes may fail with CIP Error 0x2107 
+        /// <exception cref="Exception">Thrown if the write operation fails. Note: STRING tag writes may fail with CIP Error 0x2107
         /// due to PLC firmware limitations. STRING tags can be read but not written directly.</exception>
         /// <remarks>
-        /// <para><strong>⚠️ PLC Limitation:</strong> Most PLCs do not support direct writes to STRING tags (CIP Error 0x2107). 
+        /// <para><strong>⚠️ PLC Limitation:</strong> Most PLCs do not support direct writes to STRING tags (CIP Error 0x2107).
         /// This is a firmware restriction, not a library bug. STRING tags can be read successfully, but writes will fail.</para>
         /// <para>If you need to modify STRING values, consider:</para>
         /// <list type="bullet">
@@ -842,8 +854,8 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
-                IntPtr valuePtr = Marshal.StringToHGlobalAnsi(value);
+                IntPtr tagPtr = AllocUtf8(tagName);
+                IntPtr valuePtr = AllocUtf8(value);
                 try
                 {
                     int result = eip_write_string(_clientId, tagPtr, valuePtr);
@@ -852,8 +864,8 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
-                    Marshal.FreeHGlobal(valuePtr);
+                    FreeUtf8(tagPtr);
+                    FreeUtf8(valuePtr);
                 }
             });
         }
@@ -865,11 +877,11 @@ namespace RustEtherNetIp
         /// </summary>
         /// <param name="tagName">Name of the PLC tag to write to.</param>
         /// <param name="logixString">LogixString structure containing the string data.</param>
-        /// <exception cref="Exception">Thrown if the write operation fails. Note: STRING tag writes may fail 
+        /// <exception cref="Exception">Thrown if the write operation fails. Note: STRING tag writes may fail
         /// with CIP Error 0x2107 due to PLC firmware limitations.</exception>
         /// <remarks>
-        /// <para><strong>⚠️ PLC Limitation:</strong> Most PLCs do not support direct writes to STRING tags 
-        /// (CIP Error 0x2107). This is a firmware restriction, not a library bug. STRING tags can be read 
+        /// <para><strong>⚠️ PLC Limitation:</strong> Most PLCs do not support direct writes to STRING tags
+        /// (CIP Error 0x2107). This is a firmware restriction, not a library bug. STRING tags can be read
         /// successfully, but writes will typically fail even when using the structured format.</para>
         /// <para>This method converts the LogixString structure to a UDT format and attempts to write it.
         /// The LogixString structure matches the Allen-Bradley STRING format: len (DINT) + data (SINT array).</para>
@@ -881,16 +893,16 @@ namespace RustEtherNetIp
             // Note: This method attempts to write a STRING tag as a UDT structure.
             // However, due to PLC firmware limitations (CIP Error 0x2107), STRING tag writes
             // typically fail even when using the structured format.
-            // 
+            //
             // The LogixString structure represents: len (DINT) + data (SINT array)
             // For now, we'll attempt to write the LEN field separately as a workaround.
             // Writing the full structure requires raw byte marshaling which is complex.
-            
+
             try
             {
                 // Attempt to write LEN field directly
                 WriteDint($"{tagName}.LEN", logixString.len);
-                
+
                 // Note: Writing the DATA array field directly also fails due to PLC limitations.
                 // The full STRING structure write is not supported by the PLC firmware.
             }
@@ -901,13 +913,13 @@ namespace RustEtherNetIp
                 // Logix STRING format: len (4 bytes, DINT) + data (variable length, SINT array)
                 var totalSize = 4 + logixString.data.Length; // 4 bytes for len + data array
                 var rawBytes = new byte[totalSize];
-                
+
                 // Write len as DINT (4 bytes, little-endian)
                 BitConverter.GetBytes(logixString.len).CopyTo(rawBytes, 0);
-                
+
                 // Copy data array
                 Array.Copy(logixString.data, 0, rawBytes, 4, logixString.data.Length);
-                
+
                 // Create UdtData with raw bytes (symbol_id 0 means unknown, will be determined by PLC)
                 var udtData = new UdtData { SymbolId = 0, Data = rawBytes };
                 WriteUdtData(tagName, udtData);
@@ -925,52 +937,56 @@ namespace RustEtherNetIp
         /// <returns>PlcValue containing the UDT with nested structure support.</returns>
         public PlcValue ReadUdt(string tagName)
         {
-            return ExecuteWithLock(() =>
+            return ExecuteWithLock(() => ReadUdtCore(tagName));
+        }
+
+        private PlcValue ReadUdtCore(string tagName)
+        {
+            CheckConnection();
+            IntPtr tagPtr = AllocUtf8(tagName);
+            IntPtr resultPtr = Marshal.AllocHGlobal(16384); // Increased buffer for complex UDTs
+            try
             {
-                CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
-                IntPtr resultPtr = Marshal.AllocHGlobal(16384); // Increased buffer for complex UDTs
-                try
-                {
-                    // First try normal UDT reading
-                    int result = eip_read_udt(_clientId, tagPtr, resultPtr, 16384);
+                // First try normal UDT reading
+                int result = eip_read_udt(_clientId, tagPtr, resultPtr, 16384);
 
-                    if (result == 0)
-                    {
-                        // Success - convert the JSON result to PlcValue
-                        string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
-                        if (!string.IsNullOrEmpty(jsonResult))
-                        {
-                            // Try to parse as UdtData first (new format)
-                            try
-                            {
-                                var udtData = UdtData.FromJson(jsonResult);
-                                return PlcValue.UdtFromData(udtData);
-                            }
-                            catch
-                            {
-                                // Fallback to legacy Dictionary format
-                                return PlcValue.FromJson(jsonResult);
-                            }
-                        }
-                    }
+                if (result == 0)
+                {
+                    // Success - convert the JSON result to PlcValue
+                    string jsonResult = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
+                    if (!string.IsNullOrEmpty(jsonResult))
+                        return ParseUdtJson(jsonResult);
+                }
 
-                    // If normal reading failed, try chunked reading
-                    // This handles "Partial transfer" errors for large UDTs
-                    return ReadUdtWithChunkedFallback(tagName);
-                }
-                catch
-                {
-                    // Handle any UDT reading errors with chunked fallback
-                    // This includes "Partial transfer" errors and other UDT issues
-                    return ReadUdtWithChunkedFallback(tagName);
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(tagPtr);
-                    Marshal.FreeHGlobal(resultPtr);
-                }
-            });
+                // If normal reading failed, try chunked reading
+                // This handles "Partial transfer" errors for large UDTs
+                return ReadUdtWithChunkedFallback(tagName);
+            }
+            catch
+            {
+                // Handle any UDT reading errors with chunked fallback
+                // This includes "Partial transfer" errors and other UDT issues
+                return ReadUdtWithChunkedFallback(tagName);
+            }
+            finally
+            {
+                FreeUtf8(tagPtr);
+                Marshal.FreeHGlobal(resultPtr);
+            }
+        }
+
+        private static PlcValue ParseUdtJson(string jsonResult)
+        {
+            try
+            {
+                var udtData = UdtData.FromJson(jsonResult);
+                return PlcValue.UdtFromData(udtData);
+            }
+            catch
+            {
+                // Fallback to legacy Dictionary format
+                return PlcValue.FromJson(jsonResult);
+            }
         }
 
         private PlcValue ReadUdtWithChunkedFallback(string tagName)
@@ -978,7 +994,7 @@ namespace RustEtherNetIp
             // Chunked reading for large UDTs that exceed normal packet size
             // NOTE: This method is called from within ExecuteWithLock, so we don't need another lock
             CheckConnection();
-            IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+            IntPtr tagPtr = AllocUtf8(tagName);
             IntPtr resultPtr = Marshal.AllocHGlobal(16384);
             try
             {
@@ -986,7 +1002,7 @@ namespace RustEtherNetIp
 
                 if (result == 0)
                 {
-                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    string jsonResult = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                     if (!string.IsNullOrEmpty(jsonResult))
                     {
                         // Try to parse as UdtData first (new format)
@@ -1013,7 +1029,7 @@ namespace RustEtherNetIp
             }
             finally
             {
-                Marshal.FreeHGlobal(tagPtr);
+                FreeUtf8(tagPtr);
                 Marshal.FreeHGlobal(resultPtr);
             }
         }
@@ -1030,7 +1046,7 @@ namespace RustEtherNetIp
                 try { return PlcValue.String(ReadString(tagName)); } catch { }
                 try { return PlcValue.Int(ReadInt(tagName)); } catch { }
                 try { return PlcValue.Sint(ReadSint(tagName)); } catch { }
-                
+
                 return null;
             }
             catch
@@ -1047,49 +1063,51 @@ namespace RustEtherNetIp
         public void WriteUdt(string tagName, PlcValue value)
         {
             _ = value ?? throw new ArgumentNullException(nameof(value));
-            
+
             if (!value.IsUdt)
                 throw new ArgumentException("Value must be a UDT type", nameof(value));
 
-            ExecuteWithLock(() =>
+            ExecuteWithLock(() => WriteUdtCore(tagName, value));
+        }
+
+        private void WriteUdtCore(string tagName, PlcValue value)
+        {
+            CheckConnection();
+            IntPtr tagPtr = AllocUtf8(tagName);
+            try
             {
-                CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                // For large UDTs, use chunked writing approach
+
+                string jsonValue;
+
+                // Check if it's UdtData format (new generic format)
+                if (value.IsUdtDataFormat && value.UdtData != null)
+                {
+                    // Use UdtData JSON format
+                    jsonValue = value.UdtData.ToJson();
+                }
+                else
+                {
+                    // Legacy Dictionary format
+                    jsonValue = value.ToJson();
+                }
+
+                IntPtr valuePtr = AllocUtf8(jsonValue);
                 try
                 {
-                    // For large UDTs, use chunked writing approach
-                    
-                    string jsonValue;
-                    
-                    // Check if it's UdtData format (new generic format)
-                    if (value.IsUdtDataFormat && value.UdtData != null)
-                    {
-                        // Use UdtData JSON format
-                        jsonValue = value.UdtData.ToJson();
-                    }
-                    else
-                    {
-                        // Legacy Dictionary format
-                        jsonValue = value.ToJson();
-                    }
-                    
-                    IntPtr valuePtr = Marshal.StringToHGlobalAnsi(jsonValue);
-                    try
-                    {
-                        int result = eip_write_udt(_clientId, tagPtr, valuePtr, jsonValue.Length);
-                        if (result != 0)
-                            throw OperationFailure($"Failed to write UDT tag '{tagName}'. Check tag exists and is writable.");
-                    }
-                    finally
-                    {
-                        Marshal.FreeHGlobal(valuePtr);
-                    }
+                    int result = eip_write_udt(_clientId, tagPtr, valuePtr, System.Text.Encoding.UTF8.GetByteCount(jsonValue));
+                    if (result != 0)
+                        throw OperationFailure($"Failed to write UDT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(valuePtr);
                 }
-            });
+            }
+            finally
+            {
+                FreeUtf8(tagPtr);
+            }
         }
 
         /// <summary>
@@ -1140,7 +1158,7 @@ namespace RustEtherNetIp
             var members = udtValue.UdtMembers;
             if (members == null)
                 throw new Exception($"Tag '{tagName}' returned raw UDT data without member definitions.");
-            
+
             return ConvertUdtToDictionary(members);
         }
 
@@ -1162,16 +1180,16 @@ namespace RustEtherNetIp
         /// <param name="tagName">Name of the UDT tag.</param>
         /// <param name="memberPath">Dot-separated path to the nested member (e.g., "Status.Running").</param>
         /// <param name="value">Value to set.</param>
-        /// <exception cref="Exception">Thrown if the operation fails. Note: Writing to UDT array element members 
+        /// <exception cref="Exception">Thrown if the operation fails. Note: Writing to UDT array element members
         /// (e.g., "gTestUDT_Array[0].Member1_DINT") or STRING members in UDTs will fail with CIP Error 0x2107 due to PLC firmware limitations.</exception>
         /// <remarks>
         /// <para><strong>⚠️ PLC Limitations:</strong></para>
         /// <list type="bullet">
-        /// <item><description><strong>UDT Array Element Members:</strong> Cannot write directly to members of UDT array elements 
-        /// (e.g., "gTestUDT_Array[0].Member1_DINT"). The PLC returns CIP Error 0x2107. 
+        /// <item><description><strong>UDT Array Element Members:</strong> Cannot write directly to members of UDT array elements
+        /// (e.g., "gTestUDT_Array[0].Member1_DINT"). The PLC returns CIP Error 0x2107.
         /// Workaround: Read the entire UDT array element, modify the member in memory, then write the entire element back.</description></item>
-        /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs 
-        /// (e.g., "gTestUDT.Member5_String"). The PLC returns CIP Error 0x2107. 
+        /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs
+        /// (e.g., "gTestUDT.Member5_String"). The PLC returns CIP Error 0x2107.
         /// Workaround: Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
         /// </list>
         /// <para><strong>✅ What Works:</strong> Writing to non-STRING members of non-array UDTs (e.g., "gTestUDT.Member1_DINT").</para>
@@ -1184,13 +1202,13 @@ namespace RustEtherNetIp
 
             var members = udtValue.UdtMembers ?? throw new Exception($"Tag '{tagName}' returned raw UDT data without member definitions.");
             var parts = memberPath.Split('.');
-            
+
             // Navigate to the parent of the target member
             for (int i = 0; i < parts.Length - 1; i++)
             {
                 if (!members.ContainsKey(parts[i]))
                     throw new Exception($"Member path '{memberPath}' is invalid. '{parts[i]}' not found.");
-                
+
                 var nestedValue = members[parts[i]];
                 if (!nestedValue.IsUdt)
                     throw new Exception($"Member path '{memberPath}' is invalid. '{parts[i]}' is not a UDT.");
@@ -1216,19 +1234,19 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 IntPtr resultPtr = Marshal.AllocHGlobal(16384); // Larger buffer for chunked reading
                 try
                 {
                     int result = eip_read_udt_chunked(_clientId, tagPtr, resultPtr, 16384);
                     if (result != 0)
                         throw OperationFailure($"Failed to read UDT tag '{tagName}' with chunked reading. Check tag exists and is UDT type.");
-                    
+
                     // Convert the JSON result to PlcValue
-                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    string jsonResult = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                     if (string.IsNullOrEmpty(jsonResult))
                         throw new Exception($"Empty response when reading UDT tag '{tagName}' with chunked reading.");
-                    
+
                     // Try to parse as UdtData first (new format)
                     try
                     {
@@ -1243,7 +1261,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                     Marshal.FreeHGlobal(resultPtr);
                 }
             });
@@ -1263,24 +1281,24 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr udtPtr = Marshal.StringToHGlobalAnsi(udtName);
+                IntPtr udtPtr = AllocUtf8(udtName);
                 IntPtr resultPtr = Marshal.AllocHGlobal(1024);
                 try
                 {
                     int result = eip_read_udt_member_by_offset(_clientId, udtPtr, memberOffset, memberSize, dataType, resultPtr, 1024);
                     if (result != 0)
                         throw OperationFailure($"Failed to read UDT member at offset {memberOffset} from '{udtName}'. Check UDT exists and offset is valid.");
-                    
+
                     // Convert the JSON result to PlcValue
-                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    string jsonResult = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                     if (string.IsNullOrEmpty(jsonResult))
                         throw new Exception($"Empty response when reading UDT member from '{udtName}' at offset {memberOffset}.");
-                    
+
                     return PlcValue.FromJson(jsonResult);
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(udtPtr);
+                    FreeUtf8(udtPtr);
                     Marshal.FreeHGlobal(resultPtr);
                 }
             });
@@ -1302,12 +1320,12 @@ namespace RustEtherNetIp
             ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr udtPtr = Marshal.StringToHGlobalAnsi(udtName);
+                IntPtr udtPtr = AllocUtf8(udtName);
                 try
                 {
                     // Serialize the value to JSON
                     string jsonValue = value.ToJson();
-                    IntPtr valuePtr = Marshal.StringToHGlobalAnsi(jsonValue);
+                    IntPtr valuePtr = AllocUtf8(jsonValue);
                     try
                     {
                         int result = eip_write_udt_member_by_offset(_clientId, udtPtr, memberOffset, memberSize, dataType, valuePtr, jsonValue.Length);
@@ -1316,12 +1334,12 @@ namespace RustEtherNetIp
                     }
                     finally
                     {
-                        Marshal.FreeHGlobal(valuePtr);
+                        FreeUtf8(valuePtr);
                     }
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(udtPtr);
+                    FreeUtf8(udtPtr);
                 }
             });
         }
@@ -1339,7 +1357,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr udtPtr = Marshal.StringToHGlobalAnsi(udtName);
+                IntPtr udtPtr = AllocUtf8(udtName);
                 IntPtr resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UdtDefinitionResultNative>());
                 try
                 {
@@ -1349,7 +1367,7 @@ namespace RustEtherNetIp
 
                     if (result != 0 || !native.Success)
                     {
-                        string error = PtrToStringAnsiSafe(native.ErrorMessage);
+                        string error = PtrToStringUtf8Safe(native.ErrorMessage);
                         if (string.IsNullOrWhiteSpace(error))
                             error = "Unknown error";
                         throw OperationFailure($"Failed to get UDT definition for '{udtName}': {error}");
@@ -1357,7 +1375,7 @@ namespace RustEtherNetIp
 
                     var template = new UdtTemplate
                     {
-                        Name = PtrToStringAnsiSafe(native.Name),
+                        Name = PtrToStringUtf8Safe(native.Name),
                         Members = new List<UdtMemberTemplate>()
                     };
 
@@ -1376,7 +1394,7 @@ namespace RustEtherNetIp
 
                             template.Members.Add(new UdtMemberTemplate
                             {
-                                Name = PtrToStringAnsiSafe(member.Name),
+                                Name = PtrToStringUtf8Safe(member.Name),
                                 DataType = CipDataTypeName(member.DataType),
                                 Size = member.Size,
                                 Offset = member.Offset
@@ -1394,7 +1412,7 @@ namespace RustEtherNetIp
                 {
                     eip_free_udt_definition(resultPtr);
                     Marshal.FreeHGlobal(resultPtr);
-                    Marshal.FreeHGlobal(udtPtr);
+                    FreeUtf8(udtPtr);
                 }
             });
         }
@@ -1412,7 +1430,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 IntPtr resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<TagAttributesResultNative>());
                 try
                 {
@@ -1422,19 +1440,19 @@ namespace RustEtherNetIp
 
                     if (result != 0 || !native.Success)
                     {
-                        string error = PtrToStringAnsiSafe(native.ErrorMessage);
+                        string error = PtrToStringUtf8Safe(native.ErrorMessage);
                         if (string.IsNullOrWhiteSpace(error))
                             error = "Unknown error";
                         throw OperationFailure($"Failed to get tag attributes for '{tagName}': {error}");
                     }
 
-                    string typeName = PtrToStringAnsiSafe(native.DataTypeName);
+                    string typeName = PtrToStringUtf8Safe(native.DataTypeName);
                     if (string.IsNullOrWhiteSpace(typeName))
                         typeName = CipDataTypeName(native.DataType);
 
                     return new TagAttributes
                     {
-                        Name = PtrToStringAnsiSafe(native.Name),
+                        Name = PtrToStringUtf8Safe(native.Name),
                         DataTypeName = typeName,
                         DataType = native.DataType,
                         Size = native.Size,
@@ -1445,7 +1463,7 @@ namespace RustEtherNetIp
                 {
                     eip_free_tag_attributes_result(resultPtr);
                     Marshal.FreeHGlobal(resultPtr);
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -1468,7 +1486,7 @@ namespace RustEtherNetIp
 
                     if (result != 0 || !native.Success)
                     {
-                        string error = PtrToStringAnsiSafe(native.ErrorMessage);
+                        string error = PtrToStringUtf8Safe(native.ErrorMessage);
                         if (string.IsNullOrWhiteSpace(error))
                             error = "Unknown error";
                         throw OperationFailure($"Failed to discover tags: {error}");
@@ -1483,13 +1501,13 @@ namespace RustEtherNetIp
                             IntPtr tagPtr = IntPtr.Add(native.Tags, i * tagSize);
                             var tag = Marshal.PtrToStructure<TagAttributesNative>(tagPtr);
 
-                            string typeName = PtrToStringAnsiSafe(tag.DataTypeName);
+                            string typeName = PtrToStringUtf8Safe(tag.DataTypeName);
                             if (string.IsNullOrWhiteSpace(typeName))
                                 typeName = CipDataTypeName(tag.DataType);
 
                             tags.Add(new TagAttributes
                             {
-                                Name = PtrToStringAnsiSafe(tag.Name),
+                                Name = PtrToStringUtf8Safe(tag.Name),
                                 DataTypeName = typeName,
                                 DataType = tag.DataType,
                                 Size = tag.Size,
@@ -1526,8 +1544,10 @@ namespace RustEtherNetIp
             {
                 CheckConnection();
 
-                // Read the entire UDT, modify the specific member, and write it back
-                var udtValue = ReadUdt(udtName);
+                // Read the entire UDT, modify the specific member, and write it back.
+                // This method already holds _operationLock; use core methods to avoid
+                // recursively waiting on the non-reentrant SemaphoreSlim.
+                var udtValue = ReadUdtCore(udtName);
                 if (udtValue.IsUdt)
                 {
                     var udtMembers = udtValue.UdtMembers ?? throw new InvalidOperationException($"UDT '{udtName}' returned raw data without member definitions.");
@@ -1536,7 +1556,7 @@ namespace RustEtherNetIp
                     updatedMembers[memberName] = value;
 
                     var updatedUdt = PlcValue.Udt(updatedMembers);
-                    WriteUdt(udtName, updatedUdt);
+                    WriteUdtCore(udtName, updatedUdt);
                 }
                 else
                 {
@@ -1548,11 +1568,6 @@ namespace RustEtherNetIp
         #endregion
 
         #region Helper Methods
-
-        private static string PtrToStringAnsiSafe(IntPtr ptr)
-        {
-            return ptr == IntPtr.Zero ? string.Empty : Marshal.PtrToStringAnsi(ptr) ?? string.Empty;
-        }
 
         private static string CipDataTypeName(short dataType)
         {
@@ -1673,7 +1688,7 @@ namespace RustEtherNetIp
                 var udtMembers = value.UdtMembers;
                 if (udtMembers != null)
                     return ConvertUdtToDictionary(udtMembers);
-                
+
                 var udtData = value.UdtData;
                 if (udtData != null)
                     return udtData;
@@ -1831,8 +1846,8 @@ namespace RustEtherNetIp
                             dataType = "STRING";
                             success = true;
                         }
-                        catch (Exception ex) 
-                        { 
+                        catch (Exception ex)
+                        {
                             lastException = ex;
                             // STRING reads are supported, but direct STRING writes are limited by PLC firmware.
                         }
@@ -1899,7 +1914,7 @@ namespace RustEtherNetIp
                 return ExecuteWithLock(() =>
                 {
                     CheckConnection();
-                    var tagPtrs = tagNames.Select(Marshal.StringToHGlobalAnsi).ToArray();
+                    var tagPtrs = tagNames.Select(AllocUtf8).ToArray();
                     IntPtr resultPtr = IntPtr.Zero;
 
                     try
@@ -1909,7 +1924,7 @@ namespace RustEtherNetIp
                         if (rc != 0)
                             return null;
 
-                        string payload = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                        string payload = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                         if (string.IsNullOrWhiteSpace(payload))
                             return null;
 
@@ -1923,7 +1938,7 @@ namespace RustEtherNetIp
                         foreach (var ptr in tagPtrs)
                         {
                             if (ptr != IntPtr.Zero)
-                                Marshal.FreeHGlobal(ptr);
+                                FreeUtf8(ptr);
                         }
                     }
                 });
@@ -2176,12 +2191,12 @@ namespace RustEtherNetIp
                 var payload = JsonSerializer.Serialize(ffiOperations);
                 ExecuteWithLock(() =>
                 {
-                    IntPtr payloadPtr = Marshal.StringToHGlobalAnsi(payload);
+                    IntPtr payloadPtr = AllocUtf8(payload);
                     IntPtr resultPtr = Marshal.AllocHGlobal(65536);
                     try
                     {
                         int rc = eip_write_tags_batch(_clientId, payloadPtr, ffiOperations.Count, resultPtr, 65536);
-                        var json = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                        var json = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
 
                         if (string.IsNullOrWhiteSpace(json))
                         {
@@ -2226,7 +2241,7 @@ namespace RustEtherNetIp
                     }
                     finally
                     {
-                        Marshal.FreeHGlobal(payloadPtr);
+                        FreeUtf8(payloadPtr);
                         Marshal.FreeHGlobal(resultPtr);
                     }
                 });
@@ -2348,12 +2363,12 @@ namespace RustEtherNetIp
                 var payload = JsonSerializer.Serialize(ffiOperations);
                 ExecuteWithLock(() =>
                 {
-                    IntPtr payloadPtr = Marshal.StringToHGlobalAnsi(payload);
+                    IntPtr payloadPtr = AllocUtf8(payload);
                     IntPtr resultPtr = Marshal.AllocHGlobal(131072);
                     try
                     {
                         int rc = eip_execute_batch(_clientId, payloadPtr, ffiOperations.Count, resultPtr, 131072);
-                        string json = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                        string json = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                         if (string.IsNullOrWhiteSpace(json))
                             throw new Exception("Empty native execute-batch response");
 
@@ -2377,7 +2392,7 @@ namespace RustEtherNetIp
                     }
                     finally
                     {
-                        Marshal.FreeHGlobal(payloadPtr);
+                        FreeUtf8(payloadPtr);
                         Marshal.FreeHGlobal(resultPtr);
                     }
                 });
@@ -2434,7 +2449,7 @@ namespace RustEtherNetIp
             try
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 IntPtr resultPtr = Marshal.AllocHGlobal(4096);
                 try
                 {
@@ -2442,7 +2457,7 @@ namespace RustEtherNetIp
                     if (result != 0)
                         throw OperationFailure($"Failed to read tag '{tagName}'");
 
-                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    string jsonResult = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                     if (string.IsNullOrEmpty(jsonResult))
                         throw new Exception($"Empty response for tag '{tagName}'");
 
@@ -2451,7 +2466,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                     Marshal.FreeHGlobal(resultPtr);
                 }
             }
@@ -2476,7 +2491,7 @@ namespace RustEtherNetIp
         private void WriteTag(string tagName, PlcValue value)
         {
             CheckConnection();
-            
+
             // Use the appropriate write method based on PlcValue type
             switch (value.Type)
             {
@@ -2614,7 +2629,7 @@ namespace RustEtherNetIp
                 CheckConnection();
                 var timestamp = DateTime.Now;
                 var results = new TagReadResult[tagNames.Length];
-                
+
                 for (int i = 0; i < tagNames.Length; i++)
                 {
                     try
@@ -2642,7 +2657,7 @@ namespace RustEtherNetIp
                         };
                     }
                 }
-                
+
                 return results;
             });
         }
@@ -2666,7 +2681,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr namePtr = Marshal.StringToHGlobalAnsi(baseArrayName);
+                IntPtr namePtr = AllocUtf8(baseArrayName);
                 IntPtr resultPtr = Marshal.AllocHGlobal(65536);
                 try
                 {
@@ -2674,7 +2689,7 @@ namespace RustEtherNetIp
                     if (result != 0)
                         throw OperationFailure($"Failed to read array range '{baseArrayName}[{startIndex}..{startIndex + elementCount - 1}]'.");
 
-                    string jsonResult = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    string jsonResult = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                     if (string.IsNullOrWhiteSpace(jsonResult))
                         throw new Exception("Array range response was empty.");
 
@@ -2696,7 +2711,7 @@ namespace RustEtherNetIp
                 finally
                 {
                     Marshal.FreeHGlobal(resultPtr);
-                    Marshal.FreeHGlobal(namePtr);
+                    FreeUtf8(namePtr);
                 }
             });
         }
@@ -2784,7 +2799,7 @@ namespace RustEtherNetIp
             return ExecuteWithLock(() =>
             {
                 CheckConnection();
-                IntPtr tagPtr = Marshal.StringToHGlobalAnsi(tagName);
+                IntPtr tagPtr = AllocUtf8(tagName);
                 try
                 {
                     int result = eip_get_tag_metadata(_clientId, tagPtr, out TagMetadata metadata);
@@ -2794,7 +2809,7 @@ namespace RustEtherNetIp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(tagPtr);
+                    FreeUtf8(tagPtr);
                 }
             });
         }
@@ -2823,7 +2838,7 @@ namespace RustEtherNetIp
         public bool CheckHealth()
         {
             if (_clientId < 0) return false;
-            
+
             int result = eip_check_health(_clientId, out int isHealthy);
             return result == 0 && isHealthy != 0;
         }
@@ -2836,9 +2851,12 @@ namespace RustEtherNetIp
         public bool CheckHealthDetailed()
         {
             if (_clientId < 0) return false;
-            
-            int result = eip_check_health_detailed(_clientId, out int isHealthy);
-            return result == 0 && isHealthy != 0;
+
+            return ExecuteWithLock(() =>
+            {
+                int result = eip_check_health_detailed(_clientId, out int isHealthy);
+                return result == 0 && isHealthy != 0;
+            });
         }
 
         #endregion
@@ -2847,7 +2865,7 @@ namespace RustEtherNetIp
     // =========================================================================
     // BATCH OPERATIONS DATA STRUCTURES
     // =========================================================================
-    
+
     /// <summary>
     /// Represents a batch operation (read or write) to be executed.
     /// </summary>
@@ -2860,17 +2878,17 @@ namespace RustEtherNetIp
         /// Name of the PLC tag to operate on.
         /// </summary>
         public string TagName { get; set; } = tagName;
-        
+
         /// <summary>
         /// True for write operations, false for read operations.
         /// </summary>
         public bool IsWrite { get; set; } = isWrite;
-        
+
         /// <summary>
         /// Value to write (only used for write operations).
         /// </summary>
         public object? Value { get; set; } = value;
-        
+
         /// <summary>
         /// Creates a read operation for the specified tag.
         /// </summary>
@@ -2880,7 +2898,7 @@ namespace RustEtherNetIp
         {
             return new BatchOperation(tagName, false, null);
         }
-        
+
         /// <summary>
         /// Creates a write operation for the specified tag and value.
         /// </summary>
@@ -2892,7 +2910,7 @@ namespace RustEtherNetIp
             return new BatchOperation(tagName, true, value);
         }
     }
-    
+
     /// <summary>
     /// Result of a batch operation execution.
     /// </summary>
@@ -2909,38 +2927,38 @@ namespace RustEtherNetIp
         /// Name of the tag that was operated on.
         /// </summary>
         public string TagName { get; set; } = tagName;
-        
+
         /// <summary>
         /// True if this was a write operation, false for read.
         /// </summary>
         public bool IsWrite { get; set; } = isWrite;
-        
+
         /// <summary>
         /// True if the operation completed successfully.
         /// </summary>
         public bool Success { get; set; } = success;
-        
+
         /// <summary>
         /// Value read from the tag (only for successful read operations).
         /// </summary>
         public object? Value { get; set; } = value;
-        
+
         /// <summary>
         /// Execution time for this operation in milliseconds.
         /// </summary>
         public double ExecutionTimeMs { get; set; } = executionTimeMs;
-        
+
         /// <summary>
         /// Error code (0 for success, negative for errors).
         /// </summary>
         public int ErrorCode { get; set; } = errorCode;
-        
+
         /// <summary>
         /// Error message (null for successful operations).
         /// </summary>
         public string? ErrorMessage { get; set; } = errorMessage;
     }
-    
+
     /// <summary>
     /// Result of a tag read operation in a batch (legacy format for batch operations).
     /// Note: For detailed read results with quality and timestamp, use the TagReadResult class from TagReadResult.cs
@@ -2957,33 +2975,33 @@ namespace RustEtherNetIp
         /// Name of the tag that was read.
         /// </summary>
         public string TagName { get; set; } = tagName;
-        
+
         /// <summary>
         /// True if the read was successful.
         /// </summary>
         public bool Success { get; set; } = success;
-        
+
         /// <summary>
         /// Value read from the tag (null if read failed).
         /// </summary>
         public object? Value { get; set; } = value;
-        
+
         /// <summary>
         /// Data type of the tag (e.g., "DINT", "REAL", "BOOL").
         /// </summary>
         public string DataType { get; set; } = dataType;
-        
+
         /// <summary>
         /// Error code (0 for success, negative for errors).
         /// </summary>
         public int ErrorCode { get; set; } = errorCode;
-        
+
         /// <summary>
         /// Error message (null for successful reads).
         /// </summary>
         public string? ErrorMessage { get; set; } = errorMessage;
     }
-    
+
     /// <summary>
     /// Result of a tag write operation in a batch.
     /// </summary>
@@ -2997,23 +3015,23 @@ namespace RustEtherNetIp
         /// Name of the tag that was written.
         /// </summary>
         public string TagName { get; set; } = tagName;
-        
+
         /// <summary>
         /// True if the write was successful.
         /// </summary>
         public bool Success { get; set; } = success;
-        
+
         /// <summary>
         /// Error code (0 for success, negative for errors).
         /// </summary>
         public int ErrorCode { get; set; } = errorCode;
-        
+
         /// <summary>
         /// Error message (null for successful writes).
         /// </summary>
         public string? ErrorMessage { get; set; } = errorMessage;
     }
-    
+
     /// <summary>
     /// Configuration settings for batch operations.
     /// </summary>
@@ -3025,35 +3043,35 @@ namespace RustEtherNetIp
         /// Typical range: 10-50 operations per packet.
         /// </summary>
         public int MaxOperationsPerPacket { get; set; } = 20;
-        
+
         /// <summary>
         /// Maximum packet size in bytes for batch operations.
         /// Should not exceed the PLC's maximum packet size capability.
         /// Typical values: 504 bytes (default), up to 4000 bytes for modern PLCs.
         /// </summary>
         public int MaxPacketSize { get; set; } = 504;
-        
+
         /// <summary>
         /// Timeout for individual batch packets (in milliseconds).
         /// This is per-packet timeout, not per-operation.
         /// Typical range: 1000-5000 milliseconds.
         /// </summary>
         public long PacketTimeoutMs { get; set; } = 3000;
-        
+
         /// <summary>
         /// Whether to continue processing other operations if one fails.
         /// If true, failed operations are reported but don't stop the batch.
         /// If false, the first error stops the entire batch processing.
         /// </summary>
         public bool ContinueOnError { get; set; } = true;
-        
+
         /// <summary>
         /// Whether to optimize packet packing by grouping similar operations.
         /// If true, reads and writes are grouped separately for better performance.
         /// If false, operations are processed in the order provided.
         /// </summary>
         public bool OptimizePacketPacking { get; set; } = true;
-        
+
         /// <summary>
         /// Creates a default batch configuration optimized for typical usage.
         /// </summary>
@@ -3062,7 +3080,7 @@ namespace RustEtherNetIp
         {
             return new BatchConfig();
         }
-        
+
         /// <summary>
         /// Creates a high-performance batch configuration for modern PLCs.
         /// </summary>
@@ -3078,7 +3096,7 @@ namespace RustEtherNetIp
                 OptimizePacketPacking = true
             };
         }
-        
+
         /// <summary>
         /// Creates a conservative batch configuration for older PLCs or unreliable networks.
         /// </summary>
@@ -3095,7 +3113,7 @@ namespace RustEtherNetIp
             };
         }
     }
-    
+
     // Native structures for FFI (placeholder for future implementation)
     [StructLayout(LayoutKind.Sequential)]
     internal struct UdtMemberNative
@@ -3159,7 +3177,7 @@ namespace RustEtherNetIp
         public int ContinueOnError;
         public int OptimizePacketPacking;
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct TagReadResultNative
     {
@@ -3174,7 +3192,7 @@ namespace RustEtherNetIp
         public float ValueReal;
         public IntPtr ValueString;
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct TagWriteValueNative
     {
@@ -3186,7 +3204,7 @@ namespace RustEtherNetIp
         public float ValueReal;
         public IntPtr ValueString;
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct TagWriteResultNative
     {
@@ -3195,7 +3213,7 @@ namespace RustEtherNetIp
         public int ErrorCode;
         public IntPtr ErrorMessage;
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct BatchOperationNative
     {
@@ -3208,7 +3226,7 @@ namespace RustEtherNetIp
         public float ValueReal;
         public IntPtr ValueString;
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct BatchOperationResultNative
     {

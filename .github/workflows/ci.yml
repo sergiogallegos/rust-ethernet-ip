@@ -5,6 +5,8 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: '17 9 * * 1'
 
 env:
   CARGO_TERM_COLOR: always
@@ -78,6 +80,10 @@ jobs:
     - name: Run C# tests
       if: matrix.rust == 'stable'
       run: dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release --blame-crash
+
+    - name: Run C# native P/Invoke integration tests
+      if: matrix.rust == 'stable'
+      run: dotnet test csharp/RustEtherNetIp.IntegrationTests/RustEtherNetIp.IntegrationTests.csproj -c Release --blame-crash
 
     - name: Install cargo-tarpaulin
       if: matrix.coverage
@@ -176,8 +182,8 @@ jobs:
     - uses: taiki-e/install-action@v2
       with:
         tool: cargo-semver-checks
-    - name: Check public API against crates.io 0.7.0
-      run: cargo semver-checks check-release --baseline-version 0.7.0
+    - name: Check public API against crates.io 1.1.0
+      run: cargo semver-checks check-release --baseline-version 1.1.0
 
   version-check:
     name: Version consistency
@@ -211,6 +217,8 @@ jobs:
       run: |
         VERSION=$(sed -n '0,/^version = "\([^"]*\)"/s//\1/p' Cargo.toml)
         scripts/check-release-readiness "$VERSION"
+    - name: Run release-readiness script tests
+      run: tests/release_readiness_tests.sh
 
   agent-commit-tests:
     name: agent-commit-tests

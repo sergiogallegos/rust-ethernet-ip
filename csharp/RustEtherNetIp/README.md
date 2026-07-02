@@ -43,7 +43,7 @@ Or:
 
 If you are building from this repository instead of consuming the published package:
 
-1. build the native Rust library with `cargo build --release`
+1. build the native Rust library with `cargo build --release --features ffi`
 2. build your `.NET` project
 3. ensure the native library is copied beside your app output
 

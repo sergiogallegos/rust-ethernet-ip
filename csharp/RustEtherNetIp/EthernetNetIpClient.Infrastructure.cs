@@ -99,6 +99,18 @@ namespace RustEtherNetIp
         private PlcException OperationFailure(string message, Exception innerException)
             => new PlcException(message, TryGetNativeError(), innerException);
 
+        internal static IntPtr AllocUtf8(string value)
+            => Marshal.StringToCoTaskMemUTF8(value);
+
+        internal static void FreeUtf8(IntPtr ptr)
+        {
+            if (ptr != IntPtr.Zero)
+                Marshal.FreeCoTaskMem(ptr);
+        }
+
+        internal static string PtrToStringUtf8Safe(IntPtr ptr)
+            => ptr == IntPtr.Zero ? string.Empty : Marshal.PtrToStringUTF8(ptr) ?? string.Empty;
+
         private T ExecuteWithLock<T>(Func<T> operation)
         {
             _operationLock.Wait();

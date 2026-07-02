@@ -24,40 +24,8 @@ namespace RustEtherNetIp
 
                 _ = routePath ?? throw new ArgumentNullException(nameof(routePath));
 
-                IntPtr addressPtr = Marshal.StringToHGlobalAnsi(address);
-                try
-                {
-                    var (hopTypes, ports, slots, addressPtrs, addressHandles) = routePath.PrepareForFFI();
-
-                    try
-                    {
-                        _clientId = eip_connect_with_route_hops(
-                            addressPtr,
-                            hopTypes,
-                            ports,
-                            slots,
-                            addressPtrs,
-                            hopTypes.Length);
-
-                        if (_clientId >= 0)
-                        {
-                            _currentAddress = address;
-                            _currentRoutePath = routePath;
-                            eip_set_max_packet_size(_clientId, 4000);
-                            StartKeepAlive();
-                        }
-                    }
-                    finally
-                    {
-                        routePath.ReleaseFFIHandles(addressHandles);
-                    }
-
-                    return _clientId >= 0;
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(addressPtr);
-                }
+                bool connected = ConnectNative(address, routePath, startKeepAlive: true);
+                return connected;
             }
         }
 
@@ -74,22 +42,8 @@ namespace RustEtherNetIp
                 if (_clientId != -1)
                     throw new InvalidOperationException("Already connected to a PLC. Call Disconnect() first.");
 
-                IntPtr addressPtr = Marshal.StringToHGlobalAnsi(address);
-                try
-                {
-                    _clientId = eip_connect(addressPtr);
-                    if (_clientId >= 0)
-                    {
-                        _currentAddress = address;
-                        eip_set_max_packet_size(_clientId, 4000);
-                        StartKeepAlive();
-                    }
-                    return _clientId >= 0;
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(addressPtr);
-                }
+                bool connected = ConnectNative(address, null, startKeepAlive: true);
+                return connected;
             }
         }
 
@@ -100,13 +54,15 @@ namespace RustEtherNetIp
         {
             lock (_lock)
             {
-                if (_clientId >= 0)
+                StopKeepAlive();
+                _operationLock.Wait();
+                try
                 {
-                    StopKeepAlive();
-                    eip_disconnect(_clientId);
-                    _clientId = -1;
-                    _currentAddress = string.Empty;
-                    _tagCache.Clear();
+                    DisconnectNativeLocked(clearAddress: true);
+                }
+                finally
+                {
+                    _operationLock.Release();
                 }
             }
         }
@@ -129,24 +85,8 @@ namespace RustEtherNetIp
                 {
                     try
                     {
-                        await Task.Delay(30000, _keepAliveCts.Token);
-                        if (_clientId >= 0)
-                        {
-                            int isHealthy;
-                            if (eip_check_health_detailed(_clientId, out isHealthy) != 0 || isHealthy == 0)
-                            {
-                                var savedAddress = _currentAddress;
-                                var savedRoute = _currentRoutePath;
-                                Disconnect();
-                                if (!string.IsNullOrEmpty(savedAddress))
-                                {
-                                    if (savedRoute != null)
-                                        ConnectWithRoute(savedAddress, savedRoute);
-                                    else
-                                        Connect(savedAddress);
-                                }
-                            }
-                        }
+                        await Task.Delay(_keepAliveInterval, _keepAliveCts.Token);
+                        RunKeepAliveTick();
                     }
                     catch (OperationCanceledException)
                     {
@@ -176,6 +116,116 @@ namespace RustEtherNetIp
             }
 
             _keepAliveTask = null;
+        }
+
+        private void RunKeepAliveTick()
+        {
+            if (!_operationLock.Wait(TimeSpan.FromMilliseconds(100)))
+                return;
+
+            try
+            {
+                if (_clientId < 0 || _isDisposed)
+                    return;
+
+                int result = eip_check_health_detailed(_clientId, out int isHealthy);
+                if (result == 0 && isHealthy != 0)
+                    return;
+
+                var savedAddress = _currentAddress;
+                var savedRoute = _currentRoutePath;
+
+                DisconnectNativeLocked(clearAddress: false);
+                if (!string.IsNullOrEmpty(savedAddress))
+                    ConnectNative(savedAddress, savedRoute, startKeepAlive: false);
+            }
+            finally
+            {
+                _operationLock.Release();
+            }
+        }
+
+        private bool ConnectNative(string address, RoutePath? routePath, bool startKeepAlive)
+        {
+            int result;
+            if (routePath == null)
+            {
+                IntPtr addressPtr = AllocUtf8(address);
+                try
+                {
+                    result = eip_connect(addressPtr);
+                }
+                finally
+                {
+                    FreeUtf8(addressPtr);
+                }
+            }
+            else
+            {
+                IntPtr addressPtr = AllocUtf8(address);
+                try
+                {
+                    var (hopTypes, ports, slots, addressPtrs, addressHandles) = routePath.PrepareForFFI();
+                    try
+                    {
+                        result = eip_connect_with_route_hops(
+                            addressPtr,
+                            hopTypes,
+                            ports,
+                            slots,
+                            addressPtrs,
+                            hopTypes.Length);
+                    }
+                    finally
+                    {
+                        routePath.ReleaseFFIHandles(addressHandles);
+                    }
+                }
+                finally
+                {
+                    FreeUtf8(addressPtr);
+                }
+            }
+
+            if (result >= 0)
+            {
+                _clientId = result;
+                _currentAddress = address;
+                _currentRoutePath = routePath;
+                _lastConnectError = null;
+                eip_set_max_packet_size(_clientId, 4000);
+                if (startKeepAlive)
+                    StartKeepAlive();
+                return true;
+            }
+
+            _clientId = -1;
+            _lastConnectError = DescribeConnectFailure(result, address);
+            return false;
+        }
+
+        private void DisconnectNativeLocked(bool clearAddress)
+        {
+            if (_clientId >= 0)
+            {
+                eip_disconnect(_clientId);
+                _clientId = -1;
+            }
+
+            if (clearAddress)
+            {
+                _currentAddress = string.Empty;
+                _currentRoutePath = null;
+            }
+
+            _tagCache.Clear();
+        }
+
+        private static string DescribeConnectFailure(int result, string address)
+        {
+            return result == EipErrorRuntimeInit
+                ? $"Failed to initialize the native EtherNet/IP runtime while connecting to '{address}' (code {EipErrorRuntimeInit})."
+                : $"Failed to connect to '{address}' (code {result}).";
         }
     }
 }

@@ -16,7 +16,7 @@ namespace RustEtherNetIp
                     $"Native rust_ethernet_ip ABI version {AbiVersion}, wrapper expects {ExpectedAbiVersion}.");
             }
 
-            LibraryVersion = Marshal.PtrToStringAnsi(eip_library_version()) ?? string.Empty;
+            LibraryVersion = Marshal.PtrToStringUTF8(eip_library_version()) ?? string.Empty;
             Capabilities = eip_capabilities();
         }
 

@@ -8,14 +8,19 @@ const CMD_SEND_RR_DATA: u16 = 0x006F;
 
 const CIP_READ_TAG: u8 = 0x4C;
 const CIP_WRITE_TAG: u8 = 0x4D;
+const CIP_MULTIPLE_SERVICE_PACKET: u8 = 0x0A;
 
 const CIP_REPLY_READ: u8 = 0xCC;
 const CIP_REPLY_WRITE: u8 = 0xCD;
+const CIP_REPLY_MULTIPLE_SERVICE_PACKET: u8 = 0x8A;
+const CIP_STATUS_SUCCESS: u8 = 0x00;
+const CIP_STATUS_PATH_SEGMENT_ERROR: u8 = 0x04;
 
 const CIP_TYPE_DINT: u16 = 0x00C4;
 const CIP_TYPE_BOOL: u16 = 0x00C1;
 const CIP_TYPE_REAL: u16 = 0x00CA;
 const CIP_TYPE_STRING: u16 = 0x00CE;
+const CIP_TYPE_UDT: u16 = 0x02A0;
 
 #[derive(Clone, Debug)]
 enum TagValue {
@@ -23,6 +28,7 @@ enum TagValue {
     Dint(i32),
     Real(f32),
     String(String),
+    Udt(Vec<u8>),
     Array(Vec<TagValue>),
 }
 
@@ -40,6 +46,10 @@ async fn main() {
         (
             "STRING_TAG".to_string(),
             TagValue::String("Hello PLC".to_string()),
+        ),
+        (
+            "UDT_TAG".to_string(),
+            TagValue::Udt(vec![1, 0, 0, 0, 0x39, 0x30, 0, 0]),
         ),
         (
             "DINT_ARRAY".to_string(),
@@ -140,6 +150,7 @@ fn build_cip_response(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>
             handle_write(payload, tags);
             vec![CIP_REPLY_WRITE, 0x00, 0x00, 0x00]
         }
+        CIP_MULTIPLE_SERVICE_PACKET => build_multiple_service_response(payload, tags),
         _ => vec![CIP_REPLY_READ, 0x00, 0x01, 0x00],
     }
 }
@@ -187,20 +198,27 @@ fn extract_cip_service(payload: &[u8]) -> Option<u8> {
 
 fn handle_write(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>>>) {
     let cip_request = extract_cip_request(payload);
+    handle_write_cip_request(&cip_request, tags);
+}
+
+fn handle_write_cip_request(
+    cip_request: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+) -> Vec<u8> {
     if cip_request.len() < 6 {
-        return;
+        return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
     }
 
-    let (tag_name, element_index) = match parse_tag_and_path(&cip_request) {
+    let (tag_name, element_index) = match parse_tag_and_path(cip_request) {
         Some(value) => value,
-        None => return,
+        None => return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR),
     };
 
     let path_words = cip_request[1] as usize;
     let path_bytes = path_words * 2;
     let path_end = 2 + path_bytes;
     if cip_request.len() < path_end + 4 {
-        return;
+        return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
     }
 
     let data_type = u16::from_le_bytes([cip_request[path_end], cip_request[path_end + 1]]);
@@ -255,7 +273,7 @@ fn handle_write(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>>>) {
     };
 
     let Some(value) = value else {
-        return;
+        return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
     };
 
     let mut tags = tags.lock().expect("tag lock");
@@ -264,10 +282,113 @@ fn handle_write(payload: &[u8], tags: &Arc<Mutex<HashMap<String, TagValue>>>) {
         && index < items.len()
     {
         items[index] = value;
-        return;
+        return build_cip_ok_write_reply();
     }
 
     tags.insert(tag_name, value);
+    build_cip_ok_write_reply()
+}
+
+fn build_cip_ok_write_reply() -> Vec<u8> {
+    vec![CIP_REPLY_WRITE, 0x00, CIP_STATUS_SUCCESS, 0x00]
+}
+
+fn build_cip_error_reply(reply_service: u8, status: u8) -> Vec<u8> {
+    vec![reply_service, 0x00, status, 0x00]
+}
+
+fn build_multiple_service_response(
+    payload: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+) -> Vec<u8> {
+    let request = extract_cip_request(payload);
+    if request.len() < 8 {
+        return build_cip_error_reply(
+            CIP_REPLY_MULTIPLE_SERVICE_PACKET,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    }
+
+    let service_count = u16::from_le_bytes([request[6], request[7]]) as usize;
+    if service_count == 0 {
+        return build_cip_error_reply(CIP_REPLY_MULTIPLE_SERVICE_PACKET, CIP_STATUS_SUCCESS);
+    }
+
+    let offsets_start = 8;
+    let offsets_end = offsets_start + (service_count * 2);
+    if request.len() < offsets_end {
+        return build_cip_error_reply(
+            CIP_REPLY_MULTIPLE_SERVICE_PACKET,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    }
+
+    let mut offsets = Vec::with_capacity(service_count);
+    for i in 0..service_count {
+        let pos = offsets_start + (i * 2);
+        offsets.push(u16::from_le_bytes([request[pos], request[pos + 1]]) as usize);
+    }
+
+    let mut replies = Vec::with_capacity(service_count);
+    for i in 0..service_count {
+        let start = 6 + offsets[i];
+        let end = if i + 1 < service_count {
+            6 + offsets[i + 1]
+        } else {
+            request.len()
+        };
+
+        if start >= request.len() || end > request.len() || start >= end {
+            replies.push(build_cip_error_reply(
+                CIP_REPLY_READ,
+                CIP_STATUS_PATH_SEGMENT_ERROR,
+            ));
+            continue;
+        }
+
+        let service_request = &request[start..end];
+        let reply = match service_request.first().copied() {
+            Some(CIP_READ_TAG) => build_read_response_from_cip_request(service_request, tags),
+            Some(CIP_WRITE_TAG) => handle_write_cip_request(service_request, tags),
+            _ => build_cip_error_reply(CIP_REPLY_READ, CIP_STATUS_PATH_SEGMENT_ERROR),
+        };
+        replies.push(reply);
+    }
+
+    let mut response = vec![
+        CIP_REPLY_MULTIPLE_SERVICE_PACKET,
+        0x00,
+        CIP_STATUS_SUCCESS,
+        0x00,
+    ];
+    response.extend_from_slice(&(service_count as u16).to_le_bytes());
+
+    let mut current_offset = 2 + (service_count * 2);
+    for reply in &replies {
+        response.extend_from_slice(&(current_offset as u16).to_le_bytes());
+        current_offset += reply.len();
+    }
+
+    for reply in replies {
+        response.extend_from_slice(&reply);
+    }
+
+    response
+}
+
+fn build_read_response_from_cip_request(
+    cip_request: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+) -> Vec<u8> {
+    let (tag_name, element_index) =
+        parse_tag_and_path(cip_request).unwrap_or(("DINT_TAG".to_string(), None));
+    let requested_count = parse_read_element_count(cip_request).unwrap_or(1) as usize;
+    let tags_guard = tags.lock().expect("tag lock");
+    let value = tags_guard
+        .get(&tag_name)
+        .cloned()
+        .unwrap_or(TagValue::Dint(0));
+    build_value_response(value, element_index, requested_count)
 }
 
 fn extract_cip_request(payload: &[u8]) -> Vec<u8> {
@@ -350,6 +471,10 @@ fn build_value_response(
                     // Simulator keeps string arrays simple: return first requested string.
                     build_value_response(subset[0].clone(), None, 1)
                 }
+                TagValue::Udt(_) => {
+                    // Simulator keeps UDT arrays simple: return first requested raw UDT.
+                    build_value_response(subset[0].clone(), None, 1)
+                }
                 TagValue::Array(_) => {
                     // Nested arrays are not modeled in the simulator; return a safe default.
                     build_value_response(TagValue::Dint(0), None, 1)
@@ -379,6 +504,12 @@ fn build_value_response(
             response.extend_from_slice(&CIP_TYPE_STRING.to_le_bytes());
             response.extend_from_slice(&(v.len() as u32).to_le_bytes());
             response.extend_from_slice(v.as_bytes());
+            response
+        }
+        TagValue::Udt(data) => {
+            let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+            response.extend_from_slice(&CIP_TYPE_UDT.to_le_bytes());
+            response.extend_from_slice(&data);
             response
         }
     }

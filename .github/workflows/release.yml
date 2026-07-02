@@ -125,7 +125,20 @@ jobs:
             rust-ethernet-ip; do
             echo "::group::publish $crate"
             # Tolerate an already-published version so re-runs are idempotent.
-            cargo publish -p "$crate" || echo "publish of $crate failed (already published?); continuing"
+            publish_log="$(mktemp)"
+            set +e
+            cargo publish -p "$crate" 2>&1 | tee "$publish_log"
+            status="${PIPESTATUS[0]}"
+            set -e
+            if [[ "$status" -eq 0 ]]; then
+              rm -f "$publish_log"
+            elif grep -Eiq 'already (uploaded|exists)|previously uploaded' "$publish_log"; then
+              echo "publish of $crate skipped because this version already exists"
+              rm -f "$publish_log"
+            else
+              rm -f "$publish_log"
+              exit "$status"
+            fi
             echo "::endgroup::"
             # Give the index time to propagate before the dependent crate builds.
             sleep 60

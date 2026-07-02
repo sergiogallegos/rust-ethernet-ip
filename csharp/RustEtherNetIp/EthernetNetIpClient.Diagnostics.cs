@@ -30,7 +30,7 @@ namespace RustEtherNetIp
                     if (rc != 0 || resultPtr == IntPtr.Zero)
                         throw new Exception("Failed to retrieve diagnostics snapshot");
 
-                    string json = Marshal.PtrToStringAnsi(resultPtr) ?? string.Empty;
+                    string json = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
                     if (string.IsNullOrWhiteSpace(json))
                         throw new Exception("Native diagnostics snapshot was empty");
 

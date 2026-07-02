@@ -3,15 +3,16 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT/scripts/check-release-readiness"
+VERSION="$(sed -n '0,/^version = "\([^"]*\)"/s//\1/p' "$ROOT/Cargo.toml")"
 
-"$SCRIPT" 1.0.0 --skip-package >/tmp/release-readiness-ok.out
+"$SCRIPT" "$VERSION" --skip-package >/tmp/release-readiness-ok.out
 
 tmp="$(mktemp -d)"
 mkdir -p "$tmp"
-cp -R "$ROOT"/{Cargo.toml,VERSION,CHANGELOG.md,src,crates,csharp,python,examples,scripts} "$tmp"/
+cp -R "$ROOT"/{Cargo.toml,VERSION,README.md,CHANGELOG.md,src,crates,csharp,python,examples,scripts} "$tmp"/
 printf '1.0.1\n' >"$tmp/VERSION"
 set +e
-"$SCRIPT" 1.0.0 --root "$tmp" --skip-package >"$tmp/out" 2>"$tmp/err"
+"$SCRIPT" "$VERSION" --root "$tmp" --skip-package >"$tmp/out" 2>"$tmp/err"
 status=$?
 set -e
 if [[ "$status" -eq 0 ]] || ! grep -q "VERSION" "$tmp/out"; then

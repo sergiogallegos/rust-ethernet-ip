@@ -2,7 +2,7 @@
 id: CODEX-AV
 title: Re-validate the firmware_blocked_* write labels — the 0x2107 lore is falling to correct paths
 owner: codex
-status: in-progress
+status: merged
 created: 2026-07-03
 last-update: 2026-07-03 claude [Fable 5]
 ---
@@ -81,6 +81,42 @@ Verification passed: `cargo fmt --all`; `cargo run --example probe_blocked_write
 
 Pending hardware/evidence work: no manifest labels, full-coverage runner counts, or service-layer routing defaults were changed yet. Those are intentionally gated on the maintainer-run probe JSON and should land in the evidence/relabel follow-up commit.
 
+2026-07-03 — Submitted by Codex, relabel stage. Relabeled the full-coverage
+manifest from the reviewed hardware matrix: 60 scalar UDT-array-element-member
+targets moved to `writeable`; UDT STRING members now use
+`encoding_blocked_udt_string_member`; the missing program-scope
+`Member5_String` UDT-array-element entry was added. Recomputed counts are 2304
+total / 2268 writeable / 17 expected-blocked / 19 read-only, and the old
+`firmware_blocked_udt_array_element_member` value is no longer accepted by the
+active manifest validator or probe parser.
+
+Updated Rust/C#/Python full-coverage runners to parse the new label and report
+`expected-blocked` terminology. Updated the blocked-label probe dry-run
+expectation to 4 representative STRING-member classes and 17 all-blocked
+targets. Rewrote the quirks/limitation docs around scalar-vs-STRING UDT member
+behavior with links to the 2026-07-03 evidence; current docs now describe
+STRING members as current-encoding `0x2107` rejections, not firmware bans.
+
+Service layer now routes non-STRING UDT member writes direct-first with whole-UDT
+RMW fallback only on the `0x2107` data-type mismatch shape. STRING member writes
+keep the RMW path unconditionally. Added unit coverage for scalar fallback on
+`0x2107`, STRING RMW-only routing, and non-`0x2107` direct-write error
+propagation.
+
+Verification passed: `cargo fmt --all`; Rust full-coverage dry-run
+`2304/2268/17/19`; probe dry-run `blocked_targets=4`; probe dry-run
+`--all-blocked` `blocked_targets=17`; C# full-coverage dry-run
+`2304/2268/17/19` with `--no-restore` due the known external NuGet scratch lock;
+Python full-coverage dry-run `2304/2268/17/19`;
+`tests/full_coverage_manifest_tests.sh` under Git Bash with temporary `python3`
+and no-restore `dotnet` wrappers; `cargo test service_layer --locked`;
+`cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`;
+`SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked`;
+`cargo test --test plc_sim_tests --locked`; C# unit tests 86/86 with
+`--no-restore`; Python tests 39 passed / 8 skipped. Plain `dotnet run` restore
+still hits the existing NuGet scratch lock; plain `bash` still resolves to WSL
+with no installed distro on this Windows host.
+
 ## Claude review
 
 ### 2026-07-03 02:00  claude [Fable 5] — probe stage review + hardware matrix executed
@@ -110,4 +146,44 @@ Pending hardware/evidence work: no manifest labels, full-coverage runner counts,
 
 Probe stage approved and merged to `main`; task returns to `in-progress` for the relabel stage.
 
+### 2026-07-03 12:00  claude [Fable 5] — relabel stage review
+
+**Independent verification**
+- `cargo fmt --all -- --check` — clean; `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — all suites green (includes the three new `service_layer` routing tests).
+- `cargo test --test plc_sim_tests --locked` — 19/19.
+- `bash tests/full_coverage_manifest_tests.sh` — green under Git Bash with no wrappers needed on this host, including the recomputed `(2304, 2268, 17, 19)` pinned counts and the probe dry-run `blocked_targets=4` assertion.
+- C# 86/86 (plain `dotnet test`, no restore lock on this host); Python 31 passed / 8 skipped; `validate-agent-files` ok (48 task files).
+- Manifest label census verified independently: only `writeable` / `read_only` / `encoding_blocked_udt_string_member` in use; the count arithmetic (72 − 60 relabeled + 5 added = 17 blocked; 2208 + 60 = 2268 writeable; 2299 + 5 = 2304 total) reconciles exactly with the exclusive-end range semantics.
+
+**What's being fixed / root cause** — labels asserted a firmware ban that the 2026-07-03 hardware matrix disproved for all 60 scalar targets; the historical `0x2107` evidence came through malformed request paths (root cause confirmed by the probe-stage matrix, not re-derived here).
+
+**Fix appropriateness**
+- Relabel is exactly evidence-shaped: 60 scalars → `writeable` (all probed green), STRING members → `encoding_blocked_udt_string_member` (all 12 probed red, honest semantics: current-encoding rejection, not firmware ban, CODEX-AO owns the encoding question).
+- Manifest + three runners + shell-suite pinned counts landed together as one working-tree change — the CODEX-AT split-commit CI fallout does not repeat.
+- Service layer (brief item 4): non-STRING member writes go direct-first with whole-UDT RMW fallback gated on the `0x2107` shape; STRING members RMW-only. Implemented via a private strategy trait so routing is unit-testable without hardware; the `0x2107` detector matches the error formatter's pinned text in both LE/BE branches.
+- Doc sweep verified by grep: remaining "cannot write" / "firmware limitation" claims for disproved paths live only in files carrying explicit "Historical reference" banners (`docs/RUST_TEST_RESULTS.md`, `docs/WRAPPER_LIMITATIONS_UPDATE_SUMMARY.md`) — qualified, acceptable.
+
+**Test proof** — three routing unit tests (scalar 0x2107 → RMW fallback; STRING → RMW without direct attempt; non-0x2107 direct error propagates without fallback); shell-suite count/label validation; probe dry-run assertions. Wire-level scalar member-path writes remain covered by CODEX-AM's sim tests; no new sim UDT-member fidelity was faked (CODEX-AN oracle rule respected).
+
+**Residual risk**
+- 🟡 Direct-first routing applies to *all* non-STRING `PlcValue` kinds, including `Udt` values and scalar types absent from `gTestUDT` (SINT/LINT/…), while the matrix proved DINT/REAL/BOOL/INT only. Mitigation: the `0x2107` fallback catches the one observed rejection shape; a direct attempt failing with a *different* error now propagates where RMW might previously have succeeded. Judged acceptable — no such failure has ever been observed, and masking unknown errors with silent RMW would hide real bugs.
+- 🟡 `is_2107_type_mismatch` string-matches formatted error text. Robust today (the formatter has a dedicated `0x2107` arm embedding the literal in both byte orders, pinned by the unit test), but a typed CIP-error code accessor is the right long-term shape — falls under the CODEX-K error-consolidation bucket.
+- 🟡 Single-controller evidence (L330ERM fw38) — recorded in every relabel-adjacent doc; older-firmware re-validation rides the next bench session per the brief's risk note.
+
+**Findings**
+- 🟡 The five added program-scope `Member5_String` entries were not individually probed (they didn't exist at probe time); their blocked label is class-inferred from the controller-scope twins. Claude-applied fix: evidence doc now says so explicitly and notes the gate run exercises them directly.
+- 🟢 `firmware_blocked_string` and `service_layer_writeable` remain in the allowed-label sets/parsers though unused by the current manifest — reserved labels per the CODEX-AE schema; fine.
+- 🟢 Historical probe-evidence JSON retains the old label strings — correct, it's a record of the pre-relabel manifest.
+
+**Acceptance criteria tally**
+1. Hardware matrix executed and recorded — ✅ (probe stage, maintainer-authorized bench).
+2. Manifest, runners, pinned counts, quirks note, library docs agree with evidence; no unqualified disproved claim survives grep — ✅.
+3. Item 4 decision documented with evidence — ✅ (direct-first + `0x2107` RMW fallback for scalars; RMW-only for STRING; quirks note, CHANGELOG, doc comments).
+4. Expectation changes flagged for the release-gate run — ✅ (CHANGELOG, validation doc, board release-plan note already keyed to the AV-corrected manifest).
+
+One Claude-applied fix (evidence-doc clarification, 4 lines). Zero defects.
+
 ## Verdict
+
+Relabel stage approved. CODEX-AV complete: labels are evidence-based, the service layer routes on proof rather than lore, and the pre-1.2.0 full-coverage gate run now has expectations that match the controller. The task that existed to un-break the gate has un-broken it. Merged to `main`.

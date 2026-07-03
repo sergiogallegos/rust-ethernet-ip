@@ -23,17 +23,15 @@ namespace RustEtherNetIp
     /// Supported Data Types: BOOL, SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL, STRING, UDT
     /// Advanced Features: Program-scoped tags, array addressing, bit operations, UDT member access
     ///
-    /// <para><strong>⚠️ Known Limitations (PLC Firmware Restrictions):</strong></para>
+    /// <para><strong>⚠️ Known Limitations and Controller-Specific Behavior:</strong></para>
     /// <para>
-    /// The following operations are not supported due to PLC firmware restrictions.
-    /// These limitations are inherent to the Allen-Bradley PLC firmware and cannot be bypassed at the library level.
+    /// The following operations depend on exact Logix wire encoding and controller firmware behavior.
     /// </para>
     /// <list type="bullet">
     /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs
     /// (e.g., "gTestUDT.Member5_String"). Must read the entire UDT structure, modify the STRING member in memory, then write the entire UDT back.</description></item>
-    /// <item><description><strong>UDT Array Element Members:</strong> Cannot write directly to members of UDT array elements
-    /// (e.g., "gTestUDT_Array[0].Member1_DINT", "Program:TestProgram.gTestUDT_Array[0].Member1_DINT").
-    /// Must read the entire UDT array element, modify the member in memory, then write the entire element back.</description></item>
+    /// <item><description><strong>UDT Array Element STRING Members:</strong> STRING members inside UDT array elements reject with 0x2107 under the current member encoding.
+    /// Must read the entire UDT array element, modify the STRING member in memory, then write the entire element back.</description></item>
     /// </list>
     ///
     /// <para><strong>✅ What Works:</strong></para>
@@ -41,6 +39,7 @@ namespace RustEtherNetIp
     /// <item><description>Reading all tag types including STRING tags and UDT members</description></item>
     /// <item><description>Writing DINT, REAL, BOOL, INT, and other numeric types</description></item>
     /// <item><description>Writing UDT members (non-STRING) for non-array UDTs (e.g., "gTestUDT.Member1_DINT")</description></item>
+    /// <item><description>Writing scalar UDT array element members on validated firmware (e.g., "gTestUDT_Array[0].Member1_DINT")</description></item>
     /// <item><description>Writing entire UDT array elements (e.g., "gTestUDT_Array[0]")</description></item>
     /// <item><description>Writing simple array elements (e.g., "gArray[5]")</description></item>
     /// <item><description>Reading UDT array element members (e.g., "gTestUDT_Array[0].Member1_DINT")</description></item>
@@ -48,9 +47,9 @@ namespace RustEtherNetIp
     ///
     /// <para><strong>💡 Workarounds:</strong></para>
     /// <list type="bullet">
-    /// <item><description><strong>UDT Array Element Members:</strong> Read the entire UDT array element, modify the member in memory, then write the entire UDT array element back.</description></item>
+    /// <item><description><strong>UDT Array Element STRING Members:</strong> Read the entire UDT array element, modify the STRING member in memory, then write the entire UDT array element back.</description></item>
     /// <item><description><strong>STRING Members in UDTs:</strong> Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
-    /// <item><description><strong>Standalone STRING Tags:</strong> There is no workaround at the communication library level. Alternative approaches may include using PLC ladder logic or other PLC-side mechanisms.</description></item>
+    /// <item><description><strong>Standalone STRING Tags:</strong> Direct writes use the validated standard Logix STRING structure encoding.</description></item>
     /// </list>
     /// </remarks>
     /// <example>
@@ -1169,19 +1168,17 @@ namespace RustEtherNetIp
         /// <param name="tagName">Name of the UDT tag.</param>
         /// <param name="memberPath">Dot-separated path to the nested member (e.g., "Status.Running").</param>
         /// <param name="value">Value to set.</param>
-        /// <exception cref="Exception">Thrown if the operation fails. Note: Writing to UDT array element members
-        /// (e.g., "gTestUDT_Array[0].Member1_DINT") or STRING members in UDTs will fail with CIP Error 0x2107 due to PLC firmware limitations.</exception>
+        /// <exception cref="Exception">Thrown if the operation fails. Note: STRING members in UDTs and UDT array elements can fail with CIP Error 0x2107 under the current member encoding.</exception>
         /// <remarks>
         /// <para><strong>⚠️ PLC Limitations:</strong></para>
         /// <list type="bullet">
-        /// <item><description><strong>UDT Array Element Members:</strong> Cannot write directly to members of UDT array elements
-        /// (e.g., "gTestUDT_Array[0].Member1_DINT"). The PLC returns CIP Error 0x2107.
-        /// Workaround: Read the entire UDT array element, modify the member in memory, then write the entire element back.</description></item>
         /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs
         /// (e.g., "gTestUDT.Member5_String"). The PLC returns CIP Error 0x2107.
         /// Workaround: Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
+        /// <item><description><strong>STRING Members in UDT Array Elements:</strong> Current member encoding is rejected with CIP Error 0x2107.
+        /// Workaround: Read the entire UDT array element, modify the STRING member in memory, then write the entire element back.</description></item>
         /// </list>
-        /// <para><strong>✅ What Works:</strong> Writing to non-STRING members of non-array UDTs (e.g., "gTestUDT.Member1_DINT").</para>
+        /// <para><strong>✅ What Works:</strong> Writing to non-STRING members of non-array UDTs and scalar UDT array element members on validated firmware.</para>
         /// </remarks>
         public virtual void SetUdtMember(string tagName, string memberPath, PlcValue value)
         {

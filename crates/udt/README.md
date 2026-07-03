@@ -19,7 +19,7 @@ Depend on `rust-ethernet-ip-udt` directly only if you are building an out-of-ban
 
 ## Allen-Bradley firmware notes
 
-UDT member-write quirks that are firmware-side, not library bugs — direct writes to STRING members and to UDT-array-element members reject with CIP `0x2107`. The top-level `rust-ethernet-ip` crate exposes service-layer helpers (`write_udt_member`, `write_string_tag`, `write_udt_array_member`) that package the read-modify-write workaround.
+UDT member-write behavior depends on the target member type and exact Logix wire encoding. Scalar UDT-array-element members are confirmed writeable on 5069-L330ERM fw38 when the full member path is preserved. STRING members inside UDTs and UDT-array elements reject with CIP `0x2107` under the current member encoding, so the top-level `rust-ethernet-ip` crate keeps a read-modify-write path for those cases.
 
 ## License
 

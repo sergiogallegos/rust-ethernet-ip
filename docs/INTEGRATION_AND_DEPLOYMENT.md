@@ -247,11 +247,11 @@ Validated routed target examples are recorded in:
 
 These are controller/firmware limitations, not general installation failures:
 
-- direct writes to standalone `STRING` tags can fail
-- direct writes to `STRING` members inside UDTs can fail
-- direct writes to UDT array element members can fail
+- standalone standard `STRING` tags require the validated Logix structure encoding
+- direct writes to `STRING` members inside UDTs reject with `0x2107` under the current member encoding
+- scalar UDT array element members are writeable on 5069-L330ERM fw38 with corrected paths
 
-Recommended workaround:
+Recommended workaround for rejected STRING members:
 
 - read the full structure or array element
 - modify it in memory

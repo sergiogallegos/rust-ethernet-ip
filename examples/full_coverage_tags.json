@@ -18,7 +18,7 @@
         "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
         "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
         "Member4_INT": { "kind": "Int", "writeability": "writeable" },
-        "Member5_String": { "kind": "String", "writeability": "firmware_blocked_udt_string_member" }
+        "Member5_String": { "kind": "String", "writeability": "encoding_blocked_udt_string_member" }
       }
     },
     {
@@ -39,11 +39,11 @@
       "pattern": "gTestUDT_Array[{i}].{member}",
       "indices": { "range": [0, 10] },
       "members": {
-        "Member1_DINT": { "kind": "Dint", "writeability": "firmware_blocked_udt_array_element_member" },
-        "Member2_REAL": { "kind": "Real", "writeability": "firmware_blocked_udt_array_element_member" },
-        "Member3_BOOL": { "kind": "Bool", "writeability": "firmware_blocked_udt_array_element_member" },
-        "Member4_INT": { "kind": "Int", "writeability": "firmware_blocked_udt_array_element_member" },
-        "Member5_String": { "kind": "String", "writeability": "firmware_blocked_udt_array_element_member" }
+        "Member1_DINT": { "kind": "Dint", "writeability": "writeable" },
+        "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
+        "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
+        "Member4_INT": { "kind": "Int", "writeability": "writeable" },
+        "Member5_String": { "kind": "String", "writeability": "encoding_blocked_udt_string_member" }
       }
     },
     {
@@ -71,7 +71,7 @@
         "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
         "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
         "Member4_INT": { "kind": "Int", "writeability": "writeable" },
-        "Member5_String": { "kind": "String", "writeability": "firmware_blocked_udt_string_member" }
+        "Member5_String": { "kind": "String", "writeability": "encoding_blocked_udt_string_member" }
       }
     },
     {
@@ -92,10 +92,11 @@
       "pattern": "Program:TestProgram.gTestUDT_Array[{i}].{member}",
       "indices": { "range": [0, 5] },
       "members": {
-        "Member1_DINT": { "kind": "Dint", "writeability": "firmware_blocked_udt_array_element_member" },
-        "Member2_REAL": { "kind": "Real", "writeability": "firmware_blocked_udt_array_element_member" },
-        "Member3_BOOL": { "kind": "Bool", "writeability": "firmware_blocked_udt_array_element_member" },
-        "Member4_INT": { "kind": "Int", "writeability": "firmware_blocked_udt_array_element_member" }
+        "Member1_DINT": { "kind": "Dint", "writeability": "writeable" },
+        "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
+        "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
+        "Member4_INT": { "kind": "Int", "writeability": "writeable" },
+        "Member5_String": { "kind": "String", "writeability": "encoding_blocked_udt_string_member" }
       }
     },
     {

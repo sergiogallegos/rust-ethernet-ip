@@ -227,8 +227,8 @@ if (client.Connect("192.168.1.100:44818"))
 - Real hardware validated: `5069-L320ERMS3`, firmware `35`
 - Validated areas: primitive reads/writes, program-scoped tags, route-path connection, subscriptions, UDT reads, batch read/write/mixed execute, C# wrapper parity
 - Remaining observed firmware limits on that target:
-  - direct standalone/UDT `STRING` writes
-  - direct writes to UDT array element members
+  - historical direct standalone/UDT `STRING` write failures before the standard STRING encoding fix
+  - historical direct writes to UDT array element members before CODEX-AV revalidated scalar member paths
 
 See:
 - `docs/validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md`
@@ -373,10 +373,11 @@ UnsubscribeFromAllTags
 
 ## Known PLC/Firmware Limitations
 
-- Some controllers reject direct writes to standalone `STRING` tags.
-- Some controllers reject direct writes to UDT array element members (for example `MyUdtArray[0].Member1`).
+- Standalone standard `STRING` tags are writeable with the validated Logix structure encoding.
+- Scalar UDT array element members are writeable on 5069-L330ERM fw38 when the full member path is preserved.
+- `STRING` members inside UDTs and UDT array elements reject with `0x2107` under the current member encoding.
 
-Recommended workaround pattern in both Rust and C#: read full UDT/element, modify in memory, write full structure back.
+Recommended workaround pattern for rejected STRING members in both Rust and C#: read full UDT/element, modify in memory, write full structure back.
 
 ## Production Checklist
 

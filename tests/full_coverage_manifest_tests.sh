@@ -3,10 +3,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="$ROOT/examples/full_coverage_tags.json"
-EXPECTED_RUST="would-test binding=rust tags=2299 writeable=2208 blocked=72 read_only=19"
-EXPECTED_CSHARP="would-test binding=csharp tags=2299 writeable=2208 blocked=72 read_only=19"
-EXPECTED_PYTHON="would-test binding=python tags=2299 writeable=2208 blocked=72 read_only=19"
-EXPECTED_BLOCKED_PROBE="would-probe binding=rust blocked_targets=11 all_blocked=false"
+EXPECTED_RUST="would-test binding=rust tags=2304 writeable=2268 blocked=17 read_only=19"
+EXPECTED_CSHARP="would-test binding=csharp tags=2304 writeable=2268 blocked=17 read_only=19"
+EXPECTED_PYTHON="would-test binding=python tags=2304 writeable=2268 blocked=17 read_only=19"
+EXPECTED_BLOCKED_PROBE="would-probe binding=rust blocked_targets=4 all_blocked=false"
 
 python3 - "$MANIFEST" <<'PY'
 import json
@@ -18,8 +18,7 @@ allowed = {
     "writeable",
     "read_only",
     "firmware_blocked_string",
-    "firmware_blocked_udt_string_member",
-    "firmware_blocked_udt_array_element_member",
+    "encoding_blocked_udt_string_member",
     "service_layer_writeable",
 }
 required_category = {"name", "scope", "pattern"}
@@ -46,7 +45,7 @@ for category in manifest["categories"]:
                     raise SystemExit(f"{category['name']}.{member}: bad writeability {mode}")
                 total += 1
                 writeable += mode == "writeable" or mode == "service_layer_writeable"
-                blocked += mode.startswith("firmware_blocked_")
+                blocked += mode.startswith("firmware_blocked_") or mode.startswith("encoding_blocked_")
                 readonly += mode == "read_only"
         continue
     if "inner" in category:
@@ -61,7 +60,7 @@ for category in manifest["categories"]:
                 n = len(rng(spec))
                 total += n
                 writeable += n if mode in {"writeable", "service_layer_writeable"} else 0
-                blocked += n if mode.startswith("firmware_blocked_") else 0
+                blocked += n if mode.startswith("firmware_blocked_") or mode.startswith("encoding_blocked_") else 0
                 readonly += n if mode == "read_only" else 0
         continue
     if "kind" not in category:
@@ -72,10 +71,10 @@ for category in manifest["categories"]:
     n = len(rng(category.get("indices")))
     total += n
     writeable += n if mode in {"writeable", "service_layer_writeable"} else 0
-    blocked += n if mode.startswith("firmware_blocked_") else 0
+    blocked += n if mode.startswith("firmware_blocked_") or mode.startswith("encoding_blocked_") else 0
     readonly += n if mode == "read_only" else 0
 
-expected = (2299, 2208, 72, 19)
+expected = (2304, 2268, 17, 19)
 actual = (total, writeable, blocked, readonly)
 if actual != expected:
     raise SystemExit(f"count mismatch: expected {expected}, got {actual}")

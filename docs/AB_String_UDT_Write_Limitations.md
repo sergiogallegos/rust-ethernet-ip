@@ -2,11 +2,11 @@
 
 ## Executive Summary
 
-**There are significant limitations when writing STRING tags and UDT array element members from external devices via CIP (EtherNet/IP) to Allen-Bradley ControlLogix and CompactLogix PLCs.**
+**There are significant wire-format requirements when writing STRING tags and UDT data from external devices via CIP (EtherNet/IP) to Allen-Bradley ControlLogix and CompactLogix PLCs.** The current mainline library has hardware evidence that standalone STRING tags and scalar UDT array element members can be written directly when encoded correctly. STRING members inside UDTs remain restricted under the current member encoding.
 
 This is documented in Rockwell's official publication **1756-PM020** (Logix 5000 Controllers Data Access) and is a fundamental limitation of the CIP protocol implementation for Logix controllers.
 
-**These limitations affect all EtherNet/IP communication libraries**, including this Rust EtherNet/IP library. They are not bugs in the library implementation, but rather restrictions imposed by the PLC firmware itself.
+These behaviors affect all EtherNet/IP communication libraries. Some are controller restrictions; others are malformed request encodings that surface as the same `0x2107` data-type mismatch.
 
 ---
 
@@ -59,16 +59,15 @@ The Write Tag Service returns error **0xFF / 0x2107** ("Tag type used in request
 
 ### For Strings
 
-**Option 1: Write .DATA and .LEN separately (Not Currently Supported)**
+**Option 1: Write .DATA and .LEN separately**
 
-> **Note:** This library does not currently support writing to `.DATA` and `.LEN` members separately due to the same underlying PLC firmware restrictions. Attempting to write to `MyString.DATA` or `MyString.LEN` directly will also fail with CIP Error 0x2107.
+> **Note:** The preferred library path is a direct standard STRING write using the validated structure encoding. Historical `.DATA` / `.LEN` guidance is no longer required for normal standalone STRING tags.
 
-The recommended approach documented by other vendors is to write `.DATA` and `.LEN` separately, but this also fails with the same PLC firmware limitation in practice.
+The recommended approach documented by other vendors is to write `.DATA` and `.LEN` separately. The 2026-07-02 probe showed component writes can work on 5069-L330ERM fw38, but the library uses the direct standard STRING structure encoding instead.
 
 ```
-// This approach does NOT work with current PLC firmware:
-1. Write to MyString.DATA[0] through MyString.DATA[4] = 'H','e','l','l','o'  // ❌ Fails
-2. Write to MyString.LEN = 5  // ❌ Fails
+// Supported standalone path in this library:
+client.WriteString("MyString", "Hello");
 ```
 
 **Option 2: Use LogixString Helper Class (Recommended for This Library)**
@@ -114,16 +113,16 @@ var udtElement = client.ReadUdt("gTestUDT_Array[0]");
 client.WriteUdt("gTestUDT_Array[0]", udtElement);
 ```
 
-**Option 2: Write individual members (Not Supported for Array Elements)**
+**Option 2: Write individual members**
 
-Writing to individual members of UDT array elements is **not supported** due to PLC firmware limitations:
+Scalar members of UDT array elements are supported on the validated 5069-L330ERM fw38 firmware when the full member path is preserved:
 
 ```csharp
-// ❌ This does NOT work - writing UDT array element member
-client.WriteDint("gTestUDT_Array[0].Member1_DINT", 42);  // Fails with CIP Error 0x2107
+// ✅ Scalar member write succeeds on validated firmware
+client.WriteDint("gTestUDT_Array[0].Member1_DINT", 42);
 ```
 
-**Workaround:** Read the entire UDT array element, modify the member in memory, then write the entire element back.
+STRING members inside UDT array elements still reject with `0x2107` under the current member encoding. **Workaround for STRING members:** read the entire UDT array element, modify the member in memory, then write the entire element back.
 
 **Option 2: Use atomic intermediary arrays**
 
@@ -204,10 +203,10 @@ client.WriteString("gTest_STRING", "Hello");
 ### For UDT Array Element Members
 
 ```csharp
-// ❌ Direct write to UDT array element member does NOT work
-client.WriteDint("gTestUDT_Array[0].Member1_DINT", 42);  // Fails with CIP Error 0x2107
+// ✅ Scalar UDT array element member write
+client.WriteDint("gTestUDT_Array[0].Member1_DINT", 42);
 
-// ✅ Recommended: Read-modify-write pattern
+// ✅ Recommended for STRING members: read-modify-write pattern
 var element = client.ReadTag("gTestUDT_Array[0]");
 // ... modify member in UDT structure ...
 client.WriteTag("gTestUDT_Array[0]", element);

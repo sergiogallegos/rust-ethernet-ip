@@ -17,6 +17,16 @@ Target next release: TBD.
   1.2.0 manifest relabel decision.
 
 ### Fixed
+- CODEX-AV relabeled the full-coverage manifest from the 2026-07-03 hardware
+  matrix: 60 scalar UDT-array-element-member targets are now writeable, UDT
+  STRING members use the honest `encoding_blocked_udt_string_member` label,
+  the missing program-scope `Member5_String` array-member entry is present, and
+  Rust/C#/Python runner expectations agree on 2304 total / 2268 writeable / 17
+  expected-blocked / 19 read-only targets.
+- Service-layer UDT member writes now try direct scalar member writes first and
+  fall back to whole-UDT read-modify-write only on the `0x2107` data-type
+  mismatch shape; STRING members keep the read-modify-write path
+  unconditionally.
 - Tag addressing now preserves member suffixes on writes such as
   `Array[i].Member`, routes `Tag.n` bit syntax through client-side bit
   read-modify-write, addresses batch BOOL array elements by containing DWORD,

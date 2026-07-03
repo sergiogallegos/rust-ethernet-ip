@@ -103,24 +103,25 @@ pub(crate) static RUNTIME: LazyLock<std::io::Result<Runtime>> = LazyLock::new(Ru
 ///
 /// Historical tests classified direct writes to UDT array element members
 /// (e.g., `gTestUDT_Array[0].Member1_DINT`) as firmware-blocked `0x2107`
-/// cases. CODEX-AM disproved the blanket rule for one corrected path on a
-/// 5069-L330ERM fw38: the DINT member write succeeded and preserved a sibling
-/// REAL member. Other member types, STRING members, and controller families are
-/// under CODEX-AV revalidation before the full-coverage manifest is relabeled.
+/// cases. CODEX-AM and CODEX-AV disproved the blanket rule on a
+/// 5069-L330ERM fw38: scalar DINT/REAL/BOOL/INT member writes succeeded with
+/// corrected paths, verified read-back, preserved sibling members, and restored
+/// cleanly.
 ///
 /// ## STRING Tags and STRING Members in UDTs
 ///
 /// Standalone Logix `STRING` tags can be written directly with the standard structure
 /// encoding. Direct writes to `STRING` members within UDTs (e.g.,
-/// `gTestUDT.Member5_String`) are still treated as restricted until hardware validation
-/// proves otherwise. For those nested members, write the entire UDT structure instead
-/// of writing the member path directly.
+/// `gTestUDT.Member5_String`) are still rejected with `0xFF/0x2107` under the
+/// current member encoding on 5069-L330ERM fw38. Whether a member-specific direct
+/// encoding exists remains under CODEX-AO investigation. For those nested members,
+/// write the entire UDT structure instead of writing the member path directly.
 ///
 /// **What works:**
 /// - ✅ Reading UDT array element members: `gTestUDT_Array[0].Member1_DINT` (read)
 /// - ✅ Writing entire UDT array elements: `gTestUDT_Array[0]` (write full UDT)
 /// - ✅ Writing UDT members (non-STRING): `gTestUDT.Member1_DINT` (write DINT/REAL/BOOL/INT members)
-/// - ✅ Writing at least `gTestUDT_Array[0].Member1_DINT` on 5069-L330ERM fw38 with a corrected path
+/// - ✅ Writing scalar UDT array element members on 5069-L330ERM fw38 with corrected paths
 /// - ✅ Writing array elements: `gArray[5]` (write element of simple array)
 /// - ✅ Reading STRING tags: `gTest_STRING` (read)
 /// - ✅ Writing STRING tags: `gTest_STRING` (write standard top-level STRING)
@@ -129,10 +130,10 @@ pub(crate) static RUNTIME: LazyLock<std::io::Result<Runtime>> = LazyLock::new(Ru
 /// **What doesn't work:**
 /// - ❌ Writing STRING members in UDTs: `gTestUDT.Member5_String` (write) - must write entire UDT
 /// - ❌ Writing program-scoped STRING members: `Program:TestProgram.gTestUDT.Member5_String` (write) - must write entire UDT
-/// - ⚠️ Other UDT array element member direct writes remain evidence-gated until CODEX-AV completes
+/// - ❌ Writing UDT array element STRING members under the current member encoding - must write entire UDT
 ///
 /// **Conservative workaround:**
-/// For unvalidated or rejected nested member writes, read the entire UDT array
+/// For rejected nested STRING-member writes, read the entire UDT array
 /// element, modify the member in memory, then write the entire UDT array
 /// element back:
 ///

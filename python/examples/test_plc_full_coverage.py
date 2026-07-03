@@ -30,8 +30,7 @@ class Kind(Enum):
 class Mode(Enum):
     WRITEABLE = "writeable"
     READ_ONLY = "read_only"
-    FIRMWARE_BLOCKED_UDT_STRING_MEMBER = "firmware_blocked_udt_string_member"
-    FIRMWARE_BLOCKED_UDT_ARRAY_ELEMENT_MEMBER = "firmware_blocked_udt_array_element_member"
+    ENCODING_BLOCKED_UDT_STRING_MEMBER = "encoding_blocked_udt_string_member"
     SERVICE_LAYER_WRITEABLE = "service_layer_writeable"
 
     @classmethod
@@ -44,11 +43,8 @@ class Mode(Enum):
     def is_writeable(self) -> bool:
         return self in {Mode.WRITEABLE, Mode.SERVICE_LAYER_WRITEABLE}
 
-    def is_firmware_blocked(self) -> bool:
-        return self in {
-            Mode.FIRMWARE_BLOCKED_UDT_STRING_MEMBER,
-            Mode.FIRMWARE_BLOCKED_UDT_ARRAY_ELEMENT_MEMBER,
-        }
+    def is_expected_blocked(self) -> bool:
+        return self == Mode.ENCODING_BLOCKED_UDT_STRING_MEMBER
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,12 +164,12 @@ def main() -> int:
         print(f"manifest-error: failed to load {args.manifest}: {exc}", file=sys.stderr)
         return 2
     writeable = sum(1 for t in tags if t.mode.is_writeable())
-    blocked = sum(1 for t in tags if t.mode.is_firmware_blocked())
+    blocked = sum(1 for t in tags if t.mode.is_expected_blocked())
     readonly = sum(1 for t in tags if t.mode == Mode.READ_ONLY)
 
     print("Python wrapper — full-coverage exerciser")
     print(f"PLC: {address} (slot {slot})  total tags: {len(tags)}")
-    print(f"  writeable: {writeable}   firmware-blocked: {blocked}   read-only: {readonly}")
+    print(f"  writeable: {writeable}   expected-blocked: {blocked}   read-only: {readonly}")
     print()
 
     if args.dry_run:
@@ -239,10 +235,10 @@ def main() -> int:
                 S(tag.category).verify_fail += 1
         print(f"  done in {time.perf_counter()-t2:.1f}s")
 
-        print("Phase 4 — confirm firmware-blocked writes are still blocked")
+        print("Phase 4 — confirm expected-blocked writes are still rejected")
         t3 = time.perf_counter()
         for tag in tags:
-            if not tag.mode.is_firmware_blocked(): continue
+            if not tag.mode.is_expected_blocked(): continue
             v = rand_value(tag.kind, rng)
             if v is None: continue
             try:
@@ -328,7 +324,7 @@ def main() -> int:
                 "phase1_read": {"ok": T.read_ok, "fail": T.read_fail},
                 "phase2_write": {"ok": T.write_ok, "fail": T.write_fail},
                 "phase3_verify": {"ok": T.verify_ok, "fail": T.verify_fail},
-                "phase4_blocked": {"ok": T.blocked_ok, "fail": T.blocked_unexpected, "note": "expected firmware rejections"},
+                "phase4_blocked": {"ok": T.blocked_ok, "fail": T.blocked_unexpected, "note": "expected current-encoding rejections"},
                 "phase5_settle": {"ok": settle_ok, "fail": settle_fail},
                 "phase6_verify_settle": {"ok": settle_verify_ok, "fail": settle_verify_fail},
             },

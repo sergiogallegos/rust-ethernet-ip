@@ -318,21 +318,21 @@ client.WriteUdt("gTestUDT", udt);
 
 ### UDT Array Element Member Writing
 
-**Cannot write directly to members of UDT array elements** (e.g., `gTestUDT_Array[0].Member1_DINT`).
+**Scalar members of UDT array elements are writeable on validated firmware** (e.g., `gTestUDT_Array[0].Member1_DINT`).
 
-**Root Cause:** PLC firmware limitation (CIP Error 0x2107). The PLC does not support direct write operations to individual members within UDT array elements.
+**Current evidence:** CODEX-AV validated DINT, REAL, BOOL, and INT UDT-array-element-member writes on 5069-L330ERM fw38. STRING members still reject with CIP `0x2107` under the current member encoding.
 
 **What Works:**
 - ✅ Reading UDT array element members: `gTestUDT_Array[0].Member1_DINT` (read successfully)
+- ✅ Writing scalar UDT array element members: `gTestUDT_Array[0].Member1_DINT` (write successfully on validated firmware)
 - ✅ Writing entire UDT array elements: `gTestUDT_Array[0]` (write full UDT structure)
 - ✅ Writing UDT members (non-array): `gTestUDT.Member1_DINT` (write individual members)
 - ✅ Writing simple array elements: `gArray[5]` (write elements of simple arrays)
 
 **What Doesn't Work:**
-- ❌ Writing UDT array element members: `gTestUDT_Array[0].Member1_DINT` (write fails)
-- ❌ Writing program-scoped UDT array element members: `Program:TestProgram.gTestUDT_Array[0].Member1_DINT` (write fails)
+- ❌ Writing UDT array element STRING members: `gTestUDT_Array[0].Member5_String` (current member encoding is rejected)
 
-**Workaround:**
+**Workaround for STRING members:**
 ```csharp
 // Read entire UDT array element
 var element = client.ReadUdt("gTestUDT_Array[0]");

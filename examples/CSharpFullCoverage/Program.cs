@@ -13,8 +13,7 @@ internal enum WriteMode
 {
     Writeable,
     ReadOnly,
-    FirmwareBlockedUdtStringMember,
-    FirmwareBlockedUdtArrayElementMember,
+    EncodingBlockedUdtStringMember,
     ServiceLayerWriteable,
 }
 
@@ -125,8 +124,7 @@ internal static class Program
     {
         "writeable" => WriteMode.Writeable,
         "read_only" => WriteMode.ReadOnly,
-        "firmware_blocked_udt_string_member" => WriteMode.FirmwareBlockedUdtStringMember,
-        "firmware_blocked_udt_array_element_member" => WriteMode.FirmwareBlockedUdtArrayElementMember,
+        "encoding_blocked_udt_string_member" => WriteMode.EncodingBlockedUdtStringMember,
         "service_layer_writeable" => WriteMode.ServiceLayerWriteable,
         _ => throw new ArgumentException($"unknown writeability: {value}"),
     };
@@ -134,9 +132,8 @@ internal static class Program
     private static bool IsWriteable(WriteMode mode) =>
         mode is WriteMode.Writeable or WriteMode.ServiceLayerWriteable;
 
-    private static bool IsFirmwareBlocked(WriteMode mode) =>
-        mode is WriteMode.FirmwareBlockedUdtStringMember
-            or WriteMode.FirmwareBlockedUdtArrayElementMember;
+    private static bool IsExpectedBlocked(WriteMode mode) =>
+        mode is WriteMode.EncodingBlockedUdtStringMember;
 
     private static object? Rand(Kind k, Random rng) => k switch
     {
@@ -262,13 +259,13 @@ internal static class Program
         foreach (var t in tags)
         {
             if (IsWriteable(t.Mode)) writeable++;
-            else if (IsFirmwareBlocked(t.Mode)) blocked++;
+            else if (IsExpectedBlocked(t.Mode)) blocked++;
             else readonly_++;
         }
 
         Console.WriteLine("C# wrapper — full-coverage exerciser");
         Console.WriteLine($"PLC: {address} (slot {slot})  total tags: {tags.Count}");
-        Console.WriteLine($"  writeable: {writeable}   firmware-blocked: {blocked}   read-only: {readonly_}");
+        Console.WriteLine($"  writeable: {writeable}   expected-blocked: {blocked}   read-only: {readonly_}");
         Console.WriteLine();
 
         if (dryRun)
@@ -327,11 +324,11 @@ internal static class Program
         }
         sw.Stop(); Console.WriteLine($"  done in {sw.Elapsed.TotalSeconds:F1}s");
 
-        Console.WriteLine("Phase 4 — confirm firmware-blocked writes are still blocked");
+        Console.WriteLine("Phase 4 — confirm expected-blocked writes are still rejected");
         sw.Restart();
         foreach (var t in tags)
         {
-            if (!IsFirmwareBlocked(t.Mode)) continue;
+            if (!IsExpectedBlocked(t.Mode)) continue;
             var v = Rand(t.Kind, rng); if (v is null) continue;
             if (DoWrite(client, t, v)) S(t.Category).BlockedUnexpected++; else S(t.Category).BlockedAsExpected++;
         }
@@ -411,7 +408,7 @@ internal static class Program
                 phase1_read = new { ok = totals.ReadOk, fail = totals.ReadFail },
                 phase2_write = new { ok = totals.WriteOk, fail = totals.WriteFail },
                 phase3_verify = new { ok = totals.VerifyOk, fail = totals.VerifyFail },
-                phase4_blocked = new { ok = totals.BlockedAsExpected, fail = totals.BlockedUnexpected, note = "expected firmware rejections" },
+                phase4_blocked = new { ok = totals.BlockedAsExpected, fail = totals.BlockedUnexpected, note = "expected current-encoding rejections" },
                 phase5_settle = new { ok = settleOk, fail = settleFail },
                 phase6_verify_settle = new { ok = settleVerifyOk, fail = settleVerifyFail },
             },

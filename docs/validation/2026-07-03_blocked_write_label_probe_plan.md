@@ -91,9 +91,9 @@ sibling, or restore failure makes the probe exit non-zero.
 
 - The 60 scalar `firmware_blocked_udt_array_element_member` entries →
   writeable, per this evidence.
-- All STRING-member entries stay blocked; keep or rename the label so it says
-  what the evidence says (STRING member writes rejected `0x2107` on L330ERM
-  fw38 with the current encoding), and fix the prog-array asymmetry.
+- All STRING-member entries stay blocked; use a label that says what the
+  evidence says (STRING member writes rejected `0x2107` on L330ERM fw38 with
+  the current encoding), and fix the prog-array asymmetry.
 - Firmware scope: single controller. Record the scope in the manifest docs;
   older-firmware controllers re-validate whenever they are next benched.
 
@@ -102,3 +102,18 @@ sibling, or restore failure makes the probe exit non-zero.
 Update `examples/full_coverage_tags.json`,
 `tests/full_coverage_manifest_tests.sh`, quirks documentation, and service-layer
 routing decisions from the recorded results above.
+
+## Relabel Stage Result
+
+- Scalar UDT-array-element DINT/REAL/BOOL/INT entries moved from
+  `firmware_blocked_udt_array_element_member` to `writeable`.
+- UDT STRING-member entries use `encoding_blocked_udt_string_member`: rejected
+  with `0x2107` under the current member encoding, not labeled as a firmware
+  ban.
+- The missing program-scope UDT-array-element `Member5_String` entry was added
+  for parity with the controller-scope manifest shape. These five entries did
+  not exist at probe time and were not individually probed; their blocked label
+  is class-inferred from the controller-scope twins, which all rejected
+  `0x2107`. The pre-1.2.0 full-coverage gate run exercises them directly.
+- The manifest now expands to 2304 targets: 2268 writeable, 17
+  current-encoding blocked, and 19 read-only.

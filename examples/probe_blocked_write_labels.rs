@@ -82,18 +82,15 @@ enum WriteMode {
     Writeable,
     ReadOnly,
     FirmwareBlockedString,
-    FirmwareBlockedUdtStringMember,
-    FirmwareBlockedUdtArrayElementMember,
+    EncodingBlockedUdtStringMember,
     ServiceLayerWriteable,
 }
 
 impl WriteMode {
-    fn is_firmware_blocked(self) -> bool {
+    fn is_expected_blocked(self) -> bool {
         matches!(
             self,
-            Self::FirmwareBlockedString
-                | Self::FirmwareBlockedUdtStringMember
-                | Self::FirmwareBlockedUdtArrayElementMember
+            Self::FirmwareBlockedString | Self::EncodingBlockedUdtStringMember
         )
     }
 
@@ -102,10 +99,7 @@ impl WriteMode {
             Self::Writeable => "writeable",
             Self::ReadOnly => "read_only",
             Self::FirmwareBlockedString => "firmware_blocked_string",
-            Self::FirmwareBlockedUdtStringMember => "firmware_blocked_udt_string_member",
-            Self::FirmwareBlockedUdtArrayElementMember => {
-                "firmware_blocked_udt_array_element_member"
-            }
+            Self::EncodingBlockedUdtStringMember => "encoding_blocked_udt_string_member",
             Self::ServiceLayerWriteable => "service_layer_writeable",
         }
     }
@@ -218,7 +212,7 @@ fn expand_blocked_category(
     if let Some(members) = &category.members {
         for i in range_or_once(category.indices.as_ref()) {
             for (member, spec) in members {
-                if spec.writeability.is_firmware_blocked() {
+                if spec.writeability.is_expected_blocked() {
                     targets.push(ProbeTarget {
                         tag: render_pattern(&category.pattern, Some(i), Some(member), None, None),
                         category: category.name.clone(),
@@ -240,7 +234,7 @@ fn expand_blocked_category(
                     .range
                     .ok_or_else(|| format!("{}.{field} missing range", category.name))?;
                 for j in range[0]..range[1] {
-                    if spec.writeability.is_firmware_blocked() {
+                    if spec.writeability.is_expected_blocked() {
                         targets.push(ProbeTarget {
                             tag: render_pattern(
                                 &category.pattern,
@@ -265,7 +259,7 @@ fn expand_blocked_category(
     let Some(mode) = category.writeability else {
         return Ok(targets);
     };
-    if !mode.is_firmware_blocked() {
+    if !mode.is_expected_blocked() {
         return Ok(targets);
     }
     let kind = category

@@ -38,7 +38,7 @@ Data engineering, analytics, historian ingestion, MES bridges, and machine learn
 
 There is no widely-adopted, modern, open-source EtherNet/IP library for Allen-Bradley PLCs that is production-credible across the Rust, .NET, and Python ecosystems at the same time. Existing options tend to be closed-source vendor SDKs with restrictive licensing, aging C libraries with thin or stale language bindings, or per-team rewrites that never get hardened against real PLC firmware quirks.
 
-This project exists to fill that gap with a single, MIT-licensed protocol implementation the industrial automation community can build on, audit, and extend — and to make the protocol details and firmware-imposed limitations (STRING structure encoding, UDT array element writes, route-path quirks) explicit and documented rather than rediscovered by every new integrator.
+This project exists to fill that gap with a single, MIT-licensed protocol implementation the industrial automation community can build on, audit, and extend — and to make the protocol details and controller-specific behavior (STRING structure encoding, UDT member writes, route-path quirks) explicit and documented rather than rediscovered by every new integrator.
 
 ## Version Status
 
@@ -49,7 +49,7 @@ This project exists to fill that gap with a single, MIT-licensed protocol implem
 
 Release snapshot:
 - `1.1.0` is a non-breaking correctness + cleanup + feature release: client-side bit access (read-modify-write), C# UDT-write/Dispose/finalizer fixes, `RoutePath::add_port` fix, a Python wheel that bundles the native library, richer errors via `eip_get_last_error` (`CAP_LAST_ERROR`) surfaced through C# `PlcException` and Python, a C# async API, `thiserror` 2.0 + trimmed `tokio` features, and automated crates.io/PyPI/multi-RID-NuGet release packaging. The public Rust API and the C ABI (version 1) are unchanged. See [`CHANGELOG.md`](CHANGELOG.md).
-- Rust + C# + Python full-coverage hardware exercisers all pass against CompactLogix 5069-L330ERM fw38 (2026-06-19): byte-identical 2299/2299 reads, 2206/2206 writes, 2206/2206 verify, 60 firmware-blocked-as-expected, 0 unexpected anomalies.
+- Rust + C# + Python full-coverage hardware exercisers all pass against CompactLogix 5069-L330ERM fw38 (2026-06-19): byte-identical 2299/2299 reads, 2206/2206 writes, 2206/2206 verify, 60 then-expected blocked writes, 0 unexpected anomalies. CODEX-AV later revalidated those blocked labels before the 1.2.0 gate.
 - crates.io ships five workspace artifacts at `1.1.0`: `rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, and the top-level `rust-ethernet-ip`. NuGet ships `RustEtherNetIp 1.1.0` and PyPI ships `rust-ethernet-ip 1.1.0` from the GitHub release workflow on tag push.
 
 ## Project Focus
@@ -75,10 +75,10 @@ Release snapshot:
 
 ## Known PLC/Firmware Limitations
 
-Some write behaviors are restricted by PLC firmware (not library protocol implementation):
+Some write behaviors depend on exact Logix wire encoding and controller firmware:
 
-- Direct writes to `STRING` members inside UDTs can fail on some controllers
-- Direct writes to UDT array element members (for example `MyUdtArray[0].Member`) can fail
+- Direct writes to scalar UDT array element members (for example `MyUdtArray[0].Speed`) are confirmed writeable on 5069-L330ERM fw38 when the full member path is preserved.
+- Direct writes to `STRING` members inside UDTs reject with `0xFF/0x2107` under the current member encoding on 5069-L330ERM fw38. Whether a member-specific direct encoding exists remains under investigation.
 
 Real-hardware note from the `0.7.0` release validation:
 - Validated on `5069-L320ERMS3`, firmware `35`, at `192.168.0.1:44818`
@@ -86,9 +86,9 @@ Real-hardware note from the `0.7.0` release validation:
 - On that CompactLogix target, normal reads/writes, route-path access, subscriptions, UDT reads, and batch operations are working
 - On that ControlLogix target, the same main read/write, route-path, subscription, UDT-read, and batch paths are working
 - On newer 2026-07-02 validation against 5069-L330ERM firmware 38, standalone standard `STRING` writes succeed when encoded as the Logix structure type (`0x02A0` + `0x0FCE` handle).
-- Remaining observed firmware-imposed limits include direct `STRING` member writes inside UDTs and direct writes to UDT array element members, which can surface as `0x2107` data-type mismatch errors.
+- On 2026-07-03 validation against the same controller, all 60 scalar UDT-array-element-member writes succeeded; 17 UDT STRING-member writes remain expected `0x2107` current-encoding rejections.
 
-Recommended pattern for restricted cases: **read-modify-write the full UDT/array element**.
+Recommended pattern for rejected STRING-member cases: **read-modify-write the full UDT/array element**.
 
 Detailed technical background and examples:
 - [AB String/UDT write limitations](docs/AB_String_UDT_Write_Limitations.md)

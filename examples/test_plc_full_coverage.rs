@@ -105,8 +105,7 @@ enum Kind {
 enum WriteMode {
     Writeable,
     ReadOnly,
-    FirmwareBlockedUdtStringMember,
-    FirmwareBlockedUdtArrayElementMember,
+    EncodingBlockedUdtStringMember,
     ServiceLayerWriteable,
 }
 
@@ -115,11 +114,8 @@ impl WriteMode {
         matches!(self, Self::Writeable | Self::ServiceLayerWriteable)
     }
 
-    fn is_firmware_blocked(self) -> bool {
-        matches!(
-            self,
-            Self::FirmwareBlockedUdtStringMember | Self::FirmwareBlockedUdtArrayElementMember
-        )
+    fn is_expected_blocked(self) -> bool {
+        matches!(self, Self::EncodingBlockedUdtStringMember)
     }
 }
 
@@ -424,14 +420,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let counts = tags.iter().fold((0, 0, 0), |(w, b, r), t| {
         if t.write.is_writeable() {
             (w + 1, b, r)
-        } else if t.write.is_firmware_blocked() {
+        } else if t.write.is_expected_blocked() {
             (w, b + 1, r)
         } else {
             (w, b, r + 1)
         }
     });
     println!(
-        "  writeable: {}   firmware-blocked: {}   read-only: {}",
+        "  writeable: {}   expected-blocked: {}   read-only: {}",
         counts.0, counts.1, counts.2
     );
     println!();
@@ -526,10 +522,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("  done in {:.1}s", t2.elapsed().as_secs_f64());
 
-    println!("Phase 4 — confirm firmware-blocked writes are still blocked");
+    println!("Phase 4 — confirm expected-blocked writes are still rejected");
     let t3 = Instant::now();
     for tag in &tags {
-        if !tag.write.is_firmware_blocked() {
+        if !tag.write.is_expected_blocked() {
             continue;
         }
         let Some(v) = rand_value(tag.kind, &mut rng) else {
@@ -729,7 +725,7 @@ fn write_json_result(summary: &RunSummary<'_>) -> Result<(), Box<dyn std::error:
             "phase1_read": { "ok": summary.totals.read_ok, "fail": summary.totals.read_fail },
             "phase2_write": { "ok": summary.totals.write_ok, "fail": summary.totals.write_fail },
             "phase3_verify": { "ok": summary.totals.verify_ok, "fail": summary.totals.verify_fail },
-            "phase4_blocked": { "ok": summary.totals.blocked_as_expected, "fail": summary.totals.blocked_unexpected_pass, "note": "expected firmware rejections" },
+            "phase4_blocked": { "ok": summary.totals.blocked_as_expected, "fail": summary.totals.blocked_unexpected_pass, "note": "expected current-encoding rejections" },
             "phase5_settle": { "ok": summary.settle_ok, "fail": summary.settle_fail },
             "phase6_verify_settle": { "ok": summary.settle_verify_ok, "fail": summary.settle_verify_fail }
         },

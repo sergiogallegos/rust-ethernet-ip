@@ -1,4 +1,9 @@
-> **Historical reference.** This document records past work and may not reflect the current 1.0.0 codebase.
+> **Historical reference, superseded for scalar members.** This document records
+> past work and may not reflect the current mainline codebase. CODEX-AM and the
+> 2026-07-03 CODEX-AV hardware matrix showed that scalar UDT array element
+> member writes (`DINT`/`REAL`/`BOOL`/`INT`) succeed on 5069-L330ERM fw38 when
+> the full member path is preserved. STRING members remain rejected with
+> `0x2107` under the current member encoding.
 
 # UDT Array Element Member Write Analysis
 

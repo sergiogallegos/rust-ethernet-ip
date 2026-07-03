@@ -4,7 +4,7 @@
 
 ## Overview
 
-The Rust EtherNet/IP library has certain limitations due to PLC firmware restrictions (not library bugs). These limitations are documented here for all wrapper users.
+The Rust EtherNet/IP library has certain limitations and controller-specific wire-format requirements. These limitations are documented here for all wrapper users.
 
 ## Known Limitations
 
@@ -28,9 +28,9 @@ Standard top-level Logix `STRING` tags can be read and written directly when enc
 **Workaround:**
 For STRING values that are part of a UDT, read the entire UDT, modify the STRING member in memory, then write the entire UDT back.
 
-### 2. STRING Members in UDTs Cannot Be Written Directly
+### 2. STRING Members in UDTs Are Current-Encoding Blocked
 
-**Error Code:** CIP Error 0x2107 (Vendor Specific Error)
+**Observed Error Code:** CIP Error 0xFF/0x2107 (Read/Write Tag data-type mismatch)
 
 **Affected Operations:**
 - Writing to STRING members within UDTs (e.g., `gTestUDT.Member5_String`)
@@ -46,41 +46,43 @@ For STRING values that are part of a UDT, read the entire UDT, modify the STRING
 **Workaround:**
 Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.
 
-### 3. UDT Array Element Members Cannot Be Written Directly
+### 3. UDT Array Element Members
 
-**Error Code:** CIP Error 0x2107 (Vendor Specific Error)
+Scalar UDT array element members were revalidated on 2026-07-03 against 5069-L330ERM fw38. DINT, REAL, BOOL, and INT member writes succeeded in controller and program scopes when the full member path was preserved.
 
 **Affected Operations:**
-- Writing to members of UDT array elements (e.g., `gTestUDT_Array[0].Member1_DINT`)
-- Writing to program-scoped UDT array element members (e.g., `Program:TestProgram.gTestUDT_Array[0].Member1_DINT`)
+- Writing scalar members of UDT array elements (e.g., `gTestUDT_Array[0].Member1_DINT`) is supported on the validated controller/firmware.
+- Writing STRING members of UDT array elements (e.g., `gTestUDT_Array[0].Member5_String`) still rejects with `0x2107` under the current member encoding.
 
 **What Works:**
 - ✅ Reading UDT array element members
 - ✅ Writing entire UDT array elements (e.g., `gTestUDT_Array[0]`)
 - ✅ Writing UDT members for non-array UDTs (e.g., `gTestUDT.Member1_DINT`)
+- ✅ Writing scalar UDT array element members on 5069-L330ERM fw38
 
 **What Doesn't Work:**
-- ❌ Writing UDT array element members directly
+- ❌ Writing UDT array element STRING members directly under the current member encoding
 
 **Workaround:**
-Read the entire UDT array element, modify the member in memory, then write the entire UDT array element back.
+For STRING members, read the entire UDT array element, modify the member in memory, then write the entire UDT array element back.
 
 ## Test Results
 
 Based on comprehensive testing with 392 tags:
 
 - ✅ **335/392 tags** successfully read and written
-- ❌ **57/392 tags** failed:
-  - 55 tags: UDT array element member writes (PLC limitation)
-  - 2 tags: STRING member writes in UDTs (PLC limitation)
+- Superseded by the 2026-07-03 CODEX-AV matrix for UDT-array-element members:
+  scalar array-element member writes are writeable on 5069-L330ERM fw38; STRING
+  members remain current-encoding blocked.
 
 ## Error Handling
 
 When encountering Error 0x2107, check the tag path to determine which limitation applies:
 
 1. **Malformed/simple STRING request:** `gTest_STRING` with the wrong type bytes → request data-type mismatch
-2. **STRING member in UDT:** `gTestUDT.Member5_String` → STRING member limitation
-3. **UDT array element member:** `gTestUDT_Array[0].Member1_DINT` → UDT array element member limitation
+2. **STRING member in UDT:** `gTestUDT.Member5_String` → current member encoding rejected
+3. **UDT array element scalar member:** `gTestUDT_Array[0].Member1_DINT` → should write on validated firmware; investigate path/encoding if it returns `0x2107`
+4. **UDT array element STRING member:** `gTestUDT_Array[0].Member5_String` → current member encoding rejected
 
 ## Implementation Notes
 

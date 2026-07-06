@@ -279,7 +279,9 @@ impl UdtManager {
 
         if is_structure {
             let next_offset = member_section
-                .chunks_exact(8)
+                .as_chunks::<8>()
+                .0
+                .iter()
                 .filter_map(|chunk| {
                     let offset = u32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]);
                     (offset > raw_member.offset).then_some(offset)

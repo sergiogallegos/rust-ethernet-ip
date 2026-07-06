@@ -25,16 +25,24 @@ fn ffi_abi_contract_exports_expected_values() {
 
 #[test]
 fn ffi_raw_pointer_exports_are_not_public_abi_symbols() {
-    let ffi_source = include_str!("../src/ffi.rs");
+    // Normalize line endings so the two-line attribute+signature checks below
+    // are robust to CRLF checkouts on Windows.
+    let ffi_source = include_str!("../src/ffi.rs").replace("\r\n", "\n");
+
+    // The raw-`*mut EipClient` entry points survive as plain Rust `pub` fns for
+    // SemVer compatibility with 1.1.0, but must NOT be `#[no_mangle]`-exported
+    // into the C ABI symbol table (ABI v2 removed those C exports). The
+    // authoritative symbol-table check is the objdump scan in CI; this is the
+    // cheap source-level guard.
     for symbol in [
         "eip_get_udt_definition",
         "eip_get_tag_attributes",
         "eip_discover_tags_detailed",
     ] {
-        let exported_signature = format!("pub unsafe extern \"C\" fn {symbol}(");
+        let exported = format!("#[unsafe(no_mangle)]\npub unsafe extern \"C\" fn {symbol}(");
         assert!(
-            !ffi_source.contains(&exported_signature),
-            "{symbol} must remain a private helper; callers use the _by_id export"
+            !ffi_source.contains(&exported),
+            "{symbol} must not be a #[no_mangle] C export; callers use the _by_id export"
         );
     }
 
@@ -43,10 +51,10 @@ fn ffi_raw_pointer_exports_are_not_public_abi_symbols() {
         "eip_get_tag_attributes_by_id",
         "eip_discover_tags_detailed_by_id",
     ] {
-        let exported_signature = format!("pub unsafe extern \"C\" fn {symbol}(");
+        let exported = format!("#[unsafe(no_mangle)]\npub unsafe extern \"C\" fn {symbol}(");
         assert!(
-            ffi_source.contains(&exported_signature),
-            "{symbol} should remain in the public ABI"
+            ffi_source.contains(&exported),
+            "{symbol} should remain a #[no_mangle] C ABI export"
         );
     }
 }

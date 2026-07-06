@@ -26,4 +26,10 @@ ignore = [
     "RUSTSEC-2026-0097",  # rand unsoundness with custom logger — via desktop_app → eframe → accesskit_unix → zbus
     "RUSTSEC-2026-0194",  # quick-xml NsReader DoS — build-time-only via desktop_app → eframe → winit → sctk → wayland-scanner
     "RUSTSEC-2026-0195",  # quick-xml NsReader DoS (same crate, second advisory) — same build-time-only path
+    # 2026-07-06 additions — all off the shipped-library path (RUSTSEC-2026-0204
+    # crossbeam-epoch was a real vulnerability and is fixed by a precise bump to
+    # 0.9.20 rather than ignored):
+    "RUSTSEC-2026-0192",  # ttf-parser unmaintained — via desktop_app → eframe → egui → epaint → ab_glyph → owned_ttf_parser
+    "RUSTSEC-2026-0186",  # memmap2 unchecked pointer offset (unsound) — target-gated desktop_app example transitive
+    "RUSTSEC-2026-0190",  # anyhow Error::downcast_mut unsoundness — build-time only via the vergen build-dependency (build.rs version stamping)
 ]

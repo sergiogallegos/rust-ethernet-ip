@@ -17,12 +17,17 @@ Target next release: TBD.
   1.2.0 manifest relabel decision.
 
 ### Fixed
-- CODEX-AS hardened the FFI boundary: raw `*mut EipClient` exports were removed
-  in favor of handle-based `_by_id` exports, ABI version is now 2, panics under
-  runtime-dispatched FFI calls become `-1` plus last-error instead of unwinding
-  into host processes, last-error entries clear on success and disconnect, and
-  Python clients now finalize/disconnect native handles without wedging local
-  state on native disconnect failure.
+- CODEX-AS hardened the FFI boundary: the three raw `*mut EipClient` entry
+  points (`eip_get_udt_definition`, `eip_get_tag_attributes`,
+  `eip_discover_tags_detailed`) are no longer exported into the C ABI symbol
+  table in favor of the handle-based `_by_id` exports, so `eip_abi_version()` is
+  now 2. The functions remain in the crate's Rust API as non-exported
+  `pub unsafe extern "C" fn`s, so there is no Rust-source breaking change and
+  the crate stays on the 1.2.0 minor line; the C ABI is versioned independently
+  via `ABI_VERSION`. Panics under runtime-dispatched FFI calls become `-1` plus
+  last-error instead of unwinding into host processes, last-error entries clear
+  on success and disconnect, and Python clients now finalize/disconnect native
+  handles without wedging local state on native disconnect failure.
 - CODEX-AL hardened transport/session state: SendRRData now uses checked
   per-request sender contexts, incomplete transactions poison the shared stream
   until reconnect, session handles are shared across cloned clients, and FFI

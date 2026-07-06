@@ -38,6 +38,18 @@ include = [
 name = "rust_ethernet_ip"
 crate-type = ["rlib", "cdylib"]
 
+[package.metadata.cargo-semver-checks.lints]
+# The C FFI ABI surface (`#[no_mangle] extern "C"` exports in src/ffi.rs) is
+# versioned independently of the crate SemVer line via `ABI_VERSION`
+# (src/version.rs / `eip_abi_version()`), the abi-contract.md bump policy, the
+# `ffi_abi.rs` export tests, the C#/Python ABI pins, and the CI objdump symbol
+# scan. Removing or renaming a C export is therefore an ABI-version event, not a
+# crate-SemVer major: CODEX-AS removed three unusable raw-`*mut EipClient`
+# exports (ABI v1 -> v2) while keeping the crate on the 1.2.0 minor line. This
+# override exempts only the export-name lint, which fires solely on `#[no_mangle]`
+# functions; ordinary Rust API removals stay gated by `function_missing`.
+function_export_name_changed = "allow"
+
 [[bench]]
 name = "performance_benchmark"
 harness = false

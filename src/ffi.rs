@@ -2497,6 +2497,34 @@ pub unsafe extern "C" fn eip_get_udt_definition_by_id(
     unsafe { eip_get_udt_definition_impl(&mut client, client_id, udt_name, result_ptr) }
 }
 
+/// Legacy raw-`*mut EipClient` entry point, retained for Rust source
+/// compatibility with the 1.1.0 public API.
+///
+/// This function is **not** exported into the C ABI symbol table — ABI v2
+/// removed the raw-pointer exports, and `#[no_mangle]` is deliberately absent.
+/// C, C#, and Python consumers must call [`eip_get_udt_definition_by_id`] with
+/// an integer handle. It survives only so the crate's Rust API stays
+/// SemVer-compatible; last-error state is recorded under the sentinel id `0`.
+///
+/// # Safety
+///
+/// - `client_ptr` must be a valid, uniquely-borrowable `*mut EipClient`.
+/// - `udt_name` must be a valid NUL-terminated C string pointer.
+/// - `result_ptr` must point to writable storage for one `UdtDefinitionResult`.
+pub unsafe extern "C" fn eip_get_udt_definition(
+    client_ptr: *mut EipClient,
+    udt_name: *const c_char,
+    result_ptr: *mut UdtDefinitionResult,
+) -> c_int {
+    if client_ptr.is_null() {
+        return -1;
+    }
+    // SAFETY: client_ptr is non-null and, per the caller contract above, a valid exclusive EipClient pointer.
+    let client = unsafe { &mut *client_ptr };
+    // SAFETY: udt_name/result_ptr validity is the caller's contract; the helper re-checks both for null.
+    unsafe { eip_get_udt_definition_impl(client, 0, udt_name, result_ptr) }
+}
+
 unsafe fn eip_get_tag_attributes_impl(
     client: &mut EipClient,
     client_id: c_int,
@@ -2599,6 +2627,32 @@ pub unsafe extern "C" fn eip_get_tag_attributes_by_id(
 
     // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe { eip_get_tag_attributes_impl(&mut client, client_id, tag_name, result_ptr) }
+}
+
+/// Legacy raw-`*mut EipClient` entry point, retained for Rust source
+/// compatibility with the 1.1.0 public API.
+///
+/// Not exported into the C ABI symbol table (ABI v2; `#[no_mangle]` deliberately
+/// absent). C/C#/Python consumers must call [`eip_get_tag_attributes_by_id`].
+/// Last-error state is recorded under the sentinel id `0`.
+///
+/// # Safety
+///
+/// - `client_ptr` must be a valid, uniquely-borrowable `*mut EipClient`.
+/// - `tag_name` must be a valid NUL-terminated C string pointer.
+/// - `result_ptr` must point to writable storage for one `TagAttributesResult`.
+pub unsafe extern "C" fn eip_get_tag_attributes(
+    client_ptr: *mut EipClient,
+    tag_name: *const c_char,
+    result_ptr: *mut TagAttributesResult,
+) -> c_int {
+    if client_ptr.is_null() {
+        return -1;
+    }
+    // SAFETY: client_ptr is non-null and, per the caller contract above, a valid exclusive EipClient pointer.
+    let client = unsafe { &mut *client_ptr };
+    // SAFETY: tag_name/result_ptr validity is the caller's contract; the helper re-checks both for null.
+    unsafe { eip_get_tag_attributes_impl(client, 0, tag_name, result_ptr) }
 }
 
 unsafe fn eip_discover_tags_detailed_impl(
@@ -2731,6 +2785,30 @@ pub unsafe extern "C" fn eip_discover_tags_detailed_by_id(
 
     // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe { eip_discover_tags_detailed_impl(&mut client, client_id, result_ptr) }
+}
+
+/// Legacy raw-`*mut EipClient` entry point, retained for Rust source
+/// compatibility with the 1.1.0 public API.
+///
+/// Not exported into the C ABI symbol table (ABI v2; `#[no_mangle]` deliberately
+/// absent). C/C#/Python consumers must call [`eip_discover_tags_detailed_by_id`].
+/// Last-error state is recorded under the sentinel id `0`.
+///
+/// # Safety
+///
+/// - `client_ptr` must be a valid, uniquely-borrowable `*mut EipClient`.
+/// - `result_ptr` must point to writable storage for one `TagDiscoveryResult`.
+pub unsafe extern "C" fn eip_discover_tags_detailed(
+    client_ptr: *mut EipClient,
+    result_ptr: *mut TagDiscoveryResult,
+) -> c_int {
+    if client_ptr.is_null() {
+        return -1;
+    }
+    // SAFETY: client_ptr is non-null and, per the caller contract above, a valid exclusive EipClient pointer.
+    let client = unsafe { &mut *client_ptr };
+    // SAFETY: result_ptr validity is the caller's contract; the helper re-checks it for null.
+    unsafe { eip_discover_tags_detailed_impl(client, 0, result_ptr) }
 }
 
 #[cfg(test)]

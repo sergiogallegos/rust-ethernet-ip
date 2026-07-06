@@ -17,6 +17,7 @@ Verified against the current `src/ffi.rs` layout and the C# `RustEtherNetIp` P/I
 - Don't `.expect()` in a desperate "this can't fail" path — the FFI is exactly where unexpected failure happens (cold paths, init order, OS limits).
 - CODEX-AS adds a `catch_unwind` guard around the shared runtime dispatch macro. A panic below an FFI runtime call returns `-1` and records `internal panic: ...` in `eip_get_last_error` for that client instead of aborting the host process. This is a last-resort containment boundary, not permission to panic in FFI code.
 - If a panic poisons an FFI mutex, lock helpers recover with `PoisonError::into_inner` and log a warning. These globals are registries/counters/error strings; the safer host behavior is to preserve access and return explicit errors rather than permanently wedging the process.
+- The C ABI symbol table is versioned by `ABI_VERSION`, not by crate SemVer. CODEX-AS de-exported the three raw-`*mut EipClient` entry points (ABI v1 → v2) but kept them as non-`#[no_mangle]` `pub unsafe extern "C" fn`s so no Rust API was removed. Consequently the root `Cargo.toml` exempts the `function_export_name_changed` semver-checks lint (FFI-symbol-only; ordinary API removals stay gated by `function_missing`). When you add, remove, or rename a `#[no_mangle]` export, bump `ABI_VERSION` and update the C#/Python pins + `ffi_abi.rs` — do not expect `cargo-semver-checks` to catch it.
 
 ## Global runtime and client table are the contract
 

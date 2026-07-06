@@ -543,6 +543,39 @@ async fn simulated_plc_timeout_failure_mode() {
         }
         other => panic!("expected timeout error, got: {:?}", other),
     }
+
+    let next_err = client.read_tag("REAL_TAG").await.unwrap_err();
+    assert!(
+        matches!(next_err, EtherNetIpError::ConnectionLost(_)),
+        "expected poisoned connection to fail fast, got: {next_err:?}"
+    );
+}
+
+#[tokio::test]
+async fn simulated_plc_sender_context_mismatch_poisons_connection() {
+    let sim = SimulatedPlc::start_with_behavior(SimBehavior {
+        corrupt_sender_context_after: Some(2),
+        ..Default::default()
+    })
+    .await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let err = client.read_tag("DINT_TAG").await.unwrap_err();
+
+    match err {
+        EtherNetIpError::Protocol(message) => assert!(
+            message.contains("sender_context mismatch"),
+            "unexpected protocol error: {message}"
+        ),
+        other => panic!("expected sender_context Protocol error, got: {other:?}"),
+    }
+
+    let next_err = client.read_tag("REAL_TAG").await.unwrap_err();
+    assert!(
+        matches!(next_err, EtherNetIpError::ConnectionLost(_)),
+        "expected mismatched context to poison connection, got: {next_err:?}"
+    );
 }
 
 #[tokio::test]

@@ -17,6 +17,10 @@ Target next release: TBD.
   1.2.0 manifest relabel decision.
 
 ### Fixed
+- CODEX-AL hardened transport/session state: SendRRData now uses checked
+  per-request sender contexts, incomplete transactions poison the shared stream
+  until reconnect, session handles are shared across cloned clients, and FFI
+  health/diagnostics calls no longer reinsert cloned clients after disconnect.
 - CODEX-AN corrected `read_array_range` chunk parsing to consume Logix Read
   Tag replies as `[type][data...]` with no synthetic element-count word,
   rebuilt `get_tag_attributes` on the CIP request/response codec, and made the

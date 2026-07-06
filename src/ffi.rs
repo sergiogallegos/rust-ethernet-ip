@@ -112,12 +112,6 @@ pub fn client_max_packet_size_for_testing(client_id: c_int) -> Option<u32> {
         .map(|client| client.max_packet_size())
 }
 
-fn store_client(client_id: c_int, client: EipClient) -> Result<(), ()> {
-    let mut clients = lock_clients()?;
-    clients.insert(client_id, client);
-    Ok(())
-}
-
 /// Records the last error message for a client so wrappers can surface a
 /// human-readable reason after a failure code. Best-effort: a poisoned lock is
 /// ignored rather than panicking across the FFI boundary.
@@ -1446,13 +1440,6 @@ pub unsafe extern "C" fn eip_check_health_detailed(
 
     let is_ok = ffi_block_on!(client.check_health_detailed()).unwrap_or_default();
 
-    if store_client(client_id, client).is_err() {
-        unsafe {
-            *is_healthy = 0;
-        }
-        return -1;
-    }
-
     unsafe {
         *is_healthy = if is_ok { 1 } else { 0 };
     }
@@ -1482,10 +1469,6 @@ pub unsafe extern "C" fn eip_get_diagnostics_json(
     } else {
         ffi_block_on!(client.get_diagnostics_snapshot())
     };
-
-    if detailed != 0 && store_client(client_id, client).is_err() {
-        return -1;
-    }
 
     let json = match diagnostics_snapshot_json(&snapshot) {
         Ok(json) => json,

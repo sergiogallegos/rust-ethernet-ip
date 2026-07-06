@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 #[cfg(feature = "ffi")]
 use std::sync::LazyLock;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -235,8 +235,12 @@ pub(crate) static RUNTIME: LazyLock<std::io::Result<Runtime>> = LazyLock::new(Ru
 pub struct EipClient {
     /// SHARED ON CLONE: network communication state.
     stream: Arc<Mutex<Box<dyn EtherNetIpStream>>>,
-    /// COPIED ON CLONE: set during construction before FFI registry insertion; never mutate post-insert.
-    session_handle: u32,
+    /// SHARED ON CLONE: one registered session handle belongs to the shared stream.
+    session_handle: Arc<AtomicU32>,
+    /// SHARED ON CLONE: fail-fast marker for a stream that may contain stale response bytes.
+    stream_poisoned: Arc<AtomicBool>,
+    /// SHARED ON CLONE: monotonic sender_context counter for SendRRData correlation.
+    sender_context_counter: Arc<AtomicU64>,
     /// SHARED ON CLONE: tag discovery/cache state.
     tag_manager: Arc<Mutex<TagManager>>,
     /// SHARED ON CLONE: UDT discovery/cache state.
@@ -268,7 +272,8 @@ const _: fn() = || {
 impl std::fmt::Debug for EipClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EipClient")
-            .field("session_handle", &self.session_handle)
+            .field("session_handle", &self.session_handle())
+            .field("stream_poisoned", &self.stream_poisoned())
             .field("route_path", &self.route_path_snapshot())
             .field("max_packet_size", &self.max_packet_size())
             .field("batch_config", &self.batch_config)
@@ -291,7 +296,9 @@ impl EipClient {
     {
         let mut client = Self {
             stream: Arc::new(Mutex::new(Box::new(stream))),
-            session_handle: 0,
+            session_handle: Arc::new(AtomicU32::new(0)),
+            stream_poisoned: Arc::new(AtomicBool::new(false)),
+            sender_context_counter: Arc::new(AtomicU64::new(1)),
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
             route_path: Arc::new(StdMutex::new(None)),
@@ -326,7 +333,9 @@ impl EipClient {
         let (stream, _peer) = tokio::io::duplex(64);
         Self {
             stream: Arc::new(Mutex::new(Box::new(stream))),
-            session_handle: 0,
+            session_handle: Arc::new(AtomicU32::new(0)),
+            stream_poisoned: Arc::new(AtomicBool::new(false)),
+            sender_context_counter: Arc::new(AtomicU64::new(1)),
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
             route_path: Arc::new(StdMutex::new(None)),
@@ -362,6 +371,7 @@ impl EipClient {
     /// - Invalid response format
     /// - PLC rejection (status code non-zero)
     async fn register_session(&mut self) -> crate::error::Result<()> {
+        self.ensure_stream_usable()?;
         tracing::debug!("Starting session registration...");
         let mut packet = BytesMut::with_capacity(28);
         EncapsulationHeader::new(REGISTER_SESSION, 4, 0).encode(&mut packet);
@@ -369,27 +379,21 @@ impl EipClient {
         packet.extend_from_slice(&[0x00, 0x00]); // Option Flags: 0
 
         tracing::trace!("Sending Register Session packet: {:02X?}", packet);
-        self.stream
-            .lock()
-            .await
-            .write_all(&packet)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to send Register Session packet: {}", e);
-                EtherNetIpError::Io(e)
-            })?;
+        let mut stream = self.stream.lock().await;
+        self.ensure_stream_usable()?;
+        // Relaxed is sufficient: this flag is a scalar fail-fast marker shared
+        // by clones; the stream mutex serializes actual I/O.
+        self.stream_poisoned.store(true, Ordering::Relaxed);
+        if let Err(e) = stream.write_all(&packet).await {
+            tracing::error!("Failed to send Register Session packet: {}", e);
+            return Err(EtherNetIpError::Io(e));
+        }
 
-        let mut buf = [0u8; 1024];
+        let mut header_buf = [0u8; 24];
         tracing::debug!("Waiting for Register Session response...");
-        let n = match timeout(
-            Duration::from_secs(5),
-            self.stream.lock().await.read(&mut buf),
-        )
-        .await
-        {
-            Ok(Ok(n)) => {
-                tracing::trace!("Received {} bytes in response", n);
-                n
+        match timeout(Duration::from_secs(5), stream.read_exact(&mut header_buf)).await {
+            Ok(Ok(_)) => {
+                tracing::trace!("Received Register Session response header");
             }
             Ok(Err(e)) => {
                 tracing::error!("Error reading response: {}", e);
@@ -401,17 +405,28 @@ impl EipClient {
             }
         };
 
-        if n < 28 {
-            tracing::error!("Response too short: {} bytes (expected 28)", n);
-            return Err(EtherNetIpError::Protocol("Response too short".to_string()));
+        let mut header_bytes = &header_buf[..];
+        let header = EncapsulationHeader::decode(&mut header_bytes)?;
+        let mut body = vec![0u8; header.length as usize];
+        if !body.is_empty() {
+            match timeout(Duration::from_secs(5), stream.read_exact(&mut body)).await {
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => {
+                    tracing::error!("Error reading response body: {}", e);
+                    return Err(EtherNetIpError::Io(e));
+                }
+                Err(_) => {
+                    tracing::warn!("Timeout waiting for response body");
+                    return Err(EtherNetIpError::Timeout(Duration::from_secs(5)));
+                }
+            }
         }
 
-        let mut response = &buf[..n];
-        let header = EncapsulationHeader::decode(&mut response)?;
+        self.stream_poisoned.store(false, Ordering::Relaxed);
 
         // Extract session handle from response
-        self.session_handle = header.session_handle;
-        tracing::debug!("Session handle: 0x{:08X}", self.session_handle);
+        self.set_session_handle(header.session_handle);
+        tracing::debug!("Session handle: 0x{:08X}", self.session_handle());
 
         // Check status
         let status = header.status;
@@ -436,6 +451,34 @@ impl EipClient {
 
     pub(crate) fn max_packet_size(&self) -> u32 {
         self.max_packet_size.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn session_handle(&self) -> u32 {
+        self.session_handle.load(Ordering::Relaxed)
+    }
+
+    fn set_session_handle(&self, session_handle: u32) {
+        self.session_handle.store(session_handle, Ordering::Relaxed);
+    }
+
+    fn stream_poisoned(&self) -> bool {
+        self.stream_poisoned.load(Ordering::Relaxed)
+    }
+
+    fn next_sender_context(&self) -> [u8; 8] {
+        self.sender_context_counter
+            .fetch_add(1, Ordering::Relaxed)
+            .to_le_bytes()
+    }
+
+    fn ensure_stream_usable(&self) -> crate::error::Result<()> {
+        if self.stream_poisoned() {
+            return Err(EtherNetIpError::ConnectionLost(
+                "connection stream is poisoned after an incomplete transaction; reconnect required"
+                    .to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn route_path_snapshot(&self) -> Option<RoutePath> {
@@ -3574,6 +3617,7 @@ impl EipClient {
     }
 
     async fn send_keep_alive(&mut self) -> crate::error::Result<()> {
+        self.ensure_stream_usable()?;
         // Send NOP command (0x0000) — a valid 24-byte EtherNet/IP packet
         // that keeps the TCP connection alive without affecting session state.
         // NOP requires no response, so we don't read one.
@@ -3752,8 +3796,13 @@ impl EipClient {
         let mut packet = BytesMut::new();
         let mut cpf = BytesMut::new();
         send_data.encode(&mut cpf);
-        EncapsulationHeader::send_rr_data(cpf.len() as u16, self.session_handle)
-            .encode(&mut packet);
+        let sender_context = self.next_sender_context();
+        EncapsulationHeader::send_rr_data_with_context(
+            cpf.len() as u16,
+            self.session_handle(),
+            sender_context,
+        )
+        .encode(&mut packet);
         packet.extend_from_slice(&cpf);
 
         tracing::trace!(
@@ -3763,11 +3812,13 @@ impl EipClient {
         );
 
         // Send packet with timeout
+        self.ensure_stream_usable()?;
         let mut stream = self.stream.lock().await;
-        stream
-            .write_all(&packet)
-            .await
-            .map_err(EtherNetIpError::Io)?;
+        self.ensure_stream_usable()?;
+        self.stream_poisoned.store(true, Ordering::Relaxed);
+        if let Err(e) = stream.write_all(&packet).await {
+            return Err(EtherNetIpError::Io(e));
+        }
 
         // Read response header with timeout
         let mut header = [0u8; 24];
@@ -3780,16 +3831,38 @@ impl EipClient {
         // Check EtherNet/IP command status
         let mut header_bytes = &header[..];
         let response_header = EncapsulationHeader::decode(&mut header_bytes)?;
+        if response_header.sender_context != sender_context {
+            return Err(EtherNetIpError::Protocol(format!(
+                "SendRRData sender_context mismatch: expected {:02X?}, got {:02X?}",
+                sender_context, response_header.sender_context
+            )));
+        }
+
+        // Parse response length
+        let response_length = response_header.length as usize;
         if response_header.status != 0 {
+            if response_length > 0 {
+                let mut response_data = vec![0u8; response_length];
+                match timeout(
+                    Duration::from_secs(10),
+                    stream.read_exact(&mut response_data),
+                )
+                .await
+                {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => return Err(EtherNetIpError::Io(e)),
+                    Err(_) => return Err(EtherNetIpError::Timeout(Duration::from_secs(10))),
+                }
+            }
+            self.stream_poisoned.store(false, Ordering::Relaxed);
             return Err(EtherNetIpError::Protocol(format!(
                 "EIP Command failed. Status: 0x{:08X}",
                 response_header.status
             )));
         }
 
-        // Parse response length
-        let response_length = response_header.length as usize;
         if response_length == 0 {
+            self.stream_poisoned.store(false, Ordering::Relaxed);
             return Ok(Vec::new());
         }
 
@@ -3805,6 +3878,8 @@ impl EipClient {
             Ok(Err(e)) => return Err(EtherNetIpError::Io(e)),
             Err(_) => return Err(EtherNetIpError::Timeout(Duration::from_secs(10))),
         }
+
+        self.stream_poisoned.store(false, Ordering::Relaxed);
 
         // Update last activity time
         *self.last_activity.lock().await = Instant::now();
@@ -3936,7 +4011,7 @@ impl EipClient {
         let _ = self.close_all_connected_sessions().await;
 
         let mut packet = BytesMut::with_capacity(24);
-        EncapsulationHeader::new(UNREGISTER_SESSION, 0, self.session_handle).encode(&mut packet);
+        EncapsulationHeader::new(UNREGISTER_SESSION, 0, self.session_handle()).encode(&mut packet);
 
         self.stream
             .lock()
@@ -4446,6 +4521,99 @@ mod write_request_tests {
             .expect_err("overlong STRING should be rejected");
 
         assert!(err.to_string().contains("String too long"));
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::EipClient;
+    use crate::EtherNetIpStream;
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::sync::Mutex;
+
+    fn register_response(session_handle: u32) -> Vec<u8> {
+        let mut response = Vec::with_capacity(28);
+        response.extend_from_slice(&0x0065u16.to_le_bytes());
+        response.extend_from_slice(&4u16.to_le_bytes());
+        response.extend_from_slice(&session_handle.to_le_bytes());
+        response.extend_from_slice(&0u32.to_le_bytes());
+        response.extend_from_slice(&[0u8; 8]);
+        response.extend_from_slice(&0u32.to_le_bytes());
+        response.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
+        response
+    }
+
+    async fn read_register_request(stream: &mut tokio::io::DuplexStream) {
+        let mut header = [0u8; 24];
+        stream
+            .read_exact(&mut header)
+            .await
+            .expect("request header");
+        let body_len = u16::from_le_bytes([header[2], header[3]]) as usize;
+        let mut body = vec![0u8; body_len];
+        stream.read_exact(&mut body).await.expect("request body");
+    }
+
+    #[tokio::test]
+    async fn register_session_accepts_fragmented_reply() {
+        let (client_stream, mut server_stream) = tokio::io::duplex(128);
+        let mut client = EipClient::new_unconnected_for_testing();
+        client.stream = Arc::new(Mutex::new(
+            Box::new(client_stream) as Box<dyn EtherNetIpStream>
+        ));
+
+        let server = tokio::spawn(async move {
+            read_register_request(&mut server_stream).await;
+            let response = register_response(0x0102_0304);
+            server_stream
+                .write_all(&response[..10])
+                .await
+                .expect("first fragment");
+            tokio::task::yield_now().await;
+            server_stream
+                .write_all(&response[10..])
+                .await
+                .expect("second fragment");
+        });
+
+        client
+            .register_session()
+            .await
+            .expect("fragmented register response should parse");
+        server.await.expect("server task");
+
+        assert_eq!(client.session_handle(), 0x0102_0304);
+    }
+
+    #[tokio::test]
+    async fn reregistration_updates_session_handle_across_clones() {
+        let (client_stream, mut server_stream) = tokio::io::duplex(256);
+        let mut client = EipClient::new_unconnected_for_testing();
+        client.stream = Arc::new(Mutex::new(
+            Box::new(client_stream) as Box<dyn EtherNetIpStream>
+        ));
+        let mut clone = client.clone();
+
+        let server = tokio::spawn(async move {
+            for handle in [0x1111_2222, 0x3333_4444] {
+                read_register_request(&mut server_stream).await;
+                server_stream
+                    .write_all(&register_response(handle))
+                    .await
+                    .expect("register response");
+            }
+        });
+
+        client.register_session().await.expect("first register");
+        assert_eq!(client.session_handle(), 0x1111_2222);
+        assert_eq!(clone.session_handle(), 0x1111_2222);
+
+        clone.register_session().await.expect("clone re-register");
+        server.await.expect("server task");
+
+        assert_eq!(client.session_handle(), 0x3333_4444);
+        assert_eq!(clone.session_handle(), 0x3333_4444);
     }
 }
 

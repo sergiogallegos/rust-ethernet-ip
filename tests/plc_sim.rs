@@ -70,6 +70,8 @@ pub struct SimBehavior {
     pub drop_send_rr_response_after: Option<usize>,
     /// Close the current connection once the global SendRRData count reaches this value.
     pub disconnect_on_send_rr_after: Option<usize>,
+    /// Corrupt the encapsulation sender_context once the global SendRRData count reaches this value.
+    pub corrupt_sender_context_after: Option<usize>,
     /// Tags that should fail READ requests with CIP status 0x04.
     pub fail_read_tags: Vec<String>,
     /// Tags that should fail WRITE requests with CIP status 0x04.
@@ -222,6 +224,8 @@ async fn handle_connection(
         let cmd = u16::from_le_bytes([header[0], header[1]]);
         let length = u16::from_le_bytes([header[2], header[3]]) as usize;
         let session_handle = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
+        let mut sender_context = [0u8; 8];
+        sender_context.copy_from_slice(&header[12..20]);
 
         let mut payload = vec![0u8; length];
         if length > 0 && stream.read_exact(&mut payload).await.is_err() {
@@ -230,7 +234,7 @@ async fn handle_connection(
 
         match cmd {
             CMD_REGISTER_SESSION => {
-                let response = build_register_session_response();
+                let response = build_register_session_response(sender_context);
                 if stream.write_all(&response).await.is_err() {
                     break;
                 }
@@ -254,7 +258,17 @@ async fn handle_connection(
                 }
 
                 let cip_response = build_cip_response(&payload, &tags, &behavior);
-                let response = build_send_rr_response(session_handle, &cip_response);
+                let response_context = if behavior
+                    .config
+                    .corrupt_sender_context_after
+                    .is_some_and(|corrupt_after| current >= corrupt_after)
+                {
+                    [0xFF; 8]
+                } else {
+                    sender_context
+                };
+                let response =
+                    build_send_rr_response(session_handle, response_context, &cip_response);
                 if stream.write_all(&response).await.is_err() {
                     break;
                 }
@@ -264,20 +278,24 @@ async fn handle_connection(
     }
 }
 
-fn build_register_session_response() -> Vec<u8> {
+fn build_register_session_response(sender_context: [u8; 8]) -> Vec<u8> {
     let session_handle = 0x12345678_u32;
     let mut response = Vec::with_capacity(28);
     response.extend_from_slice(&CMD_REGISTER_SESSION.to_le_bytes());
     response.extend_from_slice(&4u16.to_le_bytes()); // length
     response.extend_from_slice(&session_handle.to_le_bytes());
     response.extend_from_slice(&0u32.to_le_bytes()); // status
-    response.extend_from_slice(&[0u8; 8]); // context
+    response.extend_from_slice(&sender_context); // context
     response.extend_from_slice(&0u32.to_le_bytes()); // options
     response.extend_from_slice(&[0u8; 4]); // protocol version + options
     response
 }
 
-fn build_send_rr_response(session_handle: u32, cip_response: &[u8]) -> Vec<u8> {
+fn build_send_rr_response(
+    session_handle: u32,
+    sender_context: [u8; 8],
+    cip_response: &[u8],
+) -> Vec<u8> {
     let mut data = Vec::new();
     data.extend_from_slice(&0u32.to_le_bytes()); // interface
     data.extend_from_slice(&0u16.to_le_bytes()); // timeout
@@ -295,7 +313,7 @@ fn build_send_rr_response(session_handle: u32, cip_response: &[u8]) -> Vec<u8> {
     response.extend_from_slice(&(data.len() as u16).to_le_bytes());
     response.extend_from_slice(&session_handle.to_le_bytes());
     response.extend_from_slice(&0u32.to_le_bytes()); // status
-    response.extend_from_slice(&[0u8; 8]); // context
+    response.extend_from_slice(&sender_context); // context
     response.extend_from_slice(&0u32.to_le_bytes()); // options
     response.extend_from_slice(&data);
     response

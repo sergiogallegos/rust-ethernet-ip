@@ -116,3 +116,33 @@ fn ffi_registry_mutations_survive_repeated_clone_lookups() {
         );
     }
 }
+
+#[test]
+fn ffi_detailed_health_cannot_resurrect_disconnected_client() {
+    let sim = SimHarness::start();
+    let addr_c = CString::new(sim.address.as_str()).expect("address CString");
+    let client_id = unsafe { ffi::eip_connect(addr_c.as_ptr()) };
+    assert!(client_id > 0, "FFI connect failed");
+
+    let (started_tx, started_rx) = mpsc::channel();
+    let health_thread = thread::spawn(move || {
+        started_tx.send(()).expect("signal start");
+        for _ in 0..250 {
+            let mut is_healthy = 0;
+            unsafe {
+                let _ = ffi::eip_check_health_detailed(client_id, &mut is_healthy);
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+    });
+
+    started_rx.recv().expect("health thread started");
+    thread::sleep(Duration::from_millis(5));
+    assert_eq!(unsafe { ffi::eip_disconnect(client_id) }, 0);
+    health_thread.join().expect("health thread join");
+
+    assert!(
+        ffi::client_route_path_snapshot_for_testing(client_id).is_none(),
+        "disconnected client was resurrected in the FFI registry"
+    );
+}

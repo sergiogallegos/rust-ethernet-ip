@@ -8,7 +8,7 @@ impl EipClient {
     /// within the last 150 seconds. Use this for cheap periodic checks; for a
     /// definitive check that the PLC is still responding, use [`check_health_detailed`](Self::check_health_detailed).
     pub async fn check_health(&self) -> bool {
-        self.session_handle != 0
+        self.session_handle() != 0
             && self.last_activity.lock().await.elapsed() < Duration::from_secs(150)
     }
 
@@ -24,7 +24,7 @@ impl EipClient {
     /// a long idle or before a critical operation). On failure, consider
     /// reconnecting; check [`EtherNetIpError::is_retriable`](crate::error::EtherNetIpError::is_retriable) on errors.
     pub async fn check_health_detailed(&mut self) -> crate::error::Result<bool> {
-        if self.session_handle == 0 {
+        if self.session_handle() == 0 {
             return Ok(false);
         }
 
@@ -32,7 +32,8 @@ impl EipClient {
         match self.send_keep_alive().await {
             Ok(()) => Ok(true),
             Err(_) => {
-                // If keep-alive fails, try re-registering the session
+                // If keep-alive fails, try re-registering the shared session.
+                // The new handle is atomically visible to all clones using this stream.
                 match self.register_session().await {
                     Ok(()) => Ok(true),
                     Err(_) => Ok(false),
@@ -57,7 +58,7 @@ impl EipClient {
         is_healthy: bool,
     ) -> crate::DiagnosticsSnapshot {
         let now = std::time::SystemTime::now();
-        let session_active = self.session_handle != 0;
+        let session_active = self.session_handle() != 0;
         let last_activity_elapsed = self.last_activity.lock().await.elapsed();
         let last_success_time = if is_healthy || session_active {
             Some(

@@ -542,7 +542,7 @@ impl EipClient {
         );
 
         let mut packet = BytesMut::new();
-        EncapsulationHeader::new(SEND_RR_DATA, 0, self.session_handle).encode(&mut packet);
+        EncapsulationHeader::new(SEND_RR_DATA, 0, self.session_handle()).encode(&mut packet);
 
         // CPF (Common Packet Format) data starts here
         let cpf_start = packet.len();

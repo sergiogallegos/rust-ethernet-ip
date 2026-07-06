@@ -36,6 +36,17 @@ impl EncapsulationHeader {
             ..Self::new(SEND_RR_DATA, length, session_handle)
         }
     }
+
+    pub fn send_rr_data_with_context(
+        length: u16,
+        session_handle: u32,
+        sender_context: [u8; 8],
+    ) -> Self {
+        Self {
+            sender_context,
+            ..Self::new(SEND_RR_DATA, length, session_handle)
+        }
+    }
 }
 
 impl Encode for EncapsulationHeader {

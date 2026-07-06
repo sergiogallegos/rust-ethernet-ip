@@ -2,9 +2,9 @@
 id: CODEX-AS
 title: FFI polish — private raw-pointer exports, unwind guard, SAFETY discipline, last-error lifecycle; Python residuals
 owner: codex
-status: open
+status: merged
 created: 2026-07-01
-last-update: 2026-07-01 claude [Fable 5]
+last-update: 2026-07-06 claude [Opus 4.8]
 ---
 
 ## Brief
@@ -63,6 +63,80 @@ Bring `src/ffi.rs` in line with its own contract ([`docs/agents/notes/ffi-safety
 
 ## Codex log
 
+2026-07-06 codex [GPT-5] Submitted implementation.
+
+- Removed the public raw-pointer ABI exports `eip_get_udt_definition`, `eip_get_tag_attributes`, and `eip_discover_tags_detailed`; the handle-based `_by_id` exports remain public and call private helpers. Because this is a linker-visible removal, `ABI_VERSION` is now 2 and the C#/Python ABI pins were updated.
+- Added panic containment to the shared FFI runtime dispatch macro. Panics below `ffi_block_on!` now return `-1` and set `eip_get_last_error(client_id)` to `internal panic: ...`.
+- Removed the file-level `clippy::missing_safety_doc` suppression and added `# Safety` docs to exported unsafe FFI functions, including the macro-generated scalar wrappers.
+- Reworked FFI global lock helpers to recover poisoned registry/id/error locks with a warning instead of wedging the host process.
+- Added guarded client-id allocation: wraparound scans for an unoccupied positive id and reports exhaustion instead of aliasing a live client.
+- `eip_disconnect` now removes the client first, best-effort unregisters the EtherNet/IP session, and removes the client's last-error entry.
+- Last-error audit:
+  - Scalar read/write wrappers: set on type/native failure; clear on success.
+  - `eip_read_string`: strict `PlcValue::String` only; set on wrong type, read failure, invalid string, or too-small buffer; clear on success.
+  - `eip_write_string`: set on null/UTF-8/client/native failure; clear on success.
+  - `eip_read_tag`, `eip_read_array_range`, `eip_read_udt`: set on native/serialization/buffer failures; clear on successful buffer write.
+  - `eip_write_udt`: malformed JSON or member-map conversion failure now returns `-1` with last-error; the old empty `UdtData` fallback is gone; clear on success.
+  - Batch read/write/execute: set on top-level validation, JSON, native, or result-buffer failure; clear after successful output-buffer write. Per-item failures remain in the JSON result contract.
+  - `eip_disconnect`: removes the last-error entry after the handle is removed.
+- Hardened result allocation: zero-member UDT definitions and zero-tag discovery results use null arrays with count 0; discovery malloc failure now zeros `tags` and `tag_count`.
+- Python wrapper: `Client` now uses `weakref.finalize` to disconnect native handles on GC, `disconnect()` clears local state even when native disconnect returns an error, and native library search continues after an ABI-mismatched candidate while reporting all candidate errors if none load.
+- Updated `docs/agents/notes/ffi-safety.md`, `docs/API_STABILITY.md`, and `wiki/protocol/abi-contract.md` for ABI v2, last-error lifecycle, panic containment, poisoned-lock recovery, and id-wrap behavior.
+
+Verification:
+
+- `cargo fmt -- --check` passed.
+- `cargo check --features ffi --locked` passed.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed.
+- `cargo clippy --features ffi --lib -- -D clippy::undocumented_unsafe_blocks` passed.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` passed.
+- `cargo test --features ffi --test ffi_abi --locked` passed (2 tests).
+- `cargo test --features ffi --test ffi_tests --locked` passed (15 tests).
+- `cargo test --features ffi --test ffi_state_consistency --locked` passed (3 tests).
+- `cargo test --test plc_sim_tests --locked` passed (22 tests).
+- `cargo build --release --features ffi` passed.
+- `objdump -p target\release\rust_ethernet_ip.dll` showed 59 `eip_*` exports and no raw-pointer exports `eip_get_udt_definition`, `eip_get_tag_attributes`, or `eip_discover_tags_detailed`.
+- `dotnet build csharp\RustEtherNetIp\RustEtherNetIp.csproj --no-restore` passed.
+- `dotnet test csharp\RustEtherNetIp.Tests\RustEtherNetIp.Tests.csproj --no-restore` passed (86 tests).
+- `dotnet test csharp\RustEtherNetIp.IntegrationTests\RustEtherNetIp.IntegrationTests.csproj --no-restore` passed (7 tests).
+- `python -m unittest discover python/tests` passed (42 tests, 8 skipped).
+- `python scripts\validate-agent-files` passed (48 task files).
+- `PYTHONIOENCODING=utf-8 python scripts\check-release-readiness 1.1.0 --skip-package` passed.
+- `git diff --check` passed.
+- `rg` found no `missing_safety_doc` suppression and no public raw-pointer export signatures in `src/ffi.rs`.
+
 ## Claude review
 
+### 2026-07-06 claude [Opus 4.8]
+
+**Independent verification.** Full matrix re-run locally: `cargo fmt -- --check` clean; `cargo clippy --workspace --all-targets --all-features -- -D warnings` clean; `cargo clippy --features ffi -- -W clippy::undocumented_unsafe_blocks` produced no warnings (every `unsafe` block carries a `// SAFETY:`); `SKIP_PLC_TESTS=1 cargo test --workspace --locked` green; `cargo test --features ffi --test ffi_abi/ffi_tests/ffi_state_consistency` 2/15/3; `cargo test --test plc_sim_tests` 22/22; `cargo build --release --features ffi` OK. **objdump on the actual release DLL** independently confirms the symbol removal: `eip_get_udt_definition`, `eip_get_tag_attributes`, `eip_discover_tags_detailed` are absent from the export table while the three `_by_id` variants remain, 59 `eip_*` exports total. C# unit 86/86 + integration 7/7. Python 42 tests / 8 skipped (reviewed via subagent — all four Python/C# items verified against source, ABI pins consistent across all five locations).
+
+**What's being fixed.** All seven §3 FFI findings plus the Python residuals: raw-pointer exports no external caller can produce; no unwind guard (a panic across `extern "C"` aborts the host .NET/Python process); the file-level `missing_safety_doc` suppression ffi-safety.md forbids; the stale/leaking/unset `FFI_LAST_ERRORS` lifecycle; two degenerate fallbacks that write fabricated/empty data or ASCII-scan garbage as success; malloc/discovery out-param hardening and id-wraparound aliasing; and the Python GC-backstop/disconnect-wedge/library-search gaps.
+
+**Root cause confirmation.** Confirmed each in source. The raw exports take `*mut EipClient` while the handle API is `i32`-keyed — they are unusable by construction, verified against the wrappers' import set (C#/Python import only `_by_id`). The last-error staleness is real: entries were never cleared on success, so `eip_get_last_error` returned an unrelated earlier failure that C# then attached to the current exception. The `eip_write_udt` `UdtData { symbol_id: 0, data: vec![] }` fallback genuinely reached `write_tag` — a zero-byte write to the PLC.
+
+**Fix appropriateness.** The unwind guard lives in the shared `ffi_block_on!` macro (`catch_unwind(AssertUnwindSafe(|| runtime.block_on(..)))`), so every runtime-dispatched call is covered; a panic sets `internal panic: <msg>` and returns `-1`. Poisoned-lock recovery via `PoisonError::into_inner` + a warning at all three global lock sites matches the brief's guidance (the globals are id/registry/string maps, not invariant-carriers). `allocate_client_id` scans for an unoccupied positive id and returns "exhausted" instead of aliasing a live client. `eip_disconnect` removes the client *first* (closing the resurrection race), then best-effort `unregister_session` wrapped in its own `catch_unwind`, then drops the last-error entry. `eip_read_string` is strict `PlcValue::String`-only with typed errors; `eip_write_udt` tries raw-`UdtData` then member-map JSON and fails with a descriptive message — no empty payload path remains. The UDT-definition allocator avoids `malloc(0)` for zero-member UDTs (null + count 0) and every error path frees prior allocations and zeroes `name`/`members`/`member_count` before returning. The ABI-version machinery is bumped 1→2 and coordinated across all five pins (Rust source of truth, C# `NativeRuntime`/`AbiContractTests`, Python `bindings`/`test_abi_contract`) plus API_STABILITY, abi-contract.md (now with an explicit "removal of an exported symbol" bump-policy line), and ffi-safety.md.
+
+**Test proof.** `ffi_raw_pointer_exports_are_not_public_abi_symbols` asserts the source signatures (backed by the objdump check above on the binary). `ffi_last_error_clears_after_successful_scalar_read` proves the staleness fix (failure sets, success clears). `ffi_read_string_rejects_non_string_tag_without_ascii_scan` and `ffi_write_udt_rejects_conversion_failure_without_empty_payload_fallback` pin the two fallback removals with last-error content asserts. Python: finalizer-on-GC, disconnect-failure-still-clears-state, and continue-past-ABI-mismatch tests all pass.
+
+**Residual risk.** No hardware dependency (FFI-only). The single release-blocking item is a **maintainer decision**, not a defect — see the headline finding.
+
+**Strong points.** The objdump/source dual proof of symbol removal. The `eip_disconnect` remove-then-unregister-under-catch_unwind ordering is exactly right. The UDT allocator's per-member unwind-and-zero on error is careful, correct unsafe code. The ffi-safety.md contract this brief was meant to *restore* is now actually accurate to the code again.
+
+### Findings
+
+- 🟡 **(maintainer release decision, not a code defect) ABI v2 is a linker-visible symbol removal — this is the item that most affects the 1.2.0-minor-vs-2.0 call.** The board's 1.2.0 plan says "minor … no signature breaks; deferred deletions stay queued for 2.0." Removing three exported symbols is, strictly, an ABI break, and the updated bump policy now says so. It is defensible inside a 1.2.0 minor because (a) the removed symbols take `*mut EipClient`, unusable by any real caller; (b) the shipped C#/Python packages import only `_by_id` and move in lockstep with the native lib, so package consumers see no break; (c) the Rust crate SemVer (crates.io) is untouched — these aren't Rust API; (d) the `eip_abi_version()` v1→v2 mechanism exists precisely to fail-fast any hypothetical third-party C consumer linking the dylib directly. The brief (Claude-authored) explicitly authorized the bump and Codex coordinated it fully. Merging to `main` neither tags nor publishes, so this does not block the merge — but the maintainer should confirm at 1.2.0-tag time that "unusable-symbol removal behind an ABI-version bump" is acceptable as minor, and the board's "no signature breaks" line deserves a footnote to that effect.
+- 🟢 The `catch_unwind` guard wraps the async runtime future (where the protocol/parsing panic surface lives), not the thin synchronous pointer/CString marshalling before and after the macro. ffi-safety.md documents this honestly ("a panic below an FFI runtime call"). Acceptable — the brief allowed "`ffi_block_on!` or equivalent," and the sync marshalling is written to return `-1`, not panic.
+- 🟢 Python `disconnect()` clears local state and detaches the finalizer *before* the native call, so a native `eip_disconnect` failure surfaces the error but leaves no retry path — a native-side handle could leak. This is the brief's explicit "clear regardless, surface the error" tradeoff, not a regression.
+- 🟢 A few `// SAFETY:` comments are on the generic side ("covered by the enclosing FFI function contract and preceding validation") rather than naming the exact guarding check. They do reference the real invariant (the preceding null/length validation) and the lint passes; a future pass could tighten wording. `remove_last_error` is a one-line alias of `clear_last_error` (cosmetic).
+
+### Acceptance criteria tally
+
+1. ffi-safety.md checklist passes against the new code; zero `missing_safety_doc` suppressions; every `unsafe` block has a `// SAFETY:` — ✅ (lint clean; doc updated).
+2. Seven goal items each landed with a logged disposition; last-error audit table in the Codex log — ✅.
+3. ABI handling: bump coordinated across all pinned locations; `check-release-readiness --skip-package` passes — ✅ (Codex-run; version-parity unaffected since no crate version changed this task).
+4. CHANGELOG updated — ✅.
+
 ## Verdict
+
+**Merged.** Independent full-matrix verification green (fmt, clippy all-targets/all-features `-D warnings`, `undocumented_unsafe_blocks` clean, workspace `--locked`, ffi_abi 2/2 + ffi_tests 15/15 + ffi_state_consistency 3/3, plc_sim_tests 22/22, release ffi build with objdump-confirmed symbol removal, C# 86/86 + integration 7/7, Python 42/8-skipped). All seven FFI findings and the Python residuals land correctly: the unwind guard contains host-aborting panics in the shared macro, poisoned locks recover instead of wedging the process, the last-error lifecycle is now clear-on-success/remove-on-disconnect, both degenerate fallbacks return honest typed errors, the UDT allocator handles zero-member and malloc-failure shapes without UB, and the Python client finalizes/disconnects without wedging. Zero defects, zero Claude-applied fixes. Three 🟢 findings (all accepted tradeoffs or cosmetic). The one 🟡 is a **maintainer release-version decision**, not a code issue: ABI v2 is a linker-visible removal of unusable symbols behind the version-bump mechanism — defensible as 1.2.0-minor, but the maintainer should sign off on it at tag time and footnote the board's "no signature breaks" line. Unblocks CODEX-AU (the C header must exclude the three now-removed raw exports) and clears the durable-fix routing for the dotnet testhost-shutdown crash (panic containment + last-error lifecycle).

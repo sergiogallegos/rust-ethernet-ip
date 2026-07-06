@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import weakref
 from ctypes import (
     POINTER,
     byref,
@@ -245,6 +246,7 @@ class Client:
         self._route_path = route_path
         self._lib = load_native_library()
         self._client_id: int | None = None
+        self._finalizer = weakref.finalize(self, self._finalize_native_handle, self._lib, None)
         if auto_connect:
             self.connect()
 
@@ -271,6 +273,13 @@ class Client:
         if client_id < 0:
             raise PlcConnectionError(f"Failed to connect to PLC at {self._address}")
         self._client_id = int(client_id)
+        self._finalizer.detach()
+        self._finalizer = weakref.finalize(
+            self,
+            self._finalize_native_handle,
+            self._lib,
+            self._client_id,
+        )
 
     def _connect_with_route(self, route_path: RoutePath) -> int:
         hops = route_path.ordered_hops()
@@ -299,10 +308,13 @@ class Client:
     def disconnect(self) -> None:
         if not self.is_connected:
             return
-        rc = self._lib.eip_disconnect(self._client_id)
+        client_id = self._client_id
+        self._client_id = None
+        self._finalizer.detach()
+        self._finalizer = weakref.finalize(self, self._finalize_native_handle, self._lib, None)
+        rc = self._lib.eip_disconnect(client_id)
         if rc != 0:
             raise PlcConnectionError("Failed to disconnect from PLC")
-        self._client_id = None
 
     def close(self) -> None:
         self.disconnect()
@@ -314,6 +326,15 @@ class Client:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.disconnect()
+
+    @staticmethod
+    def _finalize_native_handle(lib: object, client_id: int | None) -> None:
+        if client_id is None or client_id < 0:
+            return
+        try:
+            lib.eip_disconnect(client_id)
+        except Exception:
+            pass
 
     def _require_client_id(self) -> int:
         if not self.is_connected or self._client_id is None:

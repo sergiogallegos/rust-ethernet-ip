@@ -5,7 +5,7 @@ namespace RustEtherNetIp
 {
     public static class NativeRuntime
     {
-        public const int ExpectedAbiVersion = 1;
+        public const int ExpectedAbiVersion = 2;
 
         static NativeRuntime()
         {

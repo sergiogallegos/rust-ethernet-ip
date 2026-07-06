@@ -1028,3 +1028,16 @@ Sources used:
 - `wiki/investigations/fleet-api-2026-05-24.md`
 - `wiki/investigations/python-wrapper-strategy-2026-04-19.md`
 - `wiki/investigations/test-coverage-strength-2026-05-18.md`
+
+## [2026-07-06] reframe | FFI ABI v2 after CODEX-AS
+
+- Updated `wiki/protocol/abi-contract.md`.
+- Recorded that current mainline uses ABI version 2 after removing the raw-pointer FFI exports while keeping handle-based `_by_id` exports.
+- Added `CAP_LAST_ERROR` to the capability table and clarified that symbol removal triggers an ABI bump.
+
+Sources used:
+
+- `src/version.rs`
+- `src/ffi.rs`
+- `docs/agents/tasks/CODEX-AS-ffi-polish-python-residuals.md`
+- `docs/API_STABILITY.md`

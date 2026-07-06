@@ -22,7 +22,7 @@ class FakeFunction:
 
 
 class FakeNativeLibrary:
-    def __init__(self, *, abi_version: int = 1) -> None:
+    def __init__(self, *, abi_version: int = 2) -> None:
         self.eip_abi_version = FakeFunction(abi_version)
         self.eip_library_version = FakeFunction(b"1.1.0")
         self.eip_capabilities = FakeFunction(0x0F)
@@ -45,15 +45,15 @@ class AbiContractTests(unittest.TestCase):
                     loaded = bindings.load_native_library()
 
         self.assertIs(loaded, fake_lib)
-        self.assertEqual(bindings.ABI_VERSION, 1)
+        self.assertEqual(bindings.ABI_VERSION, 2)
         self.assertEqual(bindings.LIBRARY_VERSION, "1.1.0")
         self.assertEqual(bindings.CAPABILITIES, 0x0F)
-        self.assertEqual(rust_ethernet_ip.ABI_VERSION, 1)
+        self.assertEqual(rust_ethernet_ip.ABI_VERSION, 2)
         self.assertEqual(rust_ethernet_ip.LIBRARY_VERSION, "1.1.0")
         self.assertEqual(rust_ethernet_ip.CAPABILITIES, 0x0F)
 
     def test_load_native_library_rejects_abi_mismatch(self) -> None:
-        fake_lib = FakeNativeLibrary(abi_version=2)
+        fake_lib = FakeNativeLibrary(abi_version=1)
         with tempfile.TemporaryDirectory() as tmp:
             candidate = Path(tmp) / "librust_ethernet_ip.so"
             candidate.write_bytes(b"fake")
@@ -63,7 +63,23 @@ class AbiContractTests(unittest.TestCase):
                     with self.assertRaises(NativeLibraryLoadError) as ctx:
                         bindings.load_native_library()
 
-        self.assertIn("native library ABI version 2, wrapper expects 1", str(ctx.exception))
+        self.assertIn("native library ABI version 1, wrapper expects 2", str(ctx.exception))
+
+    def test_load_native_library_continues_after_abi_mismatch(self) -> None:
+        stale_lib = FakeNativeLibrary(abi_version=1)
+        current_lib = FakeNativeLibrary(abi_version=2)
+        with tempfile.TemporaryDirectory() as tmp:
+            stale = Path(tmp) / "stale_librust_ethernet_ip.so"
+            current = Path(tmp) / "librust_ethernet_ip.so"
+            stale.write_bytes(b"fake stale")
+            current.write_bytes(b"fake current")
+
+            with patch.object(bindings, "_candidate_paths", return_value=[stale, current]):
+                with patch.object(ctypes, "CDLL", side_effect=[stale_lib, current_lib]):
+                    loaded = bindings.load_native_library()
+
+        self.assertIs(loaded, current_lib)
+        self.assertEqual(bindings.ABI_VERSION, 2)
 
 
 if __name__ == "__main__":

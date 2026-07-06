@@ -46,6 +46,16 @@ fn read_c_string_buffer(buf: &[i8]) -> String {
         .into_owned()
 }
 
+fn last_error(client_id: c_int) -> String {
+    let mut buf = [0_i8; 1024];
+    let written =
+        unsafe { ffi::eip_get_last_error(client_id, buf.as_mut_ptr(), buf.len() as c_int) };
+    if written <= 0 {
+        return String::new();
+    }
+    read_c_string_buffer(&buf)
+}
+
 struct SimHarness {
     address: String,
     stop_tx: Option<mpsc::Sender<()>>,
@@ -171,6 +181,48 @@ fn ffi_invalid_client_id_returns_error() {
             -1
         );
     }
+}
+
+#[test]
+fn ffi_last_error_clears_after_successful_scalar_read() {
+    let sim = SimHarness::start(plc_sim::SimBehavior::default());
+    let client = connect_ffi_client(&sim.address);
+    let real_name = CString::new("REAL_TAG").expect("CString");
+    let dint_name = CString::new("DINT_TAG").expect("CString");
+
+    let mut value = 0;
+    let rc = unsafe { ffi::eip_read_dint(client.id(), real_name.as_ptr(), &mut value) };
+    assert_eq!(rc, -1);
+    assert!(last_error(client.id()).contains("expected Dint"));
+
+    let rc = unsafe { ffi::eip_read_dint(client.id(), dint_name.as_ptr(), &mut value) };
+    assert_eq!(rc, 0);
+    assert_eq!(value, 1234);
+    assert_eq!(last_error(client.id()), "");
+}
+
+#[test]
+fn ffi_read_string_rejects_non_string_tag_without_ascii_scan() {
+    let sim = SimHarness::start(plc_sim::SimBehavior::default());
+    let client = connect_ffi_client(&sim.address);
+    let tag = CString::new("DINT_TAG").expect("CString");
+    let mut buf = [0_i8; 128];
+
+    let rc = unsafe { ffi::eip_read_string(client.id(), tag.as_ptr(), buf.as_mut_ptr(), 128) };
+    assert_eq!(rc, -1);
+    assert!(last_error(client.id()).contains("not a STRING"));
+}
+
+#[test]
+fn ffi_write_udt_rejects_conversion_failure_without_empty_payload_fallback() {
+    let sim = SimHarness::start(plc_sim::SimBehavior::default());
+    let client = connect_ffi_client(&sim.address);
+    let tag = CString::new("UDT_TAG").expect("CString");
+    let invalid = CString::new("{not valid json]").expect("CString");
+
+    let rc = unsafe { ffi::eip_write_udt(client.id(), tag.as_ptr(), invalid.as_ptr(), 1) };
+    assert_eq!(rc, -1);
+    assert!(last_error(client.id()).contains("neither raw UdtData nor member map"));
 }
 
 #[test]

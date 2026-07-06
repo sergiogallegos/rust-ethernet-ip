@@ -15,12 +15,15 @@ Verified against the current `src/ffi.rs` layout and the C# `RustEtherNetIp` P/I
 - Panics unwinding into C are undefined behavior. Encode every failure as a return code (`EIP_ERROR_*`) instead.
 - Use `Result<T, EtherNetIpError>` inside the crate and translate at the FFI boundary. The translation site is the only place that knows the C contract.
 - Don't `.expect()` in a desperate "this can't fail" path — the FFI is exactly where unexpected failure happens (cold paths, init order, OS limits).
+- CODEX-AS adds a `catch_unwind` guard around the shared runtime dispatch macro. A panic below an FFI runtime call returns `-1` and records `internal panic: ...` in `eip_get_last_error` for that client instead of aborting the host process. This is a last-resort containment boundary, not permission to panic in FFI code.
+- If a panic poisons an FFI mutex, lock helpers recover with `PoisonError::into_inner` and log a warning. These globals are registries/counters/error strings; the safer host behavior is to preserve access and return explicit errors rather than permanently wedging the process.
 
 ## Global runtime and client table are the contract
 
 - The Tokio runtime lives at `crate::RUNTIME`, initialized via `std::sync::LazyLock`. All FFI calls `block_on` against this single runtime. Do not construct a per-call runtime — the C# wrapper opens many short-lived calls and per-call construction will exhaust threads.
 - `FFI_CLIENTS: LazyLock<Mutex<HashMap<i32, EipClient>>>` is the only authoritative store of live `EipClient` handles. Integers (`i32`) cross the C boundary; `EipClient` instances never do.
-- `FFI_NEXT_ID: LazyLock<Mutex<i32>>` is the single id allocator. Don't introduce a parallel allocator or reuse freed ids without coordination — the C# side caches handles and a reused id silently aliases two clients.
+- `FFI_NEXT_ID: LazyLock<Mutex<i32>>` is the single id allocator. It wraps back to `1` only with an occupancy scan against `FFI_CLIENTS`; exhausted id space returns an error instead of aliasing an active client. Don't introduce a parallel allocator or reuse freed ids without coordination — the C# side caches handles and a reused id silently aliases two clients.
+- `FFI_LAST_ERRORS` is per-client diagnostic state, not durable history. FFI operations that return success clear the client's last error, and `eip_disconnect` removes the entry. Failure paths returning `-1` should set a message for the same client id whenever a client id exists.
 
 ## Memory ownership across the boundary
 

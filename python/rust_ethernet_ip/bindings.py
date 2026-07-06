@@ -10,7 +10,7 @@ from .exceptions import NativeLibraryLoadError
 
 RESULT_BUFFER_SIZE = 131072
 READ_BUFFER_SIZE = 65536
-EXPECTED_ABI_VERSION = 1
+EXPECTED_ABI_VERSION = 2
 CAP_ROUTE_PATH_ORDERED_HOPS = 0x0000_0000_0000_0001
 CAP_BATCH_EXECUTE_V1 = 0x0000_0000_0000_0002
 CAP_DIAGNOSTICS_JSON = 0x0000_0000_0000_0004
@@ -220,7 +220,7 @@ def load_native_library() -> ctypes.CDLL:
             lib = ctypes.CDLL(str(path))
             _verify_abi(lib)
             return _configure_function_signatures(lib)
-        except (AttributeError, OSError) as exc:
+        except (AttributeError, OSError, NativeLibraryLoadError) as exc:
             errors.append(f"{path}: {exc}")
 
     tried = "\n".join(str(path) for path in _candidate_paths())

@@ -37,7 +37,7 @@ The C ABI exported from `src/ffi.rs` (gated behind the `ffi` feature and
 consumed by the C# and Python wrappers) is versioned independently of the crate
 SemVer line:
 
-- The current ABI version is **1** (`ABI_VERSION` in `src/version.rs`, exported
+- The current ABI version is **2** (`ABI_VERSION` in `src/version.rs`, exported
   as `eip_abi_version()`).
 - Wrappers check `eip_abi_version()` at load time and refuse to run against an
   incompatible native library.

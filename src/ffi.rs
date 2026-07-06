@@ -1,5 +1,3 @@
-#![allow(clippy::missing_safety_doc)]
-
 use crate::EipClient;
 use crate::PlcValue;
 use crate::RUNTIME;
@@ -8,6 +6,7 @@ use serde_json;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_short, c_void};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::{LazyLock, Mutex, MutexGuard, Once, OnceLock};
 use tracing;
@@ -72,12 +71,24 @@ fn runtime() -> Result<&'static tokio::runtime::Runtime, c_int> {
 /// `EIP_ERROR_RUNTIME_INIT` if the runtime is unavailable. Only call
 /// from inside an `unsafe extern "C" fn ... -> c_int` body.
 macro_rules! ffi_block_on {
-    ($future:expr) => {{
+    ($client_id:expr, $future:expr) => {{
         let runtime = match runtime() {
             Ok(runtime) => runtime,
-            Err(code) => return code,
+            Err(code) => {
+                set_last_error(
+                    $client_id,
+                    format!("native runtime initialization failed with code {code}"),
+                );
+                return code;
+            }
         };
-        runtime.block_on($future)
+        match catch_unwind(AssertUnwindSafe(|| runtime.block_on($future))) {
+            Ok(value) => value,
+            Err(payload) => {
+                set_last_error($client_id, internal_panic_message(payload));
+                return -1;
+            }
+        }
     }};
 }
 
@@ -86,16 +97,47 @@ fn to_c_string_owned(value: &str) -> Result<*mut c_char, ()> {
 }
 
 fn lock_clients() -> Result<MutexGuard<'static, HashMap<i32, EipClient>>, ()> {
-    FFI_CLIENTS.lock().map_err(|_| ())
+    Ok(FFI_CLIENTS.lock().unwrap_or_else(|poisoned| {
+        tracing::warn!("[FFI] Recovering poisoned client registry lock");
+        poisoned.into_inner()
+    }))
 }
 
 fn lock_next_id() -> Result<MutexGuard<'static, i32>, ()> {
-    FFI_NEXT_ID.lock().map_err(|_| ())
+    Ok(FFI_NEXT_ID.lock().unwrap_or_else(|poisoned| {
+        tracing::warn!("[FFI] Recovering poisoned client-id allocator lock");
+        poisoned.into_inner()
+    }))
 }
 
 fn get_client(client_id: c_int) -> Result<EipClient, ()> {
     let clients = lock_clients()?;
     clients.get(&client_id).cloned().ok_or(())
+}
+
+fn allocate_client_id(clients: &HashMap<i32, EipClient>) -> Result<c_int, &'static str> {
+    let mut next_id = lock_next_id().map_err(|_| "client-id allocator lock unavailable")?;
+    let start = (*next_id).max(1);
+    if *next_id < 1 {
+        *next_id = 1;
+    }
+
+    loop {
+        let candidate = *next_id;
+        *next_id = if candidate == c_int::MAX {
+            1
+        } else {
+            candidate + 1
+        };
+
+        if candidate > 0 && !clients.contains_key(&candidate) {
+            return Ok(candidate);
+        }
+
+        if *next_id == start {
+            return Err("FFI client id space exhausted");
+        }
+    }
 }
 
 #[doc(hidden)]
@@ -116,8 +158,37 @@ pub fn client_max_packet_size_for_testing(client_id: c_int) -> Option<u32> {
 /// human-readable reason after a failure code. Best-effort: a poisoned lock is
 /// ignored rather than panicking across the FFI boundary.
 fn set_last_error(client_id: c_int, message: impl Into<String>) {
-    if let Ok(mut errors) = FFI_LAST_ERRORS.lock() {
-        errors.insert(client_id, message.into());
+    let mut errors = FFI_LAST_ERRORS.lock().unwrap_or_else(|poisoned| {
+        tracing::warn!("[FFI] Recovering poisoned last-error lock");
+        poisoned.into_inner()
+    });
+    errors.insert(client_id, message.into());
+}
+
+fn clear_last_error(client_id: c_int) {
+    let mut errors = FFI_LAST_ERRORS.lock().unwrap_or_else(|poisoned| {
+        tracing::warn!("[FFI] Recovering poisoned last-error lock");
+        poisoned.into_inner()
+    });
+    errors.remove(&client_id);
+}
+
+fn remove_last_error(client_id: c_int) {
+    clear_last_error(client_id);
+}
+
+fn fail_with_last_error(client_id: c_int, message: impl Into<String>) -> c_int {
+    set_last_error(client_id, message);
+    -1
+}
+
+fn internal_panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        format!("internal panic: {message}")
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        format!("internal panic: {message}")
+    } else {
+        "internal panic: unknown payload".to_string()
     }
 }
 
@@ -144,6 +215,7 @@ pub unsafe extern "C" fn eip_get_last_error(
     };
     let Some(message) = message else {
         // No recorded error: write an empty string.
+        // SAFETY: The output pointer was checked for null and the caller contract requires writable storage for this layout.
         unsafe { *buffer = 0 };
         return 0;
     };
@@ -154,6 +226,7 @@ pub unsafe extern "C" fn eip_get_last_error(
     if bytes.len() > max_len as usize {
         return -1;
     }
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr().cast::<c_char>(), buffer, bytes.len());
     }
@@ -166,6 +239,12 @@ pub unsafe extern "C" fn eip_get_last_error(
 /// type; failures record a last-error message for `eip_get_last_error`.
 macro_rules! ffi_read_scalar {
     ($name:ident, $ctype:ty, $variant:ident, |$v:ident| $conv:expr) => {
+        /// Reads a scalar tag through the C FFI.
+        ///
+        /// # Safety
+        ///
+        /// `tag_name` must point to a valid NUL-terminated UTF-8 string and
+        /// `result` must point to writable storage for the requested scalar.
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn $name(
             client_id: c_int,
@@ -175,6 +254,7 @@ macro_rules! ffi_read_scalar {
             if tag_name.is_null() || result.is_null() {
                 return -1;
             }
+            // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
             let Ok(tag_name_str) = (unsafe { CStr::from_ptr(tag_name) }).to_str() else {
                 return -1;
             };
@@ -182,11 +262,13 @@ macro_rules! ffi_read_scalar {
                 Ok(client) => client,
                 Err(_) => return -1,
             };
-            match ffi_block_on!(client.read_tag(tag_name_str)) {
+            match ffi_block_on!(client_id, client.read_tag(tag_name_str)) {
                 Ok(PlcValue::$variant($v)) => {
+                    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
                     unsafe {
                         *result = $conv;
                     }
+                    clear_last_error(client_id);
                     0
                 }
                 Ok(other) => {
@@ -215,6 +297,12 @@ macro_rules! ffi_read_scalar {
 /// payload; failures record a last-error message for `eip_get_last_error`.
 macro_rules! ffi_write_scalar {
     ($name:ident, $ctype:ty, $variant:ident, |$v:ident| $conv:expr) => {
+        /// Writes a scalar tag through the C FFI.
+        ///
+        /// # Safety
+        ///
+        /// `tag_name` must point to a valid NUL-terminated UTF-8 string for
+        /// the duration of the call.
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn $name(
             client_id: c_int,
@@ -224,6 +312,7 @@ macro_rules! ffi_write_scalar {
             if tag_name.is_null() {
                 return -1;
             }
+            // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
             let Ok(tag_name_str) = (unsafe { CStr::from_ptr(tag_name) }).to_str() else {
                 return -1;
             };
@@ -231,8 +320,14 @@ macro_rules! ffi_write_scalar {
                 Ok(client) => client,
                 Err(_) => return -1,
             };
-            match ffi_block_on!(client.write_tag(tag_name_str, PlcValue::$variant($conv))) {
-                Ok(_) => 0,
+            match ffi_block_on!(
+                client_id,
+                client.write_tag(tag_name_str, PlcValue::$variant($conv))
+            ) {
+                Ok(_) => {
+                    clear_last_error(client_id);
+                    0
+                }
                 Err(e) => {
                     set_last_error(client_id, e.to_string());
                     -1
@@ -253,6 +348,7 @@ unsafe fn build_route_path_from_grouped_fields(
     let mut route_path = crate::RoutePath::new();
 
     if !slots.is_null() && slot_count > 0 {
+        // SAFETY: Caller-provided count and pointer arguments were validated before constructing this slice or offset pointer.
         let slots_slice = unsafe { std::slice::from_raw_parts(slots, slot_count as usize) };
         for &slot in slots_slice {
             route_path = route_path.add_backplane(1, slot);
@@ -261,14 +357,17 @@ unsafe fn build_route_path_from_grouped_fields(
 
     if !addresses.is_null() && address_count > 0 {
         let ports_slice = if !ports.is_null() && port_count > 0 {
+            // SAFETY: Caller-provided count and pointer arguments were validated before constructing this slice or offset pointer.
             Some(unsafe { std::slice::from_raw_parts(ports, port_count as usize) })
         } else {
             None
         };
         let addresses_slice =
+            // SAFETY: Caller-provided count and pointer arguments were validated before constructing this slice or offset pointer.
             unsafe { std::slice::from_raw_parts(addresses, address_count as usize) };
         for (index, &addr_ptr) in addresses_slice.iter().enumerate() {
             if !addr_ptr.is_null()
+                // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
                 && let Ok(addr_str) = unsafe { CStr::from_ptr(addr_ptr) }.to_str()
             {
                 let port = ports_slice
@@ -300,16 +399,20 @@ unsafe fn build_route_path_from_ordered_hops(
         return None;
     }
 
+    // SAFETY: Caller-provided count and pointer arguments were validated before constructing this slice or offset pointer.
     let hop_types = unsafe { std::slice::from_raw_parts(hop_types, hop_count as usize) };
+    // SAFETY: Caller-provided count and pointer arguments were validated before constructing this slice or offset pointer.
     let ports = unsafe { std::slice::from_raw_parts(ports, hop_count as usize) };
     let slots = if slots.is_null() {
         &[][..]
     } else {
+        // SAFETY: Caller-provided count and pointer arguments were validated before constructing this slice or offset pointer.
         unsafe { std::slice::from_raw_parts(slots, hop_count as usize) }
     };
     let addresses = if addresses.is_null() {
         &[][..]
     } else {
+        // SAFETY: Caller-provided count and pointer arguments were validated before constructing this slice or offset pointer.
         unsafe { std::slice::from_raw_parts(addresses, hop_count as usize) }
     };
 
@@ -325,6 +428,7 @@ unsafe fn build_route_path_from_ordered_hops(
                 if addr_ptr.is_null() {
                     return None;
                 }
+                // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
                 let Ok(addr_str) = (unsafe { CStr::from_ptr(addr_ptr) }).to_str() else {
                     return None;
                 };
@@ -339,6 +443,7 @@ unsafe fn build_route_path_from_ordered_hops(
 
 unsafe fn free_c_string(ptr: *mut c_char) {
     if !ptr.is_null() {
+        // SAFETY: The pointer being freed was allocated by this library and ownership has returned to Rust.
         let _ = unsafe { CString::from_raw(ptr) };
     }
 }
@@ -353,6 +458,7 @@ fn write_output_buffer(output: *mut c_char, capacity: c_int, payload: &str) -> R
         return Err(());
     }
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), output as *mut u8, bytes.len());
         *output.add(bytes.len()) = 0;
@@ -562,25 +668,13 @@ pub unsafe extern "C" fn eip_connect(ip_address: *const c_char) -> c_int {
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(ip_str) = unsafe { CStr::from_ptr(ip_address) }.to_str() else {
         return -1;
     };
 
-    let Ok(client) = ffi_block_on!(EipClient::new(ip_str)) else {
+    let Ok(client) = ffi_block_on!(0, EipClient::new(ip_str)) else {
         return -1;
-    };
-
-    let client_id = {
-        let mut next_id = match lock_next_id() {
-            Ok(guard) => guard,
-            Err(_) => return -1,
-        };
-        let id = *next_id;
-        *next_id = next_id.wrapping_add(1);
-        if *next_id < 1 {
-            *next_id = 1;
-        }
-        id
     };
 
     {
@@ -588,10 +682,33 @@ pub unsafe extern "C" fn eip_connect(ip_address: *const c_char) -> c_int {
             Ok(guard) => guard,
             Err(_) => return -1,
         };
+        let client_id = match allocate_client_id(&clients) {
+            Ok(client_id) => client_id,
+            Err(message) => return fail_with_last_error(0, message),
+        };
         clients.insert(client_id, client);
+        clear_last_error(client_id);
+        client_id
     }
+}
 
-    client_id
+fn write_output_buffer_or_last_error(
+    client_id: c_int,
+    output: *mut c_char,
+    capacity: c_int,
+    payload: &str,
+    context: &str,
+) -> c_int {
+    match write_output_buffer(output, capacity, payload) {
+        Ok(()) => {
+            clear_last_error(client_id);
+            0
+        }
+        Err(()) => fail_with_last_error(
+            client_id,
+            format!("{context} output does not fit in caller buffer"),
+        ),
+    }
 }
 
 /// Connect to a PLC with route path (for ControlLogix)
@@ -616,10 +733,12 @@ pub unsafe extern "C" fn eip_connect_with_route(
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(ip_str) = unsafe { CStr::from_ptr(ip_address) }.to_str() else {
         return -1;
     };
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     let route_path = unsafe {
         build_route_path_from_grouped_fields(
             slots,
@@ -631,21 +750,8 @@ pub unsafe extern "C" fn eip_connect_with_route(
         )
     };
 
-    let Ok(client) = ffi_block_on!(crate::EipClient::with_route_path(ip_str, route_path)) else {
+    let Ok(client) = ffi_block_on!(0, crate::EipClient::with_route_path(ip_str, route_path)) else {
         return -1;
-    };
-
-    let client_id = {
-        let mut next_id = match lock_next_id() {
-            Ok(guard) => guard,
-            Err(_) => return -1,
-        };
-        let id = *next_id;
-        *next_id = next_id.wrapping_add(1);
-        if *next_id < 1 {
-            *next_id = 1;
-        }
-        id
     };
 
     {
@@ -653,12 +759,23 @@ pub unsafe extern "C" fn eip_connect_with_route(
             Ok(guard) => guard,
             Err(_) => return -1,
         };
+        let client_id = match allocate_client_id(&clients) {
+            Ok(client_id) => client_id,
+            Err(message) => return fail_with_last_error(0, message),
+        };
         clients.insert(client_id, client);
+        clear_last_error(client_id);
+        client_id
     }
-
-    client_id
 }
 
+/// Connect to a PLC with an ordered route path.
+///
+/// # Safety
+///
+/// `ip_address` must be a valid NUL-terminated UTF-8 string. If `hop_count`
+/// is non-zero, `hop_types`, `ports`, and any non-null `slots`/`addresses`
+/// pointers must reference arrays with at least `hop_count` elements.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_connect_with_route_hops(
     ip_address: *const c_char,
@@ -672,31 +789,20 @@ pub unsafe extern "C" fn eip_connect_with_route_hops(
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(ip_str) = unsafe { CStr::from_ptr(ip_address) }.to_str() else {
         return -1;
     };
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     let Some(route_path) = (unsafe {
         build_route_path_from_ordered_hops(hop_types, ports, slots, addresses, hop_count)
     }) else {
         return -1;
     };
 
-    let Ok(client) = ffi_block_on!(crate::EipClient::with_route_path(ip_str, route_path)) else {
+    let Ok(client) = ffi_block_on!(0, crate::EipClient::with_route_path(ip_str, route_path)) else {
         return -1;
-    };
-
-    let client_id = {
-        let mut next_id = match lock_next_id() {
-            Ok(guard) => guard,
-            Err(_) => return -1,
-        };
-        let id = *next_id;
-        *next_id = next_id.wrapping_add(1);
-        if *next_id < 1 {
-            *next_id = 1;
-        }
-        id
     };
 
     {
@@ -704,10 +810,14 @@ pub unsafe extern "C" fn eip_connect_with_route_hops(
             Ok(guard) => guard,
             Err(_) => return -1,
         };
+        let client_id = match allocate_client_id(&clients) {
+            Ok(client_id) => client_id,
+            Err(message) => return fail_with_last_error(0, message),
+        };
         clients.insert(client_id, client);
+        clear_last_error(client_id);
+        client_id
     }
-
-    client_id
 }
 
 /// Set route path for an existing client connection
@@ -733,6 +843,7 @@ pub unsafe extern "C" fn eip_set_route_path(
         Err(_) => return -1,
     };
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     let route_path = unsafe {
         build_route_path_from_grouped_fields(
             slots,
@@ -748,6 +859,14 @@ pub unsafe extern "C" fn eip_set_route_path(
     0
 }
 
+/// Set an ordered route path on an existing client.
+///
+/// # Safety
+///
+/// If `hop_count` is non-zero, `hop_types`, `ports`, and any non-null
+/// `slots`/`addresses` pointers must reference arrays with at least
+/// `hop_count` elements. Address entries must be valid NUL-terminated UTF-8
+/// strings when present.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_set_route_path_hops(
     client_id: c_int,
@@ -762,6 +881,7 @@ pub unsafe extern "C" fn eip_set_route_path_hops(
         Err(_) => return -1,
     };
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     let Some(route_path) = (unsafe {
         build_route_path_from_ordered_hops(hop_types, ports, slots, addresses, hop_count)
     }) else {
@@ -788,8 +908,19 @@ pub unsafe extern "C" fn eip_disconnect(client_id: c_int) -> c_int {
     let removed_client = clients.remove(&client_id);
     drop(clients);
     match removed_client {
-        Some(_) => 0,
-        None => -1,
+        Some(mut client) => {
+            if let Ok(runtime) = runtime() {
+                let unregister_result = catch_unwind(AssertUnwindSafe(|| {
+                    runtime.block_on(client.unregister_session())
+                }));
+                if let Err(payload) = unregister_result {
+                    set_last_error(client_id, internal_panic_message(payload));
+                }
+            }
+            remove_last_error(client_id);
+            0
+        }
+        None => fail_with_last_error(client_id, "client id not found"),
     }
 }
 
@@ -839,6 +970,7 @@ pub unsafe extern "C" fn eip_read_string(
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
         return -1;
     };
@@ -848,7 +980,7 @@ pub unsafe extern "C" fn eip_read_string(
         Err(_) => return -1,
     };
 
-    let value = match ffi_block_on!(client.read_tag(tag_name_str)) {
+    let value = match ffi_block_on!(client_id, client.read_tag(tag_name_str)) {
         Ok(PlcValue::String(value)) => {
             tracing::info!(
                 "[FFI] Read STRING tag '{}' succeeded: '{}'",
@@ -857,178 +989,50 @@ pub unsafe extern "C" fn eip_read_string(
             );
             value
         }
-        Ok(PlcValue::Udt(udt_data)) => {
-            // Allen-Bradley STRING tags are returned as UDT structures (0x02A0)
-            // STRING UDT format: 4-byte length (DINT) followed by string data (up to 82 bytes)
-            tracing::warn!(
-                "[FFI] STRING tag '{}' returned as UDT, attempting to extract string from UDT data ({} bytes): {:02X?}",
-                tag_name_str,
-                udt_data.data.len(),
-                &udt_data.data[..std::cmp::min(20, udt_data.data.len())]
-            );
-
-            // Allen-Bradley STRING UDT format when returned as 0x02A0:
-            // The UDT data might have a header before the actual STRING data
-            // Try multiple formats:
-            // Format 1: Direct STRING format - 4-byte length (DINT) at start
-            // Format 2: UDT wrapper - might have type code (0x0FCE) + length (2 bytes) + data
-            // Format 3: Just find the string data by looking for printable ASCII
-
-            tracing::debug!(
-                "[FFI] Attempting to parse STRING from UDT data ({} bytes)",
-                udt_data.data.len()
-            );
-
-            // Try Format 1: Standard STRING format (4-byte DINT length at start)
-            if udt_data.data.len() >= 4 {
-                let length = u32::from_le_bytes([
-                    udt_data.data[0],
-                    udt_data.data[1],
-                    udt_data.data[2],
-                    udt_data.data[3],
-                ]) as usize;
-
-                // If length is reasonable (<= 82 for STRING), try this format
-                if length <= 82 && udt_data.data.len() >= 4 + length {
-                    let string_data = &udt_data.data[4..4 + length];
-                    let trimmed_data: Vec<u8> = string_data
-                        .iter()
-                        .take_while(|&&b| b != 0)
-                        .copied()
-                        .collect();
-                    if let Ok(s) = String::from_utf8(trimmed_data) {
-                        tracing::info!("[FFI] Extracted STRING (Format 1): '{}'", s);
-                        unsafe {
-                            let Ok(c_string) = CString::new(s) else {
-                                return -1;
-                            };
-                            let bytes = c_string.as_bytes_with_nul();
-                            if bytes.len() > max_length as usize {
-                                return -1;
-                            }
-                            ptr::copy_nonoverlapping(
-                                bytes.as_ptr(),
-                                result as *mut u8,
-                                bytes.len(),
-                            );
-                            return 0;
-                        }
-                    }
-                }
-
-                // Try Format 2: UDT wrapper with type code (bytes 0-1) + length (bytes 2-3) + padding (bytes 4-5) + data (bytes 6+)
-                if udt_data.data.len() >= 6 {
-                    let length = u16::from_le_bytes([udt_data.data[2], udt_data.data[3]]) as usize;
-                    // Check if length is reasonable and we have enough data
-                    if length > 0 && length <= 82 && udt_data.data.len() >= 6 + length {
-                        let string_data = &udt_data.data[6..6 + length];
-                        let trimmed_data: Vec<u8> = string_data
-                            .iter()
-                            .take_while(|&&b| b != 0)
-                            .copied()
-                            .collect();
-                        if let Ok(s) = String::from_utf8(trimmed_data)
-                            && !s.is_empty()
-                        {
-                            tracing::info!(
-                                "[FFI] Extracted STRING (Format 2): '{}' (length={})",
-                                s,
-                                length
-                            );
-                            unsafe {
-                                let Ok(c_string) = CString::new(s) else {
-                                    return -1;
-                                };
-                                let bytes = c_string.as_bytes_with_nul();
-                                if bytes.len() > max_length as usize {
-                                    return -1;
-                                }
-                                ptr::copy_nonoverlapping(
-                                    bytes.as_ptr(),
-                                    result as *mut u8,
-                                    bytes.len(),
-                                );
-                                return 0;
-                            }
-                        }
-                    }
-                }
-
-                // Try Format 3: Find string data by scanning for printable ASCII
-                // Look for the first sequence of printable ASCII characters
-                for start in 0..std::cmp::min(udt_data.data.len() - 1, 20) {
-                    if udt_data.data[start].is_ascii() && !udt_data.data[start].is_ascii_control() {
-                        let mut end = start;
-                        while end < udt_data.data.len()
-                            && udt_data.data[end] != 0
-                            && udt_data.data[end].is_ascii()
-                        {
-                            end += 1;
-                        }
-                        if end > start {
-                            let string_data = &udt_data.data[start..end];
-                            if let Ok(s) = String::from_utf8(string_data.to_vec()) {
-                                tracing::info!(
-                                    "[FFI] Extracted STRING (Format 3, scanned): '{}'",
-                                    s
-                                );
-                                unsafe {
-                                    let Ok(c_string) = CString::new(s) else {
-                                        return -1;
-                                    };
-                                    let bytes = c_string.as_bytes_with_nul();
-                                    if bytes.len() > max_length as usize {
-                                        return -1;
-                                    }
-                                    ptr::copy_nonoverlapping(
-                                        bytes.as_ptr(),
-                                        result as *mut u8,
-                                        bytes.len(),
-                                    );
-                                    return 0;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            tracing::error!(
-                "[FFI] Could not extract STRING from UDT data for tag '{}'",
-                tag_name_str
-            );
-            return -1;
-        }
         Ok(other) => {
-            tracing::error!(
-                "[FFI] Expected STRING for tag '{}' but got: {:?}",
+            let message = format!(
+                "tag '{}' is not a STRING; native read returned {:?}",
                 tag_name_str,
                 std::mem::discriminant(&other)
             );
-            return -1; // Wrong data type
+            tracing::error!("[FFI] {message}");
+            return fail_with_last_error(client_id, message);
         }
         Err(e) => {
             tracing::error!("[FFI] Read STRING tag '{}' failed: {}", tag_name_str, e);
-            return -1; // Error reading tag
+            return fail_with_last_error(client_id, e.to_string());
         }
     };
 
     let Ok(c_string) = CString::new(value) else {
-        return -1;
+        return fail_with_last_error(client_id, "STRING value contains interior null byte");
     };
 
     let bytes = c_string.as_bytes_with_nul();
     if bytes.len() > max_length as usize {
-        return -1; // String too long
+        return fail_with_last_error(
+            client_id,
+            format!(
+                "STRING result for '{tag_name_str}' too large for buffer ({} > {max_length} bytes)",
+                bytes.len()
+            ),
+        );
     }
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
+    clear_last_error(client_id);
     0
 }
 
-/// Write a STRING tag
+/// Write a STRING tag.
+///
+/// # Safety
+///
+/// `tag_name` and `value` must point to valid NUL-terminated UTF-8 strings for
+/// the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_string(
     client_id: c_int,
@@ -1036,28 +1040,33 @@ pub unsafe extern "C" fn eip_write_string(
     value: *const c_char,
 ) -> c_int {
     if tag_name.is_null() || value.is_null() {
-        return -1;
+        return fail_with_last_error(client_id, "tag name/value pointer is null");
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
+        return fail_with_last_error(client_id, "tag name is not valid UTF-8");
     };
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(value_str) = unsafe { CStr::from_ptr(value) }.to_str() else {
-        return -1;
+        return fail_with_last_error(client_id, "STRING value is not valid UTF-8");
     };
 
     let mut client = match get_client(client_id) {
         Ok(client) => client,
-        Err(_) => return -1,
+        Err(_) => return fail_with_last_error(client_id, "client id not found"),
     };
 
-    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::String(value_str.to_string())))
-        .is_ok()
-    {
-        0
-    } else {
-        -1
+    match ffi_block_on!(
+        client_id,
+        client.write_tag(tag_name_str, PlcValue::String(value_str.to_string()))
+    ) {
+        Ok(_) => {
+            clear_last_error(client_id);
+            0
+        }
+        Err(e) => fail_with_last_error(client_id, e.to_string()),
     }
 }
 
@@ -1085,6 +1094,7 @@ pub unsafe extern "C" fn eip_read_tag(
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
         return -1;
     };
@@ -1093,10 +1103,10 @@ pub unsafe extern "C" fn eip_read_tag(
         Ok(client) => client,
         Err(_) => {
             tracing::error!("[FFI] Client ID {} not found", client_id);
-            return -1;
+            return fail_with_last_error(client_id, "client id not found");
         }
     };
-    let value = match ffi_block_on!(client.read_tag(tag_name_str)) {
+    let value = match ffi_block_on!(client_id, client.read_tag(tag_name_str)) {
         Ok(value) => {
             tracing::info!(
                 "[FFI] Read tag '{}' succeeded, type: {:?}",
@@ -1107,8 +1117,7 @@ pub unsafe extern "C" fn eip_read_tag(
         }
         Err(e) => {
             tracing::error!("[FFI] Read tag '{}' failed: {}", tag_name_str, e);
-            set_last_error(client_id, e.to_string());
-            return -1;
+            return fail_with_last_error(client_id, e.to_string());
         }
     };
 
@@ -1121,13 +1130,13 @@ pub unsafe extern "C" fn eip_read_tag(
                 tag_name_str,
                 e
             );
-            return -1;
+            return fail_with_last_error(client_id, e.to_string());
         }
     };
 
     let Ok(c_string) = CString::new(json_result) else {
         tracing::error!("[FFI] Failed to create C string for tag '{}'", tag_name_str);
-        return -1;
+        return fail_with_last_error(client_id, "serialized tag JSON contains interior null byte");
     };
 
     let bytes = c_string.as_bytes_with_nul();
@@ -1138,19 +1147,20 @@ pub unsafe extern "C" fn eip_read_tag(
             bytes.len(),
             max_size
         );
-        set_last_error(
+        return fail_with_last_error(
             client_id,
             format!(
                 "read result for '{tag_name_str}' too large for buffer ({} > {max_size} bytes)",
                 bytes.len()
             ),
         );
-        return -1; // JSON too long
     }
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
+    clear_last_error(client_id);
     0
 }
 
@@ -1180,48 +1190,65 @@ pub unsafe extern "C" fn eip_read_array_range(
         || start_index < 0
         || element_count <= 0
     {
-        return -1;
+        return fail_with_last_error(client_id, "invalid array range arguments");
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(base_array_name_str) = unsafe { CStr::from_ptr(base_array_name) }.to_str() else {
-        return -1;
+        return fail_with_last_error(client_id, "array name is not valid UTF-8");
     };
 
     let mut client = match get_client(client_id) {
         Ok(client) => client,
-        Err(_) => return -1,
+        Err(_) => return fail_with_last_error(client_id, "client id not found"),
     };
 
-    let values = match ffi_block_on!(client.read_array_range(
-        base_array_name_str,
-        start_index as u32,
-        element_count as u32,
-    )) {
+    let values = match ffi_block_on!(
+        client_id,
+        client.read_array_range(
+            base_array_name_str,
+            start_index as u32,
+            element_count as u32,
+        )
+    ) {
         Ok(values) => values,
-        Err(_) => return -1,
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
     let json_result = match serde_json::to_string(&values) {
         Ok(json) => json,
-        Err(_) => return -1,
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
     let Ok(c_string) = CString::new(json_result) else {
-        return -1;
+        return fail_with_last_error(client_id, "array range JSON contains interior null byte");
     };
 
     let bytes = c_string.as_bytes_with_nul();
     if bytes.len() > max_size as usize {
-        return -1;
+        return fail_with_last_error(
+            client_id,
+            format!(
+                "array range result for '{base_array_name_str}' too large for buffer ({} > {max_size} bytes)",
+                bytes.len()
+            ),
+        );
     }
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
+    clear_last_error(client_id);
     0
 }
 
-// UDT operations
+/// Read a UDT tag into a caller-provided JSON buffer.
+///
+/// # Safety
+///
+/// `tag_name` must point to a valid NUL-terminated UTF-8 string and `result`
+/// must be writable for `max_size` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_udt(
     client_id: c_int,
@@ -1230,45 +1257,62 @@ pub unsafe extern "C" fn eip_read_udt(
     max_size: c_int,
 ) -> c_int {
     if tag_name.is_null() || result.is_null() || max_size <= 0 {
-        return -1;
+        return fail_with_last_error(client_id, "invalid UDT read arguments");
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
+        return fail_with_last_error(client_id, "tag name is not valid UTF-8");
     };
 
     let mut client = match get_client(client_id) {
         Ok(client) => client,
-        Err(_) => return -1,
+        Err(_) => return fail_with_last_error(client_id, "client id not found"),
     };
 
-    let value = match ffi_block_on!(client.read_udt_chunked(tag_name_str)) {
+    let value = match ffi_block_on!(client_id, client.read_udt_chunked(tag_name_str)) {
         Ok(PlcValue::Udt(udt_data)) => udt_data,
-        Ok(_) => return -1,  // Wrong data type
-        Err(_) => return -1, // Error reading tag
+        Ok(other) => {
+            return fail_with_last_error(
+                client_id,
+                format!("tag '{tag_name_str}' is not a UDT: {other:?}"),
+            );
+        }
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
     // Serialize UDT to JSON for C# consumption
     let json_result = match serde_json::to_string(&value) {
         Ok(json) => json,
-        Err(_) => return -1,
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
     let Ok(c_string) = CString::new(json_result) else {
-        return -1;
+        return fail_with_last_error(client_id, "UDT JSON contains interior null byte");
     };
 
     let bytes = c_string.as_bytes_with_nul();
     if bytes.len() > max_size as usize {
-        return -1; // JSON too long
+        return fail_with_last_error(
+            client_id,
+            format!("UDT result for '{tag_name_str}' too large for buffer"),
+        );
     }
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
+    clear_last_error(client_id);
     0
 }
 
+/// Write a UDT tag from a JSON payload.
+///
+/// # Safety
+///
+/// `tag_name` and `value` must point to valid NUL-terminated UTF-8 strings for
+/// the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_udt(
     client_id: c_int,
@@ -1277,15 +1321,17 @@ pub unsafe extern "C" fn eip_write_udt(
     size: c_int,
 ) -> c_int {
     if tag_name.is_null() || value.is_null() || size <= 0 {
-        return -1;
+        return fail_with_last_error(client_id, "tag name/value pointer is null or size <= 0");
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
-        return -1;
+        return fail_with_last_error(client_id, "tag name is not valid UTF-8");
     };
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(value_str) = unsafe { CStr::from_ptr(value) }.to_str() else {
-        return -1;
+        return fail_with_last_error(client_id, "UDT JSON is not valid UTF-8");
     };
 
     // Generic UdtData format: {"symbol_id":N,"data":[..bytes..]}. This is the
@@ -1297,29 +1343,39 @@ pub unsafe extern "C" fn eip_write_udt(
     if let Ok(udt_data) = serde_json::from_str::<crate::UdtData>(value_str) {
         let mut client = match get_client(client_id) {
             Ok(client) => client,
-            Err(_) => return -1,
+            Err(_) => return fail_with_last_error(client_id, "client id not found"),
         };
-        return if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Udt(udt_data))).is_ok() {
-            0
-        } else {
-            -1
+        return match ffi_block_on!(
+            client_id,
+            client.write_tag(tag_name_str, PlcValue::Udt(udt_data))
+        ) {
+            Ok(_) => {
+                clear_last_error(client_id);
+                0
+            }
+            Err(e) => fail_with_last_error(client_id, e.to_string()),
         };
     }
 
     // Deserialize JSON to UDT (HashMap format for backward compatibility)
     let udt_members: HashMap<String, PlcValue> = match serde_json::from_str(value_str) {
         Ok(data) => data,
-        Err(_) => return -1,
+        Err(e) => {
+            return fail_with_last_error(
+                client_id,
+                format!("UDT JSON is neither raw UdtData nor member map: {e}"),
+            );
+        }
     };
 
     let mut client = match get_client(client_id) {
         Ok(client) => client,
-        Err(_) => return -1,
+        Err(_) => return fail_with_last_error(client_id, "client id not found"),
     };
 
     // Convert HashMap to UdtData format
     // First, read the tag to get symbol_id and UDT definition
-    let udt_data = match ffi_block_on!(async {
+    let udt_data = match ffi_block_on!(client_id, async {
         // Read tag to get symbol_id
         let read_value = client.read_tag(tag_name_str).await?;
         let existing_udt = if let PlcValue::Udt(data) = read_value {
@@ -1347,29 +1403,40 @@ pub unsafe extern "C" fn eip_write_udt(
         )?)
     }) {
         Ok(data) => data,
-        Err(_) => {
-            // Fallback: create UdtData with symbol_id=0 (will trigger auto-read in write_tag)
-            crate::UdtData {
-                symbol_id: 0,
-                data: vec![],
-            }
-        }
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
-    if ffi_block_on!(client.write_tag(tag_name_str, PlcValue::Udt(udt_data))).is_ok() {
-        0
-    } else {
-        -1
+    match ffi_block_on!(
+        client_id,
+        client.write_tag(tag_name_str, PlcValue::Udt(udt_data))
+    ) {
+        Ok(_) => {
+            clear_last_error(client_id);
+            0
+        }
+        Err(e) => fail_with_last_error(client_id, e.to_string()),
     }
 }
 
-// Tag discovery and metadata
+/// Legacy tag-discovery placeholder.
+///
+/// # Safety
+///
+/// This function does not dereference raw pointers. `client_id` should be a
+/// handle returned by a connect function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_discover_tags(_client_id: c_int) -> c_int {
     // Return success for now - can implement tag discovery later
     0
 }
 
+/// Legacy tag-metadata placeholder.
+///
+/// # Safety
+///
+/// `tag_name` must be a valid NUL-terminated UTF-8 string when non-null, and
+/// `metadata` must be writable for the layout expected by the caller. The
+/// current implementation returns an unsupported error without dereferencing.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_tag_metadata(
     _client_id: c_int,
@@ -1380,7 +1447,12 @@ pub unsafe extern "C" fn eip_get_tag_metadata(
     -1
 }
 
-// Configuration
+/// Set the maximum packet size for a connected client.
+///
+/// # Safety
+///
+/// This function does not dereference raw pointers. `client_id` should be a
+/// handle returned by a connect function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_set_max_packet_size(client_id: c_int, size: c_int) -> c_int {
     if size <= 0 {
@@ -1395,7 +1467,11 @@ pub unsafe extern "C" fn eip_set_max_packet_size(client_id: c_int, size: c_int) 
     0
 }
 
-// Health checks
+/// Check client health.
+///
+/// # Safety
+///
+/// `is_healthy` must point to writable storage for one `c_int`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_check_health(client_id: c_int, is_healthy: *mut c_int) -> c_int {
     if is_healthy.is_null() {
@@ -1405,6 +1481,7 @@ pub unsafe extern "C" fn eip_check_health(client_id: c_int, is_healthy: *mut c_i
     let client = match get_client(client_id) {
         Ok(client) => client,
         Err(_) => {
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
             unsafe {
                 *is_healthy = 0;
             }
@@ -1412,13 +1489,19 @@ pub unsafe extern "C" fn eip_check_health(client_id: c_int, is_healthy: *mut c_i
         }
     };
 
-    let is_ok = ffi_block_on!(client.check_health());
+    let is_ok = ffi_block_on!(client_id, client.check_health());
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         *is_healthy = if is_ok { 1 } else { 0 };
     }
     0
 }
 
+/// Check client health, including an active native health probe.
+///
+/// # Safety
+///
+/// `is_healthy` must point to writable storage for one `c_int`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_check_health_detailed(
     client_id: c_int,
@@ -1431,6 +1514,7 @@ pub unsafe extern "C" fn eip_check_health_detailed(
     let mut client = match get_client(client_id) {
         Ok(client) => client,
         Err(_) => {
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
             unsafe {
                 *is_healthy = 0;
             }
@@ -1438,14 +1522,22 @@ pub unsafe extern "C" fn eip_check_health_detailed(
         }
     };
 
-    let is_ok = ffi_block_on!(client.check_health_detailed()).unwrap_or_default();
+    let is_ok = ffi_block_on!(client_id, client.check_health_detailed()).unwrap_or_default();
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         *is_healthy = if is_ok { 1 } else { 0 };
     }
     0
 }
 
+/// Return a diagnostics snapshot as an allocated JSON string.
+///
+/// # Safety
+///
+/// `result_ptr` must point to writable storage for one `*mut c_char`. On
+/// success the caller owns the returned string and must free it with
+/// `eip_free_string`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_diagnostics_json(
     client_id: c_int,
@@ -1462,12 +1554,12 @@ pub unsafe extern "C" fn eip_get_diagnostics_json(
     };
 
     let snapshot = if detailed != 0 {
-        match ffi_block_on!(client.get_diagnostics_snapshot_detailed()) {
+        match ffi_block_on!(client_id, client.get_diagnostics_snapshot_detailed()) {
             Ok(snapshot) => snapshot,
             Err(_) => return -1,
         }
     } else {
-        ffi_block_on!(client.get_diagnostics_snapshot())
+        ffi_block_on!(client_id, client.get_diagnostics_snapshot())
     };
 
     let json = match diagnostics_snapshot_json(&snapshot) {
@@ -1479,13 +1571,19 @@ pub unsafe extern "C" fn eip_get_diagnostics_json(
         return -1;
     };
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         *result_ptr = owned;
     }
     0
 }
 
-// Batch operations implementation
+/// Read multiple tags and write a JSON result into a caller buffer.
+///
+/// # Safety
+///
+/// `tag_names` must reference `tag_count` valid C string pointers and
+/// `results` must be writable for `results_capacity` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_tags_batch(
     client_id: c_int,
@@ -1495,31 +1593,34 @@ pub unsafe extern "C" fn eip_read_tags_batch(
     results_capacity: c_int,
 ) -> c_int {
     if tag_names.is_null() || results.is_null() || tag_count <= 0 || results_capacity <= 0 {
-        return -1;
+        return fail_with_last_error(client_id, "invalid batch-read arguments");
     }
 
     let mut client = match get_client(client_id) {
         Ok(client) => client,
-        Err(_) => return -1,
+        Err(_) => return fail_with_last_error(client_id, "client id not found"),
     };
 
     // Convert C strings to Rust strings
     let mut tag_name_strs = Vec::new();
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         for i in 0..tag_count {
             let tag_name_ptr = *tag_names.offset(i as isize);
             if tag_name_ptr.is_null() {
-                return -1;
+                return fail_with_last_error(client_id, "batch-read tag pointer is null");
             }
             let Ok(tag_name) = CStr::from_ptr(tag_name_ptr).to_str() else {
-                return -1;
+                return fail_with_last_error(client_id, "batch-read tag name is not valid UTF-8");
             };
             tag_name_strs.push(tag_name);
         }
     }
 
     // Execute batch read
-    let batch_results = ffi_block_on!(async { client.read_tags_batch(&tag_name_strs).await });
+    let batch_results = ffi_block_on!(client_id, async {
+        client.read_tags_batch(&tag_name_strs).await
+    });
 
     let results_data = match batch_results {
         Ok(results) => {
@@ -1543,19 +1644,27 @@ pub unsafe extern "C" fn eip_read_tags_batch(
 
             match serde_json::to_string(&response_items) {
                 Ok(json) => json,
-                Err(_) => return -1,
+                Err(e) => return fail_with_last_error(client_id, e.to_string()),
             }
         }
-        Err(_) => return -1,
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
-    if write_output_buffer(results, results_capacity, &results_data).is_err() {
-        return -1;
-    }
-
-    0
+    write_output_buffer_or_last_error(
+        client_id,
+        results,
+        results_capacity,
+        &results_data,
+        "batch-read",
+    )
 }
 
+/// Write multiple tags from a JSON request and write a JSON result buffer.
+///
+/// # Safety
+///
+/// `tag_values` must point to a valid NUL-terminated UTF-8 JSON string and
+/// `results` must be writable for `results_capacity` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_tags_batch(
     client_id: c_int,
@@ -1565,27 +1674,30 @@ pub unsafe extern "C" fn eip_write_tags_batch(
     results_capacity: c_int,
 ) -> c_int {
     if tag_values.is_null() || results.is_null() || tag_count <= 0 || results_capacity <= 0 {
-        return -1;
+        return fail_with_last_error(client_id, "invalid batch-write arguments");
     }
 
     let mut client = match get_client(client_id) {
         Ok(client) => client,
-        Err(_) => return -1,
+        Err(_) => return fail_with_last_error(client_id, "client id not found"),
     };
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     let input_str = unsafe {
         match CStr::from_ptr(tag_values).to_str() {
             Ok(s) => s,
-            Err(_) => return -1,
+            Err(_) => {
+                return fail_with_last_error(client_id, "batch-write JSON is not valid UTF-8");
+            }
         }
     };
 
     let request_items: Vec<FfiWriteRequestItem> = match serde_json::from_str(input_str) {
         Ok(items) => items,
-        Err(_) => return -1,
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
     if request_items.len() != tag_count as usize {
-        return -1;
+        return fail_with_last_error(client_id, "batch-write count does not match payload length");
     }
 
     let mut parse_errors: HashMap<String, String> = HashMap::new();
@@ -1606,7 +1718,7 @@ pub unsafe extern "C" fn eip_write_tags_batch(
             .map(|(name, value)| (name.as_str(), value.clone()))
             .collect();
 
-        match ffi_block_on!(client.write_tags_batch(&write_refs)) {
+        match ffi_block_on!(client_id, client.write_tags_batch(&write_refs)) {
             Ok(results_vec) => {
                 for (tag_name, result) in results_vec {
                     match result {
@@ -1661,16 +1773,24 @@ pub unsafe extern "C" fn eip_write_tags_batch(
 
     let results_data = match serde_json::to_string(&response_items) {
         Ok(json) => json,
-        Err(_) => return -1,
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
-    if write_output_buffer(results, results_capacity, &results_data).is_err() {
-        return -1;
-    }
-
-    0
+    write_output_buffer_or_last_error(
+        client_id,
+        results,
+        results_capacity,
+        &results_data,
+        "batch-write",
+    )
 }
 
+/// Execute a mixed read/write batch from a JSON request.
+///
+/// # Safety
+///
+/// `operations` must point to a valid NUL-terminated UTF-8 JSON string and
+/// `results` must be writable for `results_capacity` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_execute_batch(
     client_id: c_int,
@@ -1680,27 +1800,33 @@ pub unsafe extern "C" fn eip_execute_batch(
     results_capacity: c_int,
 ) -> c_int {
     if operations.is_null() || results.is_null() || operation_count <= 0 || results_capacity <= 0 {
-        return -1;
+        return fail_with_last_error(client_id, "invalid batch-execute arguments");
     }
 
     let mut client = match get_client(client_id) {
         Ok(client) => client,
-        Err(_) => return -1,
+        Err(_) => return fail_with_last_error(client_id, "client id not found"),
     };
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     let input_str = unsafe {
         match CStr::from_ptr(operations).to_str() {
             Ok(s) => s,
-            Err(_) => return -1,
+            Err(_) => {
+                return fail_with_last_error(client_id, "batch-execute JSON is not valid UTF-8");
+            }
         }
     };
 
     let request_items: Vec<FfiExecuteRequestItem> = match serde_json::from_str(input_str) {
         Ok(items) => items,
-        Err(_) => return -1,
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
     if request_items.len() != operation_count as usize {
-        return -1;
+        return fail_with_last_error(
+            client_id,
+            "batch-execute count does not match payload length",
+        );
     }
 
     let original_batch_cfg = client.get_batch_config().clone();
@@ -1749,7 +1875,7 @@ pub unsafe extern "C" fn eip_execute_batch(
     let batch_exec_result = if valid_operations.is_empty() {
         Ok(Vec::new())
     } else {
-        ffi_block_on!(client.execute_batch(&valid_operations))
+        ffi_block_on!(client_id, client.execute_batch(&valid_operations))
     };
 
     // Restore caller's batch config to avoid side effects from this FFI call.
@@ -1775,12 +1901,15 @@ pub unsafe extern "C" fn eip_execute_batch(
 
             let results_data = match serde_json::to_string(&response_items) {
                 Ok(json) => json,
-                Err(_) => return -1,
+                Err(err) => return fail_with_last_error(client_id, err.to_string()),
             };
             if write_output_buffer(results, results_capacity, &results_data).is_err() {
-                return -1;
+                return fail_with_last_error(
+                    client_id,
+                    "batch-execute error output does not fit in caller buffer",
+                );
             }
-            return -1;
+            return fail_with_last_error(client_id, error_message);
         }
     };
 
@@ -1837,16 +1966,25 @@ pub unsafe extern "C" fn eip_execute_batch(
 
     let results_data = match serde_json::to_string(&response_items) {
         Ok(json) => json,
-        Err(_) => return -1,
+        Err(e) => return fail_with_last_error(client_id, e.to_string()),
     };
 
-    if write_output_buffer(results, results_capacity, &results_data).is_err() {
-        return -1;
-    }
-
-    0
+    write_output_buffer_or_last_error(
+        client_id,
+        results,
+        results_capacity,
+        &results_data,
+        "batch-execute",
+    )
 }
 
+/// Legacy batch-configuration placeholder.
+///
+/// # Safety
+///
+/// `_config` must be valid for the layout expected by the caller if this
+/// placeholder is ever implemented. The current implementation does not
+/// dereference it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_configure_batch_operations(
     _client_id: c_int,
@@ -1855,12 +1993,24 @@ pub unsafe extern "C" fn eip_configure_batch_operations(
     -1 // Not implemented yet
 }
 
+/// Legacy batch-configuration query placeholder.
+///
+/// # Safety
+///
+/// `_config` must be writable for the layout expected by the caller if this
+/// placeholder is ever implemented. The current implementation does not
+/// dereference it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_batch_config(_client_id: c_int, _config: *mut u8) -> c_int {
     -1 // Not implemented yet
 }
 
-// Enhanced UDT operations
+/// Read a UDT tag through the chunked UDT path into a JSON buffer.
+///
+/// # Safety
+///
+/// `tag_name` must point to a valid NUL-terminated UTF-8 string and `result`
+/// must be writable for `max_size` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_udt_chunked(
     client_id: c_int,
@@ -1872,6 +2022,7 @@ pub unsafe extern "C" fn eip_read_udt_chunked(
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(tag_name_str) = unsafe { CStr::from_ptr(tag_name) }.to_str() else {
         return -1;
     };
@@ -1881,7 +2032,7 @@ pub unsafe extern "C" fn eip_read_udt_chunked(
         Err(_) => return -1,
     };
 
-    let value = match ffi_block_on!(client.read_udt_chunked(tag_name_str)) {
+    let value = match ffi_block_on!(client_id, client.read_udt_chunked(tag_name_str)) {
         Ok(PlcValue::Udt(udt_data)) => udt_data,
         Ok(_) => return -1,
         Err(_) => return -1,
@@ -1902,12 +2053,19 @@ pub unsafe extern "C" fn eip_read_udt_chunked(
         return -1; // JSON too long
     }
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
     0
 }
 
+/// Read a UDT member by byte offset into a JSON buffer.
+///
+/// # Safety
+///
+/// `udt_name` and `data_type` must point to valid NUL-terminated UTF-8 strings
+/// and `result` must be writable for `max_size` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_read_udt_member_by_offset(
     client_id: c_int,
@@ -1927,6 +2085,7 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(udt_name_str) = unsafe { CStr::from_ptr(udt_name) }.to_str() else {
         return -1;
     };
@@ -1936,12 +2095,15 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
         Err(_) => return -1,
     };
 
-    let value = match ffi_block_on!(client.read_udt_member_by_offset(
-        udt_name_str,
-        member_offset as usize,
-        member_size as usize,
-        data_type as u16,
-    )) {
+    let value = match ffi_block_on!(
+        client_id,
+        client.read_udt_member_by_offset(
+            udt_name_str,
+            member_offset as usize,
+            member_size as usize,
+            data_type as u16,
+        )
+    ) {
         Ok(value) => value,
         Err(_) => return -1,
     };
@@ -1961,12 +2123,19 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
         return -1; // JSON too long
     }
 
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
     }
     0
 }
 
+/// Write a UDT member by byte offset from a string payload.
+///
+/// # Safety
+///
+/// `udt_name`, `data_type`, and `value` must point to valid NUL-terminated
+/// UTF-8 strings for the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_write_udt_member_by_offset(
     client_id: c_int,
@@ -1981,10 +2150,12 @@ pub unsafe extern "C" fn eip_write_udt_member_by_offset(
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(udt_name_str) = unsafe { CStr::from_ptr(udt_name) }.to_str() else {
         return -1;
     };
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let Ok(value_str) = unsafe { CStr::from_ptr(value) }.to_str() else {
         return -1;
     };
@@ -2000,13 +2171,16 @@ pub unsafe extern "C" fn eip_write_udt_member_by_offset(
         Err(_) => return -1,
     };
 
-    match ffi_block_on!(client.write_udt_member_by_offset(
-        udt_name_str,
-        member_offset as usize,
-        member_size as usize,
-        data_type as u16,
-        plc_value,
-    )) {
+    match ffi_block_on!(
+        client_id,
+        client.write_udt_member_by_offset(
+            udt_name_str,
+            member_offset as usize,
+            member_size as usize,
+            data_type as u16,
+            plc_value,
+        )
+    ) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -2063,19 +2237,33 @@ pub struct TagDiscoveryResult {
 }
 
 /// Free a C string allocated by this library
+///
+/// # Safety
+///
+/// `ptr` must be null or a pointer previously returned by this library through
+/// `CString::into_raw` and not already freed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_free_string(ptr: *mut c_char) {
+    // SAFETY: The pointer being freed was allocated by this library and ownership has returned to Rust.
     unsafe { free_c_string(ptr) };
 }
 
 /// Free a UDT definition result allocated by `eip_get_udt_definition`
+///
+/// # Safety
+///
+/// `result_ptr` must be null or point to a result structure previously
+/// initialized by this library. Its owned pointer fields must not have already
+/// been freed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_free_udt_definition(result_ptr: *mut UdtDefinitionResult) {
     if result_ptr.is_null() {
         return;
     }
 
+    // SAFETY: The output pointer was checked for null and the caller contract requires writable storage for this layout.
     let result = unsafe { &mut *result_ptr };
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         free_c_string(result.error_message);
         free_c_string(result.name);
@@ -2084,12 +2272,14 @@ pub unsafe extern "C" fn eip_free_udt_definition(result_ptr: *mut UdtDefinitionR
     if !result.members.is_null() {
         if result.member_count > 0 {
             for i in 0..result.member_count as usize {
+                // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
                 unsafe {
                     let member = result.members.add(i);
                     free_c_string((*member).name);
                 }
             }
         }
+        // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
         unsafe {
             libc::free(result.members as *mut c_void);
         }
@@ -2102,13 +2292,21 @@ pub unsafe extern "C" fn eip_free_udt_definition(result_ptr: *mut UdtDefinitionR
 }
 
 /// Free a tag attributes result allocated by `eip_get_tag_attributes`
+///
+/// # Safety
+///
+/// `result_ptr` must be null or point to a result structure previously
+/// initialized by this library. Its owned pointer fields must not have already
+/// been freed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_free_tag_attributes_result(result_ptr: *mut TagAttributesResult) {
     if result_ptr.is_null() {
         return;
     }
 
+    // SAFETY: The output pointer was checked for null and the caller contract requires writable storage for this layout.
     let result = unsafe { &mut *result_ptr };
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         free_c_string(result.error_message);
         free_c_string(result.name);
@@ -2121,13 +2319,21 @@ pub unsafe extern "C" fn eip_free_tag_attributes_result(result_ptr: *mut TagAttr
 }
 
 /// Free a tag discovery result allocated by `eip_discover_tags_detailed`
+///
+/// # Safety
+///
+/// `result_ptr` must be null or point to a result structure previously
+/// initialized by this library. Its owned pointer fields must not have already
+/// been freed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_free_tag_discovery_result(result_ptr: *mut TagDiscoveryResult) {
     if result_ptr.is_null() {
         return;
     }
 
+    // SAFETY: The output pointer was checked for null and the caller contract requires writable storage for this layout.
     let result = unsafe { &mut *result_ptr };
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
     unsafe {
         free_c_string(result.error_message);
     }
@@ -2135,6 +2341,7 @@ pub unsafe extern "C" fn eip_free_tag_discovery_result(result_ptr: *mut TagDisco
     if !result.tags.is_null() {
         if result.tag_count > 0 {
             for i in 0..result.tag_count as usize {
+                // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
                 unsafe {
                     let tag = result.tags.add(i);
                     free_c_string((*tag).name);
@@ -2142,6 +2349,7 @@ pub unsafe extern "C" fn eip_free_tag_discovery_result(result_ptr: *mut TagDisco
                 }
             }
         }
+        // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
         unsafe {
             libc::free(result.tags as *mut c_void);
         }
@@ -2152,29 +2360,26 @@ pub unsafe extern "C" fn eip_free_tag_discovery_result(result_ptr: *mut TagDisco
     result.tag_count = 0;
 }
 
-/// FFI function to get UDT definition from PLC
-///
-/// The caller must free the returned fields using `eip_free_udt_definition`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_get_udt_definition(
-    client_ptr: *mut EipClient,
+unsafe fn eip_get_udt_definition_impl(
+    client: &mut EipClient,
+    client_id: c_int,
     udt_name: *const c_char,
     result_ptr: *mut UdtDefinitionResult,
 ) -> c_int {
-    if client_ptr.is_null() || udt_name.is_null() || result_ptr.is_null() {
+    if udt_name.is_null() || result_ptr.is_null() {
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let udt_name_cstr = unsafe { CStr::from_ptr(udt_name) };
     let udt_name_str = match udt_name_cstr.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };
 
-    let client = unsafe { &mut *client_ptr };
-
-    match ffi_block_on!(client.get_udt_definition(udt_name_str)) {
+    match ffi_block_on!(client_id, client.get_udt_definition(udt_name_str)) {
         Ok(definition) => {
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
             unsafe {
                 (*result_ptr).success = true;
                 (*result_ptr).error_message = std::ptr::null_mut();
@@ -2194,12 +2399,16 @@ pub unsafe extern "C" fn eip_get_udt_definition(
                     }
                 };
 
-                // Allocate memory for members
-                let members_ptr =
+                // Allocate memory for members. A zero-member UDT uses a null
+                // members pointer with member_count = 0.
+                let members_ptr = if definition.members.is_empty() {
+                    std::ptr::null_mut()
+                } else {
                     libc::malloc(std::mem::size_of::<UdtMemberC>() * definition.members.len())
-                        as *mut UdtMemberC;
+                        as *mut UdtMemberC
+                };
 
-                if members_ptr.is_null() {
+                if !definition.members.is_empty() && members_ptr.is_null() {
                     free_c_string(name_ptr);
                     (*result_ptr).success = false;
                     (*result_ptr).error_message =
@@ -2247,6 +2456,7 @@ pub unsafe extern "C" fn eip_get_udt_definition(
             0
         }
         Err(e) => {
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
             unsafe {
                 (*result_ptr).success = false;
                 (*result_ptr).error_message =
@@ -2263,6 +2473,11 @@ pub unsafe extern "C" fn eip_get_udt_definition(
 /// FFI function to get UDT definition from PLC using client ID
 ///
 /// The caller must free the returned fields using `eip_free_udt_definition`.
+///
+/// # Safety
+///
+/// `udt_name` must point to a valid NUL-terminated UTF-8 string and
+/// `result_ptr` must point to writable storage for one `UdtDefinitionResult`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_udt_definition_by_id(
     client_id: c_int,
@@ -2278,32 +2493,30 @@ pub unsafe extern "C" fn eip_get_udt_definition_by_id(
         Err(_) => return -1,
     };
 
-    unsafe { eip_get_udt_definition(&mut client, udt_name, result_ptr) }
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
+    unsafe { eip_get_udt_definition_impl(&mut client, client_id, udt_name, result_ptr) }
 }
 
-/// FFI function to get tag attributes from PLC
-///
-/// The caller must free the returned fields using `eip_free_tag_attributes_result`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_get_tag_attributes(
-    client_ptr: *mut EipClient,
+unsafe fn eip_get_tag_attributes_impl(
+    client: &mut EipClient,
+    client_id: c_int,
     tag_name: *const c_char,
     result_ptr: *mut TagAttributesResult,
 ) -> c_int {
-    if client_ptr.is_null() || tag_name.is_null() || result_ptr.is_null() {
+    if tag_name.is_null() || result_ptr.is_null() {
         return -1;
     }
 
+    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
     let tag_name_cstr = unsafe { CStr::from_ptr(tag_name) };
     let tag_name_str = match tag_name_cstr.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };
 
-    let client = unsafe { &mut *client_ptr };
-
-    match ffi_block_on!(client.get_tag_attributes(tag_name_str)) {
+    match ffi_block_on!(client_id, client.get_tag_attributes(tag_name_str)) {
         Ok(attributes) => {
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
             unsafe {
                 (*result_ptr).success = true;
                 (*result_ptr).error_message = std::ptr::null_mut();
@@ -2345,6 +2558,7 @@ pub unsafe extern "C" fn eip_get_tag_attributes(
             0
         }
         Err(e) => {
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
             unsafe {
                 (*result_ptr).success = false;
                 (*result_ptr).error_message =
@@ -2363,6 +2577,11 @@ pub unsafe extern "C" fn eip_get_tag_attributes(
 /// FFI function to get tag attributes from PLC using client ID
 ///
 /// The caller must free the returned fields using `eip_free_tag_attributes_result`.
+///
+/// # Safety
+///
+/// `tag_name` must point to a valid NUL-terminated UTF-8 string and
+/// `result_ptr` must point to writable storage for one `TagAttributesResult`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_get_tag_attributes_by_id(
     client_id: c_int,
@@ -2378,39 +2597,43 @@ pub unsafe extern "C" fn eip_get_tag_attributes_by_id(
         Err(_) => return -1,
     };
 
-    unsafe { eip_get_tag_attributes(&mut client, tag_name, result_ptr) }
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
+    unsafe { eip_get_tag_attributes_impl(&mut client, client_id, tag_name, result_ptr) }
 }
 
-/// FFI function to discover tags with detailed attributes
-///
-/// The caller must free the returned fields using `eip_free_tag_discovery_result`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn eip_discover_tags_detailed(
-    client_ptr: *mut EipClient,
+unsafe fn eip_discover_tags_detailed_impl(
+    client: &mut EipClient,
+    client_id: c_int,
     result_ptr: *mut TagDiscoveryResult,
 ) -> c_int {
-    if client_ptr.is_null() || result_ptr.is_null() {
+    if result_ptr.is_null() {
         return -1;
     }
 
-    let client = unsafe { &mut *client_ptr };
-
-    match ffi_block_on!(client.discover_tags_detailed()) {
+    match ffi_block_on!(client_id, client.discover_tags_detailed()) {
         Ok(tags) => {
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
             unsafe {
                 (*result_ptr).success = true;
                 (*result_ptr).error_message = std::ptr::null_mut();
                 (*result_ptr).tag_count = tags.len() as c_int;
 
-                // Allocate memory for tag attributes
-                let tags_ptr = libc::malloc(std::mem::size_of::<TagAttributesC>() * tags.len())
-                    as *mut TagAttributesC;
+                // Allocate memory for tag attributes. An empty discovery result
+                // uses a null tags pointer with tag_count = 0.
+                let tags_ptr = if tags.is_empty() {
+                    std::ptr::null_mut()
+                } else {
+                    libc::malloc(std::mem::size_of::<TagAttributesC>() * tags.len())
+                        as *mut TagAttributesC
+                };
 
-                if tags_ptr.is_null() {
+                if !tags.is_empty() && tags_ptr.is_null() {
                     (*result_ptr).success = false;
                     (*result_ptr).error_message =
                         to_c_string_owned("Failed to allocate memory for tag attributes")
                             .unwrap_or(std::ptr::null_mut());
+                    (*result_ptr).tags = std::ptr::null_mut();
+                    (*result_ptr).tag_count = 0;
                     return -1;
                 }
 
@@ -2472,6 +2695,7 @@ pub unsafe extern "C" fn eip_discover_tags_detailed(
             0
         }
         Err(e) => {
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
             unsafe {
                 (*result_ptr).success = false;
                 (*result_ptr).error_message =
@@ -2487,6 +2711,10 @@ pub unsafe extern "C" fn eip_discover_tags_detailed(
 /// FFI function to discover tags with detailed attributes using client ID
 ///
 /// The caller must free the returned fields using `eip_free_tag_discovery_result`.
+///
+/// # Safety
+///
+/// `result_ptr` must point to writable storage for one `TagDiscoveryResult`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eip_discover_tags_detailed_by_id(
     client_id: c_int,
@@ -2501,7 +2729,8 @@ pub unsafe extern "C" fn eip_discover_tags_detailed_by_id(
         Err(_) => return -1,
     };
 
-    unsafe { eip_discover_tags_detailed(&mut client, result_ptr) }
+    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
+    unsafe { eip_discover_tags_detailed_impl(&mut client, client_id, result_ptr) }
 }
 
 #[cfg(test)]
@@ -2528,7 +2757,9 @@ mod tests {
     fn forced_runtime_init_error_returns_documented_code() {
         let _guard = ForceRuntimeInitErrorGuard::enable();
         let address = CString::new("127.0.0.1:44818").expect("test address should be valid");
+        // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
         let rc = unsafe { eip_connect(address.as_ptr()) };
+        // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
         let rc_again = unsafe { eip_connect(address.as_ptr()) };
 
         assert_eq!(rc, EIP_ERROR_RUNTIME_INIT);
@@ -2542,9 +2773,11 @@ mod tests {
 
         let mut buf = [0_i8; 64];
         let written =
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
             unsafe { eip_get_last_error(client_id, buf.as_mut_ptr(), buf.len() as c_int) };
         assert_eq!(written, "boom: tag not found".len() as c_int);
 
+        // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
         let msg = unsafe { CStr::from_ptr(buf.as_ptr()) }
             .to_str()
             .expect("utf-8");
@@ -2554,6 +2787,7 @@ mod tests {
     #[test]
     fn last_error_absent_writes_empty_string() {
         let mut buf = [0x7f_i8; 8];
+        // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
         let written = unsafe { eip_get_last_error(-12_345, buf.as_mut_ptr(), buf.len() as c_int) };
         assert_eq!(written, 0);
         assert_eq!(buf[0], 0, "buffer should be an empty C string");
@@ -2567,7 +2801,33 @@ mod tests {
             "this message is definitely longer than the buffer",
         );
         let mut buf = [0_i8; 4];
+        // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
         let rc = unsafe { eip_get_last_error(client_id, buf.as_mut_ptr(), buf.len() as c_int) };
         assert_eq!(rc, -1);
+    }
+
+    fn panic_probe(client_id: c_int) -> c_int {
+        let _: () = ffi_block_on!(client_id, async {
+            panic!("ffi test panic");
+        });
+        0
+    }
+
+    #[test]
+    fn ffi_block_on_converts_panic_to_last_error() {
+        let client_id = -321;
+        let rc = panic_probe(client_id);
+        assert_eq!(rc, -1);
+
+        let mut buf = [0_i8; 128];
+        let written =
+            // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
+            unsafe { eip_get_last_error(client_id, buf.as_mut_ptr(), buf.len() as c_int) };
+        assert!(written > 0);
+        // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
+        let msg = unsafe { CStr::from_ptr(buf.as_ptr()) }
+            .to_str()
+            .expect("utf-8");
+        assert!(msg.contains("internal panic: ffi test panic"));
     }
 }

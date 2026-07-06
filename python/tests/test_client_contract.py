@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import gc
 import json
 import unittest
 from unittest.mock import patch
@@ -245,6 +246,27 @@ class ClientContractTests(unittest.TestCase):
         with patch.object(client_module, "load_native_library", return_value=lib):
             with self.assertRaises(PlcConnectionError):
                 Client("127.0.0.1:44818")
+
+    def test_disconnect_failure_still_clears_local_state(self) -> None:
+        lib = FakeNativeLibrary()
+        lib.disconnect_result = -1
+        with patch.object(client_module, "load_native_library", return_value=lib):
+            plc = Client("127.0.0.1:44818")
+            with self.assertRaises(PlcConnectionError):
+                plc.disconnect()
+
+            self.assertFalse(plc.is_connected)
+            self.assertEqual(lib.disconnected_ids, [7])
+
+    def test_finalizer_disconnects_native_handle_on_gc(self) -> None:
+        lib = FakeNativeLibrary()
+        with patch.object(client_module, "load_native_library", return_value=lib):
+            plc = Client("127.0.0.1:44818")
+            self.assertTrue(plc.is_connected)
+            del plc
+            gc.collect()
+
+        self.assertEqual(lib.disconnected_ids, [7])
 
     def test_read_failure_includes_native_error(self) -> None:
         lib = FakeNativeLibrary()

@@ -17,6 +17,12 @@ Target next release: TBD.
   1.2.0 manifest relabel decision.
 
 ### Fixed
+- CODEX-AS hardened the FFI boundary: raw `*mut EipClient` exports were removed
+  in favor of handle-based `_by_id` exports, ABI version is now 2, panics under
+  runtime-dispatched FFI calls become `-1` plus last-error instead of unwinding
+  into host processes, last-error entries clear on success and disconnect, and
+  Python clients now finalize/disconnect native handles without wedging local
+  state on native disconnect failure.
 - CODEX-AL hardened transport/session state: SendRRData now uses checked
   per-request sender contexts, incomplete transactions poison the shared stream
   until reconnect, session handles are shared across cloned clients, and FFI

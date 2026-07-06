@@ -13,7 +13,6 @@
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
 | CODEX-AL | Transport & session hardening — timeout desync, sender-context correlation, shared session handle | codex | open | 2026-07-01 |
-| CODEX-AN | read_array_range + get_tag_attributes wire fixes; make the simulator an oracle, not a mirror | codex | open | 2026-07-01 |
 | CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open | 2026-07-01 |
 | CODEX-AP | Retire the string/UDT strategy graveyard — never-worked public paths return honest errors | codex | open | 2026-07-01 |
 | CODEX-AQ | Dead-stratum deprecation — TagManager UDT pipeline, ProductionMonitor/Config, PlcManager, SubscriptionManager, TagCache; diagnostics honesty | codex | open | 2026-07-01 |
@@ -120,6 +119,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-AN | read_array_range + get_tag_attributes wire fixes; make the simulator an oracle, not a mirror | codex | `8645f67` |
 | CODEX-AV | Re-validate the firmware_blocked_* write labels — the 0x2107 lore is falling to correct paths | codex | `463854a` |
 | CODEX-AM | Tag addressing correctness — member-suffix drop, bit syntax, batch BOOL arrays, .DATA[i] segment, program discovery | codex | `4ec2cec` |
 | CODEX-AT | STRING wire format — direct structure writes work; fix encoding, decode reads, retire the firmware-quirk misdiagnosis | codex | `026c4e2` |

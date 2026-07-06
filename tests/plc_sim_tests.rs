@@ -402,11 +402,25 @@ async fn simulated_plc_read_array_range_dint() {
 
     let mut client = EipClient::connect(&addr).await.expect("connect");
     let values = client
-        .read_array_range("DINT_ARRAY", 0, 2)
+        .read_array_range("DINT_ARRAY", 0, 10)
         .await
         .expect("read range");
 
-    assert_eq!(values, vec![PlcValue::Dint(10), PlcValue::Dint(20)]);
+    assert_eq!(
+        values,
+        vec![
+            PlcValue::Dint(10),
+            PlcValue::Dint(20),
+            PlcValue::Dint(30),
+            PlcValue::Dint(40),
+            PlcValue::Dint(50),
+            PlcValue::Dint(60),
+            PlcValue::Dint(70),
+            PlcValue::Dint(80),
+            PlcValue::Dint(90),
+            PlcValue::Dint(100),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -416,11 +430,59 @@ async fn simulated_plc_read_array_range_real() {
 
     let mut client = EipClient::connect(&addr).await.expect("connect");
     let values = client
-        .read_array_range("REAL_ARRAY", 0, 2)
+        .read_array_range("REAL_ARRAY", 0, 10)
         .await
         .expect("read range");
 
-    assert_eq!(values, vec![PlcValue::Real(1.5), PlcValue::Real(2.5)]);
+    assert_eq!(
+        values,
+        vec![
+            PlcValue::Real(1.5),
+            PlcValue::Real(2.5),
+            PlcValue::Real(3.5),
+            PlcValue::Real(4.5),
+            PlcValue::Real(5.5),
+            PlcValue::Real(6.5),
+            PlcValue::Real(7.5),
+            PlcValue::Real(8.5),
+            PlcValue::Real(9.5),
+            PlcValue::Real(10.5),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn simulated_plc_get_tag_attributes_known_tag() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let attrs = client
+        .get_tag_attributes("DINT_ARRAY")
+        .await
+        .expect("attributes");
+
+    assert_eq!(attrs.name, "DINT_ARRAY");
+    assert_eq!(attrs.data_type, 0x00C4);
+    assert_eq!(attrs.data_type_name, "DINT");
+    assert_eq!(attrs.template_instance_id, Some(16));
+}
+
+#[tokio::test]
+async fn simulated_plc_get_tag_attributes_unknown_tag_returns_error() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let err = client.get_tag_attributes("MISSING_TAG").await.unwrap_err();
+
+    match err {
+        EtherNetIpError::Protocol(message) => assert!(
+            message.contains("Get Attribute List") && message.contains("Path segment"),
+            "unexpected error message: {message}"
+        ),
+        other => panic!("expected Protocol error for unknown tag attributes, got: {other:?}"),
+    }
 }
 
 #[tokio::test]

@@ -11,10 +11,12 @@ const CMD_SEND_RR_DATA: u16 = 0x006F;
 
 const CIP_READ_TAG: u8 = 0x4C;
 const CIP_WRITE_TAG: u8 = 0x4D;
+const CIP_GET_ATTRIBUTE_LIST: u8 = 0x03;
 const CIP_MULTIPLE_SERVICE_PACKET: u8 = 0x0A;
 
 const CIP_REPLY_READ: u8 = 0xCC;
 const CIP_REPLY_WRITE: u8 = 0xCD;
+const CIP_REPLY_GET_ATTRIBUTE_LIST: u8 = 0x83;
 const CIP_REPLY_MULTIPLE_SERVICE_PACKET: u8 = 0x8A;
 
 const CIP_STATUS_SUCCESS: u8 = 0x00;
@@ -155,11 +157,15 @@ impl SimulatedPlc {
             ("UDT_ARRAY[3].DINT_MEMBER".to_string(), TagValue::Dint(30)),
             (
                 "DINT_ARRAY".to_string(),
-                TagValue::Array(vec![TagValue::Dint(10), TagValue::Dint(20)]),
+                TagValue::Array((1..=20).map(|index| TagValue::Dint(index * 10)).collect()),
             ),
             (
                 "REAL_ARRAY".to_string(),
-                TagValue::Array(vec![TagValue::Real(1.5), TagValue::Real(2.5)]),
+                TagValue::Array(
+                    (0..20)
+                        .map(|index| TagValue::Real(index as f32 + 1.5))
+                        .collect(),
+                ),
             ),
         ])));
 
@@ -304,9 +310,76 @@ fn build_cip_response(
     match service {
         CIP_READ_TAG => build_read_response(payload, tags, behavior),
         CIP_WRITE_TAG => handle_write(payload, tags, behavior),
+        CIP_GET_ATTRIBUTE_LIST => build_get_attribute_list_response(payload, tags),
         CIP_MULTIPLE_SERVICE_PACKET => build_multiple_service_response(payload, tags, behavior),
         _ => vec![CIP_REPLY_READ, 0x00, 0x01, 0x00],
     }
+}
+
+fn build_get_attribute_list_response(
+    payload: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+) -> Vec<u8> {
+    let cip_request = extract_cip_request(payload);
+    if cip_request.len() < 4 {
+        return build_cip_error_reply(CIP_REPLY_GET_ATTRIBUTE_LIST, CIP_STATUS_PATH_SEGMENT_ERROR);
+    }
+
+    let (tag_name, _) = match parse_tag_and_path(&cip_request) {
+        Some(value) => value,
+        None => {
+            return build_cip_error_reply(
+                CIP_REPLY_GET_ATTRIBUTE_LIST,
+                CIP_STATUS_PATH_SEGMENT_ERROR,
+            );
+        }
+    };
+
+    let path_words = cip_request[1] as usize;
+    let attrs_start = 2 + path_words * 2;
+    if cip_request.len() < attrs_start + 2 {
+        return build_cip_error_reply(CIP_REPLY_GET_ATTRIBUTE_LIST, CIP_STATUS_PATH_SEGMENT_ERROR);
+    }
+
+    let requested_attr_count =
+        u16::from_le_bytes([cip_request[attrs_start], cip_request[attrs_start + 1]]) as usize;
+    let attr_ids_start = attrs_start + 2;
+    if cip_request.len() < attr_ids_start + requested_attr_count * 2 {
+        return build_cip_error_reply(CIP_REPLY_GET_ATTRIBUTE_LIST, CIP_STATUS_PATH_SEGMENT_ERROR);
+    }
+
+    let tags_guard = tags.lock().expect("tag lock");
+    let Some(value) = tags_guard.get(&tag_name) else {
+        return build_cip_error_reply(CIP_REPLY_GET_ATTRIBUTE_LIST, CIP_STATUS_PATH_SEGMENT_ERROR);
+    };
+
+    // Get Attribute List reply format (1756-PM020 Symbol Object service 0x03):
+    // CIP reply header, attribute count, then one [attribute id][status][value]
+    // record per requested attribute. Attribute 1 is symbol type; attribute 2 is
+    // the symbol instance id used by Logix metadata services.
+    let mut response = vec![CIP_REPLY_GET_ATTRIBUTE_LIST, 0x00, CIP_STATUS_SUCCESS, 0x00];
+    response.extend_from_slice(&(requested_attr_count as u16).to_le_bytes());
+
+    for index in 0..requested_attr_count {
+        let attr_pos = attr_ids_start + index * 2;
+        let attr_id = u16::from_le_bytes([cip_request[attr_pos], cip_request[attr_pos + 1]]);
+        response.extend_from_slice(&attr_id.to_le_bytes());
+        match attr_id {
+            0x0001 => {
+                response.extend_from_slice(&0u16.to_le_bytes());
+                response.extend_from_slice(&tag_data_type(value).to_le_bytes());
+            }
+            0x0002 => {
+                response.extend_from_slice(&0u16.to_le_bytes());
+                response.extend_from_slice(&tag_instance_id(&tag_name).to_le_bytes());
+            }
+            _ => {
+                response.extend_from_slice(&(CIP_STATUS_PATH_SEGMENT_ERROR as u16).to_le_bytes());
+            }
+        }
+    }
+
+    response
 }
 
 fn build_read_response(
@@ -758,12 +831,12 @@ fn build_value_response(
 
             match &subset[0] {
                 TagValue::Bool(_) => {
+                    // Read Tag reply format (1756-PM020 service 0x4C):
+                    // [0xCC][reserved][status][additional-status-count][type u16][data...].
+                    // Logix does not include an element-count word in multi-element replies.
                     let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
                     response.extend_from_slice(&CIP_TYPE_BOOL_ARRAY_DWORD.to_le_bytes());
                     let start_dword = element_index.unwrap_or(0);
-                    if count > 1 {
-                        response.extend_from_slice(&(count as u16).to_le_bytes());
-                    }
                     for dword_offset in 0..count {
                         let dword = bool_array_dword(&items, start_dword + dword_offset);
                         response.extend_from_slice(&dword.to_le_bytes());
@@ -773,12 +846,11 @@ fn build_value_response(
                 TagValue::Sint(_) => build_array_value_response(&subset, CIP_TYPE_SINT),
                 TagValue::Int(_) => build_array_value_response(&subset, CIP_TYPE_INT),
                 TagValue::Dint(_) => {
+                    // Read Tag reply format (1756-PM020 service 0x4C):
+                    // [0xCC][reserved][status][additional-status-count][type u16][data...].
+                    // Logix does not include an element-count word in multi-element replies.
                     let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
                     response.extend_from_slice(&CIP_TYPE_DINT.to_le_bytes());
-                    // Only add element count for multi-element responses (range reads)
-                    if subset.len() > 1 {
-                        response.extend_from_slice(&(subset.len() as u16).to_le_bytes());
-                    }
                     for item in subset {
                         if let TagValue::Dint(v) = item {
                             response.extend_from_slice(&v.to_le_bytes());
@@ -792,12 +864,11 @@ fn build_value_response(
                 TagValue::Udint(_) => build_array_value_response(&subset, CIP_TYPE_UDINT),
                 TagValue::Ulint(_) => build_array_value_response(&subset, CIP_TYPE_ULINT),
                 TagValue::Real(_) => {
+                    // Read Tag reply format (1756-PM020 service 0x4C):
+                    // [0xCC][reserved][status][additional-status-count][type u16][data...].
+                    // Logix does not include an element-count word in multi-element replies.
                     let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
                     response.extend_from_slice(&CIP_TYPE_REAL.to_le_bytes());
-                    // Only add element count for multi-element responses (range reads)
-                    if subset.len() > 1 {
-                        response.extend_from_slice(&(subset.len() as u16).to_le_bytes());
-                    }
                     for item in subset {
                         if let TagValue::Real(v) = item {
                             response.extend_from_slice(&v.to_le_bytes());
@@ -892,11 +963,11 @@ fn build_value_response(
 }
 
 fn build_array_value_response(items: &[TagValue], data_type: u16) -> Vec<u8> {
+    // Read Tag reply format (1756-PM020 service 0x4C):
+    // [0xCC][reserved][status][additional-status-count][type u16][data...].
+    // Logix does not include an element-count word in multi-element replies.
     let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
     response.extend_from_slice(&data_type.to_le_bytes());
-    if items.len() > 1 {
-        response.extend_from_slice(&(items.len() as u16).to_le_bytes());
-    }
     for item in items {
         match item {
             TagValue::Sint(v) => response.extend_from_slice(&v.to_le_bytes()),
@@ -911,6 +982,47 @@ fn build_array_value_response(items: &[TagValue], data_type: u16) -> Vec<u8> {
         }
     }
     response
+}
+
+fn tag_data_type(value: &TagValue) -> u16 {
+    match value {
+        TagValue::Bool(_) => CIP_TYPE_BOOL,
+        TagValue::Sint(_) => CIP_TYPE_SINT,
+        TagValue::Int(_) => CIP_TYPE_INT,
+        TagValue::Dint(_) => CIP_TYPE_DINT,
+        TagValue::Lint(_) => CIP_TYPE_LINT,
+        TagValue::Usint(_) => CIP_TYPE_USINT,
+        TagValue::Uint(_) => CIP_TYPE_UINT,
+        TagValue::Udint(_) => CIP_TYPE_UDINT,
+        TagValue::Ulint(_) => CIP_TYPE_ULINT,
+        TagValue::Real(_) => CIP_TYPE_REAL,
+        TagValue::Lreal(_) => CIP_TYPE_LREAL,
+        TagValue::String(_) => CIP_TYPE_STRUCTURE,
+        TagValue::Array(items) => items.first().map(tag_data_type).unwrap_or(CIP_TYPE_DINT),
+    }
+}
+
+fn tag_instance_id(tag_name: &str) -> u32 {
+    match tag_name {
+        "DINT_TAG" => 1,
+        "BOOL_TAG" => 2,
+        "SINT_TAG" => 3,
+        "INT_TAG" => 4,
+        "LINT_TAG" => 5,
+        "USINT_TAG" => 6,
+        "UINT_TAG" => 7,
+        "UDINT_TAG" => 8,
+        "ULINT_TAG" => 9,
+        "REAL_TAG" => 10,
+        "LREAL_TAG" => 11,
+        "STRING_TAG" => 12,
+        "BOOL_ARRAY" => 13,
+        "UDT_ARRAY[3].BOOL_NESTED" => 14,
+        "UDT_ARRAY[3].DINT_MEMBER" => 15,
+        "DINT_ARRAY" => 16,
+        "REAL_ARRAY" => 17,
+        _ => 0,
+    }
 }
 
 fn bool_array_dword(items: &[TagValue], dword_index: usize) -> u32 {

@@ -1042,37 +1042,37 @@ impl EipClient {
     }
 
     fn parse_bool_array_dword_response(&self, cip_data: &[u8]) -> crate::error::Result<u32> {
-        if cip_data.len() < 6 {
-            return Err(EtherNetIpError::Protocol(
-                "BOOL array response too short".to_string(),
-            ));
-        }
-
-        self.check_cip_error(cip_data)?;
-
-        let service_reply = cip_data[0];
-        if service_reply != 0xCC {
+        let mut response_bytes = cip_data;
+        let response = CipResponse::decode(&mut response_bytes)?;
+        if response.status != 0 {
             return Err(EtherNetIpError::Protocol(format!(
-                "Unexpected service reply: 0x{service_reply:02X}"
+                "CIP Error {} when reading BOOL array DWORD: {}",
+                response.status,
+                self.get_cip_error_message(response.status)
             )));
         }
 
-        let data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+        if response.service != 0xCC {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unexpected service reply: 0x{:02X}",
+                response.service
+            )));
+        }
+
+        if response.data.len() < 6 {
+            return Err(EtherNetIpError::Protocol(
+                "BOOL array response too short for data type and DWORD".to_string(),
+            ));
+        }
+
+        let data_type = u16::from_le_bytes([response.data[0], response.data[1]]);
         if data_type != values::BOOL_ARRAY_DWORD {
             return Err(EtherNetIpError::Protocol(format!(
                 "Expected BOOL array DWORD data type 0x00D3, got 0x{data_type:04X}"
             )));
         }
 
-        let value_data = if cip_data.len() >= 12 {
-            &cip_data[8..]
-        } else if cip_data.len() >= 10 {
-            &cip_data[6..]
-        } else {
-            return Err(EtherNetIpError::Protocol(
-                "BOOL array response too short for data".to_string(),
-            ));
-        };
+        let value_data = &response.data[2..];
 
         if value_data.len() < 4 {
             return Err(EtherNetIpError::Protocol(format!(
@@ -1260,61 +1260,34 @@ impl EipClient {
                 .await?;
             let cip_data = self.extract_cip_from_response(&response)?;
 
-            if cip_data.len() < 8 {
-                // Response too short - might be an error or empty response
-                // Check if it's a CIP error response
-                if cip_data.len() >= 3 {
-                    let general_status = cip_data[2];
-                    if general_status != 0x00 {
-                        let error_msg = self.get_cip_error_message(general_status);
-                        return Err(EtherNetIpError::Protocol(format!(
-                            "CIP Error {} when reading chunk (elements {} to {}): {}",
-                            general_status,
-                            next_chunk_start,
-                            chunk_end - 1,
-                            error_msg
-                        )));
-                    }
-                }
+            let mut response_bytes = cip_data.as_slice();
+            let response = CipResponse::decode(&mut response_bytes)?;
+            if response.status != 0 {
+                let error_msg = self.get_cip_error_message(response.status);
                 return Err(EtherNetIpError::Protocol(format!(
-                    "Chunk response too short: got {} bytes, expected at least 8 (requested {} elements starting at {})",
-                    cip_data.len(),
-                    chunk_size,
-                    next_chunk_start
+                    "CIP Error {} when reading chunk (elements {} to {}): {}",
+                    response.status,
+                    next_chunk_start,
+                    chunk_end - 1,
+                    error_msg
                 )));
             }
 
-            // Check for CIP errors in the response
-            if cip_data.len() >= 3 {
-                let general_status = cip_data[2];
-                if general_status != 0x00 {
-                    let error_msg = self.get_cip_error_message(general_status);
-                    return Err(EtherNetIpError::Protocol(format!(
-                        "CIP Error {} when reading chunk (elements {} to {}): {}",
-                        general_status,
-                        next_chunk_start,
-                        chunk_end - 1,
-                        error_msg
-                    )));
-                }
-            }
-
-            // Check service reply
-            if !cip_data.is_empty() && cip_data[0] != 0xCC {
+            if response.service != 0xCC {
                 return Err(EtherNetIpError::Protocol(format!(
                     "Unexpected service reply in chunk: 0x{:02X} (expected 0xCC)",
-                    cip_data[0]
+                    response.service
                 )));
             }
 
-            if cip_data.len() < 6 {
+            if response.data.len() < 2 {
                 return Err(EtherNetIpError::Protocol(format!(
                     "Chunk response too short for data type: got {} bytes, expected at least 6",
                     cip_data.len()
                 )));
             }
 
-            let chunk_data_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+            let chunk_data_type = u16::from_le_bytes([response.data[0], response.data[1]]);
             if chunk_data_type != data_type {
                 return Err(EtherNetIpError::Protocol(format!(
                     "Data type mismatch in chunk: expected 0x{:04X}, got 0x{:04X}",
@@ -1324,14 +1297,9 @@ impl EipClient {
 
             // Parse response data - with element addressing, response contains the requested range
             // Reference: 1756-PM020, Page 828-837 (Response format)
-            let value_data_start = if cip_data.len() >= 8 {
-                // Standard format: [service][reserved][status][status_size][data_type(2)][element_count(2)][data...]
-                8
-            } else {
-                6
-            };
-
-            let chunk_value_data = &cip_data[value_data_start..];
+            // A Logix Read Tag reply data body is [data_type u16][data...]; it does
+            // not include an element-count field.
+            let chunk_value_data = &response.data[2..];
             let chunk_complete_bytes = (chunk_value_data.len() / element_size) * element_size;
             let chunk_data = &chunk_value_data[..chunk_complete_bytes];
 
@@ -2384,27 +2352,16 @@ impl EipClient {
 
     /// Builds CIP request for Get Attribute List (Service 0x03)
     fn build_get_attributes_request(&self, tag_name: &str) -> crate::error::Result<Vec<u8>> {
-        let mut request = Vec::new();
-
-        // Service: Get Attribute List (0x03)
-        request.push(0x03);
-
-        // Path: Tag name (ANSI extended symbolic segment)
-        let tag_bytes = tag_name.as_bytes();
-        request.push(0x91); // ANSI extended symbolic segment
-        request.push(tag_bytes.len() as u8);
-        request.extend_from_slice(tag_bytes);
-
-        // Attribute count
-        request.extend_from_slice(&[0x02, 0x00]); // 2 attributes
-
-        // Attribute 1: Data Type (0x01)
-        request.extend_from_slice(&[0x01, 0x00]);
-
-        // Attribute 2: Template Instance ID (0x02)
-        request.extend_from_slice(&[0x02, 0x00]);
-
-        Ok(request)
+        let path = self.build_tag_path(tag_name);
+        let request_data = vec![
+            0x02, 0x00, // attribute count
+            0x01, 0x00, // data type
+            0x02, 0x00, // template/symbol instance id
+        ];
+        let request = CipRequest::new(0x03, path, request_data);
+        let mut encoded = BytesMut::new();
+        request.encode(&mut encoded)?;
+        Ok(encoded.to_vec())
     }
 
     fn build_get_template_attributes_request(
@@ -2469,38 +2426,99 @@ impl EipClient {
         tag_name: &str,
         response: &[u8],
     ) -> crate::error::Result<TagAttributes> {
-        if response.len() < 8 {
+        let mut response_bytes = response;
+        let response = CipResponse::decode(&mut response_bytes)?;
+        if response.service != 0x83 {
+            return Err(crate::error::EtherNetIpError::Protocol(format!(
+                "Unexpected Get Attribute List reply service: 0x{:02X}",
+                response.service
+            )));
+        }
+
+        if response.status != 0 {
+            return Err(crate::error::EtherNetIpError::Protocol(format!(
+                "Get Attribute List for '{}' failed: {}",
+                tag_name,
+                self.get_cip_error_message(response.status)
+            )));
+        }
+
+        if response.data.len() < 2 {
             return Err(crate::error::EtherNetIpError::Protocol(
-                "Attributes response too short".to_string(),
+                "Attributes response missing attribute count".to_string(),
             ));
         }
 
-        let mut offset = 0;
+        let attr_count = u16::from_le_bytes([response.data[0], response.data[1]]) as usize;
+        let mut offset = 2;
+        let mut data_type = None;
+        let mut template_instance_id = None;
+        let mut attr_errors = Vec::new();
 
-        // Parse data type
-        let data_type = u16::from_le_bytes([response[offset], response[offset + 1]]);
-        offset += 2;
+        for _ in 0..attr_count {
+            if response.data.len() < offset + 4 {
+                return Err(crate::error::EtherNetIpError::Protocol(
+                    "Attributes response truncated before attribute record header".to_string(),
+                ));
+            }
 
-        // Parse size
-        let size = u32::from_le_bytes([
-            response[offset],
-            response[offset + 1],
-            response[offset + 2],
-            response[offset + 3],
-        ]);
-        offset += 4;
+            let attr_id = u16::from_le_bytes([response.data[offset], response.data[offset + 1]]);
+            let attr_status =
+                u16::from_le_bytes([response.data[offset + 2], response.data[offset + 3]]);
+            offset += 4;
 
-        // Parse template instance ID (if present)
-        let template_instance_id = if response.len() > offset + 4 {
-            Some(u32::from_le_bytes([
-                response[offset],
-                response[offset + 1],
-                response[offset + 2],
-                response[offset + 3],
-            ]))
-        } else {
-            None
-        };
+            if attr_status != 0 {
+                attr_errors.push(format!("attr {attr_id} status 0x{attr_status:04X}"));
+                continue;
+            }
+
+            match attr_id {
+                0x0001 => {
+                    if response.data.len() < offset + 2 {
+                        return Err(crate::error::EtherNetIpError::Protocol(
+                            "Attributes response truncated in data type value".to_string(),
+                        ));
+                    }
+                    data_type = Some(u16::from_le_bytes([
+                        response.data[offset],
+                        response.data[offset + 1],
+                    ]));
+                    offset += 2;
+                }
+                0x0002 => {
+                    if response.data.len() < offset + 4 {
+                        return Err(crate::error::EtherNetIpError::Protocol(
+                            "Attributes response truncated in instance id value".to_string(),
+                        ));
+                    }
+                    template_instance_id = Some(u32::from_le_bytes([
+                        response.data[offset],
+                        response.data[offset + 1],
+                        response.data[offset + 2],
+                        response.data[offset + 3],
+                    ]));
+                    offset += 4;
+                }
+                _ => {
+                    return Err(crate::error::EtherNetIpError::Protocol(format!(
+                        "Unexpected attribute id {attr_id} in Get Attribute List response"
+                    )));
+                }
+            }
+        }
+
+        let data_type = data_type.ok_or_else(|| {
+            crate::error::EtherNetIpError::Protocol(format!(
+                "Get Attribute List for '{}' did not return data type{}",
+                tag_name,
+                if attr_errors.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", attr_errors.join(", "))
+                }
+            ))
+        })?;
+        let size = Self::data_type_size(data_type);
 
         // Create attributes
         let attributes = TagAttributes {
@@ -2524,6 +2542,17 @@ impl EipClient {
         };
 
         Ok(attributes)
+    }
+
+    fn data_type_size(data_type: u16) -> u32 {
+        match data_type {
+            0x00C1 | 0x00C2 | 0x00C6 => 1,
+            0x00C3 | 0x00C7 => 2,
+            0x00C4 | 0x00C8 | 0x00CA => 4,
+            0x00C5 | 0x00C9 | 0x00CB => 8,
+            0x00CE => 88,
+            _ => 4,
+        }
     }
 
     fn parse_template_attributes_response(
@@ -4299,6 +4328,47 @@ mod discovery_tests {
             &request[8..],
             &[0x04, 0x00, 0x01, 0x00, 0x02, 0x00, 0x04, 0x00, 0x05, 0x00]
         );
+    }
+
+    #[test]
+    fn build_get_attributes_request_encodes_path_words_and_odd_name_padding() {
+        let client = EipClient::new_unconnected_for_testing();
+        let request = client
+            .build_get_attributes_request("Odd")
+            .expect("request should build");
+
+        assert_eq!(
+            request,
+            vec![
+                0x03, // Get Attribute List
+                0x03, // path size: 6 bytes / 2
+                0x91, 0x03, b'O', b'd', b'd', 0x00, // padded symbolic segment
+                0x02, 0x00, // two attributes
+                0x01, 0x00, // data type
+                0x02, 0x00, // instance id
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_attributes_response_walks_attribute_records() {
+        let client = EipClient::new_unconnected_for_testing();
+        let response = [
+            0x83, 0x00, 0x00, 0x00, // reply, reserved, success, no addl status
+            0x02, 0x00, // two attribute records
+            0x01, 0x00, 0x00, 0x00, 0xC4, 0x00, // attr 1 = DINT
+            0x02, 0x00, 0x00, 0x00, 0x34, 0x12, 0x00, 0x00, // attr 2 = instance
+        ];
+
+        let attributes = client
+            .parse_attributes_response("DINT_TAG", &response)
+            .expect("response should parse");
+
+        assert_eq!(attributes.name, "DINT_TAG");
+        assert_eq!(attributes.data_type, 0x00C4);
+        assert_eq!(attributes.data_type_name, "DINT");
+        assert_eq!(attributes.template_instance_id, Some(0x1234));
+        assert_eq!(attributes.size, 4);
     }
 
     #[test]

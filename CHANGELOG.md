@@ -17,6 +17,10 @@ Target next release: TBD.
   1.2.0 manifest relabel decision.
 
 ### Fixed
+- CODEX-AN corrected `read_array_range` chunk parsing to consume Logix Read
+  Tag replies as `[type][data...]` with no synthetic element-count word,
+  rebuilt `get_tag_attributes` on the CIP request/response codec, and made the
+  simulator serve spec-shaped Read Tag and Get Attribute List replies.
 - CODEX-AV relabeled the full-coverage manifest from the 2026-07-03 hardware
   matrix: 60 scalar UDT-array-element-member targets are now writeable, UDT
   STRING members use the honest `encoding_blocked_udt_string_member` label,

@@ -2,9 +2,9 @@
 id: CODEX-AL
 title: Transport & session hardening — timeout desync, sender-context correlation, shared session handle
 owner: codex
-status: open
+status: merged
 created: 2026-07-01
-last-update: 2026-07-01 claude [Fable 5]
+last-update: 2026-07-06 claude [Opus 4.8]
 ---
 
 ## Brief
@@ -80,6 +80,64 @@ Simulator-backed (all run in CI):
 
 ## Codex log
 
+2026-07-06 codex [GPT-5] Submitted implementation.
+
+- Moved `EipClient::session_handle` to `Arc<AtomicU32>` and updated diagnostics/legacy connected-message call sites to load the shared handle. `check_health_detailed` re-registration now updates the handle visible to all clones using the same stream.
+- Added shared `stream_poisoned: Arc<AtomicBool>` and `sender_context_counter: Arc<AtomicU64>`. Atomics use `Relaxed` because they are scalar fail-fast/visibility markers; the stream mutex still serializes I/O.
+- Reworked `register_session` to hold one stream lock across write + response read, use `read_exact` for the 24-byte header and length-driven body, and leave the stream poisoned on incomplete transaction failures.
+- Reworked `send_rr_data_item` to fail fast on a poisoned stream, mark the stream poisoned for the duration of the transaction, stamp each SendRRData with a monotonic sender context, verify the response context, and clear poison only after a complete framed response.
+- Updated the test and standalone simulators to echo encapsulation sender contexts; the test simulator can also corrupt them for the mismatch regression.
+- Removed the FFI `store_client` helper and both clone reinsert call sites; registry removal by `eip_disconnect` is no longer vulnerable to health/diagnostics resurrection.
+- Added regressions for timeout poisoning, sender-context mismatch poisoning, fragmented RegisterSession replies, clone-visible re-registration, and FFI disconnect-vs-detailed-health resurrection.
+
+Verification:
+
+- `cargo test transport_tests` passed (2 tests).
+- `cargo test --test plc_sim_tests simulated_plc_timeout_failure_mode` passed.
+- `cargo test --test plc_sim_tests simulated_plc_sender_context_mismatch_poisons_connection` passed.
+- `cargo test --features ffi --test ffi_state_consistency` passed (3 tests).
+- `cargo fmt -- --check` passed.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --locked` passed.
+- `cargo test --test plc_sim_tests` passed (22 tests).
+- `cargo build --release --features ffi` passed.
+- `dotnet build csharp\RustEtherNetIp\RustEtherNetIp.csproj --no-restore` passed.
+- `dotnet test csharp\RustEtherNetIp.Tests\RustEtherNetIp.Tests.csproj --no-restore` passed (86 tests).
+- `dotnet test csharp\RustEtherNetIp.IntegrationTests\RustEtherNetIp.IntegrationTests.csproj --no-restore` passed (7 tests).
+
+Hardware smoke still required before 1.2.0: SendRRData sender_context values are no longer constant, so the maintainer should include a normal read/write packet capture in the pre-release hardware pass and confirm the controller echoes the request context.
+
 ## Claude review
 
+### 2026-07-06 claude [Opus 4.8]
+
+**Independent verification.** Full matrix re-run locally on the working tree: `cargo fmt -- --check` clean; `grep store_client src/ffi.rs` empty; `cargo clippy --workspace --all-targets --all-features -- -D warnings` clean; `SKIP_PLC_TESTS=1 cargo test --workspace --locked` green (exit 0); `cargo test transport_tests` 2/2; `cargo test --features ffi --test ffi_state_consistency` 3/3 (incl. the resurrection regression); `cargo test --test plc_sim_tests` 22/22 (incl. `simulated_plc_timeout_failure_mode` and `simulated_plc_sender_context_mismatch_poisons_connection`); `cargo build --release --features ffi` OK; C# unit 86/86; C# integration 7/7.
+
+**What's being fixed.** The four §2/§3 transport-integrity findings: (1) a post-timeout stream left an unread response in flight so the next request read stale bytes — silent response-N-to-request-N+1 misattribution, made worse by `is_retriable()` inviting in-place retry; (2) the constant, never-checked `sender_context` made desync undetectable; (3) `session_handle` was `COPIED ON CLONE`, so `check_health_detailed` re-registration updated only the caller's clone while every other clone (pollers, FFI registry, tag-group tasks) kept the stale handle; (4) `register_session` took the stream lock separately for write and read and read the reply with a single `read()`.
+
+**Root cause confirmation.** All four confirmed in the source, not symptom-chasing. The clone-copied `session_handle: u32` is the literal root of both the handle-divergence bug and the FFI `store_client` resurrection race — the re-insert existed *only* because mutations didn't propagate through the clone. Moving it to `Arc<AtomicU32>` fixes the divergence and makes the re-insert redundant in one stroke.
+
+**Fix appropriateness.** `session_handle`, `stream_poisoned`, and `sender_context_counter` all move into `Arc` shared state with `Relaxed` ordering documented (correct — they are scalar fail-fast/visibility markers; the stream `Mutex` serializes the actual I/O ordering). The poison discipline matches the brief's "assume poisoned unless proven clean": `send_rr_data_item` sets `stream_poisoned = true` *before* the write (under the stream lock) and clears it *only* after a complete framed response — so a future dropped mid-transaction, a write error, a header/body timeout, or a `sender_context` mismatch all leave the stream poisoned and the next call fails fast with `ConnectionLost`. The error-status branch correctly drains the response body *then* clears poison (the stream is clean, only the app-level op failed). `register_session` now holds one lock across write+read and frames the reply with `read_exact` on the 24-byte header then a length-driven body read. The FFI `store_client` helper and both re-insert sites are gone; `get_client` returns a clone and every field the health/register path mutates is now `Arc`-shared, so `eip_disconnect` (the sole remover) can no longer be undone by a concurrent detailed-health call. Clone-contract comments at the struct are accurately rewritten; the `Send + Sync + 'static` assertion still holds.
+
+**Test proof.** `simulated_plc_timeout_failure_mode` extends to assert the *next* read after a dropped-response timeout returns `ConnectionLost`, not stale data — the core scenario. `simulated_plc_sender_context_mismatch_poisons_connection` drives the sim's new `corrupt_sender_context_after` injection and asserts both the `sender_context mismatch` protocol error and the follow-on fast-fail. `ffi_detailed_health_cannot_resurrect_disconnected_client` hammers `eip_check_health_detailed` on a thread across a concurrent `eip_disconnect` and asserts the registry is empty afterward. `register_session_accepts_fragmented_reply` splits the 28-byte reply across two writes; `reregistration_updates_session_handle_across_clones` proves a re-register on one clone is visible on another. Both simulators echo `header[12..20]`.
+
+**Residual risk.** Wire-format-observable change (`sender_context` is no longer constant) ⇒ maintainer hardware smoke is the release gate: a normal read/write packet capture confirming the controller echoes the per-request context. Recorded in the Codex log and CHANGELOG.
+
+**Strong points.** The coupling of the `Arc<AtomicU32>` handle move with the `store_client` removal is exactly right — the resurrection race could not have been closed without the shared handle, and both landed together with a dedicated stress regression. The poison shape is genuinely cancellation-safe, not just timeout-safe.
+
+### Findings
+
+- 🟡 The `sender_context` mismatch check runs before the status check and applies to *all* replies, including encapsulation-error replies (`status != 0`). The happy path and CIP-level errors are safe — the encapsulation layer echoes `sender_context` per spec whenever it processes the frame. The narrow risk is a genuine *encapsulation-layer* error (bad session handle, unsupported command) from a controller that doesn't echo context on such replies, which would be misclassified as a desync and poison the stream. The brief anticipated exactly this and said to keep the check tolerant on `status != 0` replies *if* the hardware smoke shows echo quirks. Accepted as-is pending that evidence; the relaxation is a ~2-line change (skip the context check when `status != 0`). This is the #1 hardware-smoke decision point.
+- 🟢 `EncapsulationHeader::send_rr_data` (the constant `[0x01..0x08]` context builder) now has zero `src/` call sites — every SendRRData goes through `send_rr_data_with_context`. It remains `pub` in the protocol crate (public API, harmless), but is dead weight on the live path; a candidate for the 2.0 API sweep, not this task.
+
+### Acceptance criteria tally
+
+1. All four fixes implemented with the specified tests green — ✅.
+2. `store_client` gone from `src/ffi.rs`; grep-clean — ✅.
+3. Clone-contract comment block accurately describes the new state — ✅ (verified; `session_handle`/`stream_poisoned`/`sender_context_counter` documented SHARED ON CLONE, `batch_config` honestly kept COPIED).
+4. No new `unwrap`/`panic`; atomics use documented `Relaxed` orderings with a comment — ✅.
+5. CHANGELOG `[Unreleased]` `### Fixed` entry; `sender_context` wire call-out for the hardware smoke — ✅.
+
 ## Verdict
+
+**Merged.** Independent full-matrix verification green (fmt, clippy all-targets/all-features `-D warnings`, workspace `--locked`, transport_tests 2/2, ffi_state_consistency 3/3, plc_sim_tests 22/22, release ffi build, C# 86/86 + integration 7/7). All four transport-integrity findings — the highest-severity runtime defects in the Rust core — are correctly and coherently fixed: the `Arc<AtomicU32>` session handle simultaneously restores the one-handle-per-stream invariant and removes the FFI resurrection race; the poison flag is cancellation-safe (set-before-write, clear-after-complete-read); `sender_context` correlation turns silent misattribution into a loud fast-fail; `register_session` is single-locked and properly framed. Zero defects, zero Claude-applied fixes. One 🟡 (uniform `sender_context` check on error replies — brief-anticipated, gated on the hardware smoke, ~2-line relaxation if needed) and one 🟢 (now-dead constant-context builder). The wire-observable `sender_context` change carries a mandatory pre-1.2.0 maintainer hardware smoke (normal read/write capture confirming the controller echoes the per-request context), recorded in the release gate.

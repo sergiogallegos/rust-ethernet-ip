@@ -2,6 +2,11 @@ using System;
 using System.Collections.Generic;
 using RustEtherNetIp;
 
+// This historical sample still includes retired offset-based UDT member calls
+// to show their compatibility behavior. New code should use direct member tag
+// reads/writes, ReadUdt plus UdtData parsing, or WriteUdtMember.
+#pragma warning disable CS0618
+
 namespace RustEtherNetIp.Examples
 {
     /// <summary>

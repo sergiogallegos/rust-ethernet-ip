@@ -542,7 +542,7 @@ async fn test_string_operations(
             if !write_value.is_empty() && write_value != "skip" {
                 println!("Writing '{}'...", write_value);
                 let write_start = Instant::now();
-                match client.write_string(string_tag, write_value).await {
+                match client.write_string_tag(string_tag, write_value).await {
                     Ok(_) => {
                         let write_duration = write_start.elapsed();
                         println!("✅ Write successful in {:?}", write_duration);
@@ -552,10 +552,7 @@ async fn test_string_operations(
                             println!("  Verified: '{}'", verify);
                         }
                     }
-                    Err(e) => println!(
-                        "❌ Write failed: {} (Note: Some PLCs restrict STRING writes)",
-                        e
-                    ),
+                    Err(e) => println!("❌ Write failed: {}", e),
                 }
             }
         }

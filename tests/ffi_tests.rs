@@ -226,6 +226,43 @@ fn ffi_write_udt_rejects_conversion_failure_without_empty_payload_fallback() {
 }
 
 #[test]
+fn ffi_udt_offset_apis_are_explicitly_unsupported() {
+    let sim = SimHarness::start(plc_sim::SimBehavior::default());
+    let client = connect_ffi_client(&sim.address);
+    let tag = CString::new("UDT_TAG").expect("CString");
+    let value = CString::new("{\"Dint\":1}").expect("CString");
+    let mut buf = [0_i8; 256];
+
+    let read_rc = unsafe {
+        ffi::eip_read_udt_member_by_offset(
+            client.id(),
+            tag.as_ptr(),
+            0,
+            4,
+            0x00C4,
+            buf.as_mut_ptr(),
+            buf.len() as c_int,
+        )
+    };
+    assert_eq!(read_rc, -1);
+    assert!(last_error(client.id()).contains("Unsupported API `eip_read_udt_member_by_offset`"));
+
+    let write_rc = unsafe {
+        ffi::eip_write_udt_member_by_offset(
+            client.id(),
+            tag.as_ptr(),
+            0,
+            4,
+            0x00C4,
+            value.as_ptr(),
+            value.as_bytes().len() as c_int,
+        )
+    };
+    assert_eq!(write_rc, -1);
+    assert!(last_error(client.id()).contains("Unsupported API `eip_write_udt_member_by_offset`"));
+}
+
+#[test]
 fn ffi_free_helpers_accept_null() {
     unsafe {
         ffi::eip_free_string(ptr::null_mut());

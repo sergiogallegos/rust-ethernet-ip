@@ -88,6 +88,15 @@ pub enum EtherNetIpError {
     /// Subscription error
     #[error("Subscription error: {0}")]
     Subscription(String),
+
+    /// Unsupported API surface retained only for 1.x compatibility.
+    #[error("Unsupported API `{api}`: {reason}")]
+    Unsupported {
+        /// API name that is no longer supported.
+        api: &'static str,
+        /// Reason the API is unsupported and the replacement to use.
+        reason: &'static str,
+    },
 }
 
 impl EtherNetIpError {
@@ -165,5 +174,15 @@ mod tests {
     fn poison_error_converts_to_other_variant() {
         let err = convert_poison_error().expect_err("poisoned mutex should convert into an error");
         assert_matches!(err, EtherNetIpError::Other(message) if message == "lock poisoned");
+    }
+
+    #[test]
+    fn unsupported_error_names_api_and_reason() {
+        let err = EtherNetIpError::Unsupported {
+            api: "old_api",
+            reason: "use new_api",
+        };
+
+        assert_eq!(err.to_string(), "Unsupported API `old_api`: use new_api");
     }
 }

@@ -66,7 +66,9 @@ namespace RustEtherNetIp
         
         // Enhanced UDT Operations
         PlcValue ReadUdtChunked(string tagName);
+        [Obsolete("Retired in 1.2.0: offset-based UDT member reads never had a correct native payload contract. Use direct member tag reads or ReadUdt plus UdtData parsing. Removal planned for 2.0.", false)]
         PlcValue ReadUdtMemberByOffset(string udtName, int memberOffset, int memberSize, short dataType);
+        [Obsolete("Retired in 1.2.0: offset-based UDT member writes never had a correct native payload contract. Use WriteUdtMember, WriteUdtData, or direct member tag writes. Removal planned for 2.0.", false)]
         void WriteUdtMemberByOffset(string udtName, int memberOffset, int memberSize, short dataType, PlcValue value);
         
         // Batch Operations - High Performance Multi-Tag Operations

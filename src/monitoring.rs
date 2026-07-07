@@ -378,6 +378,7 @@ impl ProductionMonitor {
             | EtherNetIpError::InvalidString { reason: message } => {
                 Self::classify_status_and_message(None, message)
             }
+            EtherNetIpError::Unsupported { .. } => ErrorCategory::CipProtocol,
             EtherNetIpError::StringTooLong { .. } => ErrorCategory::DataType,
             EtherNetIpError::Utf8(_) => ErrorCategory::DataType,
         }

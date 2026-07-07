@@ -161,6 +161,13 @@ source, or banned-dependency policy with `cargo-deny`. Add a checked-in
 - Delete the dead `TagCache` struct (`src/tag_manager.rs`) — entirely
   `#[allow(dead_code)]`, only deferred because it's publicly re-exported at
   `src/lib.rs` (removal is SemVer-major).
+- Remove CODEX-AP deprecated STRING/UDT compatibility stubs that now return
+  explicit unsupported errors: Rust `write_string`,
+  `write_ab_string_components`, `write_ab_string_udt`,
+  `write_string_connected`, `write_string_unconnected`,
+  `read_udt_member_by_offset`, and `write_udt_member_by_offset`; C FFI
+  `eip_read_udt_member_by_offset` and `eip_write_udt_member_by_offset`; and
+  the C# `ReadUdtMemberByOffset` / `WriteUdtMemberByOffset` wrappers.
 - Delete the unused `PlcConnection::update_health` (publicly re-exported), or
   wire it into the connection-pool health-reset paths that currently duplicate
   its logic inline.

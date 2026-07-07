@@ -86,7 +86,8 @@ impl TagGroupFailureDiagnostic {
             EtherNetIpError::Protocol(_)
             | EtherNetIpError::InvalidResponse { .. }
             | EtherNetIpError::Subscription(_)
-            | EtherNetIpError::Utf8(_) => (TagGroupFailureCategory::Protocol, None),
+            | EtherNetIpError::Utf8(_)
+            | EtherNetIpError::Unsupported { .. } => (TagGroupFailureCategory::Protocol, None),
             EtherNetIpError::Other(_) => (TagGroupFailureCategory::Other, None),
         };
 

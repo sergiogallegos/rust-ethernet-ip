@@ -9,7 +9,7 @@ use crate::route::RoutePath;
 use crate::subscription::TagSubscription;
 use crate::tag_group::TagGroupConfig;
 use crate::tag_manager::{TagManager, TagMetadata, TagPermissions, TagScope};
-use crate::types::{ConnectedSession, PlcValue, UdtData};
+use crate::types::{PlcValue, UdtData};
 use crate::udt::{TagAttributes, UdtDefinition, UdtManager};
 use crate::{TagPath, udt};
 use bytes::BytesMut;
@@ -253,10 +253,6 @@ pub struct EipClient {
     last_activity: Arc<Mutex<Instant>>,
     /// COPIED ON CLONE: persistent FFI config would require Arc/RwLock; current use is per-call only.
     batch_config: BatchConfig,
-    /// SHARED ON CLONE: Class 3 connected session state.
-    connected_sessions: Arc<Mutex<HashMap<String, ConnectedSession>>>,
-    /// SHARED ON CLONE: connection sequence counter.
-    connection_sequence: Arc<Mutex<u32>>,
     /// SHARED ON CLONE: active tag subscriptions.
     subscriptions: Arc<Mutex<Vec<TagSubscription>>>,
     /// SHARED ON CLONE: registered tag-group polling definitions.
@@ -280,7 +276,6 @@ impl std::fmt::Debug for EipClient {
             .field("stream", &"<stream>")
             .field("tag_manager", &"<tag_manager>")
             .field("udt_manager", &"<udt_manager>")
-            .field("connected_sessions", &"<connected_sessions>")
             .field("subscriptions", &"<subscriptions>")
             .field("tag_groups", &"<tag_groups>")
             .finish()
@@ -305,8 +300,6 @@ impl EipClient {
             max_packet_size: Arc::new(AtomicU32::new(4000)),
             last_activity: Arc::new(Mutex::new(Instant::now())),
             batch_config: BatchConfig::default(),
-            connected_sessions: Arc::new(Mutex::new(HashMap::new())),
-            connection_sequence: Arc::new(Mutex::new(1)),
             subscriptions: Arc::new(Mutex::new(Vec::new())),
             tag_groups: Arc::new(Mutex::new(HashMap::new())),
         };
@@ -342,8 +335,6 @@ impl EipClient {
             max_packet_size: Arc::new(AtomicU32::new(4000)),
             last_activity: Arc::new(Mutex::new(Instant::now())),
             batch_config: BatchConfig::default(),
-            connected_sessions: Arc::new(Mutex::new(HashMap::new())),
-            connection_sequence: Arc::new(Mutex::new(1)),
             subscriptions: Arc::new(Mutex::new(Vec::new())),
             tag_groups: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -1722,13 +1713,17 @@ impl EipClient {
         Ok(cip_request)
     }
 
-    /// Reads a UDT with advanced chunked reading to handle large structures
+    /// Reads a UDT through the maintained normal tag-read path.
     ///
     /// **v0.6.0**: Returns `PlcValue::Udt(UdtData)` with `symbol_id` and raw bytes.
     /// Use `UdtData::parse()` with a UDT definition to access individual members.
     ///
-    /// This method uses multiple strategies to handle large UDTs that exceed
-    /// the maximum packet size, including intelligent chunking and member discovery.
+    /// The historical "advanced chunked" strategy ladder was retired in 1.2.0
+    /// because its alternate request builders were protocol-invalid and could
+    /// convert failures into fabricated empty UDT payloads. This compatibility
+    /// method now delegates to `read_tag` and returns an error if the target is
+    /// not decoded as a UDT. Correct fragmented UDT reads belong to the
+    /// capture-gated CODEX-AO wire-format work.
     ///
     /// # Arguments
     ///
@@ -1761,331 +1756,13 @@ impl EipClient {
     pub async fn read_udt_chunked(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         self.validate_session().await?;
 
-        tracing::debug!("[CHUNKED] Starting advanced UDT reading for: {}", tag_name);
-
-        // Strategy 1: Try normal read first
-        match self.read_tag(tag_name).await {
-            Ok(value) => {
-                tracing::debug!("[CHUNKED] Normal read successful");
-                return Ok(value);
-            }
-            Err(crate::error::EtherNetIpError::Protocol(msg))
-                if msg.contains("Partial transfer") =>
-            {
-                tracing::debug!("[CHUNKED] Partial transfer detected, using advanced chunking");
-            }
-            Err(e) => {
-                tracing::warn!("[CHUNKED] Normal read failed: {}", e);
-                return Err(e);
-            }
+        match self.read_tag(tag_name).await? {
+            value @ PlcValue::Udt(_) => Ok(value),
+            other => Err(crate::error::EtherNetIpError::DataTypeMismatch {
+                expected: "UDT".to_string(),
+                actual: format!("{other:?}"),
+            }),
         }
-
-        // Strategy 2: Advanced chunked reading with multiple approaches
-        self.read_udt_advanced_chunked(tag_name).await
-    }
-
-    /// Advanced chunked UDT reading with multiple strategies
-    async fn read_udt_advanced_chunked(
-        &mut self,
-        tag_name: &str,
-    ) -> crate::error::Result<PlcValue> {
-        tracing::debug!("[ADVANCED] Using multiple strategies for large UDT");
-
-        // Strategy A: Try different chunk sizes
-        let chunk_sizes = vec![512, 256, 128, 64, 32, 16, 8, 4];
-
-        for chunk_size in chunk_sizes {
-            tracing::trace!("[ADVANCED] Trying chunk size: {}", chunk_size);
-
-            match self.read_udt_with_chunk_size(tag_name, chunk_size).await {
-                Ok(udt_value) => {
-                    tracing::debug!("[ADVANCED] Success with chunk size {}", chunk_size);
-                    return Ok(udt_value);
-                }
-                Err(e) => {
-                    tracing::trace!("[ADVANCED] Chunk size {} failed: {}", chunk_size, e);
-                    continue;
-                }
-            }
-        }
-
-        // Strategy B: Try member-by-member discovery
-        tracing::debug!("[ADVANCED] Trying member-by-member discovery");
-        match self.read_udt_member_discovery(tag_name).await {
-            Ok(udt_value) => {
-                tracing::debug!("[ADVANCED] Member discovery successful");
-                return Ok(udt_value);
-            }
-            Err(e) => {
-                tracing::warn!("[ADVANCED] Member discovery failed: {}", e);
-            }
-        }
-
-        // Strategy C: Try progressive reading
-        tracing::debug!("[ADVANCED] Trying progressive reading");
-        match self.read_udt_progressive(tag_name).await {
-            Ok(udt_value) => {
-                tracing::debug!("[ADVANCED] Progressive reading successful");
-                return Ok(udt_value);
-            }
-            Err(e) => {
-                tracing::warn!("[ADVANCED] Progressive reading failed: {}", e);
-            }
-        }
-
-        // Strategy D: Fallback - try to get at least the symbol_id
-        tracing::warn!("[ADVANCED] All strategies failed, using fallback");
-        // Try to get tag attributes for symbol_id
-        let symbol_id = self
-            .get_tag_attributes(tag_name)
-            .await
-            .ok()
-            .and_then(|attr| attr.template_instance_id)
-            .unwrap_or(0) as i32;
-
-        // Return empty UDT data with error indication
-        Ok(PlcValue::Udt(UdtData {
-            symbol_id,
-            data: vec![], // Empty data indicates read failure
-        }))
-    }
-
-    /// Try reading UDT with specific chunk size
-    async fn read_udt_with_chunk_size(
-        &mut self,
-        tag_name: &str,
-        mut chunk_size: usize,
-    ) -> crate::error::Result<PlcValue> {
-        let mut all_data = Vec::new();
-        let mut offset = 0;
-        let mut consecutive_failures = 0;
-        const MAX_FAILURES: usize = 3;
-
-        loop {
-            match self
-                .read_udt_chunk_advanced(tag_name, offset, chunk_size)
-                .await
-            {
-                Ok(chunk_data) => {
-                    if chunk_data.is_empty() {
-                        break; // No more data
-                    }
-
-                    all_data.extend_from_slice(&chunk_data);
-                    offset += chunk_data.len();
-                    consecutive_failures = 0;
-
-                    tracing::trace!(
-                        "[CHUNK] Read {} bytes at offset {}, total: {}",
-                        chunk_data.len(),
-                        offset - chunk_data.len(),
-                        all_data.len()
-                    );
-
-                    // If we got less data than requested, we might be done
-                    if chunk_data.len() < chunk_size {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    consecutive_failures += 1;
-                    tracing::warn!(
-                        "[CHUNK] Chunk read failed (attempt {}): {}",
-                        consecutive_failures,
-                        e
-                    );
-
-                    if consecutive_failures >= MAX_FAILURES {
-                        break;
-                    }
-
-                    // Try smaller chunk by reducing size and continuing
-                    if chunk_size > 4 {
-                        chunk_size /= 2;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        if all_data.is_empty() {
-            return Err(crate::error::EtherNetIpError::Protocol(
-                "No data read from UDT".to_string(),
-            ));
-        }
-
-        tracing::debug!("[CHUNK] Total data collected: {} bytes", all_data.len());
-
-        // Get symbol_id from tag attributes
-        let symbol_id = self
-            .get_tag_attributes(tag_name)
-            .await
-            .ok()
-            .and_then(|attr| attr.template_instance_id)
-            .unwrap_or(0) as i32;
-
-        // Return raw UDT data (generic approach - no parsing)
-        Ok(PlcValue::Udt(UdtData {
-            symbol_id,
-            data: all_data,
-        }))
-    }
-
-    /// Advanced chunk reading with better error handling
-    async fn read_udt_chunk_advanced(
-        &mut self,
-        tag_name: &str,
-        offset: usize,
-        size: usize,
-    ) -> crate::error::Result<Vec<u8>> {
-        // Build a more sophisticated read request
-        let mut request = Vec::new();
-
-        // Service: Read Tag (0x4C)
-        request.push(0x4C);
-
-        // Use TagPath::parse() to correctly handle complex paths like Cell_NestData[90].PartData
-        let tag_path = self.build_tag_path(tag_name);
-
-        // Path size (in words)
-        let path_size = (tag_path.len() / 2) as u8;
-        request.push(path_size);
-
-        // Path: use properly parsed tag path
-        request.extend_from_slice(&tag_path);
-
-        // For UDTs, we need to use a different approach than array indexing
-        // Try to read as raw data with offset
-        if offset > 0 {
-            // Use element path for offset
-            request.push(0x28); // Element symbol
-            request.push(0x02); // 2 bytes for offset
-            request.extend_from_slice(&(offset as u16).to_le_bytes());
-        }
-
-        // Element count
-        request.push(0x28); // Element count symbol
-        request.push(0x02); // 2 bytes for count
-        request.extend_from_slice(&(size as u16).to_le_bytes());
-
-        // Data type - try as raw bytes first
-        request.push(0x00);
-        request.push(0x01);
-
-        // Send the request
-        let response = self.send_cip_request(&request).await?;
-        let cip_data = self.extract_cip_from_response(&response)?;
-
-        // Parse the response
-        if cip_data.len() < 2 {
-            return Ok(Vec::new()); // No data
-        }
-
-        let _data_type = u16::from_le_bytes([cip_data[0], cip_data[1]]);
-        let data = &cip_data[2..];
-
-        Ok(data.to_vec())
-    }
-
-    /// Try to read UDT as raw data with symbol_id
-    ///
-    /// This is a generic approach that works for any UDT without requiring
-    /// knowledge of member names. It reads the raw bytes and gets the
-    /// symbol_id (template instance ID) from tag attributes.
-    async fn read_udt_member_discovery(
-        &mut self,
-        tag_name: &str,
-    ) -> crate::error::Result<PlcValue> {
-        tracing::debug!("[DISCOVERY] Reading UDT as raw data for: {}", tag_name);
-
-        // Get tag attributes to retrieve symbol_id (template_instance_id)
-        let attributes = self.get_tag_attributes(tag_name).await?;
-
-        let symbol_id = attributes.template_instance_id.ok_or_else(|| {
-            crate::error::EtherNetIpError::Protocol(
-                "UDT template instance ID not found in tag attributes".to_string(),
-            )
-        })?;
-
-        // Read raw UDT data
-        let raw_data = self.read_tag_raw(tag_name).await?;
-
-        tracing::debug!(
-            "[DISCOVERY] Read {} bytes of UDT data with symbol_id: {}",
-            raw_data.len(),
-            symbol_id
-        );
-
-        Ok(PlcValue::Udt(UdtData {
-            symbol_id: symbol_id as i32,
-            data: raw_data,
-        }))
-    }
-
-    /// Progressive reading - try to read UDT in progressively smaller chunks
-    async fn read_udt_progressive(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
-        tracing::debug!("[PROGRESSIVE] Starting progressive reading");
-
-        // Start with a small chunk and gradually increase
-        let mut chunk_size = 4;
-        let mut all_data = Vec::new();
-        let mut offset = 0;
-
-        while chunk_size <= 512 {
-            match self
-                .read_udt_chunk_advanced(tag_name, offset, chunk_size)
-                .await
-            {
-                Ok(chunk_data) => {
-                    if chunk_data.is_empty() {
-                        break;
-                    }
-
-                    all_data.extend_from_slice(&chunk_data);
-                    offset += chunk_data.len();
-
-                    tracing::trace!(
-                        "[PROGRESSIVE] Read {} bytes with chunk size {}",
-                        chunk_data.len(),
-                        chunk_size
-                    );
-
-                    // If we got the full chunk, try a larger one next time
-                    if chunk_data.len() == chunk_size {
-                        chunk_size = (chunk_size * 2).min(512);
-                    }
-                }
-                Err(_) => {
-                    // Reduce chunk size and try again
-                    chunk_size /= 2;
-                    if chunk_size < 4 {
-                        break;
-                    }
-                }
-            }
-        }
-
-        if all_data.is_empty() {
-            return Err(crate::error::EtherNetIpError::Protocol(
-                "Progressive reading failed".to_string(),
-            ));
-        }
-
-        tracing::debug!("[PROGRESSIVE] Collected {} bytes total", all_data.len());
-
-        // Get symbol_id from tag attributes
-        let symbol_id = self
-            .get_tag_attributes(tag_name)
-            .await
-            .ok()
-            .and_then(|attr| attr.template_instance_id)
-            .unwrap_or(0) as i32;
-
-        // Return raw UDT data (generic approach - no parsing)
-        Ok(PlcValue::Udt(UdtData {
-            symbol_id,
-            data: all_data,
-        }))
     }
 
     /// Reads a specific UDT member by offset
@@ -2110,40 +1787,21 @@ impl EipClient {
     /// # Ok(())
     /// # }
     /// ```
+    #[deprecated(
+        since = "1.2.0",
+        note = "offset-based UDT member access indexed the CIP envelope, not the UDT payload; use read_udt_chunked + UdtData::parse or direct member tag reads; removal planned for 2.0"
+    )]
     pub async fn read_udt_member_by_offset(
         &mut self,
-        udt_name: &str,
-        member_offset: usize,
-        member_size: usize,
-        data_type: u16,
+        _udt_name: &str,
+        _member_offset: usize,
+        _member_size: usize,
+        _data_type: u16,
     ) -> crate::error::Result<PlcValue> {
-        self.validate_session().await?;
-
-        // Read the UDT data
-        let udt_data = self.read_tag_raw(udt_name).await?;
-
-        // Extract the member data
-        if member_offset + member_size > udt_data.len() {
-            return Err(crate::error::EtherNetIpError::Protocol(format!(
-                "Member data incomplete: offset {} + size {} > UDT size {}",
-                member_offset,
-                member_size,
-                udt_data.len()
-            )));
-        }
-
-        let member_data = &udt_data[member_offset..member_offset + member_size];
-
-        // Parse the member value using the data type
-        let member = crate::udt::UdtMember {
-            name: "temp".to_string(),
-            data_type,
-            offset: member_offset as u32,
-            size: member_size as u32,
-        };
-
-        let udt = crate::udt::UserDefinedType::new(udt_name.to_string());
-        Ok(udt.parse_member_value(&member, member_data)?)
+        Err(crate::error::EtherNetIpError::Unsupported {
+            api: "read_udt_member_by_offset",
+            reason: "this API indexed the full CIP reply envelope instead of the UDT payload; use read_udt_chunked + UdtData::parse or direct member tag reads instead; removal is planned for 2.0",
+        })
     }
 
     /// Writes a specific UDT member by offset
@@ -2169,54 +1827,22 @@ impl EipClient {
     /// # Ok(())
     /// # }
     /// ```
+    #[deprecated(
+        since = "1.2.0",
+        note = "offset-based UDT member writes round-tripped CIP envelope bytes as tag data; use write_udt_member/write_udt_array_member or direct member tag writes; removal planned for 2.0"
+    )]
     pub async fn write_udt_member_by_offset(
         &mut self,
-        udt_name: &str,
-        member_offset: usize,
-        member_size: usize,
-        data_type: u16,
-        value: PlcValue,
+        _udt_name: &str,
+        _member_offset: usize,
+        _member_size: usize,
+        _data_type: u16,
+        _value: PlcValue,
     ) -> crate::error::Result<()> {
-        self.validate_session().await?;
-
-        // Read the current UDT data
-        let mut udt_data = self.read_tag_raw(udt_name).await?;
-
-        // Check bounds
-        if member_offset + member_size > udt_data.len() {
-            return Err(crate::error::EtherNetIpError::Protocol(format!(
-                "Member data incomplete: offset {} + size {} > UDT size {}",
-                member_offset,
-                member_size,
-                udt_data.len()
-            )));
-        }
-
-        // Serialize the value
-        let member = crate::udt::UdtMember {
-            name: "temp".to_string(),
-            data_type,
-            offset: member_offset as u32,
-            size: member_size as u32,
-        };
-
-        let udt = crate::udt::UserDefinedType::new(udt_name.to_string());
-        let member_data = udt.serialize_member_value(&member, &value)?;
-
-        // Update the UDT data
-        let end_offset = member_offset + member_data.len();
-        if end_offset <= udt_data.len() {
-            udt_data[member_offset..end_offset].copy_from_slice(&member_data);
-        } else {
-            return Err(crate::error::EtherNetIpError::Protocol(format!(
-                "Member data exceeds UDT size: {} > {}",
-                end_offset,
-                udt_data.len()
-            )));
-        }
-
-        // Write the updated UDT data back
-        self.write_tag_raw(udt_name, &udt_data).await
+        Err(crate::error::EtherNetIpError::Unsupported {
+            api: "write_udt_member_by_offset",
+            reason: "this API read the full CIP reply envelope and wrote mutated envelope bytes back to the PLC; use write_udt_member/write_udt_array_member or direct member tag writes instead; removal is planned for 2.0",
+        })
     }
 
     /// Gets UDT definition from the PLC
@@ -3181,86 +2807,6 @@ impl EipClient {
         Ok(())
     }
 
-    /// Builds a write request specifically for Allen-Bradley string format
-    fn _build_ab_string_write_request(
-        &self,
-        tag_name: &str,
-        value: &PlcValue,
-    ) -> crate::error::Result<Vec<u8>> {
-        if let PlcValue::String(string_value) = value {
-            tracing::debug!(
-                "Building correct Allen-Bradley string write request for tag: '{}'",
-                tag_name
-            );
-
-            let mut cip_request = Vec::new();
-
-            // Service: Write Tag Service (0x4D)
-            cip_request.push(0x4D);
-
-            // Request Path Size (in words)
-            let tag_bytes = tag_name.as_bytes();
-            let path_len = if tag_bytes.len().is_multiple_of(2) {
-                tag_bytes.len() + 2
-            } else {
-                tag_bytes.len() + 3
-            } / 2;
-            cip_request.push(path_len as u8);
-
-            // Request Path
-            cip_request.push(0x91); // ANSI Extended Symbol
-            cip_request.push(tag_bytes.len() as u8);
-            cip_request.extend_from_slice(tag_bytes);
-
-            // Pad to word boundary if needed
-            if !tag_bytes.len().is_multiple_of(2) {
-                cip_request.push(0x00);
-            }
-
-            // Data Type: Allen-Bradley STRING (0x02A0)
-            cip_request.extend_from_slice(&[0xA0, 0x02]);
-
-            // Element Count (always 1 for single string)
-            cip_request.extend_from_slice(&[0x01, 0x00]);
-
-            // Build the correct AB STRING structure
-            let string_bytes = string_value.as_bytes();
-            let max_len: u16 = 82; // Standard AB STRING max length
-            let current_len = string_bytes.len().min(max_len as usize) as u16;
-
-            // AB STRING structure:
-            // - Len (2 bytes) - number of characters used
-            cip_request.extend_from_slice(&current_len.to_le_bytes());
-
-            // - MaxLen (2 bytes) - maximum characters allowed (typically 82)
-            cip_request.extend_from_slice(&max_len.to_le_bytes());
-
-            // - Data[MaxLen] (82 bytes) - the character array, zero-padded
-            let mut data_array = vec![0u8; max_len as usize];
-            data_array[..current_len as usize]
-                .copy_from_slice(&string_bytes[..current_len as usize]);
-            cip_request.extend_from_slice(&data_array);
-
-            tracing::trace!(
-                "Built correct AB string write request ({} bytes): len={}, maxlen={}, data_len={}",
-                cip_request.len(),
-                current_len,
-                max_len,
-                string_bytes.len()
-            );
-            tracing::trace!(
-                "First 32 bytes: {:02X?}",
-                &cip_request[..std::cmp::min(32, cip_request.len())]
-            );
-
-            Ok(cip_request)
-        } else {
-            Err(EtherNetIpError::Protocol(
-                "Expected string value for Allen-Bradley string write".to_string(),
-            ))
-        }
-    }
-
     /// Builds a CIP Write Tag Service request
     ///
     /// This creates the CIP packet for writing a value to a tag.
@@ -3303,19 +2849,6 @@ impl EipClient {
             cip_request.len(),
             cip_request
         );
-        Ok(cip_request.to_vec())
-    }
-
-    /// Builds a raw write request with pre-serialized data
-    fn build_write_request_raw(
-        &self,
-        tag_name: &str,
-        data: &[u8],
-    ) -> crate::error::Result<Vec<u8>> {
-        let path = self.build_tag_path(tag_name);
-        let request = CipRequest::new(WRITE_TAG, path, data.to_vec());
-        let mut cip_request = BytesMut::new();
-        request.encode(&mut cip_request)?;
         Ok(cip_request.to_vec())
     }
 
@@ -3362,28 +2895,30 @@ impl EipClient {
     /// A string describing the error
     /// Parses extended CIP error codes from response data
     ///
-    /// When general_status is 0xFF, the error code is in the additional status field.
-    /// Format: [0]=service, [1]=reserved, [2]=0xFF, [3]=additional_status_size (words), [4-5]=extended_error_code
+    /// Additional status is signaled by the additional-status size field.
+    /// Format: [0]=service, [1]=reserved, [2]=general_status, [3]=additional_status_size (words), [4-5]=first extended status word
     fn parse_extended_error(&self, cip_data: &[u8]) -> crate::error::Result<String> {
-        if cip_data.len() < 6 {
+        if cip_data.len() < 4 {
             return Err(EtherNetIpError::Protocol(
-                "Extended error response too short".to_string(),
+                "CIP response too short for additional-status check".to_string(),
             ));
         }
 
         let additional_status_size = cip_data[3] as usize; // Size in words
-        if additional_status_size == 0 || cip_data.len() < 4 + (additional_status_size * 2) {
+        if additional_status_size == 0 {
             return Ok("Extended error (no additional status)".to_string());
         }
 
-        // Extended error code is in the additional status field (2 bytes)
-        // Try both little-endian and big-endian interpretations
-        let extended_error_code_le = u16::from_le_bytes([cip_data[4], cip_data[5]]);
-        let extended_error_code_be = u16::from_be_bytes([cip_data[4], cip_data[5]]);
+        let expected_len = 4 + (additional_status_size * 2);
+        if cip_data.len() < expected_len {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Additional-status response truncated: expected {expected_len} bytes, got {}",
+                cip_data.len()
+            )));
+        }
 
-        // Map extended error codes (these are the same as regular error codes but in extended format)
-        // Try little-endian first (standard CIP format)
-        let error_msg = match extended_error_code_le {
+        let extended_error_code = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+        let error_msg = match extended_error_code {
             0x0001 => "Connection failure (extended)".to_string(),
             0x0002 => "Resource unavailable (extended)".to_string(),
             0x0003 => "Invalid parameter value (extended)".to_string(),
@@ -3428,74 +2963,14 @@ impl EipClient {
             0x002A => "Group 2 only server general failure (extended)".to_string(),
             0x002B => "Unknown Modbus error (extended)".to_string(),
             0x002C => "Attribute not gettable (extended)".to_string(),
-            // Try big-endian interpretation if little-endian doesn't match
-            _ => {
-                // Try big-endian interpretation
-                match extended_error_code_be {
-                    0x0001 => "Connection failure (extended, BE)".to_string(),
-                    0x0002 => "Resource unavailable (extended, BE)".to_string(),
-                    0x0003 => "Invalid parameter value (extended, BE)".to_string(),
-                    0x0004 => "Path segment error (extended, BE)".to_string(),
-                    0x0005 => "Path destination unknown (extended, BE)".to_string(),
-                    0x0006 => "Partial transfer (extended, BE)".to_string(),
-                    0x0007 => "Connection lost (extended, BE)".to_string(),
-                    0x0008 => "Service not supported (extended, BE)".to_string(),
-                    0x0009 => "Invalid attribute value (extended, BE)".to_string(),
-                    0x000A => "Attribute list error (extended, BE)".to_string(),
-                    0x000B => "Already in requested mode/state (extended, BE)".to_string(),
-                    0x000C => "Object state conflict (extended, BE)".to_string(),
-                    0x000D => "Object already exists (extended, BE)".to_string(),
-                    0x000E => "Attribute not settable (extended, BE)".to_string(),
-                    0x000F => "Privilege violation (extended, BE)".to_string(),
-                    0x0010 => "Device state conflict (extended, BE)".to_string(),
-                    0x0011 => "Reply data too large (extended, BE)".to_string(),
-                    0x0012 => "Fragmentation of a primitive value (extended, BE)".to_string(),
-                    0x0013 => "Not enough data (extended, BE)".to_string(),
-                    0x0014 => "Attribute not supported (extended, BE)".to_string(),
-                    0x0015 => "Too much data (extended, BE)".to_string(),
-                    0x0016 => "Object does not exist (extended, BE)".to_string(),
-                    0x0017 => {
-                        "Service fragmentation sequence not in progress (extended, BE)".to_string()
-                    }
-                    0x0018 => "No stored attribute data (extended, BE)".to_string(),
-                    0x0019 => "Store operation failure (extended, BE)".to_string(),
-                    0x001A => {
-                        "Routing failure, request packet too large (extended, BE)".to_string()
-                    }
-                    0x001B => {
-                        "Routing failure, response packet too large (extended, BE)".to_string()
-                    }
-                    0x001C => "Missing attribute list entry data (extended, BE)".to_string(),
-                    0x001D => "Invalid attribute value list (extended, BE)".to_string(),
-                    0x001E => "Embedded service error (extended, BE)".to_string(),
-                    0x001F => "Vendor specific error (extended, BE)".to_string(),
-                    0x0020 => "Invalid parameter (extended, BE)".to_string(),
-                    0x0021 => {
-                        "Write-once value or medium already written (extended, BE)".to_string()
-                    }
-                    0x0022 => "Invalid reply received (extended, BE)".to_string(),
-                    0x0023 => "Buffer overflow (extended, BE)".to_string(),
-                    0x0024 => "Invalid message format (extended, BE)".to_string(),
-                    0x0025 => "Key failure in path (extended, BE)".to_string(),
-                    0x0026 => "Path size invalid (extended, BE)".to_string(),
-                    0x0027 => "Unexpected attribute in list (extended, BE)".to_string(),
-                    0x0028 => "Invalid member ID (extended, BE)".to_string(),
-                    0x0029 => "Member not settable (extended, BE)".to_string(),
-                    0x002A => "Group 2 only server general failure (extended, BE)".to_string(),
-                    0x002B => "Unknown Modbus error (extended, BE)".to_string(),
-                    0x002C => "Attribute not gettable (extended, BE)".to_string(),
-                    _ if extended_error_code_le == 0x2107 || extended_error_code_be == 0x2107 => {
-                        format!(
-                            "Read/Write Tag data-type mismatch extended error: 0x{extended_error_code_le:04X} (LE) / 0x{extended_error_code_be:04X} (BE). Raw bytes: [0x{:02X}, 0x{:02X}]. Check that the request data type matches the target tag; UDT array element member writes can also surface this controller rejection.",
-                            cip_data[4], cip_data[5]
-                        )
-                    }
-                    _ => format!(
-                        "Unknown extended CIP error code: 0x{extended_error_code_le:04X} (LE) / 0x{extended_error_code_be:04X} (BE). Raw bytes: [0x{:02X}, 0x{:02X}]",
-                        cip_data[4], cip_data[5]
-                    ),
-                }
-            }
+            0x2107 => format!(
+                "Read/Write Tag data-type mismatch extended error: 0x{extended_error_code:04X}. Raw bytes: [0x{:02X}, 0x{:02X}]. Check that the request data type matches the target tag; STRING members inside UDTs can also surface this current-encoding rejection.",
+                cip_data[4], cip_data[5]
+            ),
+            _ => format!(
+                "Unknown extended CIP error code: 0x{extended_error_code:04X}. Raw bytes: [0x{:02X}, 0x{:02X}]",
+                cip_data[4], cip_data[5]
+            ),
         };
 
         Ok(error_msg)
@@ -3517,8 +2992,8 @@ impl EipClient {
             return Ok(());
         }
 
-        // Check for extended error (0xFF indicates extended error code)
-        if general_status == 0xFF {
+        // Additional-status words carry the extended status details.
+        if cip_data.get(3).copied().unwrap_or(0) > 0 {
             let error_msg = self.parse_extended_error(cip_data)?;
             return Err(EtherNetIpError::Protocol(format!(
                 "CIP Extended Error: {error_msg}"
@@ -3629,47 +3104,6 @@ impl EipClient {
         let mut stream = self.stream.lock().await;
         stream.write_all(&packet).await?;
         *self.last_activity.lock().await = Instant::now();
-        Ok(())
-    }
-
-    /// Reads raw data from a tag
-    async fn read_tag_raw(&mut self, tag_name: &str) -> crate::error::Result<Vec<u8>> {
-        let response = self
-            .send_cip_request(&self.build_read_request(tag_name)?)
-            .await?;
-        self.extract_cip_from_response(&response)
-    }
-
-    /// Writes raw data to a tag
-    async fn write_tag_raw(&mut self, tag_name: &str, data: &[u8]) -> crate::error::Result<()> {
-        let request = self.build_write_request_raw(tag_name, data)?;
-        let response = self.send_cip_request(&request).await?;
-
-        // Check write response for errors
-        let cip_response = self.extract_cip_from_response(&response)?;
-
-        if cip_response.len() < 3 {
-            return Err(EtherNetIpError::Protocol(
-                "Write response too short".to_string(),
-            ));
-        }
-
-        let service_reply = cip_response[0]; // Should be 0xCD (0x4D + 0x80) for Write Tag reply
-        let general_status = cip_response[2]; // CIP status code
-
-        tracing::trace!(
-            "Write response - Service: 0x{:02X}, Status: 0x{:02X}",
-            service_reply,
-            general_status
-        );
-
-        // Check for errors (including extended errors)
-        if let Err(e) = self.check_cip_error(&cip_response) {
-            tracing::error!("[WRITE] CIP Error: {}", e);
-            return Err(e);
-        }
-
-        tracing::info!("Write completed successfully");
         Ok(())
     }
 
@@ -4005,10 +3439,7 @@ impl EipClient {
 
     /// Unregisters the EtherNet/IP session with the PLC
     pub async fn unregister_session(&mut self) -> crate::error::Result<()> {
-        tracing::info!("Unregistering session and cleaning up connections...");
-
-        // Close all connected sessions first
-        let _ = self.close_all_connected_sessions().await;
+        tracing::info!("Unregistering session...");
 
         let mut packet = BytesMut::with_capacity(24);
         EncapsulationHeader::new(UNREGISTER_SESSION, 0, self.session_handle()).encode(&mut packet);
@@ -4020,7 +3451,7 @@ impl EipClient {
             .await
             .map_err(EtherNetIpError::Io)?;
 
-        tracing::info!("Session unregistered and all connections closed");
+        tracing::info!("Session unregistered");
         Ok(())
     }
 
@@ -4295,28 +3726,6 @@ impl EipClient {
 
         path
     }
-
-    async fn _get_connected_session(
-        &mut self,
-        session_name: &str,
-    ) -> crate::error::Result<ConnectedSession> {
-        // First check if we already have a session
-        {
-            let sessions = self.connected_sessions.lock().await;
-            if let Some(session) = sessions.get(session_name) {
-                return Ok(session.clone());
-            }
-        }
-
-        // If we don't have a session, establish a new one
-        let session = self.establish_connected_session(session_name).await?;
-
-        // Store the new session
-        let mut sessions = self.connected_sessions.lock().await;
-        sessions.insert(session_name.to_string(), session.clone());
-
-        Ok(session)
-    }
 }
 
 #[cfg(test)]
@@ -4444,6 +3853,34 @@ mod discovery_tests {
         assert_eq!(attributes.data_type_name, "DINT");
         assert_eq!(attributes.template_instance_id, Some(0x1234));
         assert_eq!(attributes.size, 4);
+    }
+
+    #[test]
+    fn extended_status_parser_uses_little_endian_additional_status() {
+        let client = EipClient::new_unconnected_for_testing();
+        let response = [0xCD, 0x00, 0xFF, 0x01, 0x07, 0x21];
+
+        let err = client
+            .check_cip_error(&response)
+            .expect_err("extended status should be an error");
+        let message = err.to_string();
+
+        assert!(message.contains("0x2107"));
+        assert!(message.contains("data-type mismatch"));
+        assert!(!message.contains("(BE)"));
+        assert!(!message.contains("0x0721"));
+    }
+
+    #[test]
+    fn extended_status_parser_does_not_require_general_status_ff() {
+        let client = EipClient::new_unconnected_for_testing();
+        let response = [0xCC, 0x00, 0x01, 0x01, 0x05, 0x00];
+
+        let err = client
+            .check_cip_error(&response)
+            .expect_err("additional status should be decoded");
+
+        assert!(err.to_string().contains("Path destination unknown"));
     }
 
     #[test]

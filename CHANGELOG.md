@@ -16,7 +16,23 @@ Target next release: TBD.
   sibling integrity, restores original values, and writes JSON evidence for the
   1.2.0 manifest relabel decision.
 
+### Deprecated
+- CODEX-AP deprecated legacy STRING and UDT offset APIs that never had a valid
+  wire contract: Rust `write_string`, `write_ab_string_components`,
+  `write_ab_string_udt`, `write_string_connected`,
+  `write_string_unconnected`, `read_udt_member_by_offset`, and
+  `write_udt_member_by_offset`, plus the C# offset-member wrappers and matching
+  FFI exports. They now return explicit unsupported errors and are queued for
+  removal in 2.0. Use `write_tag(..., PlcValue::String(...))`,
+  `write_string_tag`, direct member tags, `read_udt_chunked` plus
+  `UdtData::parse`, or the service-layer UDT member helpers instead.
+
 ### Fixed
+- CODEX-AP retired the invalid UDT "advanced chunked" strategy ladder behind
+  `read_udt_chunked`; the compatibility method now delegates to the maintained
+  `read_tag` UDT path instead of fabricating empty UDT payloads. CIP
+  additional-status parsing now keys off the additional-status word count and
+  reports `0x2107` as the little-endian Read/Write Tag data-type mismatch.
 - CODEX-AS hardened the FFI boundary: the three raw `*mut EipClient` entry
   points (`eip_get_udt_definition`, `eip_get_tag_attributes`,
   `eip_discover_tags_detailed`) are no longer exported into the C ABI symbol

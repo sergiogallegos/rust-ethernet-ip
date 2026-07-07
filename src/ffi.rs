@@ -2072,7 +2072,7 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
     udt_name: *const c_char,
     member_offset: c_int,
     member_size: c_int,
-    data_type: c_short,
+    _data_type: c_short,
     result: *mut c_char,
     max_size: c_int,
 ) -> c_int {
@@ -2082,52 +2082,13 @@ pub unsafe extern "C" fn eip_read_udt_member_by_offset(
         || member_offset < 0
         || member_size <= 0
     {
-        return -1;
+        return fail_with_last_error(client_id, "invalid UDT offset-read arguments");
     }
 
-    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
-    let Ok(udt_name_str) = unsafe { CStr::from_ptr(udt_name) }.to_str() else {
-        return -1;
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-
-    let value = match ffi_block_on!(
+    fail_with_last_error(
         client_id,
-        client.read_udt_member_by_offset(
-            udt_name_str,
-            member_offset as usize,
-            member_size as usize,
-            data_type as u16,
-        )
-    ) {
-        Ok(value) => value,
-        Err(_) => return -1,
-    };
-
-    // Serialize value to JSON for C# consumption
-    let json_result = match serde_json::to_string(&value) {
-        Ok(json) => json,
-        Err(_) => return -1,
-    };
-
-    let Ok(c_string) = CString::new(json_result) else {
-        return -1;
-    };
-
-    let bytes = c_string.as_bytes_with_nul();
-    if bytes.len() > max_size as usize {
-        return -1; // JSON too long
-    }
-
-    // SAFETY: This raw-pointer operation is covered by the enclosing FFI function contract and preceding validation.
-    unsafe {
-        ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
-    }
-    0
+        "Unsupported API `eip_read_udt_member_by_offset`: offset-based UDT member reads indexed the CIP envelope instead of the UDT payload; use eip_read_udt/eip_read_tag and parse UdtData or direct member tags instead; removal is planned for ABI v3",
+    )
 }
 
 /// Write a UDT member by byte offset from a string payload.
@@ -2142,48 +2103,18 @@ pub unsafe extern "C" fn eip_write_udt_member_by_offset(
     udt_name: *const c_char,
     member_offset: c_int,
     member_size: c_int,
-    data_type: c_short,
+    _data_type: c_short,
     value: *const c_char,
     size: c_int,
 ) -> c_int {
     if udt_name.is_null() || value.is_null() || size <= 0 || member_offset < 0 || member_size <= 0 {
-        return -1;
+        return fail_with_last_error(client_id, "invalid UDT offset-write arguments");
     }
 
-    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
-    let Ok(udt_name_str) = unsafe { CStr::from_ptr(udt_name) }.to_str() else {
-        return -1;
-    };
-
-    // SAFETY: The pointer was checked for null where applicable and the FFI caller contract requires a valid NUL-terminated string.
-    let Ok(value_str) = unsafe { CStr::from_ptr(value) }.to_str() else {
-        return -1;
-    };
-
-    // Parse the value from JSON
-    let plc_value: PlcValue = match serde_json::from_str(value_str) {
-        Ok(value) => value,
-        Err(_) => return -1,
-    };
-
-    let mut client = match get_client(client_id) {
-        Ok(client) => client,
-        Err(_) => return -1,
-    };
-
-    match ffi_block_on!(
+    fail_with_last_error(
         client_id,
-        client.write_udt_member_by_offset(
-            udt_name_str,
-            member_offset as usize,
-            member_size as usize,
-            data_type as u16,
-            plc_value,
-        )
-    ) {
-        Ok(_) => 0,
-        Err(_) => -1,
-    }
+        "Unsupported API `eip_write_udt_member_by_offset`: offset-based UDT member writes round-tripped CIP envelope bytes as tag data; use eip_write_udt, service-layer helpers, or direct member tags instead; removal is planned for ABI v3",
+    )
 }
 
 /// C struct for UDT member

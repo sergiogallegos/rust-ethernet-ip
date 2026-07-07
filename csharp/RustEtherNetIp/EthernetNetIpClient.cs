@@ -946,14 +946,14 @@ namespace RustEtherNetIp
                         return ParseUdtJson(jsonResult);
                 }
 
-                // If normal reading failed, try chunked reading
-                // This handles "Partial transfer" errors for large UDTs
+                // Keep the legacy chunked entry point as a compatibility alias
+                // for the maintained native UDT read path.
                 return ReadUdtWithChunkedFallback(tagName);
             }
             catch
             {
-                // Handle any UDT reading errors with chunked fallback
-                // This includes "Partial transfer" errors and other UDT issues
+                // Preserve the historical fallback surface, but the native
+                // chunked strategy ladder is retired and no longer fabricates data.
                 return ReadUdtWithChunkedFallback(tagName);
             }
             finally
@@ -979,7 +979,8 @@ namespace RustEtherNetIp
 
         private PlcValue ReadUdtWithChunkedFallback(string tagName)
         {
-            // Chunked reading for large UDTs that exceed normal packet size
+            // Legacy chunked entry point retained for compatibility. Native
+            // CODEX-AP behavior delegates to the maintained UDT read path.
             // NOTE: This method is called from within ExecuteWithLock, so we don't need another lock
             CheckConnection();
             IntPtr tagPtr = AllocUtf8(tagName);
@@ -1210,11 +1211,11 @@ namespace RustEtherNetIp
         }
 
         /// <summary>
-        /// Reads a UDT using chunked reading to handle large structures that exceed packet size limits.
-        /// This method automatically handles partial transfer errors by reading the UDT in smaller chunks.
+        /// Reads a UDT through the legacy chunked native entry point.
         /// </summary>
         /// <param name="tagName">Name of the UDT tag to read.</param>
         /// <returns>PlcValue containing the UDT with nested structure support.</returns>
+        /// <remarks>The native chunking strategy ladder was retired in 1.2.0 because it was not protocol-correct. This method remains as a compatibility alias for the maintained native UDT read path.</remarks>
         public PlcValue ReadUdtChunked(string tagName)
         {
             return ExecuteWithLock(() =>
@@ -1255,13 +1256,14 @@ namespace RustEtherNetIp
 
         /// <summary>
         /// Reads a specific UDT member by offset, size, and data type.
-        /// This method allows direct access to UDT members without needing the full UDT structure.
         /// </summary>
         /// <param name="udtName">Name of the UDT tag.</param>
         /// <param name="memberOffset">Byte offset of the member in the UDT.</param>
         /// <param name="memberSize">Size of the member in bytes.</param>
         /// <param name="dataType">CIP data type code (e.g., 0x00C1 for BOOL, 0x00CA for REAL).</param>
         /// <returns>PlcValue containing the member value.</returns>
+        /// <remarks>Retired in 1.2.0: the native offset implementation indexed the CIP reply envelope rather than the UDT payload. Use direct member tag reads or ReadUdt plus UdtData parsing.</remarks>
+        [Obsolete("Retired in 1.2.0: offset-based UDT member reads never had a correct native payload contract. Use direct member tag reads or ReadUdt plus UdtData parsing. Removal planned for 2.0.", false)]
         public PlcValue ReadUdtMemberByOffset(string udtName, int memberOffset, int memberSize, short dataType)
         {
             return ExecuteWithLock(() =>
@@ -1292,13 +1294,14 @@ namespace RustEtherNetIp
 
         /// <summary>
         /// Writes a specific UDT member by offset, size, and data type.
-        /// This method allows direct writing to UDT members without needing the full UDT structure.
         /// </summary>
         /// <param name="udtName">Name of the UDT tag.</param>
         /// <param name="memberOffset">Byte offset of the member in the UDT.</param>
         /// <param name="memberSize">Size of the member in bytes.</param>
         /// <param name="dataType">CIP data type code (e.g., 0x00C1 for BOOL, 0x00CA for REAL).</param>
         /// <param name="value">PlcValue containing the value to write.</param>
+        /// <remarks>Retired in 1.2.0: the native offset implementation wrote mutated CIP envelope bytes back to the PLC. Use WriteUdtMember, WriteUdtData, or direct member tag writes.</remarks>
+        [Obsolete("Retired in 1.2.0: offset-based UDT member writes never had a correct native payload contract. Use WriteUdtMember, WriteUdtData, or direct member tag writes. Removal planned for 2.0.", false)]
         public void WriteUdtMemberByOffset(string udtName, int memberOffset, int memberSize, short dataType, PlcValue value)
         {
             _ = value ?? throw new ArgumentNullException(nameof(value));

@@ -1041,3 +1041,18 @@ Sources used:
 - `src/ffi.rs`
 - `docs/agents/tasks/CODEX-AS-ffi-polish-python-residuals.md`
 - `docs/API_STABILITY.md`
+
+## [2026-07-07] reframe | STRING and UDT write behavior after CODEX-AP
+
+- Updated `wiki/limitations/string-and-udt-write-behavior.md`.
+- Reframed standalone standard `STRING` writes and scalar UDT-array-element-member writes as writeable on current evidence when encoded correctly.
+- Recorded that UDT `STRING` members remain current-encoding `0x2107` cases and that CODEX-AP retired legacy STRING and offset-based UDT member APIs as unsupported compatibility stubs.
+
+Sources used:
+
+- `docs/agents/tasks/CODEX-AP-string-udt-graveyard.md`
+- `docs/agents/notes/ab-firmware-quirks.md`
+- `docs/validation/2026-07-02_string_write_probe_5069-L330ERM_fw38.md`
+- `docs/validation/2026-07-03_blocked_write_label_probe_plan.md`
+- `src/client.rs`
+- `src/client/string.rs`

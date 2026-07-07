@@ -182,6 +182,63 @@ async fn simulated_plc_batch_string_write_read_round_trip() {
 }
 
 #[tokio::test]
+#[expect(deprecated, reason = "CODEX-AP pins retired compatibility APIs")]
+async fn retired_string_apis_return_unsupported_without_network_write() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    for result in [
+        client.write_string("STRING_TAG", "value").await,
+        client
+            .write_ab_string_components("STRING_TAG", "value")
+            .await,
+        client.write_ab_string_udt("STRING_TAG", "value").await,
+        client.write_string_connected("STRING_TAG", "value").await,
+        client.write_string_unconnected("STRING_TAG", "value").await,
+    ] {
+        assert_matches!(
+            result,
+            Err(EtherNetIpError::Unsupported { reason, .. })
+                if reason.contains("write_tag")
+        );
+    }
+
+    client
+        .write_tag("STRING_TAG", PlcValue::String("value".to_string()))
+        .await
+        .expect("maintained STRING path should still work");
+}
+
+#[tokio::test]
+#[expect(deprecated, reason = "CODEX-AP pins retired offset APIs")]
+async fn retired_udt_offset_apis_return_unsupported() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    let read = client
+        .read_udt_member_by_offset("UDT_TAG", 0, 4, 0x00C4)
+        .await;
+    assert_matches!(
+        read,
+        Err(EtherNetIpError::Unsupported { api, reason })
+            if api == "read_udt_member_by_offset" && reason.contains("CIP reply envelope")
+    );
+
+    let write = client
+        .write_udt_member_by_offset("UDT_TAG", 0, 4, 0x00C4, PlcValue::Dint(1))
+        .await;
+    assert_matches!(
+        write,
+        Err(EtherNetIpError::Unsupported { api, reason })
+            if api == "write_udt_member_by_offset" && reason.contains("envelope bytes")
+    );
+}
+
+#[tokio::test]
 async fn simulated_plc_read_write_dint_array_element() {
     let sim = SimulatedPlc::start().await;
     let addr = format!("{}", sim.address);

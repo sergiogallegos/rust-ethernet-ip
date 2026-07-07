@@ -49,6 +49,11 @@ crate-type = ["rlib", "cdylib"]
 # override exempts only the export-name lint, which fires solely on `#[no_mangle]`
 # functions; ordinary Rust API removals stay gated by `function_missing`.
 function_export_name_changed = "allow"
+# CODEX-AP intentionally deprecates never-worked STRING/UDT compatibility APIs
+# in the 1.2.0 minor line while retaining their signatures until 2.0. Runtime
+# behavior now returns typed Unsupported errors; removals remain guarded by
+# `function_missing` and are queued in docs/ROADMAP.md.
+type_method_marked_deprecated = "allow"
 
 [[bench]]
 name = "performance_benchmark"

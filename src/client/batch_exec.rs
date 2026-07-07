@@ -182,8 +182,14 @@ impl EipClient {
             .map(|result| {
                 let tag_name = match &result.operation {
                     BatchOperation::Read { tag_name } => tag_name.clone(),
-                    BatchOperation::Write { .. } => {
-                        unreachable!("Should only have read operations")
+                    BatchOperation::Write { tag_name, .. } => {
+                        return (
+                            tag_name.clone(),
+                            Err(BatchError::Other(
+                                "Internal batch error: write result returned from read-only helper"
+                                    .to_string(),
+                            )),
+                        );
                     }
                 };
 
@@ -259,8 +265,14 @@ impl EipClient {
             .map(|result| {
                 let tag_name = match &result.operation {
                     BatchOperation::Write { tag_name, .. } => tag_name.clone(),
-                    BatchOperation::Read { .. } => {
-                        unreachable!("Should only have write operations")
+                    BatchOperation::Read { tag_name } => {
+                        return (
+                            tag_name.clone(),
+                            Err(BatchError::Other(
+                                "Internal batch error: read result returned from write-only helper"
+                                    .to_string(),
+                            )),
+                        );
                     }
                 };
 

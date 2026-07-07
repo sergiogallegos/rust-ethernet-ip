@@ -91,9 +91,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | Category | Main Functions |
 |---|---|
 | Connection & Session | `EipClient::new`, `EipClient::connect`, `EipClient::with_route_path`, `set_route_path`, `clear_route_path`, `unregister_session` |
-| Read/Write Core | `read_tag`, `write_tag`, `read_bit`, `write_bit`, `write_string` |
+| Read/Write Core | `read_tag`, `write_tag`, `read_bit`, `write_bit`, `write_string_tag` |
 | Arrays | `read_array_range`, `build_read_array_request`, `build_write_array_request_with_index` |
-| UDT | `read_udt_chunked`, `read_udt_member_by_offset`, `write_udt_member_by_offset`, `discover_udt_members`, `get_udt_definition`, `get_udt_definition_cached` |
+| UDT | `read_udt_chunked`, `write_udt_member`, `write_udt_array_member`, `discover_udt_members`, `get_udt_definition`, `get_udt_definition_cached` |
 | Tag Discovery / Metadata | `discover_tags`, `discover_tags_detailed`, `discover_program_tags`, `get_tag_metadata`, `get_tag_attributes`, `list_cached_tag_attributes`, `clear_caches` |
 | Batch Operations | `read_tags_batch`, `write_tags_batch`, `execute_batch`, `configure_batch_operations`, `get_batch_config` |
 | Tag Group Polling | `upsert_tag_group`, `remove_tag_group`, `list_tag_groups`, `read_tag_group_once`, `subscribe_tag_group` |
@@ -133,7 +133,7 @@ read_tag(tag_name)
 write_tag(tag_name, value)
 read_bit(tag_base, bit_index)
 write_bit(tag_base, bit_index, value)
-write_string(tag_name, value)
+write_string_tag(tag_name, value)
 
 // Arrays / tag path building helpers
 read_array_range(base_array_name, start_index, element_count)
@@ -145,6 +145,11 @@ build_list_tags_request()
 
 // UDT helpers
 read_udt_chunked(tag_name)
+write_udt_member(udt_name, member_name, value)
+write_udt_array_member(array_name, index, member_name, value)
+
+// Deprecated compatibility stubs retained until 2.0:
+write_string(tag_name, value)
 read_udt_member_by_offset(udt_name, member_offset, member_size, data_type)
 write_udt_member_by_offset(udt_name, member_offset, member_size, data_type, value)
 
@@ -313,12 +318,14 @@ ReadUdtAsDictionary
 GetUdtMember
 SetUdtMember
 ReadUdtChunked
-ReadUdtMemberByOffset
-WriteUdtMemberByOffset
 WriteUdtMember
 GetUdtDefinition
 GetTagAttributes
 GetTagMetadata
+
+// Deprecated compatibility stubs retained until 2.0:
+ReadUdtMemberByOffset
+WriteUdtMemberByOffset
 
 // Discovery / arrays / rich reads
 DiscoverTags

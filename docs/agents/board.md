@@ -13,7 +13,6 @@
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
 | CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open | 2026-07-01 |
-| CODEX-AP | Retire the string/UDT strategy graveyard — never-worked public paths return honest errors | codex | open | 2026-07-01 |
 | CODEX-AQ | Dead-stratum deprecation — TagManager UDT pipeline, ProductionMonitor/Config, PlcManager, SubscriptionManager, TagCache; diagnostics honesty | codex | open | 2026-07-01 |
 | CODEX-AR | Subscription, fleet, and event lifecycle — stop() stops, no blocked poll tasks, lag-tolerant forwarding | codex | open | 2026-07-01 |
 | CODEX-AU | C++ consumer support — C header with parity gate, RAII example, Qt integration guide | codex | open | 2026-07-02 |
@@ -117,6 +116,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-AP | Retire the string/UDT strategy graveyard — never-worked public paths return honest errors | codex | `1821e59` |
 | CODEX-AS | FFI polish — private raw-pointer exports, unwind guard, SAFETY discipline, last-error lifecycle; Python residuals | codex | `00db89e` |
 | CODEX-AL | Transport & session hardening — timeout desync, sender-context correlation, shared session handle | codex | `253706e` |
 | CODEX-AN | read_array_range + get_tag_attributes wire fixes; make the simulator an oracle, not a mirror | codex | `8645f67` |

@@ -2,9 +2,9 @@
 id: CODEX-AP
 title: Retire the string/UDT strategy graveyard — never-worked public paths return honest errors
 owner: codex
-status: open
+status: merged
 created: 2026-07-01
-last-update: 2026-07-01 claude [Fable 5]
+last-update: 2026-07-07 claude [Opus 4.8]
 ---
 
 ## Brief
@@ -68,6 +68,84 @@ Also correct `parse_extended_error` (`src/client.rs:3180-3319`) while in the are
 
 ## Codex log
 
+2026-07-07 — Submitted by Codex.
+
+Disposition by brief item:
+
+1. `write_string`: deprecated and converted to an immediate `EtherNetIpError::Unsupported` compatibility stub. It no longer validates, builds, sends, or misparses the malformed request; replacement is `write_tag(..., PlcValue::String(...))` or `write_string_tag`.
+2. `write_ab_string_udt`: deprecated and converted to an immediate unsupported stub because it parsed the raw CPF envelope as a CIP reply and could report false success.
+3. Connected messaging / Forward Open subsystem: public `write_string_connected` is deprecated and returns unsupported. The private Forward Open builder/parser, connected send path, close path, connected-session cache, sequence counter, and connected-session wire-state structs were deleted as orphaned internal code.
+4. `write_string_unconnected`: deprecated and converted to an immediate unsupported stub because the reverse-engineered payload does not match the maintained Logix STRING structure write.
+5. `write_ab_string_components`: deprecated and converted to an immediate unsupported stub. CODEX-AT superseded the decision point by proving direct standalone STRING writes through the maintained structure encoding; component writes remain non-atomic experimentation, not a supported fallback.
+6. `read_udt_chunked` strategies B-D: deleted. The compatibility method now delegates to the maintained `read_tag` UDT path and rejects non-UDT values; no `msg.contains("Partial transfer")` dispatch remains. Correct fragmented UDT reads are deferred to CODEX-AO.
+7. `read_udt_member_by_offset` / `write_udt_member_by_offset`: deprecated and converted to immediate unsupported errors. Matching FFI exports return `-1` with last-error text; C# wrapper/interface methods are marked `[Obsolete]`.
+8. Internal dead code: deleted `_build_ab_string_write_request`, `_get_connected_session`, connected-session types/fields, raw read/write helpers orphaned by offset API retirement, and replaced the two batch `unreachable!` calls with typed `BatchError::Other` results.
+
+Also corrected `parse_extended_error`: additional status is decoded when the additional-status size field is nonzero, words are interpreted little-endian only, and `0x2107` now reports as Read/Write Tag data-type mismatch without the old BE shadow code.
+
+Docs updated: `CHANGELOG.md`, `docs/ROADMAP.md`, `docs/programmer_manual.md`, C# XML docs/interface obsolete attributes, and `wiki/limitations/string-and-udt-write-behavior.md`.
+
+Verification passed: `cargo fmt -- --check`; `cargo clippy --workspace --all-targets --all-features -- -D warnings`; `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked`; `cargo test --test plc_sim_tests --locked`; `cargo test --features ffi --test ffi_tests --locked`; `cargo doc --workspace --all-features --no-deps --locked`; `cargo semver-checks --baseline-version 1.1.0`; `cargo build --release --features ffi --locked`; `python -m unittest discover -s python\tests`; `dotnet test csharp\RustEtherNetIp.Tests\RustEtherNetIp.Tests.csproj --no-restore`; `dotnet test csharp\RustEtherNetIp.IntegrationTests\RustEtherNetIp.IntegrationTests.csproj --no-restore`; `git diff --check`.
+
 ## Claude review
 
+### 2026-07-07 15:20  claude [Opus 4.8]
+
+**Independent verification**
+- `cargo fmt -- --check` — clean.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — ok across the workspace.
+- `cargo test --test plc_sim_tests --locked` — 24/24 (two new AP tests: `retired_string_apis_return_unsupported_without_network_write`, `retired_udt_offset_apis_return_unsupported`).
+- `cargo test --features ffi --test ffi_tests --locked` — 16/16.
+- `cargo semver-checks check-release --baseline-version 1.1.0` — 221 checks pass, "no semver update required".
+- `cargo doc --workspace --all-features --no-deps --locked` — clean, no broken intra-doc links to removed items.
+- `cargo build --release --features ffi --locked` — ok.
+- C# unit `RustEtherNetIp.Tests` — 86/86; C# native integration `RustEtherNetIp.IntegrationTests` — 7/7 (against the freshly built release cdylib); Python `python/tests` — 34 passed, 8 skipped, 0 failed.
+
+**What's being fixed**
+- A cluster of publicly exported STRING/UDT paths that were provably non-functional or hazardous (silent false success, fabricated empty payloads, malformed requests) are retired behind explicit `Unsupported` errors and `#[deprecated]`, with actual deletion queued for 2.0; orphaned internal code is deleted outright; `parse_extended_error` is corrected while in the area.
+
+**Root cause confirmation**
+- Confirmed per item. `src/client/string.rs` drops 1041→89 lines; the five retired writers (`write_string`, `write_ab_string_components`, `write_ab_string_udt`, `write_string_connected`, `write_string_unconnected`) return `EtherNetIpError::Unsupported` before any network I/O. The connected-messaging subsystem (`establish_connected_session`, `parse_forward_open_response`, `send_connected_cip_request`, session cache, sequence counter) and its wire-state structs `ConnectedSession`/`ConnectionParameters` (`src/types.rs`, `pub(crate)`) are deleted — grep confirms no residual references outside the retired `write_string_connected` stub itself.
+- `read_udt_chunked` (`src/client.rs:1756`) now `validate_session` + delegate to `read_tag`, returning `PlcValue::Udt` or `DataTypeMismatch`; the `msg.contains("Partial transfer")` stringly dispatch is gone (grep clean).
+- `parse_extended_error` (`src/client.rs:2900`) rekeyed on the additional-status size word (`cip_data[3]`), little-endian only, BE shadow removed, `0x2107` mapped to a data-type-mismatch message; `check_cip_error` gate corrected to trigger on `cip_data[3] > 0` regardless of general status.
+- `batch_exec.rs` two `unreachable!` replaced with typed `BatchError::Other` preserving the tag name.
+
+**Fix appropriateness**
+- Lands at the right layer. Retirement follows the established `eip_get_tag_metadata` / `eip_configure_batch_operations` precedent (deprecate + honest error on 1.x, delete at 2.0). The `Unsupported { api, reason }` variant is added to the `#[non_exhaustive]` `EtherNetIpError` — additive, which is why semver-checks stays clean.
+- Correct disposition on the FFI export boundary: `eip_write_string` is **repointed to the working `write_tag(PlcValue::String)` path**, not retired — the C ABI symbol is the stable contract the C#/Python `WriteString` wrappers call, so it must keep working; only the internal Rust `EipClient::write_string` method is retired. No consumer regression.
+- C# offset-member wrappers carry `[Obsolete(..., false)]` (warn, not error) so downstream code still compiles while surfacing the migration path; the wrappers surface the native `-1`/last-error rather than pre-empting it.
+
+**Test proof**
+- New sim tests assert the immediate typed error for all five retired string APIs **and** that the maintained `write_tag(PlcValue::String)` path still round-trips; offset APIs assert `Unsupported { api, reason }` with api/reason content. `error.rs` gains a unit test for the new variant's Display. `ffi_tests` extended for the stub rc/last-error contract. Deprecated call sites use `#[expect(deprecated, reason = …)]`, so `-D warnings` holds.
+- Working paths remain proven green: STRING round-trip, UDT RMW via the service layer, batch suites, C#/Python suites.
+
+**Residual risk**
+- `read_udt_chunked` on a genuinely oversized UDT (one that previously tripped "Partial transfer") now returns the propagated `read_tag` error instead of the old `Ok(Udt { data: vec![] })`. This is strictly an improvement (honest error vs fabricated empty payload) but is an observable behavior change; correct fragmented-read support is deferred to CODEX-AO phase 2 (documented).
+- No hardware run in this review — all paths are sim/unit level. The retired paths never worked on hardware, and the maintained paths carry their own prior hardware evidence (CODEX-AT for STRING, CODEX-AV for UDT members), so no new hardware gate is introduced by this task.
+
+**Strong points (✅)**
+- FFI `eip_write_string` repoint preserves the C#/Python STRING contract while retiring the broken Rust method — the one place a naive retirement would have broken consumers.
+- Every retired path returns before network I/O; no silent false success remains anywhere in the string/UDT surface (`write_ab_string_udt`'s unconditional `Ok(())` was the dangerous one — now gone).
+- `parse_extended_error` correction is spec-accurate and collapses the duplicated both-endianness match the brief called out.
+- Deprecation reasons name the concrete defect and the replacement API, and are consistent across Rust doc, FFI last-error text, C# `[Obsolete]`, CHANGELOG, and ROADMAP.
+
+**Findings**
+- 🟢 FFI `eip_write_string` correctly repointed to `write_tag`, not retired — no consumer regression (verified `src/ffi.rs:1037`).
+- 🟡 `read_udt_chunked` oversized-UDT behavior change (fabricated empty payload → honest propagated error); improvement, deferred real fix owned by CODEX-AO. Non-blocking.
+- 🟡 `check_cip_error` now routes to extended parsing whenever the additional-status size is non-zero, for any general status (previously effectively `0xFF`-gated). Spec-correct; affects only the human-readable error string, not error variant or control flow. Non-blocking.
+- 🟢 `retired_string_apis_..._without_network_write` connects to the sim but asserts the typed error, not the absence of bytes on the wire; the stubs demonstrably return before I/O, so the name states intent rather than a wire assertion. Cosmetic.
+- 🟠 Real concerns — none.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ Items 1–8 each retired-with-honest-error / deleted / delegated, with an explicit per-item disposition in the Codex log; item 5 decision recorded as superseded by CODEX-AT.
+- ✅ No `msg.contains("Partial transfer")`-style stringly dispatch remains (grep clean).
+- ✅ `cargo semver-checks` (baseline 1.1.0) passes — deprecation + behavior change of never-working paths is not a signature break.
+- ✅ ROADMAP 2.0 section lists every deferred deletion (Rust + FFI + C# wrappers); CHANGELOG `### Deprecated` present and accurate.
+
 ## Verdict
+
+### 2026-07-07 15:20  claude [Opus 4.8]
+
+**Merged.** Full independent matrix green (fmt, clippy `--all-targets --all-features -D warnings`, workspace `--locked`, plc_sim 24/24, ffi_tests 16/16, semver-checks 221-pass/no-update, `cargo doc` clean, release ffi build, C# 86/86 + integration 7/7, Python 34-pass/8-skip). All eight brief items dispositioned correctly; the string/UDT surface no longer contains any silent-false-success or fabricated-payload path. `parse_extended_error` correction and the `unreachable!` removals are sound. The one judgment call — repointing the FFI `eip_write_string` export to the working `write_tag` path rather than retiring it — is the correct read of the C ABI contract boundary and prevents a consumer regression. Zero defects, zero Claude-applied fixes. Two 🟡 items (oversized-UDT honest-error behavior change → CODEX-AO; extended-status message gating) are non-blocking and documented. Merged at `1821e59`.

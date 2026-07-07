@@ -1,13 +1,13 @@
 use crate::EipClient;
 use crate::error::{EtherNetIpError, Result};
-use crate::udt::{UdtDefinition, UdtMember};
+use crate::udt::UdtDefinition;
 use std::collections::HashMap;
 use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, Instant};
 use tracing;
 
 static TAG_NAME_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"^[a-zA-Z][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*$")
+    regex::Regex::new(r"^(?:Program:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_]*(?:\[\d+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[\d+\])?)*$")
         .expect("tag name regex pattern is a valid literal")
 });
 
@@ -62,15 +62,21 @@ pub struct TagPermissions {
 impl TagMetadata {
     /// Returns true if this tag is a structure/UDT
     pub fn is_structure(&self) -> bool {
-        // Check if the data type indicates a structure
-        // Common structure type codes in Allen-Bradley PLCs
-        (0x00A0..=0x00AF).contains(&self.data_type)
+        is_structure_type_word(self.data_type)
     }
+}
+
+fn is_structure_type_word(data_type: u16) -> bool {
+    let type_code = data_type & 0x0fff;
+    (data_type & 0x8000) != 0 || (0x00A0..=0x00AF).contains(&type_code) || type_code == 0x02A0
 }
 
 /// Cache for PLC tags with automatic expiration
 #[derive(Debug)]
-#[allow(dead_code)]
+#[deprecated(
+    since = "1.2.0",
+    note = "TagCache was never wired into live discovery; use TagManager's built-in cache instead. The type will be removed in 2.0."
+)]
 pub struct TagCache {
     /// Map of tag names to their metadata
     tags: HashMap<String, (TagMetadata, Instant)>,
@@ -78,9 +84,12 @@ pub struct TagCache {
     expiration: Duration,
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps the compatibility implementation until 2.0 removal"
+)]
 impl TagCache {
     /// Creates a new tag cache with the specified expiration time
-    #[allow(dead_code)]
     pub fn new(expiration: Duration) -> Self {
         Self {
             tags: HashMap::new(),
@@ -89,13 +98,11 @@ impl TagCache {
     }
 
     /// Updates or adds a tag to the cache
-    #[allow(dead_code)]
     pub fn update_tag(&mut self, name: String, metadata: TagMetadata) {
         self.tags.insert(name, (metadata, Instant::now()));
     }
 
     /// Gets a tag from the cache if it exists and hasn't expired
-    #[allow(dead_code)]
     pub fn get_tag(&self, name: &str) -> Option<&TagMetadata> {
         if let Some((metadata, timestamp)) = self.tags.get(name)
             && timestamp.elapsed() < self.expiration
@@ -106,7 +113,6 @@ impl TagCache {
     }
 
     /// Removes expired tags from the cache
-    #[allow(dead_code)]
     pub fn cleanup(&mut self) {
         self.tags
             .retain(|_, (_, timestamp)| timestamp.elapsed() < self.expiration);
@@ -267,204 +273,73 @@ impl TagManager {
     ) -> Result<Vec<(String, TagMetadata)>> {
         tracing::debug!("Discovering UDT members for: {}", udt_name);
 
-        // First, try to get the UDT definition
-        if let Ok(udt_definition) = self.get_udt_definition(client, udt_name).await {
-            let mut members = Vec::new();
+        let udt_definition = client.get_udt_definition(udt_name).await?;
 
-            for member in &udt_definition.members {
-                let member_name = member.name.clone();
-                let full_name = format!("{}.{}", udt_name, member_name);
+        {
+            let mut definitions = self.udt_definitions.write()?;
+            definitions.insert(udt_name.to_string(), udt_definition.clone());
+        }
 
-                // Create metadata for the UDT member
-                let metadata = TagMetadata {
-                    data_type: member.data_type,
-                    scope: TagScope::Controller,
-                    permissions: TagPermissions {
-                        readable: true,
-                        writable: true,
-                    },
-                    is_array: false, // Individual members are not arrays
-                    dimensions: Vec::new(),
-                    last_access: Instant::now(),
-                    size: member.size,
-                    array_info: None,
-                    last_updated: Instant::now(),
-                };
-
-                if self.validate_tag_name(&full_name) {
-                    members.push((full_name.clone(), metadata));
-                    tracing::trace!(
-                        "Found UDT member: {} (Type: 0x{:04X})",
-                        full_name,
-                        member.data_type
-                    );
-                }
+        let mut members = Vec::new();
+        for member in &udt_definition.members {
+            let full_name = format!("{}.{}", udt_name, member.name);
+            if !self.validate_tag_name(&full_name) {
+                tracing::warn!("Skipping invalid UDT member path: {}", full_name);
+                continue;
             }
 
-            Ok(members)
-        } else {
-            tracing::warn!("Could not get UDT definition for: {}", udt_name);
-            Ok(Vec::new())
+            let metadata = TagMetadata {
+                data_type: member.data_type,
+                scope: TagScope::Controller,
+                permissions: TagPermissions {
+                    readable: true,
+                    writable: true,
+                },
+                is_array: false,
+                dimensions: Vec::new(),
+                last_access: Instant::now(),
+                size: member.size,
+                array_info: None,
+                last_updated: Instant::now(),
+            };
+
+            tracing::trace!(
+                "Found UDT member: {} (Type: 0x{:04X})",
+                full_name,
+                member.data_type
+            );
+            members.push((member.name.clone(), metadata));
         }
+
+        Ok(members)
     }
 
-    /// Gets UDT definition from the PLC (with caching)
-    async fn get_udt_definition(
-        &self,
-        client: &mut EipClient,
-        udt_name: &str,
-    ) -> Result<UdtDefinition> {
-        // Check cache first
-        {
-            let definitions = self.udt_definitions.read().unwrap();
-            if let Some(definition) = definitions.get(udt_name) {
-                tracing::debug!("Using cached UDT definition for: {}", udt_name);
-                return Ok(definition.clone());
-            }
-        }
-
-        // Build CIP request to get UDT definition
-        let cip_request = self.build_udt_definition_request(udt_name)?;
-
-        // Send the request
-        let response = client.send_cip_request(&cip_request).await?;
-
-        // Parse the UDT definition from response
-        let definition = self.parse_udt_definition_response(&response, udt_name)?;
-
-        // Cache the definition
-        {
-            let mut definitions = self.udt_definitions.write().unwrap();
-            definitions.insert(udt_name.to_string(), definition.clone());
-        }
-
-        Ok(definition)
+    /// Deprecated compatibility stub retained for 1.x SemVer.
+    #[deprecated(
+        since = "1.2.0",
+        note = "This method fabricated an invalid UDT request. Use EipClient::get_udt_definition or EipClient::discover_udt_members instead. It will be removed in 2.0."
+    )]
+    pub fn build_udt_definition_request(&self, _udt_name: &str) -> Result<Vec<u8>> {
+        Err(EtherNetIpError::Unsupported {
+            api: "TagManager::build_udt_definition_request",
+            reason: "the old request builder emitted an invalid Read Tag shape; use EipClient::get_udt_definition or EipClient::discover_udt_members",
+        })
     }
 
-    /// Builds a CIP request to get UDT definition
-    pub fn build_udt_definition_request(&self, udt_name: &str) -> Result<Vec<u8>> {
-        // This is a simplified UDT definition request
-        // In practice, this would need to be more sophisticated
-        // For now, we'll try to read the UDT as a tag to get its structure
-
-        let mut request = Vec::new();
-
-        // Service: Read Tag (0x4C)
-        request.push(0x4C);
-
-        // Path size (in words)
-        let path_size = 2 + udt_name.len().div_ceil(2); // Round up for word alignment
-        request.push(path_size as u8);
-
-        // Path: Symbolic segment
-        request.push(0x91); // Symbolic segment
-        request.push(udt_name.len() as u8);
-        request.extend_from_slice(udt_name.as_bytes());
-
-        // Pad to word boundary if needed
-        if !udt_name.len().is_multiple_of(2) {
-            request.push(0x00);
-        }
-
-        Ok(request)
-    }
-
-    /// Parses UDT definition from CIP response
+    /// Deprecated compatibility stub retained for 1.x SemVer.
+    #[deprecated(
+        since = "1.2.0",
+        note = "This method fabricated UDT members from arbitrary bytes. Use EipClient::get_udt_definition or EipClient::discover_udt_members instead. It will be removed in 2.0."
+    )]
     pub fn parse_udt_definition_response(
         &self,
-        response: &[u8],
-        udt_name: &str,
+        _response: &[u8],
+        _udt_name: &str,
     ) -> Result<UdtDefinition> {
-        tracing::trace!(
-            "Parsing UDT definition response for {} ({} bytes): {:02X?}",
-            udt_name,
-            response.len(),
-            response
-        );
-
-        // This is a simplified parser - in practice, UDT definitions are complex
-        // For now, we'll create a basic structure based on common patterns
-
-        let mut definition = UdtDefinition {
-            name: udt_name.to_string(),
-            members: Vec::new(),
-        };
-
-        // Try to extract member information from the response
-        // This is a placeholder implementation - real UDT parsing would be much more complex
-        if response.len() > 10 {
-            // Look for common data type patterns in the response
-            let mut offset = 0;
-            let mut member_offset = 0u32;
-
-            while offset < response.len().saturating_sub(4) {
-                // Look for data type markers
-                if let Some((data_type, size)) =
-                    self.extract_data_type_from_response(&response[offset..])
-                {
-                    let member_name = format!("Member_{}", definition.members.len() + 1);
-
-                    definition.members.push(UdtMember {
-                        name: member_name,
-                        data_type,
-                        offset: member_offset,
-                        size,
-                    });
-
-                    member_offset += size;
-                    offset += 4; // Skip processed bytes
-                } else {
-                    offset += 1;
-                }
-
-                // Limit to prevent infinite loops
-                if definition.members.len() > 50 {
-                    break;
-                }
-            }
-        }
-
-        // If we couldn't parse any members, create some common ones as fallback
-        if definition.members.is_empty() {
-            definition.members.push(UdtMember {
-                name: "Value".to_string(),
-                data_type: 0x00C4, // DINT
-                offset: 0,
-                size: 4,
-            });
-        }
-
-        tracing::debug!(
-            "Parsed UDT definition with {} members",
-            definition.members.len()
-        );
-        Ok(definition)
-    }
-
-    /// Extracts data type information from response bytes
-    fn extract_data_type_from_response(&self, data: &[u8]) -> Option<(u16, u32)> {
-        if data.len() < 4 {
-            return None;
-        }
-
-        // Look for common Allen-Bradley data type patterns
-        let data_type = u16::from_le_bytes([data[0], data[1]]);
-
-        match data_type {
-            0x00C1 => Some((0x00C1, 1)),  // BOOL
-            0x00C2 => Some((0x00C2, 1)),  // SINT
-            0x00C3 => Some((0x00C3, 2)),  // INT
-            0x00C4 => Some((0x00C4, 4)),  // DINT
-            0x00C5 => Some((0x00C5, 8)),  // LINT
-            0x00C6 => Some((0x00C6, 1)),  // USINT
-            0x00C7 => Some((0x00C7, 2)),  // UINT
-            0x00C8 => Some((0x00C8, 4)),  // UDINT
-            0x00C9 => Some((0x00C9, 8)),  // ULINT
-            0x00CA => Some((0x00CA, 4)),  // REAL
-            0x00CB => Some((0x00CB, 8)),  // LREAL
-            0x00CE => Some((0x00CE, 86)), // STRING (82 chars + 4 length)
-            _ => None,
-        }
+        Err(EtherNetIpError::Unsupported {
+            api: "TagManager::parse_udt_definition_response",
+            reason: "the old parser invented member names and fallback fields; use EipClient::get_udt_definition or EipClient::discover_udt_members",
+        })
     }
 
     /// Validates tag name similar to the contributor's JavaScript validation
@@ -492,20 +367,25 @@ impl TagManager {
 
     /// Gets a cached UDT definition
     pub fn get_udt_definition_cached(&self, udt_name: &str) -> Option<UdtDefinition> {
-        let definitions = self.udt_definitions.read().unwrap();
-        definitions.get(udt_name).cloned()
+        self.udt_definitions
+            .read()
+            .ok()
+            .and_then(|definitions| definitions.get(udt_name).cloned())
     }
 
     /// Lists all cached UDT definitions
     pub fn list_udt_definitions(&self) -> Vec<String> {
-        let definitions = self.udt_definitions.read().unwrap();
-        definitions.keys().cloned().collect()
+        self.udt_definitions
+            .read()
+            .map(|definitions| definitions.keys().cloned().collect())
+            .unwrap_or_default()
     }
 
     /// Clears UDT definition cache
     pub fn clear_udt_cache(&self) {
-        let mut definitions = self.udt_definitions.write().unwrap();
-        definitions.clear();
+        if let Ok(mut definitions) = self.udt_definitions.write() {
+            definitions.clear();
+        }
     }
 
     pub fn parse_tag_list(&self, response: &[u8]) -> Result<Vec<(String, TagMetadata)>> {
@@ -581,12 +461,14 @@ impl TagManager {
         // Items begin immediately after the 4-byte ItemCount.
         let mut offset = item_count_at + 4;
 
-        // Parse each tag entry
-        while offset < response.len() {
+        // Parse each advertised tag entry. Truncated pages are treated as malformed
+        // instead of scanning for byte patterns that may occur inside valid names.
+        for item_index in 0..item_count {
             // Check if we have enough bytes for instance ID
             if offset + 4 > response.len() {
-                tracing::warn!("Not enough bytes for instance ID at offset {}", offset);
-                break;
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "Tag list ended before instance ID for item {item_index} at offset {offset}"
+                )));
             }
 
             let instance_id = u32::from_le_bytes([
@@ -599,39 +481,21 @@ impl TagManager {
 
             // Check if we have enough bytes for name length
             if offset + 2 > response.len() {
-                tracing::warn!("Not enough bytes for name length at offset {}", offset);
-                break;
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "Tag list ended before name length for item {item_index} at offset {offset}"
+                )));
             }
 
             let name_length = u16::from_le_bytes([response[offset], response[offset + 1]]) as usize;
             offset += 2;
 
-            // Validate name length to prevent the parsing error
             if name_length > 1000 || name_length == 0 {
-                tracing::warn!(
-                    "Invalid name length {} at offset {}, skipping entry",
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "Invalid tag-list name length {} for item {} at offset {}",
                     name_length,
+                    item_index,
                     offset - 2
-                );
-                // Try to find the next valid entry by looking for a reasonable pattern
-                // Look for the next 4-byte instance ID pattern
-                let mut found_next = false;
-                let search_start = offset;
-                for i in search_start..response.len().saturating_sub(4) {
-                    if response[i] == 0x00
-                        && response[i + 1] == 0x00
-                        && response[i + 2] == 0x00
-                        && response[i + 3] == 0x00
-                    {
-                        offset = i;
-                        found_next = true;
-                        break;
-                    }
-                }
-                if !found_next {
-                    break;
-                }
-                continue;
+                )));
             }
 
             // Check if we have enough bytes for the tag name
@@ -639,13 +503,12 @@ impl TagManager {
                 .checked_add(name_length)
                 .is_none_or(|end| end > response.len())
             {
-                tracing::warn!(
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
                     "Not enough bytes for tag name at offset {} (need {}, have {})",
                     offset,
                     name_length,
                     response.len() - offset
-                );
-                break;
+                )));
             }
 
             let name = String::from_utf8_lossy(&response[offset..offset + name_length]).to_string();
@@ -653,8 +516,9 @@ impl TagManager {
 
             // Check if we have enough bytes for tag type
             if offset + 2 > response.len() {
-                tracing::warn!("Not enough bytes for tag type at offset {}", offset);
-                break;
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "Tag list ended before type word for item {item_index} at offset {offset}"
+                )));
             }
 
             let tag_type = u16::from_le_bytes([response[offset], response[offset + 1]]);
@@ -664,20 +528,8 @@ impl TagManager {
             let (type_code, is_structure, array_dims, _reserved) = self.parse_tag_type(tag_type);
 
             let is_array = array_dims > 0;
-            let dimensions = if is_array {
-                vec![0; array_dims as usize] // Placeholder - actual dimensions would need more parsing
-            } else {
-                Vec::new()
-            };
-
-            let array_info = if is_array && !dimensions.is_empty() {
-                Some(ArrayInfo {
-                    element_count: dimensions.iter().product(),
-                    dimensions: dimensions.clone(),
-                })
-            } else {
-                None
-            };
+            let dimensions = Vec::new();
+            let array_info = None;
 
             // Filter tags by type (similar to TypeScript implementation)
             if !self.is_valid_tag_type(type_code) {
@@ -727,7 +579,7 @@ impl TagManager {
             tag_type & 0x0fff
         };
 
-        let is_structure = (tag_type & 0x8000) != 0;
+        let is_structure = is_structure_type_word(tag_type) || is_structure_type_word(type_code);
         let array_dims = ((tag_type & 0x6000) >> 13) as u8;
         let reserved = (tag_type & 0x1000) != 0;
 
@@ -749,7 +601,7 @@ impl TagManager {
             0x00CA => true, // REAL
             0x00CB => true, // LREAL
             0x00CE => true, // STRING
-            _ => false,     // Skip UDTs and other complex types for now
+            _ => is_structure_type_word(type_code),
         }
     }
 
@@ -828,6 +680,10 @@ mod tests {
     use crate::udt::UdtMember;
 
     #[test]
+    #[expect(
+        deprecated,
+        reason = "CODEX-AQ keeps TagCache covered until 2.0 removal"
+    )]
     fn test_tag_cache_expiration() {
         let mut cache = TagCache::new(Duration::from_secs(1));
         let metadata = TagMetadata {
@@ -918,12 +774,15 @@ mod tests {
         assert!(tag_manager.validate_tag_name("Valid123"));
         assert!(tag_manager.validate_tag_name("Valid_Tag123"));
         assert!(tag_manager.validate_tag_name("Valid.Tag123"));
+        assert!(tag_manager.validate_tag_name("_Tag"));
+        assert!(tag_manager.validate_tag_name("Program:Main.Tag"));
+        assert!(tag_manager.validate_tag_name("Arr[3]"));
+        assert!(tag_manager.validate_tag_name("Program:Main.Arr[3].Member"));
 
         // Invalid tag names
         assert!(!tag_manager.validate_tag_name("")); // Empty
         assert!(!tag_manager.validate_tag_name("   ")); // Whitespace only
         assert!(!tag_manager.validate_tag_name("123Invalid")); // Starts with number
-        assert!(!tag_manager.validate_tag_name("Invalid__Tag")); // Double underscore
         assert!(!tag_manager.validate_tag_name("Invalid..Tag")); // Double dot
         assert!(!tag_manager.validate_tag_name("Invalid-Tag")); // Invalid character
         assert!(!tag_manager.validate_tag_name("Invalid Tag")); // Space
@@ -955,6 +814,12 @@ mod tests {
         assert_eq!(array_dims, 0);
         assert!(!reserved);
 
+        let (type_code, is_structure, array_dims, reserved) = tag_manager.parse_tag_type(0x82A0);
+        assert_eq!(type_code, 0x02A0);
+        assert!(is_structure);
+        assert_eq!(array_dims, 0);
+        assert!(!reserved);
+
         // Test array type
         let (type_code, is_structure, array_dims, reserved) = tag_manager.parse_tag_type(0x20C4);
         assert_eq!(type_code, 0x00C4);
@@ -968,102 +833,6 @@ mod tests {
         assert!(!is_structure);
         assert_eq!(array_dims, 2);
         assert!(!reserved);
-    }
-
-    #[test]
-    fn test_extract_data_type_from_response() {
-        let tag_manager = TagManager::new();
-
-        // Test BOOL
-        let data = [0xC1, 0x00, 0x01, 0x00];
-        assert_eq!(
-            tag_manager.extract_data_type_from_response(&data),
-            Some((0x00C1, 1))
-        );
-
-        // Test DINT
-        let data = [0xC4, 0x00, 0x04, 0x00];
-        assert_eq!(
-            tag_manager.extract_data_type_from_response(&data),
-            Some((0x00C4, 4))
-        );
-
-        // Test REAL
-        let data = [0xCA, 0x00, 0x04, 0x00];
-        assert_eq!(
-            tag_manager.extract_data_type_from_response(&data),
-            Some((0x00CA, 4))
-        );
-
-        // Test STRING
-        let data = [0xCE, 0x00, 0x56, 0x00];
-        assert_eq!(
-            tag_manager.extract_data_type_from_response(&data),
-            Some((0x00CE, 86))
-        );
-
-        // Test invalid data
-        let data = [0xFF, 0xFF, 0x00, 0x00];
-        assert_eq!(tag_manager.extract_data_type_from_response(&data), None);
-
-        // Test insufficient data
-        let data = [0xC1, 0x00];
-        assert_eq!(tag_manager.extract_data_type_from_response(&data), None);
-    }
-
-    #[test]
-    fn test_parse_udt_definition_response() {
-        let tag_manager = TagManager::new();
-
-        // Test with empty response (should create fallback)
-        let empty_response = [];
-        let definition = tag_manager
-            .parse_udt_definition_response(&empty_response, "TestUDT")
-            .unwrap();
-        assert_eq!(definition.name, "TestUDT");
-        assert_eq!(definition.members.len(), 1);
-        assert_eq!(definition.members[0].name, "Value");
-        assert_eq!(definition.members[0].data_type, 0x00C4);
-
-        // Test with valid response data
-        let response_data = [
-            0xC1, 0x00, 0x01, 0x00, // BOOL
-            0xC4, 0x00, 0x04, 0x00, // DINT
-            0xCA, 0x00, 0x04, 0x00, // REAL
-        ];
-        let definition = tag_manager
-            .parse_udt_definition_response(&response_data, "MotorData")
-            .unwrap();
-        assert_eq!(definition.name, "MotorData");
-        assert_eq!(definition.members.len(), 2); // Only 2 members due to parsing logic
-        assert_eq!(definition.members[0].name, "Member_1");
-        assert_eq!(definition.members[0].data_type, 0x00C1);
-        assert_eq!(definition.members[1].name, "Member_2");
-        assert_eq!(definition.members[1].data_type, 0x00C4);
-    }
-
-    #[test]
-    fn test_build_udt_definition_request() {
-        let tag_manager = TagManager::new();
-
-        // Test with simple UDT name
-        let request = tag_manager
-            .build_udt_definition_request("MotorData")
-            .unwrap();
-        assert_eq!(request[0], 0x4C); // Service: Read Tag
-        assert_eq!(request[1], 0x07); // Path size (2 + (9+1)/2 = 7)
-        assert_eq!(request[2], 0x91); // Symbolic segment
-        assert_eq!(request[3], 9); // Name length
-        assert_eq!(&request[4..13], b"MotorData");
-
-        // Test with odd-length name (should be padded)
-        let request = tag_manager.build_udt_definition_request("Motor").unwrap();
-        assert_eq!(request[0], 0x4C); // Service: Read Tag
-        assert_eq!(request[1], 0x05); // Path size (2 + (5+1)/2 = 5)
-        assert_eq!(request[2], 0x91); // Symbolic segment
-        assert_eq!(request[3], 5); // Name length
-        assert_eq!(&request[4..9], b"Motor");
-        assert_eq!(request[9], 0x00); // Padding
     }
 
     #[test]
@@ -1094,7 +863,10 @@ mod tests {
 
         // Manually add to cache (simulating discovery)
         {
-            let mut definitions = tag_manager.udt_definitions.write().unwrap();
+            let mut definitions = tag_manager
+                .udt_definitions
+                .write()
+                .expect("test UDT definition cache lock should not be poisoned");
             definitions.insert("TestUDT".to_string(), udt_def);
         }
 
@@ -1128,30 +900,29 @@ mod tests {
         ];
 
         let result = tag_manager.parse_tag_list(&invalid_response);
-        assert!(result.is_ok());
-        let tags = result.unwrap();
-        assert_eq!(tags.len(), 0); // Should handle gracefully and return empty
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_tag_list_with_valid_data() {
         let tag_manager = TagManager::new();
 
-        // Test with valid response data (simplified format that works with current parser)
         let valid_response = [
-            0x00, 0x00, 0x00, 0x00, // Instance ID
-            0x00, 0x00, // Item count (0)
-            0x00, 0x00, 0x00, 0x00, // Instance ID
-            0x08, 0x00, // Name length (8)
-            b'M', b'o', b't', b'o', b'r', b'D', b'a', b't', // "MotorData"
+            0xD5, 0x00, 0x00, 0x00, // Service, reserved, success, no additional status
+            0x01, 0x00, 0x00, 0x00, // Item count
+            0x2A, 0x00, 0x00, 0x00, // Instance ID
+            0x09, 0x00, // Name length (9)
+            b'M', b'o', b't', b'o', b'r', b'D', b'a', b't', b'a', // "MotorData"
             0xC4, 0x00, // DINT type
         ];
 
-        let result = tag_manager.parse_tag_list(&valid_response);
-        assert!(result.is_ok());
-        let tags = result.unwrap();
-        // The current parser may not parse this format correctly, so we just test it doesn't panic
-        assert!(!tags.is_empty() || tags.is_empty()); // Always true, just for testing
+        let tags = tag_manager.parse_tag_list(&valid_response).unwrap();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].0, "MotorData");
+        assert_eq!(tags[0].1.data_type, 0x00C4);
+        assert!(!tags[0].1.is_array);
+        assert!(tags[0].1.dimensions.is_empty());
+        assert!(tags[0].1.array_info.is_none());
     }
 
     #[test]

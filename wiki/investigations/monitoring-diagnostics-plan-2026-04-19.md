@@ -2,7 +2,7 @@
 
 ## Summary
 
-The repo now has a concrete plan for strengthening monitoring and diagnostics before any anomaly-oriented features.
+The repo now has a concrete plan and first implementation step for strengthening monitoring and diagnostics before any anomaly-oriented features.
 
 The key conclusion is:
 
@@ -13,8 +13,11 @@ The key conclusion is:
 ## Current Understanding
 
 - The current monitoring module now has a first Rust-side `DiagnosticsSnapshot`, explicit `HealthCheckMode`, and first-pass `ErrorCategory` classification.
+- `confirmed`: after CODEX-AQ on 2026-07-07, `EipClient` diagnostics operation/error counters are real per-client atomics updated from the CIP send path rather than hardcoded zeroes.
+- `confirmed`: CPU/memory/system metrics remain placeholders and are explicitly flagged by `system_metrics_are_placeholders` on `DiagnosticsSnapshot` and by `MonitoringMetrics::system_metrics_are_placeholders()`.
+- `confirmed`: `ProductionMonitor` and `ProductionConfig` are deprecated 1.x compatibility surfaces; maintained consumers should use `EipClient` diagnostics and direct client/fleet configuration.
 - That diagnostics snapshot is now exposed through FFI and mapped into thin C# and Python wrapper types.
-- Some metrics are still placeholders, and real-PLC validation of the diagnostics surfaces is still pending.
+- Real-PLC validation of the diagnostics surfaces is still pending.
 - The existing real-PLC validation records already show controller-specific error patterns that should inform diagnostics classification.
 - `check_health` and `check_health_detailed` need a clearer shared diagnostics model behind them.
 - Paper 10 is useful here mainly as a sequencing reminder: reliable telemetry comes before anomaly detection.
@@ -23,6 +26,9 @@ The key conclusion is:
 
 - [docs/MONITORING_DIAGNOSTICS_IMPROVEMENT_PLAN.md](../../docs/MONITORING_DIAGNOSTICS_IMPROVEMENT_PLAN.md)
 - [src/monitoring.rs](../../src/monitoring.rs)
+- [src/client/diagnostics.rs](../../src/client/diagnostics.rs)
+- [src/client.rs](../../src/client.rs)
+- [docs/agents/tasks/CODEX-AQ-dead-stratum-deprecation.md](../../docs/agents/tasks/CODEX-AQ-dead-stratum-deprecation.md)
 - [src/lib.rs](../../src/lib.rs)
 - [src/ffi.rs](../../src/ffi.rs)
 - [csharp/RustEtherNetIp/EthernetNetIpClient.Diagnostics.cs](../../csharp/RustEtherNetIp/EthernetNetIpClient.Diagnostics.cs)
@@ -34,7 +40,8 @@ The key conclusion is:
 ## Open Questions
 
 - Whether the next diagnostics iteration should include a rolling recent-error ring buffer or remain aggregate-only.
-- How much real-PLC validation should be gathered before promoting diagnostics as a supported wrapper contract.
+- How to validate read/write/batch counter semantics on real PLCs before promoting diagnostics as a supported wrapper contract.
+- Whether system CPU/memory metrics should become real cross-platform telemetry or be removed from the promoted diagnostics contract.
 
 ## Related Pages
 

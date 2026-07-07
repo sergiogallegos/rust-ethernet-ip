@@ -1,7 +1,9 @@
 use crate::EtherNetIpStream;
 use crate::batch::{BatchConfig, BatchOperation};
 use crate::error::{EtherNetIpError, Result};
-use crate::protocol::cip::{CipRequest, CipResponse, READ_TAG, SendDataRequest, WRITE_TAG};
+use crate::protocol::cip::{
+    CipRequest, CipResponse, MULTIPLE_SERVICE_PACKET, READ_TAG, SendDataRequest, WRITE_TAG,
+};
 use crate::protocol::encap::{EncapsulationHeader, REGISTER_SESSION, UNREGISTER_SESSION};
 use crate::protocol::values;
 use crate::protocol::{Decode, Encode};
@@ -17,8 +19,9 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 #[cfg(feature = "ffi")]
 use std::sync::LazyLock;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 #[cfg(feature = "ffi")]
@@ -49,6 +52,273 @@ struct TemplateAttributes {
     member_count: u16,
     definition_size_words: u32,
     structure_size_bytes: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DiagnosticOperation {
+    Read,
+    Write,
+    Batch,
+}
+
+#[derive(Debug, Default)]
+struct DiagnosticCounters {
+    total_reads: AtomicU64,
+    total_writes: AtomicU64,
+    successful_reads: AtomicU64,
+    successful_writes: AtomicU64,
+    failed_reads: AtomicU64,
+    failed_writes: AtomicU64,
+    batch_operations: AtomicU64,
+    partial_batch_failures: AtomicU64,
+    network_errors: AtomicU64,
+    protocol_errors: AtomicU64,
+    timeout_errors: AtomicU64,
+    tag_not_found_errors: AtomicU64,
+    data_type_errors: AtomicU64,
+    session_errors: AtomicU64,
+    route_path_errors: AtomicU64,
+    embedded_service_errors: AtomicU64,
+    known_controller_limitation_errors: AtomicU64,
+    retriable_errors: AtomicU64,
+    non_retriable_errors: AtomicU64,
+    last_successful_read_time: AtomicU64,
+    last_failed_read_time: AtomicU64,
+    last_successful_write_time: AtomicU64,
+    last_failed_write_time: AtomicU64,
+    last_error_time: AtomicU64,
+    last_error_category: AtomicU8,
+}
+
+impl DiagnosticCounters {
+    fn record_success(&self, operation: Option<DiagnosticOperation>) {
+        let now = current_unix_seconds();
+        match operation {
+            Some(DiagnosticOperation::Read) => {
+                self.total_reads.fetch_add(1, Ordering::Relaxed);
+                self.successful_reads.fetch_add(1, Ordering::Relaxed);
+                self.last_successful_read_time.store(now, Ordering::Relaxed);
+            }
+            Some(DiagnosticOperation::Write) => {
+                self.total_writes.fetch_add(1, Ordering::Relaxed);
+                self.successful_writes.fetch_add(1, Ordering::Relaxed);
+                self.last_successful_write_time
+                    .store(now, Ordering::Relaxed);
+            }
+            Some(DiagnosticOperation::Batch) => {
+                self.batch_operations.fetch_add(1, Ordering::Relaxed);
+            }
+            None => {}
+        }
+    }
+
+    fn record_cip_failure(&self, operation: Option<DiagnosticOperation>) {
+        let category = crate::ErrorCategory::CipProtocol;
+        self.record_operation_failure(operation, current_unix_seconds());
+        self.protocol_errors.fetch_add(1, Ordering::Relaxed);
+        self.non_retriable_errors.fetch_add(1, Ordering::Relaxed);
+        self.store_last_error(category);
+    }
+
+    fn record_failure(&self, operation: Option<DiagnosticOperation>, error: &EtherNetIpError) {
+        let now = current_unix_seconds();
+        let category = diagnostic_error_category(error);
+        self.record_operation_failure(operation, now);
+
+        match category {
+            crate::ErrorCategory::Network => self.network_errors.fetch_add(1, Ordering::Relaxed),
+            crate::ErrorCategory::Timeout => self.timeout_errors.fetch_add(1, Ordering::Relaxed),
+            crate::ErrorCategory::Session => self.session_errors.fetch_add(1, Ordering::Relaxed),
+            crate::ErrorCategory::RoutePath => {
+                self.route_path_errors.fetch_add(1, Ordering::Relaxed)
+            }
+            crate::ErrorCategory::CipProtocol => {
+                self.protocol_errors.fetch_add(1, Ordering::Relaxed)
+            }
+            crate::ErrorCategory::BatchEmbeddedService => {
+                self.embedded_service_errors.fetch_add(1, Ordering::Relaxed)
+            }
+            crate::ErrorCategory::KnownControllerLimitation => self
+                .known_controller_limitation_errors
+                .fetch_add(1, Ordering::Relaxed),
+            crate::ErrorCategory::DataType => self.data_type_errors.fetch_add(1, Ordering::Relaxed),
+            crate::ErrorCategory::NotFound => {
+                self.tag_not_found_errors.fetch_add(1, Ordering::Relaxed)
+            }
+            crate::ErrorCategory::Unknown => self.protocol_errors.fetch_add(1, Ordering::Relaxed),
+        };
+
+        if error.is_retriable() || category.is_retriable() {
+            self.retriable_errors.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.non_retriable_errors.fetch_add(1, Ordering::Relaxed);
+        }
+        self.store_last_error(category);
+    }
+
+    fn record_operation_failure(&self, operation: Option<DiagnosticOperation>, now: u64) {
+        match operation {
+            Some(DiagnosticOperation::Read) => {
+                self.total_reads.fetch_add(1, Ordering::Relaxed);
+                self.failed_reads.fetch_add(1, Ordering::Relaxed);
+                self.last_failed_read_time.store(now, Ordering::Relaxed);
+            }
+            Some(DiagnosticOperation::Write) => {
+                self.total_writes.fetch_add(1, Ordering::Relaxed);
+                self.failed_writes.fetch_add(1, Ordering::Relaxed);
+                self.last_failed_write_time.store(now, Ordering::Relaxed);
+            }
+            Some(DiagnosticOperation::Batch) => {
+                self.batch_operations.fetch_add(1, Ordering::Relaxed);
+                self.partial_batch_failures.fetch_add(1, Ordering::Relaxed);
+            }
+            None => {}
+        }
+    }
+
+    fn store_last_error(&self, category: crate::ErrorCategory) {
+        self.last_error_time
+            .store(current_unix_seconds(), Ordering::Relaxed);
+        self.last_error_category
+            .store(error_category_to_code(category), Ordering::Relaxed);
+    }
+
+    fn operation_metrics(&self) -> crate::OperationMetrics {
+        crate::OperationMetrics {
+            total_reads: self.total_reads.load(Ordering::Relaxed),
+            total_writes: self.total_writes.load(Ordering::Relaxed),
+            successful_reads: self.successful_reads.load(Ordering::Relaxed),
+            successful_writes: self.successful_writes.load(Ordering::Relaxed),
+            failed_reads: self.failed_reads.load(Ordering::Relaxed),
+            failed_writes: self.failed_writes.load(Ordering::Relaxed),
+            batch_operations: self.batch_operations.load(Ordering::Relaxed),
+            subscription_updates: 0,
+            partial_batch_failures: self.partial_batch_failures.load(Ordering::Relaxed),
+            last_successful_read_time: unix_seconds_to_system_time(
+                self.last_successful_read_time.load(Ordering::Relaxed),
+            ),
+            last_failed_read_time: unix_seconds_to_system_time(
+                self.last_failed_read_time.load(Ordering::Relaxed),
+            ),
+            last_successful_write_time: unix_seconds_to_system_time(
+                self.last_successful_write_time.load(Ordering::Relaxed),
+            ),
+            last_failed_write_time: unix_seconds_to_system_time(
+                self.last_failed_write_time.load(Ordering::Relaxed),
+            ),
+        }
+    }
+
+    fn error_metrics(&self) -> crate::ErrorMetrics {
+        let last_error_category =
+            error_category_from_code(self.last_error_category.load(Ordering::Relaxed));
+        crate::ErrorMetrics {
+            network_errors: self.network_errors.load(Ordering::Relaxed),
+            protocol_errors: self.protocol_errors.load(Ordering::Relaxed),
+            timeout_errors: self.timeout_errors.load(Ordering::Relaxed),
+            tag_not_found_errors: self.tag_not_found_errors.load(Ordering::Relaxed),
+            data_type_errors: self.data_type_errors.load(Ordering::Relaxed),
+            session_errors: self.session_errors.load(Ordering::Relaxed),
+            route_path_errors: self.route_path_errors.load(Ordering::Relaxed),
+            embedded_service_errors: self.embedded_service_errors.load(Ordering::Relaxed),
+            known_controller_limitation_errors: self
+                .known_controller_limitation_errors
+                .load(Ordering::Relaxed),
+            retriable_errors: self.retriable_errors.load(Ordering::Relaxed),
+            non_retriable_errors: self.non_retriable_errors.load(Ordering::Relaxed),
+            last_error_time: unix_seconds_to_system_time(
+                self.last_error_time.load(Ordering::Relaxed),
+            ),
+            last_error_message: last_error_category.map(|category| {
+                format!("Most recent counted client operation failed: {category:?}")
+            }),
+            last_error_category,
+            last_retriable_error_time: if last_error_category.is_some_and(|c| c.is_retriable()) {
+                unix_seconds_to_system_time(self.last_error_time.load(Ordering::Relaxed))
+            } else {
+                None
+            },
+        }
+    }
+}
+
+fn current_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn unix_seconds_to_system_time(seconds: u64) -> Option<SystemTime> {
+    (seconds != 0).then(|| UNIX_EPOCH + Duration::from_secs(seconds))
+}
+
+fn error_category_to_code(category: crate::ErrorCategory) -> u8 {
+    match category {
+        crate::ErrorCategory::Network => 1,
+        crate::ErrorCategory::Timeout => 2,
+        crate::ErrorCategory::Session => 3,
+        crate::ErrorCategory::RoutePath => 4,
+        crate::ErrorCategory::CipProtocol => 5,
+        crate::ErrorCategory::BatchEmbeddedService => 6,
+        crate::ErrorCategory::KnownControllerLimitation => 7,
+        crate::ErrorCategory::DataType => 8,
+        crate::ErrorCategory::NotFound => 9,
+        crate::ErrorCategory::Unknown => 10,
+    }
+}
+
+fn error_category_from_code(code: u8) -> Option<crate::ErrorCategory> {
+    match code {
+        1 => Some(crate::ErrorCategory::Network),
+        2 => Some(crate::ErrorCategory::Timeout),
+        3 => Some(crate::ErrorCategory::Session),
+        4 => Some(crate::ErrorCategory::RoutePath),
+        5 => Some(crate::ErrorCategory::CipProtocol),
+        6 => Some(crate::ErrorCategory::BatchEmbeddedService),
+        7 => Some(crate::ErrorCategory::KnownControllerLimitation),
+        8 => Some(crate::ErrorCategory::DataType),
+        9 => Some(crate::ErrorCategory::NotFound),
+        10 => Some(crate::ErrorCategory::Unknown),
+        _ => None,
+    }
+}
+
+fn diagnostic_error_category(error: &EtherNetIpError) -> crate::ErrorCategory {
+    match error {
+        EtherNetIpError::Io(_) | EtherNetIpError::ConnectionLost(_) => {
+            crate::ErrorCategory::Network
+        }
+        EtherNetIpError::Timeout(_) => crate::ErrorCategory::Timeout,
+        EtherNetIpError::Connection(_) => crate::ErrorCategory::Session,
+        EtherNetIpError::TagNotFound(_) => crate::ErrorCategory::NotFound,
+        EtherNetIpError::DataTypeMismatch { .. }
+        | EtherNetIpError::StringTooLong { .. }
+        | EtherNetIpError::InvalidString { .. } => crate::ErrorCategory::DataType,
+        EtherNetIpError::ReadError { .. }
+        | EtherNetIpError::WriteError { .. }
+        | EtherNetIpError::CipError { .. } => crate::ErrorCategory::CipProtocol,
+        EtherNetIpError::Protocol(message)
+            if message.contains("route") || message.contains("Route") =>
+        {
+            crate::ErrorCategory::RoutePath
+        }
+        EtherNetIpError::Protocol(message)
+            if message.contains("Embedded service") || message.contains("Multiple Service") =>
+        {
+            crate::ErrorCategory::BatchEmbeddedService
+        }
+        EtherNetIpError::Protocol(_) | EtherNetIpError::InvalidResponse { .. } => {
+            crate::ErrorCategory::CipProtocol
+        }
+        EtherNetIpError::Udt(_)
+        | EtherNetIpError::Tag(_)
+        | EtherNetIpError::Permission(_)
+        | EtherNetIpError::Utf8(_)
+        | EtherNetIpError::Other(_)
+        | EtherNetIpError::Subscription(_)
+        | EtherNetIpError::Unsupported { .. } => crate::ErrorCategory::Unknown,
+    }
 }
 
 /// Global Tokio runtime for handling async operations in FFI context
@@ -241,6 +511,8 @@ pub struct EipClient {
     stream_poisoned: Arc<AtomicBool>,
     /// SHARED ON CLONE: monotonic sender_context counter for SendRRData correlation.
     sender_context_counter: Arc<AtomicU64>,
+    /// SHARED ON CLONE: operation/error counters surfaced by diagnostics snapshots.
+    diagnostic_counters: Arc<DiagnosticCounters>,
     /// SHARED ON CLONE: tag discovery/cache state.
     tag_manager: Arc<Mutex<TagManager>>,
     /// SHARED ON CLONE: UDT discovery/cache state.
@@ -274,6 +546,7 @@ impl std::fmt::Debug for EipClient {
             .field("max_packet_size", &self.max_packet_size())
             .field("batch_config", &self.batch_config)
             .field("stream", &"<stream>")
+            .field("diagnostic_counters", &"<diagnostic_counters>")
             .field("tag_manager", &"<tag_manager>")
             .field("udt_manager", &"<udt_manager>")
             .field("subscriptions", &"<subscriptions>")
@@ -294,6 +567,7 @@ impl EipClient {
             session_handle: Arc::new(AtomicU32::new(0)),
             stream_poisoned: Arc::new(AtomicBool::new(false)),
             sender_context_counter: Arc::new(AtomicU64::new(1)),
+            diagnostic_counters: Arc::new(DiagnosticCounters::default()),
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
             route_path: Arc::new(StdMutex::new(None)),
@@ -329,6 +603,7 @@ impl EipClient {
             session_handle: Arc::new(AtomicU32::new(0)),
             stream_poisoned: Arc::new(AtomicBool::new(false)),
             sender_context_counter: Arc::new(AtomicU64::new(1)),
+            diagnostic_counters: Arc::new(DiagnosticCounters::default()),
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
             route_path: Arc::new(StdMutex::new(None)),
@@ -462,6 +737,15 @@ impl EipClient {
             .to_le_bytes()
     }
 
+    fn diagnostic_operation_for(cip_request: &[u8]) -> Option<DiagnosticOperation> {
+        match cip_request.first().copied() {
+            Some(READ_TAG) => Some(DiagnosticOperation::Read),
+            Some(WRITE_TAG) => Some(DiagnosticOperation::Write),
+            Some(MULTIPLE_SERVICE_PACKET) => Some(DiagnosticOperation::Batch),
+            _ => None,
+        }
+    }
+
     fn ensure_stream_usable(&self) -> crate::error::Result<()> {
         if self.stream_poisoned() {
             return Err(EtherNetIpError::ConnectionLost(
@@ -531,20 +815,7 @@ impl EipClient {
         &mut self,
         udt_name: &str,
     ) -> crate::error::Result<Vec<(String, TagMetadata)>> {
-        // Build CIP request to get UDT definition
-        let cip_request = {
-            let tag_manager = self.tag_manager.lock().await;
-            tag_manager.build_udt_definition_request(udt_name)?
-        };
-
-        // Send the request
-        let response = self.send_cip_request(&cip_request).await?;
-
-        // Parse the UDT definition from response
-        let definition = {
-            let tag_manager = self.tag_manager.lock().await;
-            tag_manager.parse_udt_definition_response(&response, udt_name)?
-        };
+        let definition = self.get_udt_definition(udt_name).await?;
 
         // Cache the definition
         {
@@ -3198,6 +3469,7 @@ impl EipClient {
         // Build Unconnected Send message wrapping the CIP request
         // Route path goes at the END of Unconnected Send, NOT in the CIP request
         let ucmm_message = self.build_unconnected_send(cip_request);
+        let diagnostic_operation = Self::diagnostic_operation_for(cip_request);
 
         tracing::trace!(
             "Unconnected Send message ({} bytes): {:02X?}",
@@ -3205,7 +3477,14 @@ impl EipClient {
             &ucmm_message[..std::cmp::min(64, ucmm_message.len())]
         );
 
-        let response_data = self.send_rr_data_item(&ucmm_message).await?;
+        let response_data = match self.send_rr_data_item(&ucmm_message).await {
+            Ok(response_data) => response_data,
+            Err(error) => {
+                self.diagnostic_counters
+                    .record_failure(diagnostic_operation, &error);
+                return Err(error);
+            }
+        };
 
         if let Ok(raw_cip_data) = self.extract_unconnected_data_item(&response_data) {
             let use_direct_fallback = raw_cip_data.len() >= 3
@@ -3218,8 +3497,30 @@ impl EipClient {
                     "Unconnected Send returned 0xD2 status 0x{:02X}; retrying with direct CIP SendRRData fallback",
                     raw_cip_data[2]
                 );
-                return self.send_rr_data_item(cip_request).await;
+                return match self.send_rr_data_item(cip_request).await {
+                    Ok(response_data) => {
+                        self.diagnostic_counters
+                            .record_success(diagnostic_operation);
+                        Ok(response_data)
+                    }
+                    Err(error) => {
+                        self.diagnostic_counters
+                            .record_failure(diagnostic_operation, &error);
+                        Err(error)
+                    }
+                };
             }
+
+            if raw_cip_data.len() >= 3 && raw_cip_data[2] != 0x00 {
+                self.diagnostic_counters
+                    .record_cip_failure(diagnostic_operation);
+            } else {
+                self.diagnostic_counters
+                    .record_success(diagnostic_operation);
+            }
+        } else {
+            self.diagnostic_counters
+                .record_success(diagnostic_operation);
         }
 
         Ok(response_data)
@@ -3963,9 +4264,11 @@ mod write_request_tests {
 
 #[cfg(test)]
 mod transport_tests {
-    use super::EipClient;
+    use super::{DiagnosticOperation, EipClient};
     use crate::EtherNetIpStream;
+    use crate::error::EtherNetIpError;
     use std::sync::Arc;
+    use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::sync::Mutex;
 
@@ -4051,6 +4354,39 @@ mod transport_tests {
 
         assert_eq!(client.session_handle(), 0x3333_4444);
         assert_eq!(clone.session_handle(), 0x3333_4444);
+    }
+
+    #[tokio::test]
+    async fn diagnostics_snapshot_reports_counted_operations_and_errors() {
+        let client = EipClient::new_unconnected_for_testing();
+
+        client
+            .diagnostic_counters
+            .record_success(Some(DiagnosticOperation::Read));
+        client.diagnostic_counters.record_failure(
+            Some(DiagnosticOperation::Write),
+            &EtherNetIpError::Timeout(Duration::from_secs(1)),
+        );
+        client
+            .diagnostic_counters
+            .record_cip_failure(Some(DiagnosticOperation::Batch));
+
+        let snapshot = client.get_diagnostics_snapshot().await;
+
+        assert_eq!(snapshot.operations.total_reads, 1);
+        assert_eq!(snapshot.operations.successful_reads, 1);
+        assert_eq!(snapshot.operations.total_writes, 1);
+        assert_eq!(snapshot.operations.failed_writes, 1);
+        assert_eq!(snapshot.operations.batch_operations, 1);
+        assert_eq!(snapshot.operations.partial_batch_failures, 1);
+        assert_eq!(snapshot.errors.timeout_errors, 1);
+        assert_eq!(snapshot.errors.protocol_errors, 1);
+        assert_eq!(snapshot.errors.retriable_errors, 1);
+        assert_eq!(snapshot.errors.non_retriable_errors, 1);
+        assert!(snapshot.operations.last_successful_read_time.is_some());
+        assert!(snapshot.operations.last_failed_write_time.is_some());
+        assert!(snapshot.errors.last_error_time.is_some());
+        assert!(snapshot.system_metrics_are_placeholders);
     }
 }
 

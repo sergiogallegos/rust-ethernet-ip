@@ -1,5 +1,4 @@
-use rust_ethernet_ip::{EipClient, PlcConfig, PlcManager, PlcValue, TagScope};
-use std::time::Duration;
+use rust_ethernet_ip::{EipClient, PlcValue, TagScope};
 
 /// Helper function to check if a PLC is available at the given address
 async fn is_plc_available(address: &str) -> bool {
@@ -85,31 +84,9 @@ async fn test_multiple_plc_connections() {
         return;
     }
 
-    let mut manager = PlcManager::new();
-
-    // Configure two PLCs
-    let config1 = PlcConfig {
-        address: address1.parse().unwrap(),
-        max_connections: 2,
-        connection_timeout: Duration::from_secs(5),
-        health_check_interval: Duration::from_secs(30),
-        max_packet_size: 4000,
-    };
-
-    let config2 = PlcConfig {
-        address: address2.parse().unwrap(),
-        max_connections: 2,
-        connection_timeout: Duration::from_secs(5),
-        health_check_interval: Duration::from_secs(30),
-        max_packet_size: 4000,
-    };
-
-    manager.add_plc(config1.clone());
-    manager.add_plc(config2.clone());
-
-    // Get and use client1
+    // Connect and use PLC 1 directly. Multi-PLC orchestration is covered by Fleet tests.
     {
-        let client1 = manager.get_connection(config1.address).await.unwrap();
+        let mut client1 = EipClient::connect(address1).await.unwrap();
         client1
             .write_tag("Tag1", PlcValue::Bool(true))
             .await
@@ -117,9 +94,9 @@ async fn test_multiple_plc_connections() {
         let value1 = client1.read_tag("Tag1").await.unwrap();
         assert_eq!(value1, PlcValue::Bool(true));
     }
-    // Get and use client2
+    // Connect and use PLC 2 directly.
     {
-        let client2 = manager.get_connection(config2.address).await.unwrap();
+        let mut client2 = EipClient::connect(address2).await.unwrap();
         client2.write_tag("Tag2", PlcValue::Dint(42)).await.unwrap();
         let value2 = client2.read_tag("Tag2").await.unwrap();
         assert_eq!(value2, PlcValue::Dint(42));
@@ -138,21 +115,9 @@ async fn test_connection_pooling() {
         return;
     }
 
-    let mut manager = PlcManager::new();
-
-    let config = PlcConfig {
-        address: address.parse().unwrap(),
-        max_connections: 2,
-        connection_timeout: Duration::from_secs(5),
-        health_check_interval: Duration::from_secs(30),
-        max_packet_size: 4000,
-    };
-
-    manager.add_plc(config.clone());
-
-    // Get and use client1
+    // Direct clients replace the deprecated PlcManager pool in integration coverage.
     {
-        let client1 = manager.get_connection(config.address).await.unwrap();
+        let mut client1 = EipClient::connect(address).await.unwrap();
         client1
             .write_tag("Tag1", PlcValue::Bool(true))
             .await
@@ -160,9 +125,8 @@ async fn test_connection_pooling() {
         let value1 = client1.read_tag("Tag1").await.unwrap();
         assert_eq!(value1, PlcValue::Bool(true));
     }
-    // Get and use client2
     {
-        let client2 = manager.get_connection(config.address).await.unwrap();
+        let mut client2 = EipClient::connect(address).await.unwrap();
         client2
             .write_tag("Tag2", PlcValue::Bool(false))
             .await
@@ -184,26 +148,9 @@ async fn test_health_monitoring() {
         return;
     }
 
-    let mut manager = PlcManager::new();
-
-    let config = PlcConfig {
-        address: address.parse().unwrap(),
-        max_connections: 2,
-        connection_timeout: Duration::from_secs(5),
-        health_check_interval: Duration::from_secs(30),
-        max_packet_size: 4000,
-    };
-
-    manager.add_plc(config.clone());
-
-    // Get a connection
-    let _client = manager.get_connection(config.address).await.unwrap();
-
-    // Perform health check
-    manager.check_health().await;
-
-    // Clean up inactive connections
-    manager.cleanup_connections();
+    let mut client = EipClient::connect(address).await.unwrap();
+    assert!(client.check_health().await);
+    assert!(client.check_health_detailed().await.unwrap());
 }
 
 #[tokio::test]

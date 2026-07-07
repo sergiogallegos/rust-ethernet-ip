@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::RwLock;
-use tokio::time::interval;
 
 /// Production monitoring metrics for the EtherNet/IP library
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,6 +17,13 @@ pub struct MonitoringMetrics {
     pub errors: ErrorMetrics,
     /// System health
     pub health: HealthMetrics,
+}
+
+impl MonitoringMetrics {
+    /// Returns true because CPU/memory metrics in this legacy monitor are placeholders.
+    pub fn system_metrics_are_placeholders(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,17 +148,29 @@ pub struct DiagnosticsSnapshot {
 }
 
 /// Production monitoring system for EtherNet/IP operations
+#[deprecated(
+    since = "1.2.0",
+    note = "ProductionMonitor is a standalone placeholder not wired into EipClient; use EipClient diagnostics snapshots instead. The type will be removed in 2.0."
+)]
 pub struct ProductionMonitor {
     metrics: Arc<RwLock<MonitoringMetrics>>,
     start_time: Instant,
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps ProductionMonitor compatibility until 2.0 removal"
+)]
 impl Default for ProductionMonitor {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps ProductionMonitor compatibility until 2.0 removal"
+)]
 impl ProductionMonitor {
     pub fn new() -> Self {
         Self {
@@ -506,39 +524,9 @@ impl ProductionMonitor {
 
     /// Start monitoring background tasks
     pub async fn start_monitoring(&self) {
-        let monitor = self.clone();
-        tokio::spawn(async move {
-            let mut interval = interval(Duration::from_secs(30));
-            loop {
-                interval.tick().await;
-                monitor.update_system_metrics().await;
-            }
-        });
-    }
-
-    /// Update system-level metrics
-    async fn update_system_metrics(&self) {
-        let mut metrics = self.metrics.write().await;
-
-        // Update memory usage (simplified)
-        metrics.performance.memory_usage_mb = self.get_memory_usage();
-
-        // Update CPU usage (simplified)
-        metrics.performance.cpu_usage_percent = self.get_cpu_usage();
-    }
-
-    /// Get current memory usage (simplified implementation)
-    fn get_memory_usage(&self) -> f64 {
-        // In a real implementation, you would use system APIs
-        // For now, return a placeholder
-        10.0
-    }
-
-    /// Get current CPU usage (simplified implementation)
-    fn get_cpu_usage(&self) -> f64 {
-        // In a real implementation, you would use system APIs
-        // For now, return a placeholder
-        5.0
+        tracing::warn!(
+            "ProductionMonitor::start_monitoring is deprecated and no longer spawns a placeholder metrics task"
+        );
     }
 
     /// Reset consecutive failures (call after successful recovery)
@@ -566,6 +554,10 @@ impl ProductionMonitor {
     }
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps ProductionMonitor compatibility until 2.0 removal"
+)]
 impl Clone for ProductionMonitor {
     fn clone(&self) -> Self {
         Self {
@@ -576,6 +568,10 @@ impl Clone for ProductionMonitor {
 }
 
 #[cfg(test)]
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps ProductionMonitor unit coverage until 2.0 removal"
+)]
 mod tests {
     use super::*;
     use crate::error::EtherNetIpError;

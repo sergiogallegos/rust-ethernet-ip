@@ -166,16 +166,28 @@ impl TagSubscription {
 
 /// Manages multiple tag subscriptions
 #[derive(Debug, Clone)]
+#[deprecated(
+    since = "1.2.0",
+    note = "SubscriptionManager is not used by EipClient; use EipClient subscription methods or Client tag groups instead. The type will be removed in 2.0."
+)]
 pub struct SubscriptionManager {
     subscriptions: Arc<Mutex<Vec<TagSubscription>>>,
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps SubscriptionManager compatibility until 2.0 removal"
+)]
 impl Default for SubscriptionManager {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps SubscriptionManager compatibility until 2.0 removal"
+)]
 impl SubscriptionManager {
     /// Creates a new subscription manager
     pub fn new() -> Self {

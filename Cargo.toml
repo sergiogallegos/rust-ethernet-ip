@@ -54,13 +54,14 @@ function_export_name_changed = "allow"
 # behavior now returns typed Unsupported errors; removals remain guarded by
 # `function_missing` and are queued in docs/ROADMAP.md.
 type_method_marked_deprecated = "allow"
+# CODEX-AQ intentionally deprecates dead public compatibility structs while
+# keeping their signatures through the 1.x line: ProductionMonitor,
+# ProductionConfig, SubscriptionManager, TagCache, and PlcManager. Removals
+# remain SemVer-major and are queued for 2.0.
+type_marked_deprecated = "allow"
 
 [[bench]]
 name = "performance_benchmark"
-harness = false
-
-[[bench]]
-name = "udt_discovery_benchmark"
 harness = false
 
 [dependencies]
@@ -71,6 +72,7 @@ tokio = { version = "1.0", features = [
     "time",
     "sync",
     "io-util",
+    "signal",
 ] }
 libc = { version = "0.2", optional = true }
 bytes = "1.0"

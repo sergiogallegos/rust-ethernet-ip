@@ -7,6 +7,10 @@ use std::time::Duration;
 
 /// Production configuration for EtherNet/IP library
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[deprecated(
+    since = "1.2.0",
+    note = "ProductionConfig is not consumed by EipClient and implies unsupported enforcement; configure EipClient/Client/Fleet directly. The type will be removed in 2.0."
+)]
 pub struct ProductionConfig {
     /// Connection settings
     pub connection: ConnectionConfig,
@@ -215,6 +219,10 @@ pub struct TagDiscoveryConfig {
     pub max_tags: usize,
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps ProductionConfig compatibility until 2.0 removal"
+)]
 impl Default for ProductionConfig {
     fn default() -> Self {
         Self {
@@ -289,6 +297,10 @@ impl Default for ProductionConfig {
     }
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps ProductionConfig compatibility until 2.0 removal"
+)]
 impl ProductionConfig {
     /// Load configuration from file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {

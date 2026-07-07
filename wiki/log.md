@@ -1056,3 +1056,19 @@ Sources used:
 - `docs/validation/2026-07-03_blocked_write_label_probe_plan.md`
 - `src/client.rs`
 - `src/client/string.rs`
+
+## [2026-07-07] reframe | dead-stratum deprecation after CODEX-AQ
+
+- Updated `wiki/investigations/monitoring-diagnostics-plan-2026-04-19.md`.
+- Updated `wiki/investigations/fleet-api-2026-05-24.md`.
+- Recorded that diagnostics operation/error counters are now real per-client atomics, while system CPU/memory metrics remain explicitly placeholder.
+- Recorded that `PlcManager` is now deprecated 1.x compatibility surface and `Fleet` is the maintained Rust multi-PLC replacement.
+
+Sources used:
+
+- `docs/agents/tasks/CODEX-AQ-dead-stratum-deprecation.md`
+- `src/client.rs`
+- `src/client/diagnostics.rs`
+- `src/monitoring.rs`
+- `src/plc_manager.rs`
+- `src/fleet.rs`

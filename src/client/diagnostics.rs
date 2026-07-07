@@ -75,6 +75,21 @@ impl EipClient {
             None
         };
 
+        let operations = self.diagnostic_counters.operation_metrics();
+        let mut errors = self.diagnostic_counters.error_metrics();
+        if error_category == Some(crate::ErrorCategory::Session) {
+            errors.session_errors += 1;
+            errors.retriable_errors += 1;
+            if errors.last_error_time.is_none() {
+                errors.last_error_time = Some(now);
+                errors.last_error_message = Some(
+                    "Detailed health check reported session-level connectivity failure".to_string(),
+                );
+                errors.last_error_category = error_category;
+                errors.last_retriable_error_time = Some(now);
+            }
+        }
+
         crate::DiagnosticsSnapshot {
             captured_at: now,
             connections: crate::ConnectionMetrics {
@@ -84,21 +99,7 @@ impl EipClient {
                 connection_uptime_avg: Duration::ZERO,
                 last_connection_time: last_success_time,
             },
-            operations: crate::OperationMetrics {
-                total_reads: 0,
-                total_writes: 0,
-                successful_reads: 0,
-                successful_writes: 0,
-                failed_reads: 0,
-                failed_writes: 0,
-                batch_operations: 0,
-                subscription_updates: 0,
-                partial_batch_failures: 0,
-                last_successful_read_time: None,
-                last_failed_read_time: None,
-                last_successful_write_time: None,
-                last_failed_write_time: None,
-            },
+            operations,
             performance: crate::PerformanceMetrics {
                 avg_read_latency_ms: 0.0,
                 avg_write_latency_ms: 0.0,
@@ -109,42 +110,7 @@ impl EipClient {
                 memory_usage_mb: 0.0,
                 cpu_usage_percent: 0.0,
             },
-            errors: crate::ErrorMetrics {
-                network_errors: 0,
-                protocol_errors: 0,
-                timeout_errors: 0,
-                tag_not_found_errors: 0,
-                data_type_errors: 0,
-                session_errors: if error_category == Some(crate::ErrorCategory::Session) {
-                    1
-                } else {
-                    0
-                },
-                route_path_errors: 0,
-                embedded_service_errors: 0,
-                known_controller_limitation_errors: 0,
-                retriable_errors: if error_category == Some(crate::ErrorCategory::Session) {
-                    1
-                } else {
-                    0
-                },
-                non_retriable_errors: 0,
-                last_error_time: if error_category.is_some() {
-                    Some(now)
-                } else {
-                    None
-                },
-                last_error_message: error_category.map(|_| {
-                    "Detailed health check reported session-level connectivity failure".to_string()
-                }),
-                last_error_category: error_category,
-                last_retriable_error_time: if error_category == Some(crate::ErrorCategory::Session)
-                {
-                    Some(now)
-                } else {
-                    None
-                },
-            },
+            errors,
             health: crate::HealthMetrics {
                 overall_health: if is_healthy {
                     crate::HealthStatus::Healthy

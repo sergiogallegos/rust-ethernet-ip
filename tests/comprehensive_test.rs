@@ -1,7 +1,6 @@
-use rust_ethernet_ip::{PlcConfig, PlcManager, PlcValue, TagMetadata, TagPermissions, TagScope};
+use rust_ethernet_ip::{PlcValue, TagMetadata, TagPermissions, TagScope};
 use std::collections::HashMap;
 use std::error::Error;
-use std::time::Duration;
 
 // Mock PLC state for testing - using thread-local storage for test isolation
 use std::cell::RefCell;
@@ -73,17 +72,6 @@ impl MockEipClient {
     }
 
     fn set_max_packet_size(&mut self, _size: u32) {}
-}
-
-// Helper function to create a test PLC configuration
-fn create_test_config(port: u16) -> PlcConfig {
-    PlcConfig {
-        address: format!("127.0.0.1:{}", port).parse().unwrap(),
-        max_connections: 2,
-        connection_timeout: Duration::from_secs(5),
-        health_check_interval: Duration::from_secs(30),
-        max_packet_size: 4000,
-    }
 }
 
 #[tokio::test]
@@ -196,11 +184,7 @@ async fn test_tag_discovery_and_metadata() -> Result<(), Box<dyn Error>> {
 
 #[tokio::test]
 async fn test_connection_pool() -> Result<(), Box<dyn Error>> {
-    let mut manager = PlcManager::new();
-    let config = create_test_config(44818);
-    manager.add_plc(config);
-
-    // Get first connection and use it
+    // Mock-only smoke coverage for independent clients; real multi-PLC pooling lives in Fleet.
     {
         let mut client = MockEipClient::new();
         client.write_tag("PoolTag1", PlcValue::Bool(true)).await?;

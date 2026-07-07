@@ -17,6 +17,12 @@ Target next release: TBD.
   1.2.0 manifest relabel decision.
 
 ### Deprecated
+- CODEX-AQ deprecated dead 1.x compatibility surfaces that remain exported but
+  are not part of the maintained runtime path: `ProductionMonitor`,
+  `ProductionConfig`, `SubscriptionManager` / `RealTimeSubscriptionManager`,
+  `TagCache`, and `PlcManager`. Use `EipClient` diagnostics and subscriptions,
+  direct client configuration, `TagManager`, and `Fleet` instead. The deprecated
+  types are retained for SemVer compatibility and queued for removal in 2.0.
 - CODEX-AP deprecated legacy STRING and UDT offset APIs that never had a valid
   wire contract: Rust `write_string`, `write_ab_string_components`,
   `write_ab_string_udt`, `write_string_connected`,
@@ -28,6 +34,20 @@ Target next release: TBD.
   `UdtData::parse`, or the service-layer UDT member helpers instead.
 
 ### Fixed
+- CODEX-AQ removed the fabricated TagManager UDT definition request/parser.
+  `discover_udt_members` now uses the real template-definition path, and tag
+  discovery accepts legal Logix names such as `_Tag`, `Program:Main.Tag`, and
+  `Arr[3]`, recognizes `0x02A0`-class structure type words, reports malformed
+  tag-list pages instead of byte-pattern resyncing, and no longer invents zero
+  array dimensions.
+- CODEX-AQ made diagnostics operation/error counters real per-client atomics on
+  the CIP send path. CPU/memory/system metrics remain explicitly marked as
+  placeholders (`MonitoringMetrics::system_metrics_are_placeholders()`), and
+  deprecated `ProductionMonitor::start_monitoring` no longer spawns an
+  unstoppable placeholder task.
+- Enabled Tokio's `signal` feature so the checked-in `python_test_simulator`
+  example builds from a clean target directory when C# simulator-backed tests
+  need to spawn it.
 - CODEX-AP retired the invalid UDT "advanced chunked" strategy ladder behind
   `read_udt_chunked`; the compatibility method now delegates to the maintained
   `read_tag` UDT path instead of fabricating empty UDT payloads. CIP

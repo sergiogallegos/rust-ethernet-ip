@@ -114,16 +114,15 @@ discovery / attribute APIs exist separately. Pick explicit directions:
 - Add Rust/C#/Python contract tests for whichever direction is chosen.
 
 ### 9. Diagnostics and passive-config honesty pass
-Diagnostics snapshots currently carry `system_metrics_are_placeholders: true`
-and placeholder CPU / memory readings. Before promoting diagnostics as an
-operational feature, either replace those values with real cross-platform
-metrics or split unsupported system metrics out so consumers cannot mistake
-placeholders for telemetry.
+CODEX-AQ made operation/error diagnostics counters real per-client atomics on
+the CIP send path and marked the old passive configuration/monitoring shells as
+deprecated compatibility surfaces. Diagnostics snapshots and
+`MonitoringMetrics::system_metrics_are_placeholders()` still mark CPU and memory
+values as placeholders because they are not OS-derived telemetry.
 
-`ProductionConfig` has rich fields and validation, but the client consumes only a
-small portion of that configuration surface. In the same pass, document which
-fields are declarative only, wire fields that should affect runtime behavior, or
-trim/deprecate passive settings that imply enforcement the client does not do.
+Before promoting diagnostics as a full operational feature, either replace the
+remaining system values with real cross-platform metrics or split unsupported
+system metrics out so consumers cannot mistake placeholders for telemetry.
 
 ### 10. C# wrapper maintainability split
 `EtherNetIpClient.cs` remains the largest wrapper file and mixes scalar access,
@@ -158,9 +157,9 @@ source, or banned-dependency policy with `cargo-deny`. Add a checked-in
 ## 2.0.0 — next major (SemVer-breaking)
 
 ### 13. Remove dead public surface
-- Delete the dead `TagCache` struct (`src/tag_manager.rs`) — entirely
-  `#[allow(dead_code)]`, only deferred because it's publicly re-exported at
-  `src/lib.rs` (removal is SemVer-major).
+- Delete CODEX-AQ deprecated dead compatibility structs retained through the 1.x
+  line: `ProductionMonitor`, `ProductionConfig`, `SubscriptionManager` /
+  `RealTimeSubscriptionManager`, `TagCache`, and `PlcManager`.
 - Remove CODEX-AP deprecated STRING/UDT compatibility stubs that now return
   explicit unsupported errors: Rust `write_string`,
   `write_ab_string_components`, `write_ab_string_udt`,

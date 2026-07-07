@@ -71,7 +71,6 @@ impl PlcConnection {
     }
 
     /// Updates the health status of the connection
-    #[allow(dead_code)]
     pub fn update_health(&mut self, is_active: bool, latency: Duration) {
         self.health.is_active = is_active;
         if is_active {
@@ -86,6 +85,10 @@ impl PlcConnection {
 
 /// Manager for multiple PLC connections
 #[derive(Debug)]
+#[deprecated(
+    since = "1.2.0",
+    note = "PlcManager predates Fleet and cannot provide concurrent pooled use through its &mut self API; use Fleet for multi-PLC management. The type will be removed in 2.0."
+)]
 pub struct PlcManager {
     /// Configuration for each PLC
     configs: HashMap<SocketAddr, PlcConfig>,
@@ -93,12 +96,20 @@ pub struct PlcManager {
     connections: HashMap<SocketAddr, Vec<PlcConnection>>,
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps PlcManager compatibility until 2.0 removal"
+)]
 impl Default for PlcManager {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps PlcManager compatibility until 2.0 removal"
+)]
 impl PlcManager {
     /// Creates a new PLC manager
     pub fn new() -> Self {
@@ -224,6 +235,10 @@ impl PlcManager {
 }
 
 #[cfg(test)]
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ keeps PlcManager unit coverage until 2.0 removal"
+)]
 mod tests {
     use super::*;
 

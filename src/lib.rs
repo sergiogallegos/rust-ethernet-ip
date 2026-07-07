@@ -128,33 +128,61 @@ pub mod version;
 // Re-export commonly used items
 pub use batch::{BatchConfig, BatchError, BatchOperation, BatchResult};
 pub use client::{Backoff, Client, ConnectionEvent, EipClient, RetryClient, RetryPolicy};
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ intentionally re-exports ProductionConfig for 1.x compatibility"
+)]
+pub use config::ProductionConfig;
 pub use config::{
     ConnectionConfig, LogFormat, LogLevel, LogRotationSchedule, LoggingConfig, MonitoringConfig,
-    PerformanceConfig, PlcSpecificConfig, ProductionConfig, SecurityConfig,
+    PerformanceConfig, PlcSpecificConfig, SecurityConfig,
 };
 pub use error::{EtherNetIpError, Result};
 pub use fleet::{Fleet, FleetEvent};
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ intentionally re-exports ProductionMonitor for 1.x compatibility"
+)]
+pub use monitoring::ProductionMonitor;
 pub use monitoring::{
     ConnectionMetrics, DiagnosticsSnapshot, ErrorCategory, ErrorMetrics, HealthCheckMode,
     HealthMetrics, HealthStatus, MonitoringMetrics, OperationMetrics, PerformanceMetrics,
-    ProductionMonitor,
 };
-pub use plc_manager::{PlcConfig, PlcConnection, PlcManager};
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ intentionally re-exports PlcManager for 1.x compatibility"
+)]
+pub use plc_manager::PlcManager;
+pub use plc_manager::{PlcConfig, PlcConnection};
 pub use route::{RouteHop, RoutePath};
 pub use schema::{
     SchemaCapabilities, SchemaDataType, SchemaExport, SchemaLibraryInfo, SchemaRoutePath,
     SchemaScope, SchemaTag, SchemaTargetInfo, SchemaUdt, SchemaUdtMember,
 };
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ intentionally re-exports SubscriptionManager for 1.x compatibility"
+)]
+pub use subscription::SubscriptionManager;
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ intentionally re-exports RealTimeSubscriptionManager for 1.x compatibility"
+)]
+pub use subscription::SubscriptionManager as RealTimeSubscriptionManager;
 pub use subscription::{
-    SubscriptionManager, SubscriptionManager as RealTimeSubscriptionManager, SubscriptionOptions,
-    SubscriptionOptions as RealTimeSubscriptionOptions, TagSubscription,
+    SubscriptionOptions, SubscriptionOptions as RealTimeSubscriptionOptions, TagSubscription,
     TagSubscription as RealTimeSubscription,
 };
 pub use tag_group::{
     TagGroupConfig, TagGroupEvent, TagGroupEventKind, TagGroupFailureCategory,
     TagGroupFailureDiagnostic, TagGroupSnapshot, TagGroupSubscription, TagGroupValueResult,
 };
-pub use tag_manager::{TagCache, TagManager, TagMetadata, TagPermissions, TagScope};
+#[expect(
+    deprecated,
+    reason = "CODEX-AQ intentionally re-exports TagCache for 1.x compatibility"
+)]
+pub use tag_manager::TagCache;
+pub use tag_manager::{TagManager, TagMetadata, TagPermissions, TagScope};
 pub use tag_path::TagPath;
 pub use types::{PlcValue, UdtData};
 pub use udt::{TagAttributes, UdtDefinition, UdtMember, UdtTemplate};

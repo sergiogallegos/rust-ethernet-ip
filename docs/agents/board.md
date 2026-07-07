@@ -13,7 +13,6 @@
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
 | CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open | 2026-07-01 |
-| CODEX-AQ | Dead-stratum deprecation — TagManager UDT pipeline, ProductionMonitor/Config, PlcManager, SubscriptionManager, TagCache; diagnostics honesty | codex | open | 2026-07-01 |
 | CODEX-AR | Subscription, fleet, and event lifecycle — stop() stops, no blocked poll tasks, lag-tolerant forwarding | codex | open | 2026-07-01 |
 | CODEX-AU | C++ consumer support — C header with parity gate, RAII example, Qt integration guide | codex | open | 2026-07-02 |
 
@@ -66,8 +65,7 @@ Resume order recommended by Claude. Each candidate brief is unwritten; the entry
 
 These are non-breaking improvements deferred until after v1.0.0 ships. They are not yet briefed; the entries below summarise what each brief would cover. When the maintainer is ready to resume, claude authors the brief, codex implements, claude reviews.
 
-1. **CODEX-H residual — dead-code purge (remaining items).** The first pass merged at `2690669` (2026-05-26) removed `PlcManager::health_check_interval` and the dead BOOL-array `len >= 8` decode branch. These items remain:
-   - `TagCache` struct in `src/tag_manager.rs:73-113` — entirely `#[allow(dead_code)]`; deferred because it's publicly re-exported at `src/lib.rs:150` (`pub use tag_manager::{TagCache, ...}`). Removal is SemVer-major and belongs in the 1.0.0 release-window bundle (CODEX-K), not a patch.
+1. **CODEX-H/AQ residual — dead-code purge (remaining items).** The first pass merged at `2690669` (2026-05-26) removed `PlcManager::health_check_interval` and the dead BOOL-array `len >= 8` decode branch. CODEX-AQ deprecates `TagCache` for 1.x and queues deletion for 2.0. These items remain:
    - Nine `#[allow(dead_code)]` annotations in `src/client.rs` (lines 1617, 2112, 2163, 3326, 3837, 6486, 6597, 6607, 6628). Per-method audit needed; most are unused FFI helpers or half-finished features. Patch-eligible if all are internal.
    - Leftover `#[allow(dead_code)] fn serialize_value` at `src/client.rs:3326` — pre-existing dead method.
 4. **CODEX-J — sub-split `client.rs`.** Still 6762 lines after CODEX-D. Codec extraction made these boundaries natural — see the audit table in this turn's chat record for line ranges. Suggested submodules:
@@ -116,6 +114,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-AQ | Dead-stratum deprecation — TagManager UDT pipeline, ProductionMonitor/Config, PlcManager, SubscriptionManager, TagCache; diagnostics honesty | codex | `272e0ae` |
 | CODEX-AP | Retire the string/UDT strategy graveyard — never-worked public paths return honest errors | codex | `1821e59` |
 | CODEX-AS | FFI polish — private raw-pointer exports, unwind guard, SAFETY discipline, last-error lifecycle; Python residuals | codex | `00db89e` |
 | CODEX-AL | Transport & session hardening — timeout desync, sender-context correlation, shared session handle | codex | `253706e` |

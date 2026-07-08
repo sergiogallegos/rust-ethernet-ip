@@ -13,7 +13,6 @@
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
 | CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open | 2026-07-01 |
-| CODEX-AR | Subscription, fleet, and event lifecycle — stop() stops, no blocked poll tasks, lag-tolerant forwarding | codex | open | 2026-07-01 |
 | CODEX-AU | C++ consumer support — C header with parity gate, RAII example, Qt integration guide | codex | open | 2026-07-02 |
 
 > CODEX-AI merged (2026-06-19): the manylinux Linux x86_64 wheel now ships. Root cause was a platlib-layout bug (native lib routed to `.data/purelib/`, rejected by auditwheel); fixed with an `install_lib = install_platlib` override in `python/setup.py`. `release.yml` builds the cdylib + wheel inside a `manylinux_2_28` container, auditwheel-repairs it, and a blocking smoke job installs+imports it in a clean container before publish. `rust_ethernet_ip-1.1.0-py3-none-manylinux_2_28_x86_64.whl` was added to the existing PyPI 1.1.0 release (no version bump) — `pip install` now works on Linux x86_64.
@@ -114,6 +113,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-AR | Subscription, fleet, and event lifecycle — stop() stops, no blocked poll tasks, lag-tolerant forwarding | codex | `f5c895c` |
 | CODEX-AQ | Dead-stratum deprecation — TagManager UDT pipeline, ProductionMonitor/Config, PlcManager, SubscriptionManager, TagCache; diagnostics honesty | codex | `272e0ae` |
 | CODEX-AP | Retire the string/UDT strategy graveyard — never-worked public paths return honest errors | codex | `1821e59` |
 | CODEX-AS | FFI polish — private raw-pointer exports, unwind guard, SAFETY discipline, last-error lifecycle; Python residuals | codex | `00db89e` |

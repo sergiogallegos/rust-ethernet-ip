@@ -2,7 +2,7 @@
 id: CODEX-AR
 title: Subscription, fleet, and event lifecycle — stop() stops, no blocked poll tasks, lag-tolerant forwarding
 owner: codex
-status: open
+status: merged
 created: 2026-07-01
 last-update: 2026-07-07 claude [Opus 4.8]
 ---
@@ -67,6 +67,92 @@ Simulator-backed, deterministic (no sleeps-as-synchronization; use event asserti
 
 ## Codex log
 
+2026-07-07 codex [GPT-5] — Implementation submitted.
+
+- Fixed single-tag subscription lifecycle: poll loops now check
+  `TagSubscription::is_active()`, `stop()` halts polling within the configured
+  interval, `EipClient::unsubscribe()` stops and evicts matching subscriptions,
+  and `update_subscription()` prunes inactive registry entries.
+- Replaced subscription/tag-group notification `send().await` with bounded
+  `try_send` + drop-oldest delivery so abandoned consumers cannot permanently
+  block poll tasks. Kept the existing value stream API and added
+  `TagSubscriptionEvent` / `wait_for_event()` / `into_event_stream()` for
+  value-or-error observation.
+- Single-tag polling now emits nonterminal error events for retriable failures,
+  backs off at least 250 ms on retriable failures, and stops after 3 consecutive
+  `ConnectionLost` failures to avoid hot-looping against AL-poisoned streams.
+  CIP general statuses `0x01` and `0x07` now map to `Connection` /
+  `ConnectionLost` so connection-failure replies participate in the existing
+  retriable policy.
+- Fixed fleet forwarding: `Lagged` is tolerated, per-id forwarder handles are
+  owned and aborted on replacement/drop, replacement no longer leaves old
+  forwarders ghost-emitting under the same PLC id, and `Client::events()` is
+  observation-only.
+- Confirmed `src/monitoring.rs` item 7 remains AQ-resolved:
+  `start_monitoring()` logs a deprecation warning and contains no spawn.
+- FFI/wrapper check: `rg eip_subscribe` found no native subscription FFI export,
+  so no C/Python/C# subscription surface needed updating.
+- Verification passed:
+  `cargo fmt -- --check`;
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+  `cargo test --test subscription_tests --test fleet_tests --test client_actor_tests --locked`;
+  `cargo test fleet::tests::forward_events_loop_continues_after_lagged_source --locked`;
+  `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked`;
+  `cargo test --test plc_sim_tests --locked`;
+  `cargo semver-checks check-release --baseline-version 1.1.0`.
+
 ## Claude review
 
+### 2026-07-07 21:10  claude [Opus 4.8]
+
+**Independent verification**
+- `cargo fmt -- --check` — clean.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `cargo test --test subscription_tests --test fleet_tests --test client_actor_tests --locked` — 7 / 5 / 9 passed (0 failed).
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — 0 failed across the workspace.
+- `cargo test --test plc_sim_tests --locked` — 24/24.
+- `cargo semver-checks check-release --baseline-version 1.1.0` — 220 pass, "no semver update required" (new `unsubscribe`/event API is additive).
+- Not FFI-touching (`ffi.rs` untouched, `rg eip_subscribe` empty, no C#/Python wrapper change) — C#/Python suites not required.
+
+**What's being fixed**
+- Task-lifecycle defects in the live subscription/fleet/event paths: `stop()` that didn't stop, poll tasks an abandoned consumer could deadlock, subscriptions killed by the first transient error, an ever-growing registry, fleet forwarding that died on `Lagged` and ghost-emitted after client replacement, and a side-effecting `events()`.
+
+**Root cause confirmation**
+- Confirmed per item. (1) Single-tag loop now `while subscription_task.is_active()` with a guard before the inter-poll sleep (`client/subscriptions.rs:47,77`) — stop halts within one interval. (2) Both the value channel and event channel use `try_send_drop_oldest` (`subscription.rs:273`), and `tag_group::publish_event` (`:160`) too — grep confirms no blocking `send().await` on any notification channel in the touched files; the subscription owns its receiver so a dropped consumer never closes the channel and the loop keeps running. (3) On read error the loop publishes an error event, tracks consecutive `ConnectionLost`, and goes terminal on `!is_retriable() || consecutive >= 3` with a ≥250 ms backoff otherwise (`subscriptions.rs:57-75`) — this closes the poison hot-loop I flagged in the brief refresh (`ConnectionLost` is retriable, so the cap is what prevents the spin). (4) `unsubscribe` (public) + `retain(is_active)` in `unsubscribe`/`subscription_count`/`update_subscription` (`subscriptions.rs:89,256`). (5) `Fleet` owns `forwarders: HashMap<PlcId, JoinHandle>`, aborts the old handle on `insert_client` replace (`fleet.rs:69`) and all handles on `Drop`; `forward_events_loop` (`:131`) does `Lagged => continue`, `Closed => break`. (6) `events()` is now just `self.events.subscribe()` (`actor.rs:153`).
+
+**Fix appropriateness**
+- Right layer, additive surface, SemVer-clean. The fleet `Connected` handling is a deliberate, coherent design: `insert_client` emits exactly one deterministic synthetic `Connected` FleetEvent per insertion (`fleet.rs:74`), and the forward loop suppresses the actor's own one-time startup `Connected` (`:140`) to avoid a duplicate — terminal `Disconnected`/`WorkerStopped` still forward, which is what a fleet consumer needs. The single-shot actor has no reconnect path, so no meaningful `Connected` is dropped. The CIP `0x01`/`0x07` → `Connection`/`ConnectionLost` mapping is an in-scope addition that lets connection-failure replies feed the item-3 retriable policy.
+
+**Test proof**
+- Deterministic, sim-backed, bounded-wait tests for every item: `abandoned_subscription_consumer_does_not_block_polling` (subscribes at `update_rate:1`, never consumes, asserts `sim.read_count > 110` within a 2 s timeout — past the 100-slot capacity where the pre-fix code deadlocks), `stop_halts_single_tag_polling`, `transient_single_tag_error_is_reported_and_recovers`, `unsubscribe_stops_and_evicts_subscription`, `direct_subscription_updates_drop_oldest_under_backpressure`, `subscribing_to_events_has_no_side_effect_on_existing_subscribers`, `forward_events_loop_continues_after_lagged_source`, `replacing_client_aborts_old_forwarder` (asserts no terminal event under the old id after replacement). The sim gained a `read_count` hook to make polling progress observable without sleep-as-sync.
+
+**Residual risk**
+- Sim/unit-level only; no hardware run (none needed — these are task-lifecycle fixes, not wire changes).
+- The narrow concurrent-last-drop race in the event-channel map (see Findings) can leak a single bounded map entry; not a per-poll leak.
+
+**Strong points (✅)**
+- The poison hot-loop is handled exactly where the brief warned: retriable `ConnectionLost` is bounded by a consecutive-failure cap, not treated as "retry forever."
+- Fleet forwarders are owned and cancelled on both replace and `Drop` — no orphan tasks; the replace-abort is proven by an assert-absence test.
+- `try_send_drop_oldest` is a single reused primitive across value, event, and tag-group channels — one place to reason about backpressure.
+- Delivery-semantics change (block→drop-oldest) is documented on the public methods, honestly framed as "the old behavior was deadlock, not delivery."
+
+**Findings**
+- 🟡 The per-subscription event channels live in a global `TAG_SUBSCRIPTION_EVENTS: HashMap<usize, …>` keyed by `Arc::as_ptr(&is_active)` (`subscription.rs:68,258`), evicted in `Drop` when `strong_count == 1`. It works and is bounded by *active* subscriptions, but it's heavier than adding `event_sender`/`event_receiver` `Arc<Mutex<…>>` fields to the struct exactly like the existing value channels — and it carries a narrow race: two clones of one subscription dropped concurrently on different threads can each read `strong_count > 1` (before the other's Arc field-drop decrements) and both skip removal, leaking one stale entry. Non-blocking (bounded, single entry); recommend a follow-up to move the channels onto the struct or evict explicitly on `stop()`/`unsubscribe`. Not a merge-time fix — it's an architectural change, not ≤5 lines.
+- 🟢 `try_send_drop_oldest` under receiver-lock contention drops the *new* value (drop-newest in that window) rather than strictly drop-oldest — matches the "drop where possible" wording.
+- 🟢 `events()` delivers no current-state snapshot on subscribe, so a late subscriber won't observe the one-time startup `Connected` (broadcast semantics) — within brief scope (snapshot was optional).
+- 🟢 Fleet emits one deterministic synthetic `Connected` per insert and dedups the actor's own — coherent, verified against `replacing_client_aborts_old_forwarder`.
+- 🟠 Real concerns — none.
+- 🔴 Defects — none.
+
+**Acceptance criteria tally**
+- ✅ Fixes 1–6 with the tests above (item 7 pre-resolved by AQ — confirmed `start_monitoring` has no `spawn`).
+- ✅ Abandoned-consumer test demonstrates progress past channel capacity under a bounded wait (pre-fix deadlock avoided).
+- ✅ No `send().await` on a notification channel from any poll/forwarding task in the touched files (grep clean).
+- ✅ No public signature breaks — `unsubscribe` + event API additive; `cargo semver-checks` green.
+- ✅ CHANGELOG entries present; drop-oldest semantics documented on the public types.
+
 ## Verdict
+
+### 2026-07-07 21:10  claude [Opus 4.8]
+
+**Merged.** Full independent matrix green (fmt, clippy `--all-targets --all-features -D warnings`, subscription/fleet/actor suites 7/5/9, workspace `--all-features --locked`, plc_sim 24/24, semver-checks 220-pass/no-update). All six live-path items are fixed with deterministic, bounded-wait, sim-backed tests — including the abandoned-consumer case that deadlocks pre-fix. The item-3 error policy correctly bounds retriable `ConnectionLost` with a consecutive-failure cap, closing the poison hot-loop the refreshed brief warned about, and the fleet forwarder ownership/abort model is proven by assert-absence tests. Item 7 was pre-resolved by AQ and confirmed untouched. One 🟡 (the global `Arc`-pointer-keyed event-channel map is heavier than struct fields and has a narrow concurrent-last-drop leak race) is non-blocking and left as a documented follow-up — bounded to a single stale entry, and refactoring it is an architectural change out of scope for a merge-time fix. Zero defects, zero Claude-applied fixes. Merged at `f5c895c`.

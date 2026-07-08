@@ -4,6 +4,12 @@ use crate::protocol::values;
 use crate::types::PlcValue;
 use tokio::time::Instant;
 
+#[derive(Clone)]
+struct PreparedBatchOperation {
+    operation: BatchOperation,
+    service_request: Vec<u8>,
+}
+
 impl EipClient {
     // =========================================================================
     // BATCH OPERATIONS IMPLEMENTATION
@@ -82,9 +88,9 @@ impl EipClient {
 
         // Group operations based on configuration
         let operation_groups = if self.batch_config.optimize_packet_packing {
-            self.optimize_operation_groups(operations)
+            self.optimize_operation_groups(operations).await?
         } else {
-            self.sequential_operation_groups(operations)
+            self.sequential_operation_groups(operations).await?
         };
 
         let mut all_results = Vec::with_capacity(operations.len());
@@ -109,7 +115,7 @@ impl EipClient {
                     // Create error results for this group
                     for op in group {
                         let error_result = BatchResult {
-                            operation: op.clone(),
+                            operation: op.operation.clone(),
                             result: Err(BatchError::NetworkError(e.to_string())),
                             execution_time_us: 0,
                         };
@@ -340,8 +346,10 @@ impl EipClient {
     // =========================================================================
 
     /// Groups operations optimally for batch processing
-    fn optimize_operation_groups(&self, operations: &[BatchOperation]) -> Vec<Vec<BatchOperation>> {
-        let mut groups = Vec::new();
+    async fn optimize_operation_groups(
+        &mut self,
+        operations: &[BatchOperation],
+    ) -> crate::error::Result<Vec<Vec<PreparedBatchOperation>>> {
         let mut reads = Vec::new();
         let mut writes = Vec::new();
 
@@ -353,46 +361,122 @@ impl EipClient {
             }
         }
 
-        // Group reads
-        for chunk in reads.chunks(self.batch_config.max_operations_per_packet) {
-            groups.push(chunk.to_vec());
+        let mut groups = self.prepare_and_pack_operations(&reads).await?;
+        groups.extend(self.prepare_and_pack_operations(&writes).await?);
+
+        Ok(groups)
+    }
+
+    /// Groups operations sequentially (preserves order)
+    async fn sequential_operation_groups(
+        &mut self,
+        operations: &[BatchOperation],
+    ) -> crate::error::Result<Vec<Vec<PreparedBatchOperation>>> {
+        self.prepare_and_pack_operations(operations).await
+    }
+
+    async fn prepare_and_pack_operations(
+        &mut self,
+        operations: &[BatchOperation],
+    ) -> crate::error::Result<Vec<Vec<PreparedBatchOperation>>> {
+        let mut prepared = Vec::with_capacity(operations.len());
+        for operation in operations {
+            prepared.push(PreparedBatchOperation {
+                operation: operation.clone(),
+                service_request: self.build_batch_service_request(operation).await?,
+            });
         }
 
-        // Group writes
-        for chunk in writes.chunks(self.batch_config.max_operations_per_packet) {
-            groups.push(chunk.to_vec());
+        Ok(self.pack_prepared_operations(prepared))
+    }
+
+    fn pack_prepared_operations(
+        &self,
+        operations: Vec<PreparedBatchOperation>,
+    ) -> Vec<Vec<PreparedBatchOperation>> {
+        let max_operations = self.batch_config.max_operations_per_packet.max(1);
+        let max_packet_size = self.batch_config.max_packet_size;
+        let mut groups = Vec::new();
+        let mut current_group = Vec::new();
+
+        for operation in operations {
+            let exceeds_operation_count = current_group.len() >= max_operations;
+            let exceeds_packet_size = !current_group.is_empty()
+                && max_packet_size > 0
+                && self.group_wire_len_with_candidate(&current_group, &operation) > max_packet_size;
+
+            if exceeds_operation_count || exceeds_packet_size {
+                groups.push(std::mem::take(&mut current_group));
+            }
+
+            current_group.push(operation);
+        }
+
+        if !current_group.is_empty() {
+            groups.push(current_group);
         }
 
         groups
     }
 
-    /// Groups operations sequentially (preserves order)
-    fn sequential_operation_groups(
+    fn group_wire_len_with_candidate(
         &self,
-        operations: &[BatchOperation],
-    ) -> Vec<Vec<BatchOperation>> {
-        operations
-            .chunks(self.batch_config.max_operations_per_packet)
-            .map(|chunk| chunk.to_vec())
-            .collect()
+        group: &[PreparedBatchOperation],
+        candidate: &PreparedBatchOperation,
+    ) -> usize {
+        let service_bytes = self.group_service_bytes(group) + candidate.service_request.len();
+        let operation_count = group.len() + 1;
+        let msp_len = 8 + (operation_count * 2) + service_bytes;
+
+        self.unconnected_send_len_for_embedded(msp_len)
+    }
+
+    #[cfg(test)]
+    fn group_wire_len(&self, group: &[PreparedBatchOperation]) -> usize {
+        let msp_len = 8 + (group.len() * 2) + self.group_service_bytes(group);
+        self.unconnected_send_len_for_embedded(msp_len)
+    }
+
+    fn group_service_bytes(&self, group: &[PreparedBatchOperation]) -> usize {
+        group
+            .iter()
+            .map(|operation| operation.service_request.len())
+            .sum()
+    }
+
+    fn unconnected_send_len_for_embedded(&self, embedded_len: usize) -> usize {
+        let route_path_len = self
+            .route_path_snapshot()
+            .map(|route_path| route_path.to_cip_bytes().len())
+            .unwrap_or(0);
+        let pad_len = embedded_len % 2;
+
+        // Unconnected Send request path/timeout/message-length fields (10 bytes)
+        // plus optional pad, route-size/reserved fields (2 bytes), and route path.
+        12 + embedded_len + pad_len + route_path_len
     }
 
     /// Executes a single group of operations as a CIP Multiple Service Packet
     async fn execute_operation_group(
         &mut self,
-        operations: &[BatchOperation],
+        operations: &[PreparedBatchOperation],
     ) -> crate::error::Result<Vec<BatchResult>> {
         let start_time = Instant::now();
         let mut results = Vec::with_capacity(operations.len());
 
         // Build Multiple Service Packet request
-        let cip_request = self.build_multiple_service_packet(operations).await?;
+        let cip_request = self.build_multiple_service_packet(operations)?;
 
         // Send request and get response
         let response = self.send_cip_request(&cip_request).await?;
 
         // Parse response and create results
-        let parsed_results = self.parse_multiple_service_response(&response, operations)?;
+        let original_operations: Vec<BatchOperation> = operations
+            .iter()
+            .map(|operation| operation.operation.clone())
+            .collect();
+        let parsed_results =
+            self.parse_multiple_service_response(&response, &original_operations)?;
 
         let execution_time = start_time.elapsed();
 
@@ -412,7 +496,7 @@ impl EipClient {
             };
 
             results.push(BatchResult {
-                operation: operation.clone(),
+                operation: operation.operation.clone(),
                 result,
                 execution_time_us: op_execution_time,
             });
@@ -422,9 +506,9 @@ impl EipClient {
     }
 
     /// Builds a CIP Multiple Service Packet request
-    async fn build_multiple_service_packet(
-        &mut self,
-        operations: &[BatchOperation],
+    fn build_multiple_service_packet(
+        &self,
+        operations: &[PreparedBatchOperation],
     ) -> crate::error::Result<Vec<u8>> {
         let mut packet = Vec::with_capacity(8 + (operations.len() * 2));
 
@@ -446,10 +530,7 @@ impl EipClient {
         let mut current_offset = 2 + (operations.len() * 2); // Start after offset table
 
         for operation in operations {
-            // Build individual service request
-            let service_request = self.build_batch_service_request(operation).await?;
-
-            service_requests.push(service_request);
+            service_requests.push(operation.service_request.clone());
         }
 
         // Add offset table
@@ -776,5 +857,79 @@ impl EipClient {
                     .map_err(|e| BatchError::SerializationError(e.to_string()))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EipClient, PreparedBatchOperation};
+    use crate::batch::{BatchConfig, BatchOperation};
+
+    fn prepared_read(name: &str, service_len: usize) -> PreparedBatchOperation {
+        PreparedBatchOperation {
+            operation: BatchOperation::Read {
+                tag_name: name.to_string(),
+            },
+            service_request: vec![0x4C; service_len],
+        }
+    }
+
+    #[test]
+    fn batch_packing_respects_packet_size_and_operation_count() {
+        let mut client = EipClient::new_unconnected_for_testing();
+        client.configure_batch_operations(BatchConfig {
+            max_operations_per_packet: 4,
+            max_packet_size: 80,
+            ..BatchConfig::default()
+        });
+
+        let operations: Vec<_> = (0..10)
+            .map(|index| prepared_read(&format!("Tag{index}"), 20))
+            .collect();
+        let groups = client.pack_prepared_operations(operations);
+
+        assert!(
+            groups.len() > 1,
+            "expected packet-size budget to split the batch"
+        );
+        for group in &groups {
+            assert!(
+                group.len() <= 4,
+                "group exceeds max_operations_per_packet: {}",
+                group.len()
+            );
+            assert!(
+                client.group_wire_len(group) <= 80,
+                "group exceeds max_packet_size: {}",
+                client.group_wire_len(group)
+            );
+        }
+    }
+
+    #[test]
+    fn batch_packing_keeps_single_oversized_operation() {
+        let mut client = EipClient::new_unconnected_for_testing();
+        client.configure_batch_operations(BatchConfig {
+            max_operations_per_packet: 20,
+            max_packet_size: 32,
+            ..BatchConfig::default()
+        });
+
+        let groups = client.pack_prepared_operations(vec![
+            prepared_read("TooLarge", 64),
+            prepared_read("Small1", 4),
+            prepared_read("Small2", 4),
+        ]);
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].len(), 1);
+        assert!(
+            client.group_wire_len(&groups[0]) > 32,
+            "single oversized operation should be sent alone, not dropped"
+        );
+        assert!(
+            client.group_wire_len(&groups[1]) <= 32,
+            "small trailing operations should share a packet"
+        );
     }
 }

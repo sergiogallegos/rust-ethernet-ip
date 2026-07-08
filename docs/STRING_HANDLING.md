@@ -10,9 +10,9 @@ for each case. Validated on CompactLogix 5069-L330ERM firmware 38.
 - **Custom string types** (e.g. `Str82`, `Str400` — your own name/length) also work, because the
   library discovers the tag's real *structure handle* at write time. Use the same
   `write_tag` / `WriteString` / `write_tag` API as for built-in strings.
-- **Size limit:** one string write/read must fit in a single CIP packet. The practical maximum
-  is about **420–456 bytes of `DATA`** depending on tag-path length (see the table). Larger
-  custom types (e.g. `Str500`) are **not supported yet** — they need CIP fragmentation.
+- **Large strings:** strings that exceed one CIP packet use CIP Read Tag Fragmented (`0x52`) and
+  Write Tag Fragmented (`0x53`). Simulator coverage proves `Str500+`-sized payloads round-trip;
+  maintainer hardware re-validation should confirm the same on the next PLC session.
 
 ## Background: a Logix STRING is a structure, not an atomic type
 
@@ -51,7 +51,7 @@ real handle** (by reading the tag first) and writes with it, so custom string ty
 |---|---|---|
 | Built-in `STRING` (standalone or UDT member) | `0x0FCE` | works |
 | Custom string type (`Str82`, `Str400`, …) | type-specific | works (handle discovered at write time) |
-| Custom string **larger than one CIP packet** (`Str500`+) | type-specific | not yet supported — see Limits |
+| Custom string **larger than one CIP packet** (`Str500`+) | type-specific | fragmented read/write path |
 
 ## How to use the library
 
@@ -89,7 +89,7 @@ string v = client.ReadString("gTestUDT.Member7_String");         // decodes buil
 
 ```python
 client.write_tag("gTestUDT.Member5_String", "custom Str82")      # -> eip_write_string
-# read via the string FFI export for custom types:
+value = client.read_string("gTestUDT.Member5_String")            # custom type -> text
 ```
 `write_tag(tag, "text")` writes any string type. For reading a **custom** string type, use the
 string read path (the generic `read_tag` returns a structure for custom types).
@@ -101,47 +101,35 @@ client.write_string("gTestUDT.Member5_String", "custom Str82");  // works
 auto v = client.read_string("gTestUDT.Member7_String");          // decodes built-in or custom
 ```
 
-## Limits: maximum string size
+## Large strings and fragmentation
 
-A single string read/write must fit in one CIP packet (this library does **not** implement CIP
-fragmentation — services `0x52`/`0x53`). Measured on 5069-L330ERM fw38:
+Small strings keep the single-packet fast path. When a custom string/structure is too large for
+one packet, the client now uses:
 
-- **Write request ceiling: ~494 bytes total** (494 accepted, 498 rejected with encapsulation
-  status `0x03`).
-- **Read reply ceiling: ~500 bytes of value** (beyond that the controller returns CIP `0x06`
-  "Partial Transfer", which needs a fragmented read).
+- **Read Tag Fragmented (`0x52`)** after a normal read reports CIP `0x06` Partial Transfer.
+- **Write Tag Fragmented (`0x53`)** when the handle-aware structure write would exceed the
+  measured single-packet write ceiling.
 
-Because the request size includes the tag path, the maximum `DATA` size of a custom string type
-depends on where the tag lives:
+The fragmented path is simulator-covered with a 600-byte custom string payload. The earlier
+5069-L330ERM fw38 measurements still explain why fragmentation is needed:
 
-| Tag location | Max `DATA` (bytes) | Safe custom type |
-|---|---|---|
-| Controller-scoped standalone / UDT member | ~456 | `Str440` |
-| Controller-scoped UDT array element member | ~448 | `Str440` |
-| **Program-scoped** UDT member | ~432 | `Str420` |
-| **Program-scoped** UDT array element member | ~424 | `Str400` |
+- Single write request ceiling: about **494 bytes total**.
+- Single read reply ceiling: about **500 bytes of value** before CIP `0x06`.
 
-**Recommendation:** a custom string type with `DATA ≤ 400 bytes` (`Str400`) works in **every**
-scope. If a string only lives in controller-scoped tags, up to `Str440` is fine. `Str500` and
-larger do not work in one packet and are unsupported until fragmentation lands.
-
-The library returns a clear error if a write would exceed the single-packet limit (rather than a
-raw `0x03`), telling you to use a shorter type or a shorter path.
+Hardware re-validation for `Str500+` controller/program-scope tags remains a release-gate
+confidence item.
 
 ## Error reference
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `0x2107` on a string write | request handle didn't match the target's type (old library, or a bug) | ensure the tag is a string type; the current library discovers the handle automatically |
-| `0x06` Partial Transfer on read | structure larger than one CIP reply (`Str500`+) | reduce the custom string size, or wait for fragmentation support |
-| `0x03` bad length / "over the single-packet limit" on write | write request exceeds ~494 bytes | use a shorter custom string type or shorter tag path |
+| `0x06` Partial Transfer on read | structure larger than one CIP reply (`Str500`+) | current client should continue with fragmented reads; report if surfaced to callers |
+| `0x03` bad length / "over the single-packet limit" on write | write request exceeds one packet before fragmentation applies | report with tag path and string type size |
 | Read returns a `Udt` instead of a string | it's a custom string type read via `read_tag` | use `read_string_tag` / `ReadString` / `read_string` |
 
 ## What's not supported yet
 
-- **Custom strings larger than one CIP packet** (`Str500`+, or long strings in deep
-  program-scoped paths). Requires CIP Read/Write Tag **Fragmented** (`0x52`/`0x53`). Tracked as a
-  library task.
 - **`read_tag` auto-decoding a custom string to text.** By design `read_tag` returns custom
   string types as `Udt` (a custom handle is indistinguishable from a UDT); use `read_string_tag`.
 

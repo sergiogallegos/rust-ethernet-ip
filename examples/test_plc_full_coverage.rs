@@ -306,7 +306,8 @@ fn rand_value(kind: Kind, rng: &mut Lcg) -> Option<PlcValue> {
         Kind::Int => PlcValue::Int(rng.int()),
         Kind::Real => PlcValue::Real(rng.real()),
         Kind::Bool => PlcValue::Bool(rng.boolean()),
-        Kind::String | Kind::Udt => return None,
+        Kind::String => PlcValue::String(format!("FC{:08X}", rng.next_u32())),
+        Kind::Udt => return None,
     })
 }
 
@@ -316,7 +317,8 @@ fn nines(kind: Kind) -> Option<PlcValue> {
         Kind::Int => PlcValue::Int(9_999),
         Kind::Real => PlcValue::Real(99.99),
         Kind::Bool => PlcValue::Bool(true),
-        Kind::String | Kind::Udt => return None,
+        Kind::String => PlcValue::String("SETTLED".to_string()),
+        Kind::Udt => return None,
     })
 }
 
@@ -326,7 +328,20 @@ fn values_match(a: &PlcValue, b: &PlcValue) -> bool {
         (PlcValue::Int(x), PlcValue::Int(y)) => x == y,
         (PlcValue::Bool(x), PlcValue::Bool(y)) => x == y,
         (PlcValue::Real(x), PlcValue::Real(y)) => (x - y).abs() < 0.001,
+        (PlcValue::String(x), PlcValue::String(y)) => x == y,
         _ => false,
+    }
+}
+
+async fn read_value_for_kind(
+    client: &mut EipClient,
+    tag_name: &str,
+    kind: Kind,
+) -> rust_ethernet_ip::Result<PlcValue> {
+    if kind == Kind::String {
+        client.read_string_tag(tag_name).await.map(PlcValue::String)
+    } else {
+        client.read_tag(tag_name).await
     }
 }
 
@@ -373,6 +388,16 @@ fn settle_samples() -> Vec<(&'static str, &'static str, PlcValue)> {
             PlcValue::Dint(999_999),
         ),
         (
+            "ctrl.STRING",
+            "gTest_STRING",
+            PlcValue::String("SETTLED".to_string()),
+        ),
+        (
+            "ctrl.UDT_members",
+            "gTestUDT.Member5_String",
+            PlcValue::String("SETTLED".to_string()),
+        ),
+        (
             "prog.BOOL_array",
             "Program:TestProgram.gTestArray_BOOL[5]",
             PlcValue::Bool(true),
@@ -401,6 +426,16 @@ fn settle_samples() -> Vec<(&'static str, &'static str, PlcValue)> {
             "prog.UDTarr_elem_nested",
             "Program:TestProgram.gTestUDT_Array[2].Array_DINT[3]",
             PlcValue::Dint(999_999),
+        ),
+        (
+            "prog.STRING",
+            "Program:TestProgram.gTest_STRING",
+            PlcValue::String("SETTLED".to_string()),
+        ),
+        (
+            "prog.UDT_members",
+            "Program:TestProgram.gTestUDT.Member5_String",
+            PlcValue::String("SETTLED".to_string()),
         ),
     ]
 }
@@ -455,7 +490,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Phase 0 — preflight tag inventory");
         let tp = Instant::now();
         for tag in &tags {
-            match client.read_tag(&tag.name).await {
+            match read_value_for_kind(&mut client, &tag.name, tag.kind).await {
                 Ok(_) => preflight_ok += 1,
                 Err(err) => {
                     preflight_fail += 1;
@@ -481,7 +516,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let t0 = Instant::now();
     for tag in &tags {
         let entry = stats.entry(tag.category.clone()).or_default();
-        match client.read_tag(&tag.name).await {
+        match read_value_for_kind(&mut client, &tag.name, tag.kind).await {
             Ok(_) => entry.read_ok += 1,
             Err(_) => entry.read_fail += 1,
         }
@@ -515,7 +550,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (idx, expected) in &random_values {
         let tag = &tags[*idx];
         let entry = stats.entry(tag.category.clone()).or_default();
-        match client.read_tag(&tag.name).await {
+        let read_result = read_value_for_kind(&mut client, &tag.name, tag.kind).await;
+        match read_result {
             Ok(actual) if values_match(&actual, expected) => entry.verify_ok += 1,
             _ => entry.verify_fail += 1,
         }
@@ -568,22 +604,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut settle_verify_ok = 0u32;
     let mut settle_verify_fail = 0u32;
     for (category, tag_name, expected) in settle_samples() {
-        match client.read_tag(tag_name).await {
+        let read_result = if matches!(expected, PlcValue::String(_)) {
+            client.read_string_tag(tag_name).await.map(PlcValue::String)
+        } else {
+            client.read_tag(tag_name).await
+        };
+        match read_result {
             Ok(actual) if values_match(&actual, &expected) => {
                 settle_verify_ok += 1;
-                println!("  verify-settle  {:<28} {:<48} ✓", category, tag_name);
+                println!("  verify-settle  {:<28} {:<48} OK", category, tag_name);
             }
             Ok(actual) => {
                 settle_verify_fail += 1;
                 println!(
-                    "  verify-settle  {:<28} {:<48} ✗ MISMATCH: expected {:?}, got {:?}",
+                    "  verify-settle  {:<28} {:<48} FAIL MISMATCH: expected {:?}, got {:?}",
                     category, tag_name, expected, actual
                 );
             }
             Err(err) => {
                 settle_verify_fail += 1;
                 println!(
-                    "  verify-settle  {:<28} {:<48} ✗ READ ERROR: {}",
+                    "  verify-settle  {:<28} {:<48} FAIL READ ERROR: {}",
                     category, tag_name, err
                 );
             }

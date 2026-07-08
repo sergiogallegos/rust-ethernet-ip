@@ -373,6 +373,19 @@ class Client:
 
         return _decode_plc_value(decoded)
 
+    def read_string(self, tag_name: str, *, buffer_size: int = READ_BUFFER_SIZE) -> str:
+        client_id = self._require_client_id()
+        buffer = create_string_buffer(buffer_size)
+        rc = self._lib.eip_read_string(
+            client_id,
+            tag_name.encode("utf-8"),
+            buffer,
+            buffer_size,
+        )
+        if rc != 0:
+            raise self._operation_error(f"Failed to read string tag '{tag_name}'", client_id)
+        return buffer.value.decode("utf-8")
+
     def write_tag(self, tag_name: str, value: object, *, value_type: str | None = None) -> None:
         kind = (value_type or _infer_value_type(value)).upper()
 

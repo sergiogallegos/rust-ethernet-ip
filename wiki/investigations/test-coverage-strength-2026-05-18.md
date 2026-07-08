@@ -17,14 +17,14 @@
 ## Current Understanding
 
 - `confirmed`: Rust has the strongest automated safety net. The suite includes unit tests inside core modules, simulator-backed tests, FFI boundary tests, route-path compatibility tests, and doctests.
-- `confirmed`: The Rust simulator currently covers scalar BOOL/DINT/REAL/STRING, DINT and REAL arrays, batch partial failures, reconnect behavior, timeout behavior, and route-path compatibility.
+- `confirmed`: The Rust simulator currently covers scalar BOOL/DINT/REAL/STRING, DINT and REAL arrays, batch partial failures, reconnect behavior, timeout behavior, route-path compatibility, and CODEX-AZ large custom-string fragmented read/write behavior.
 - `confirmed`: 66 Rust tests are explicitly ignored or PLC-gated; this is appropriate for hardware-dependent scenarios, but normal `cargo test` does not prove the full real-PLC matrix.
 - `confirmed`: C# tests exercise public wrapper contracts, DTO mapping, tag-group behavior, diagnostics shape, unsupported batch-config contract, and native simulator-backed paths by default.
 - `needs-care`: C# files named `IntegrationTests` are still mostly Moq-based and should eventually be renamed or reframed so they do not imply real PLC/native integration.
 - `confirmed`: C# wrapper-only contract coverage was expanded after the simulator work. The suite now covers `PlcValue` JSON parsing, legacy versus raw UDT value shapes, `RoutePath` grouped fields and FFI preparation, client not-connected/disposed behavior, batch input validation, and batch DTO defaults.
 - `confirmed`: Python currently has 10 tests total: 7 pure mapping/import tests and 3 simulator integration tests that skip unless configured.
 - `confirmed`: Python simulator integration now covers native connect/read/write/health, route-path connect, batch read/write, diagnostics retrieval, and partial batch read failure handling.
-- `confirmed`: Python wrapper-only tests now cover fake-native lifecycle, route connect argument forwarding, read/write/batch behavior, batch partial errors, diagnostics retrieval, unconnected-operation errors, write-result parsing, write-request normalization, and native loader failure diagnostics.
+- `confirmed`: Python wrapper-only tests now cover fake-native lifecycle, route connect argument forwarding, read/write/batch behavior, batch partial errors, diagnostics retrieval, unconnected-operation errors, write-result parsing, write-request normalization, native loader failure diagnostics, and the public `read_string` path.
 - `needs-review`: Python does not yet test BOOL write follow-up behavior, UDT/tag metadata surfaces, or collector/MQTT examples in automated CI-style tests.
 - `confirmed`: Existing coverage docs in `tests/TEST_COVERAGE_SUMMARY.md` and `tests/test_coverage_analysis.md` are stale in places; they list some areas as missing even though corresponding test files now exist.
 

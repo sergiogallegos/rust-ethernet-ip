@@ -1117,3 +1117,37 @@ Sources used:
 - `examples/cpp/`
 - `.github/workflows/ci.yml`
 - `docs/CPP_INTEGRATION.md`
+
+## [2026-07-08] ingest | AW AX AZ packet-size and string coverage fixes
+
+- Updated `wiki/limitations/string-and-udt-write-behavior.md`.
+- Updated `wiki/investigations/test-coverage-strength-2026-05-18.md`.
+- Recorded that CODEX-AW enforces batch packet byte budgets using the same
+  service-request bytes that the MSP sender uses.
+- Recorded that CODEX-AX moves the full-coverage manifest to 2304 total / 2285
+  writeable / 0 expected-blocked / 19 read-only after handle-aware STRING
+  writes, and that Rust/C#/Python runners now write and verify STRINGs.
+- Recorded that CODEX-AZ adds simulator-covered CIP fragmented read/write for
+  large string/structure payloads, with real `Str500+` hardware confirmation
+  still pending.
+- Recorded that CODEX-AO Phase 2 remains blocked because no packet captures
+  satisfying the checklist are present.
+
+Sources used:
+
+- `docs/agents/tasks/CODEX-AW-batch-read-packet-size.md`
+- `docs/agents/tasks/CODEX-AX-full-coverage-string-writes.md`
+- `docs/agents/tasks/CODEX-AZ-cip-fragmentation.md`
+- `docs/agents/tasks/CODEX-AO-udt-wire-format-investigation.md`
+- `docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md`
+- `src/client.rs`
+- `src/client/batch_exec.rs`
+- `tests/plc_sim.rs`
+- `tests/plc_sim_tests.rs`
+- `examples/full_coverage_tags.json`
+- `examples/test_plc_full_coverage.rs`
+- `examples/CSharpFullCoverage/Program.cs`
+- `python/examples/test_plc_full_coverage.py`
+- `python/rust_ethernet_ip/client.py`
+- `docs/STRING_HANDLING.md`
+- `docs/agents/notes/ab-firmware-quirks.md`

@@ -2,7 +2,7 @@
 id: CODEX-AX
 title: Full-coverage harness never writes or blocked-probes STRINGs — release gate can't catch a STRING regression
 owner: codex
-status: open
+status: merged
 created: 2026-07-08
 last-update: 2026-07-08 claude [Opus 4.8]
 ---
@@ -115,6 +115,38 @@ correctness.
 
 ## Codex log
 
+2026-07-08 codex [GPT-5] - Implementation submitted.
+
+- Relabeled the 17 former `encoding_blocked_udt_string_member` manifest targets
+  to `writeable` now that CODEX-AY handle-aware string writes are merged.
+  Full-coverage counts are now 2304 total / 2285 writeable / 0
+  expected-blocked / 19 read-only.
+- Rust, C#, and Python full-coverage runners now generate random STRING values,
+  write them in Phase 2, verify them in Phase 3 through string-aware reads, and
+  settle them to `SETTLED` in Phase 5.
+- Rust uses `read_string_tag` for `Kind::String`; C# uses `ReadString`; Python
+  now exposes `Client.read_string()` over `eip_read_string` and uses it in the
+  runner.
+- Replaced Python/Rust/C# settle status glyphs with ASCII markers so redirected
+  stdout on Windows does not depend on UTF-8 console settings.
+- Updated the manifest dry-run expectations to the new counts.
+- Verification passed: Rust and Python full-coverage `--dry-run`; C# dry-run
+  with `--no-restore` after NuGet restore hit an external lock; Python unit
+  discovery `42/8 skipped`; C# tests `86/86`; full Rust workspace tests.
+- Hardware re-validation remains pending: the next full-coverage run should
+  report all four bindings at 2304 reads / 2285 writes / 2285 verifies / 0
+  blocked / 0 anomalies.
+
 ## Claude review
 
+### 2026-07-08 claude [Opus 4.8]
+
+Independent verification green: fmt, clippy `--all-targets --features ffi -D warnings`, `SKIP_PLC_TESTS=1 cargo test --workspace --features ffi` (0 failed), `plc_sim_tests` 25/25, `tests/full_coverage_manifest_tests.sh` ok, `scripts/validate-agent-files` ok. Dry-run reports `writeable=2285 blocked=0 read-only=19` (2285 + 19 = 2304) — the 17 `encoding_blocked_udt_string_member` Member5 entries correctly relabelled `writeable` now that CODEX-AY landed, plus the 2 standalone STRINGs now written.
+
+Implementation drives off the manifest `writeability`, not `Kind`: `rand_value` generates a probe string, `nines` settles to `"SETTLED"`, `values_match` compares strings, verify/settle-verify read through `read_string_tag` (Rust) / `ReadString` (C#) / the new `Client.read_string` (Python, over `eip_read_string`). The `✓/✗` glyphs became ASCII markers, fixing the Windows redirected-stdout crash (finding 3).
+
+**Hardware-validated end-to-end** (this session, 5069-L330ERM fw38): the updated Rust full-coverage reports **reads 2304/2304, writes 2285/2285, verify 2285/2285, 0 anomalies, PASS** — writing all 17 `Str82` Member5 members + 2 standalone STRINGs via the CODEX-AY handle-aware path, and reading every tag including whole large-UDT array elements via CODEX-AZ fragmentation (on the maintainer's extended UDT).
+
 ## Verdict
+
+**Merged 2026-07-08.** The release gate now exercises the STRING surface; a STRING-write regression can no longer pass as green. Counts move to 2304 / 2285 / 0 / 19.

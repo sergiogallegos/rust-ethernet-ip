@@ -18,7 +18,7 @@
         "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
         "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
         "Member4_INT": { "kind": "Int", "writeability": "writeable" },
-        "Member5_String": { "kind": "String", "writeability": "encoding_blocked_udt_string_member" }
+        "Member5_String": { "kind": "String", "writeability": "writeable" }
       }
     },
     {
@@ -43,7 +43,7 @@
         "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
         "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
         "Member4_INT": { "kind": "Int", "writeability": "writeable" },
-        "Member5_String": { "kind": "String", "writeability": "encoding_blocked_udt_string_member" }
+        "Member5_String": { "kind": "String", "writeability": "writeable" }
       }
     },
     {
@@ -71,7 +71,7 @@
         "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
         "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
         "Member4_INT": { "kind": "Int", "writeability": "writeable" },
-        "Member5_String": { "kind": "String", "writeability": "encoding_blocked_udt_string_member" }
+        "Member5_String": { "kind": "String", "writeability": "writeable" }
       }
     },
     {
@@ -96,7 +96,7 @@
         "Member2_REAL": { "kind": "Real", "writeability": "writeable" },
         "Member3_BOOL": { "kind": "Bool", "writeability": "writeable" },
         "Member4_INT": { "kind": "Int", "writeability": "writeable" },
-        "Member5_String": { "kind": "String", "writeability": "encoding_blocked_udt_string_member" }
+        "Member5_String": { "kind": "String", "writeability": "writeable" }
       }
     },
     {

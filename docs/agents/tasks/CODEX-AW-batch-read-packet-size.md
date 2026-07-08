@@ -2,7 +2,7 @@
 id: CODEX-AW
 title: Batch grouping ignores max_packet_size — large batch reads fail with EIP 0x65 (Invalid Length)
 owner: codex
-status: open
+status: merged
 created: 2026-07-08
 last-update: 2026-07-08 claude [Opus 4.8]
 ---
@@ -111,6 +111,37 @@ config/doc tweak is warranted. No public API signature change.
 
 ## Codex log
 
+2026-07-08 codex [GPT-5] - Implementation submitted.
+
+- Batch grouping now prepares the same per-operation service request bytes that
+  `execute_operation_group` sends, then packs groups against both
+  `max_operations_per_packet` and `max_packet_size`.
+- The byte budget is measured as the Multiple Service Packet embedded in the
+  Unconnected Send request: MSP header + service count + offset table +
+  concrete service requests + Unconnected Send header/pad/route-path fields.
+  The 24-byte EtherNet/IP encapsulation header is not counted in
+  `BatchConfig::max_packet_size`.
+- Optimized and sequential batch paths share the same packing helper. A single
+  operation that exceeds the budget still goes alone rather than being dropped
+  or causing an infinite loop.
+- Added deterministic unit coverage for packet-size splitting,
+  `max_operations_per_packet`, and the single-oversized-operation edge case.
+- Verification passed: `cargo test client::batch_exec::tests --locked`,
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
+  `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked`.
+- Hardware re-validation remains pending: the next PLC session should confirm
+  `gTestArray_DINT[0..50]` batch reads now split and succeed across bindings.
+
 ## Claude review
 
+### 2026-07-08 claude [Opus 4.8]
+
+Independent verification green: `cargo fmt --check`, `cargo clippy --all-targets --features ffi -D warnings`, `SKIP_PLC_TESTS=1 cargo test --workspace --features ffi` (0 failed), `plc_sim_tests` 25/25.
+
+Root cause confirmed and fixed correctly: `pack_prepared_operations` now splits by **both** `max_operations_per_packet` and `max_packet_size`, and crucially the byte budget (`group_wire_len_with_candidate`) is computed from the **actual built service-request bytes** (`PreparedBatchOperation.service_request`) wrapped in the real MSP (`8 + count*2 + service_bytes`) + Unconnected-Send + route-path framing — so the size estimate can't drift from the encoder. Reads and writes are prepared once and reused for both sizing and packet building (the previous code rebuilt them). Two unit tests lock it in: split-by-budget and the single-oversized-op edge case (sent alone, not dropped — the empty-group guard handles it). No public API change.
+
+Residual risk: hardware confirmation that a ≥20-tag batch read now succeeds is the maintainer's follow-up (the logic is byte-accurate and unit-tested; the batch-write path was already under budget).
+
 ## Verdict
+
+**Merged 2026-07-08.** Packet-size-aware batch grouping closes the EIP `0x65` (Invalid Length) failure for large batch reads; byte budget derived from the real encoder, edge cases unit-tested, matrix green.

@@ -95,6 +95,14 @@ Phase 1: unit tests for error-on-partial (`to_hash_map` with truncated data → 
   capture checklist above before any `0x02A0 + symbol_id` or read-handle
   behavior changes.
 
+2026-07-08 codex [GPT-5] - Phase 2 checked during AW/AX/AZ implementation sweep.
+
+- Searched current `docs/validation/`, task notes, and wiki for attached
+  Wireshark/packet-capture evidence satisfying the Phase 2 checklist.
+- No capture artifacts or capture-pinned validation notes were present.
+- No UDT wire-format changes were made; Phase 2 remains blocked on the
+  maintainer capture checklist.
+
 ## Claude review
 
 ### 2026-07-08 15:40  claude [Opus 4.8]

@@ -104,6 +104,7 @@ def rand_value(k: Kind, rng: random.Random) -> object | None:
     if k == Kind.INT:  return rng.randint(100, 20_000)
     if k == Kind.REAL: return round(rng.uniform(1.0, 9000.0), 3)
     if k == Kind.BOOL: return bool(rng.randint(0, 1))
+    if k == Kind.STRING: return f"FC{rng.randrange(0x100000000):08X}"
     return None
 
 
@@ -112,12 +113,19 @@ def nines(k: Kind) -> object | None:
     if k == Kind.INT:  return 9_999
     if k == Kind.REAL: return 99.99
     if k == Kind.BOOL: return True
+    if k == Kind.STRING: return "SETTLED"
     return None
 
 
 def values_match(a, b, k: Kind) -> bool:
     if k == Kind.REAL: return math.isclose(a, b, abs_tol=1e-3)
     return a == b
+
+
+def read_value(client: Client, tag: Tag) -> object:
+    if tag.kind == Kind.STRING:
+        return client.read_string(tag.name)
+    return client.read_tag(tag.name)
 
 
 def settle_samples() -> list[tuple[str, Tag, object]]:
@@ -130,12 +138,16 @@ def settle_samples() -> list[tuple[str, Tag, object]]:
         ("ctrl.UDT_members", Tag("gTestUDT.Member1_DINT", "ctrl.UDT_members", Kind.DINT, Mode.WRITEABLE), 999_999),
         ("ctrl.UDT_nested", Tag("gTestUDT.Array_DINT[5]", "ctrl.UDT_nested", Kind.DINT, Mode.WRITEABLE), 999_999),
         ("ctrl.UDTarr_elem_nested", Tag("gTestUDT_Array[2].Array_DINT[3]", "ctrl.UDTarr_elem_nested", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("ctrl.STRING", Tag("gTest_STRING", "ctrl.STRING", Kind.STRING, Mode.WRITEABLE), "SETTLED"),
+        ("ctrl.UDT_members", Tag("gTestUDT.Member5_String", "ctrl.UDT_members", Kind.STRING, Mode.WRITEABLE), "SETTLED"),
         ("prog.BOOL_array", Tag("Program:TestProgram.gTestArray_BOOL[5]", "prog.BOOL_array", Kind.BOOL, Mode.WRITEABLE), True),
         ("prog.DINT_array", Tag("Program:TestProgram.gTestArray_DINT[42]", "prog.DINT_array", Kind.DINT, Mode.WRITEABLE), 999_999),
         ("prog.REAL_array", Tag("Program:TestProgram.gTestArray_REAL[10]", "prog.REAL_array", Kind.REAL, Mode.WRITEABLE), 99.99),
         ("prog.UDT_members", Tag("Program:TestProgram.gTestUDT.Member1_DINT", "prog.UDT_members", Kind.DINT, Mode.WRITEABLE), 999_999),
         ("prog.UDT_nested", Tag("Program:TestProgram.gTestUDT.Array_DINT[5]", "prog.UDT_nested", Kind.DINT, Mode.WRITEABLE), 999_999),
         ("prog.UDTarr_elem_nested", Tag("Program:TestProgram.gTestUDT_Array[2].Array_DINT[3]", "prog.UDTarr_elem_nested", Kind.DINT, Mode.WRITEABLE), 999_999),
+        ("prog.STRING", Tag("Program:TestProgram.gTest_STRING", "prog.STRING", Kind.STRING, Mode.WRITEABLE), "SETTLED"),
+        ("prog.UDT_members", Tag("Program:TestProgram.gTestUDT.Member5_String", "prog.UDT_members", Kind.STRING, Mode.WRITEABLE), "SETTLED"),
     ]
 
 
@@ -190,7 +202,7 @@ def main() -> int:
             tp = time.perf_counter()
             for tag in tags:
                 try:
-                    client.read_tag(tag.name)
+                    read_value(client, tag)
                     preflight_ok += 1
                 except Exception as exc:
                     preflight_fail += 1
@@ -203,7 +215,7 @@ def main() -> int:
         t0 = time.perf_counter()
         for tag in tags:
             try:
-                client.read_tag(tag.name); S(tag.category).read_ok += 1
+                read_value(client, tag); S(tag.category).read_ok += 1
             except Exception:
                 S(tag.category).read_fail += 1
         print(f"  done in {time.perf_counter()-t0:.1f}s")
@@ -226,7 +238,7 @@ def main() -> int:
         t2 = time.perf_counter()
         for tag, expected in written:
             try:
-                actual = client.read_tag(tag.name)
+                actual = read_value(client, tag)
                 if values_match(actual, expected, tag.kind):
                     S(tag.category).verify_ok += 1
                 else:
@@ -268,16 +280,16 @@ def main() -> int:
         settle_verify_ok = settle_verify_fail = 0
         for category, tag, expected in settle_samples():
             try:
-                actual = client.read_tag(tag.name)
+                actual = read_value(client, tag)
                 if values_match(actual, expected, tag.kind):
                     settle_verify_ok += 1
-                    print(f"  verify-settle  {category:<28} {tag.name:<48} ✓")
+                    print(f"  verify-settle  {category:<28} {tag.name:<48} OK")
                 else:
                     settle_verify_fail += 1
-                    print(f"  verify-settle  {category:<28} {tag.name:<48} ✗ MISMATCH: expected {expected!r}, got {actual!r}")
+                    print(f"  verify-settle  {category:<28} {tag.name:<48} FAIL MISMATCH: expected {expected!r}, got {actual!r}")
             except Exception as exc:
                 settle_verify_fail += 1
-                print(f"  verify-settle  {category:<28} {tag.name:<48} ✗ READ ERROR: {exc}")
+                print(f"  verify-settle  {category:<28} {tag.name:<48} FAIL READ ERROR: {exc}")
         print(f"  done in {time.perf_counter()-t5:.1f}s  settle_verify={settle_verify_ok}/{settle_verify_ok + settle_verify_fail}")
         print()
 

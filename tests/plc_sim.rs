@@ -11,17 +11,22 @@ const CMD_SEND_RR_DATA: u16 = 0x006F;
 
 const CIP_READ_TAG: u8 = 0x4C;
 const CIP_WRITE_TAG: u8 = 0x4D;
+const CIP_READ_TAG_FRAGMENTED: u8 = 0x52;
+const CIP_WRITE_TAG_FRAGMENTED: u8 = 0x53;
 const CIP_GET_ATTRIBUTE_LIST: u8 = 0x03;
 const CIP_MULTIPLE_SERVICE_PACKET: u8 = 0x0A;
 
 const CIP_REPLY_READ: u8 = 0xCC;
 const CIP_REPLY_WRITE: u8 = 0xCD;
+const CIP_REPLY_READ_TAG_FRAGMENTED: u8 = 0xD2;
+const CIP_REPLY_WRITE_TAG_FRAGMENTED: u8 = 0xD3;
 const CIP_REPLY_GET_ATTRIBUTE_LIST: u8 = 0x83;
 const CIP_REPLY_MULTIPLE_SERVICE_PACKET: u8 = 0x8A;
 
 const CIP_STATUS_SUCCESS: u8 = 0x00;
 const CIP_STATUS_CONNECTION_FAILURE: u8 = 0x01;
 const CIP_STATUS_PATH_SEGMENT_ERROR: u8 = 0x04;
+const CIP_STATUS_PARTIAL_TRANSFER: u8 = 0x06;
 const CIP_STATUS_EXTENDED_ERROR: u8 = 0xFF;
 const CIP_EXT_STATUS_TYPE_MISMATCH: u16 = 0x2107;
 
@@ -40,10 +45,10 @@ const CIP_TYPE_STRING: u16 = 0x00CE;
 const CIP_TYPE_BOOL_ARRAY_DWORD: u16 = 0x00D3;
 const CIP_TYPE_STRUCTURE: u16 = 0x02A0;
 const CIP_STANDARD_STRING_HANDLE: u16 = 0x0FCE;
+const CIP_LARGE_STRING_HANDLE: u16 = 0x3456;
 const CIP_STANDARD_STRING_DATA_LEN: usize = 82;
 const CIP_STANDARD_STRING_PAD_LEN: usize = 2;
-const CIP_STANDARD_STRING_PAYLOAD_LEN: usize =
-    4 + CIP_STANDARD_STRING_DATA_LEN + CIP_STANDARD_STRING_PAD_LEN;
+const CIP_FRAGMENT_READ_CHUNK: usize = 240;
 
 #[derive(Clone, Debug)]
 enum TagValue {
@@ -59,6 +64,11 @@ enum TagValue {
     Real(f32),
     Lreal(f64),
     String(String),
+    CustomString {
+        handle: u16,
+        capacity: usize,
+        value: String,
+    },
     Array(Vec<TagValue>),
 }
 
@@ -194,6 +204,14 @@ impl SimulatedPlc {
             (
                 "STRING_TAG".to_string(),
                 TagValue::String("Hello PLC".to_string()),
+            ),
+            (
+                "LARGE_STRING".to_string(),
+                TagValue::CustomString {
+                    handle: CIP_LARGE_STRING_HANDLE,
+                    capacity: 600,
+                    value: "Large initial value".to_string(),
+                },
             ),
             (
                 "BOOL_ARRAY".to_string(),
@@ -394,6 +412,8 @@ fn build_cip_response(
     match service {
         CIP_READ_TAG => build_read_response(payload, tags, behavior),
         CIP_WRITE_TAG => handle_write(payload, tags, behavior),
+        CIP_READ_TAG_FRAGMENTED => build_read_fragmented_response(payload, tags, behavior),
+        CIP_WRITE_TAG_FRAGMENTED => handle_write_fragmented(payload, tags, behavior),
         CIP_GET_ATTRIBUTE_LIST => build_get_attribute_list_response(payload, tags),
         CIP_MULTIPLE_SERVICE_PACKET => build_multiple_service_response(payload, tags, behavior),
         _ => vec![CIP_REPLY_READ, 0x00, 0x01, 0x00],
@@ -720,11 +740,39 @@ fn handle_write_cip_request(
             // accepted form is the structure marker plus standard STRING handle.
             return build_cip_extended_error_reply(CIP_REPLY_WRITE, CIP_EXT_STATUS_TYPE_MISMATCH);
         }
-        CIP_TYPE_STRUCTURE if structure_handle == Some(CIP_STANDARD_STRING_HANDLE) => {
-            parse_standard_string_payload(&cip_request[data_start..])
-        }
         CIP_TYPE_STRUCTURE => {
-            return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
+            let Some(handle) = structure_handle else {
+                return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
+            };
+            let mut tags = tags.lock().expect("tag lock");
+            let capacity = match tags.get(&tag_name) {
+                Some(TagValue::CustomString {
+                    handle: tag_handle,
+                    capacity,
+                    ..
+                }) if *tag_handle == handle => *capacity,
+                _ if handle == CIP_STANDARD_STRING_HANDLE => CIP_STANDARD_STRING_DATA_LEN,
+                _ => {
+                    return build_cip_extended_error_reply(
+                        CIP_REPLY_WRITE,
+                        CIP_EXT_STATUS_TYPE_MISMATCH,
+                    );
+                }
+            };
+            let Some(parsed_value) = parse_string_payload(&cip_request[data_start..], capacity)
+            else {
+                return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
+            };
+            let TagValue::String(parsed_text) = parsed_value else {
+                return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
+            };
+            match tags.get_mut(&tag_name) {
+                Some(TagValue::CustomString { value, .. }) => *value = parsed_text,
+                _ => {
+                    tags.insert(tag_name, TagValue::String(parsed_text));
+                }
+            }
+            return build_cip_ok_write_reply();
         }
         _ => None,
     };
@@ -760,13 +808,13 @@ fn build_cip_extended_error_reply(reply_service: u8, extended_status: u16) -> Ve
     reply
 }
 
-fn parse_standard_string_payload(data: &[u8]) -> Option<TagValue> {
-    if data.len() < CIP_STANDARD_STRING_PAYLOAD_LEN {
+fn parse_string_payload(data: &[u8], capacity: usize) -> Option<TagValue> {
+    if data.len() < 4 + capacity {
         return None;
     }
 
     let length = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
-    if length > CIP_STANDARD_STRING_DATA_LEN {
+    if length > capacity {
         return None;
     }
 
@@ -775,16 +823,184 @@ fn parse_standard_string_payload(data: &[u8]) -> Option<TagValue> {
 }
 
 fn append_standard_string_payload(value: &str, response: &mut Vec<u8>) {
-    response.extend_from_slice(&CIP_STANDARD_STRING_HANDLE.to_le_bytes());
-    let string_bytes = value.as_bytes();
-    let data_len = string_bytes.len().min(CIP_STANDARD_STRING_DATA_LEN);
-    response.extend_from_slice(&(data_len as u32).to_le_bytes());
-    response.extend_from_slice(&string_bytes[..data_len]);
-    response.resize(
-        response.len() + (CIP_STANDARD_STRING_DATA_LEN - data_len),
-        0,
+    append_string_payload(
+        CIP_STANDARD_STRING_HANDLE,
+        CIP_STANDARD_STRING_DATA_LEN,
+        value,
+        response,
     );
     response.resize(response.len() + CIP_STANDARD_STRING_PAD_LEN, 0);
+}
+
+fn append_string_payload(handle: u16, capacity: usize, value: &str, response: &mut Vec<u8>) {
+    response.extend_from_slice(&handle.to_le_bytes());
+    let string_bytes = value.as_bytes();
+    let data_len = string_bytes.len().min(capacity);
+    response.extend_from_slice(&(data_len as u32).to_le_bytes());
+    response.extend_from_slice(&string_bytes[..data_len]);
+    response.resize(response.len() + (capacity - data_len), 0);
+}
+
+fn custom_string_type_prefixed(handle: u16, capacity: usize, value: &str) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(4 + capacity + 4);
+    bytes.extend_from_slice(&CIP_TYPE_STRUCTURE.to_le_bytes());
+    append_string_payload(handle, capacity, value, &mut bytes);
+    bytes
+}
+
+fn build_read_fragmented_response(
+    payload: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: &Arc<SimRuntimeBehavior>,
+) -> Vec<u8> {
+    let cip_request = extract_cip_request(payload);
+    let (tag_name, _) = match parse_tag_and_path(&cip_request) {
+        Some(value) => value,
+        None => {
+            return build_cip_error_reply(
+                CIP_REPLY_READ_TAG_FRAGMENTED,
+                CIP_STATUS_PATH_SEGMENT_ERROR,
+            );
+        }
+    };
+    let read_count = behavior.record_read(&tag_name);
+    if let Some(status) = behavior.read_failure_status(&tag_name, read_count) {
+        return build_cip_error_reply(CIP_REPLY_READ_TAG_FRAGMENTED, status);
+    }
+
+    let path_words = cip_request[1] as usize;
+    let data_start = 2 + (path_words * 2);
+    if cip_request.len() < data_start + 6 {
+        return build_cip_error_reply(CIP_REPLY_READ_TAG_FRAGMENTED, CIP_STATUS_PATH_SEGMENT_ERROR);
+    }
+    let byte_offset = u32::from_le_bytes([
+        cip_request[data_start + 2],
+        cip_request[data_start + 3],
+        cip_request[data_start + 4],
+        cip_request[data_start + 5],
+    ]) as usize;
+
+    let tags_guard = tags.lock().expect("tag lock");
+    let Some(TagValue::CustomString {
+        handle,
+        capacity,
+        value,
+    }) = tags_guard.get(&tag_name)
+    else {
+        return build_cip_error_reply(CIP_REPLY_READ_TAG_FRAGMENTED, CIP_STATUS_PATH_SEGMENT_ERROR);
+    };
+    let full = custom_string_type_prefixed(*handle, *capacity, value);
+    if byte_offset >= full.len() {
+        return build_cip_error_reply(CIP_REPLY_READ_TAG_FRAGMENTED, CIP_STATUS_PATH_SEGMENT_ERROR);
+    }
+
+    let end = usize::min(byte_offset + CIP_FRAGMENT_READ_CHUNK, full.len());
+    let status = if end < full.len() {
+        CIP_STATUS_PARTIAL_TRANSFER
+    } else {
+        CIP_STATUS_SUCCESS
+    };
+    let mut response = vec![CIP_REPLY_READ_TAG_FRAGMENTED, 0x00, status, 0x00];
+    response.extend_from_slice(&full[byte_offset..end]);
+    response
+}
+
+fn handle_write_fragmented(
+    payload: &[u8],
+    tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: &Arc<SimRuntimeBehavior>,
+) -> Vec<u8> {
+    let cip_request = extract_cip_request(payload);
+    let (tag_name, _) = match parse_tag_and_path(&cip_request) {
+        Some(value) => value,
+        None => {
+            return build_cip_error_reply(
+                CIP_REPLY_WRITE_TAG_FRAGMENTED,
+                CIP_STATUS_PATH_SEGMENT_ERROR,
+            );
+        }
+    };
+
+    if behavior.should_fail_write(&tag_name) {
+        return build_cip_error_reply(
+            CIP_REPLY_WRITE_TAG_FRAGMENTED,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    }
+
+    let path_words = cip_request[1] as usize;
+    let data_start = 2 + (path_words * 2);
+    if cip_request.len() < data_start + 10 {
+        return build_cip_error_reply(
+            CIP_REPLY_WRITE_TAG_FRAGMENTED,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    }
+    let data_type = u16::from_le_bytes([cip_request[data_start], cip_request[data_start + 1]]);
+    let handle = u16::from_le_bytes([cip_request[data_start + 2], cip_request[data_start + 3]]);
+    let byte_offset = u32::from_le_bytes([
+        cip_request[data_start + 6],
+        cip_request[data_start + 7],
+        cip_request[data_start + 8],
+        cip_request[data_start + 9],
+    ]) as usize;
+    let fragment = &cip_request[data_start + 10..];
+
+    if data_type != CIP_TYPE_STRUCTURE {
+        return build_cip_error_reply(
+            CIP_REPLY_WRITE_TAG_FRAGMENTED,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    }
+
+    let mut tags_guard = tags.lock().expect("tag lock");
+    let Some(TagValue::CustomString {
+        handle: tag_handle,
+        capacity,
+        value,
+    }) = tags_guard.get_mut(&tag_name)
+    else {
+        return build_cip_error_reply(
+            CIP_REPLY_WRITE_TAG_FRAGMENTED,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    };
+    if *tag_handle != handle {
+        return build_cip_extended_error_reply(
+            CIP_REPLY_WRITE_TAG_FRAGMENTED,
+            CIP_EXT_STATUS_TYPE_MISMATCH,
+        );
+    }
+
+    let mut raw = vec![0u8; 4 + *capacity];
+    let existing = value.as_bytes();
+    let existing_len = existing.len().min(*capacity);
+    raw[0..4].copy_from_slice(&(existing_len as u32).to_le_bytes());
+    raw[4..4 + existing_len].copy_from_slice(&existing[..existing_len]);
+
+    if byte_offset + fragment.len() > raw.len() {
+        return build_cip_error_reply(
+            CIP_REPLY_WRITE_TAG_FRAGMENTED,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    }
+    raw[byte_offset..byte_offset + fragment.len()].copy_from_slice(fragment);
+
+    let len = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as usize;
+    if len > *capacity {
+        return build_cip_error_reply(
+            CIP_REPLY_WRITE_TAG_FRAGMENTED,
+            CIP_STATUS_PATH_SEGMENT_ERROR,
+        );
+    }
+    *value = String::from_utf8_lossy(&raw[4..4 + len]).to_string();
+
+    vec![
+        CIP_REPLY_WRITE_TAG_FRAGMENTED,
+        0x00,
+        CIP_STATUS_SUCCESS,
+        0x00,
+    ]
 }
 
 fn build_multiple_service_response(
@@ -970,7 +1186,7 @@ fn build_value_response(
                     response
                 }
                 TagValue::Lreal(_) => build_array_value_response(&subset, CIP_TYPE_LREAL),
-                TagValue::String(_) => {
+                TagValue::String(_) | TagValue::CustomString { .. } => {
                     // Simulator keeps string arrays simple: return first requested string.
                     build_value_response(subset[0].clone(), None, 1)
                 }
@@ -1052,6 +1268,23 @@ fn build_value_response(
             append_standard_string_payload(&v, &mut response);
             response
         }
+        TagValue::CustomString {
+            handle,
+            capacity,
+            value,
+        } => {
+            let full = custom_string_type_prefixed(handle, capacity, &value);
+            if full.len() > 500 {
+                let end = usize::min(CIP_FRAGMENT_READ_CHUNK, full.len());
+                let mut response = vec![CIP_REPLY_READ, 0x00, CIP_STATUS_PARTIAL_TRANSFER, 0x00];
+                response.extend_from_slice(&full[..end]);
+                response
+            } else {
+                let mut response = vec![CIP_REPLY_READ, 0x00, 0x00, 0x00];
+                response.extend_from_slice(&full);
+                response
+            }
+        }
     }
 }
 
@@ -1090,7 +1323,7 @@ fn tag_data_type(value: &TagValue) -> u16 {
         TagValue::Ulint(_) => CIP_TYPE_ULINT,
         TagValue::Real(_) => CIP_TYPE_REAL,
         TagValue::Lreal(_) => CIP_TYPE_LREAL,
-        TagValue::String(_) => CIP_TYPE_STRUCTURE,
+        TagValue::String(_) | TagValue::CustomString { .. } => CIP_TYPE_STRUCTURE,
         TagValue::Array(items) => items.first().map(tag_data_type).unwrap_or(CIP_TYPE_DINT),
     }
 }

@@ -5,10 +5,9 @@
 // and drives the full read / write / verify / blocked-probe / settle surface
 // through the C ABI in include/rust_ethernet_ip.h.
 //
-// Unlike the current Rust/C#/Python runners, this one DOES exercise STRING writes
-// (standalone STRINGs are written+verified; UDT STRING members are blocked-probed),
-// so its counts reflect the manifest labels in full: 2304 read / 2268 write /
-// 17 blocked / 19 read-only.
+// Exercises STRING writes through the same manifest-driven phases as the
+// Rust/C#/Python runners. After handle-aware STRING writes, the shared manifest
+// resolves to 2304 read / 2285 write / 0 blocked / 19 read-only.
 //
 // Usage: full_coverage [--plc-address <ip:port>] [--plc-slot <n>]
 //                      [--manifest <path>] [--out-dir <dir>] [--skip-preflight]
@@ -363,7 +362,7 @@ int main(int argc, char **argv) {
     }
     std::printf("Phase 3 — verify: done\n");
 
-    // Phase 4 — confirm expected-blocked writes are still rejected (STRING members)
+// Phase 4 — confirm any expected-blocked writes are still rejected
     for (const auto &t : tags) {
         if (!is_blocked(t.write)) continue;
         CatStats &s = stats[t.category];

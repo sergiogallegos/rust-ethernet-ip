@@ -8,14 +8,11 @@
 >
 > CODEX-AT and CODEX-AU (2026-07-02, maintainer-requested) sit outside the analysis set. AT is grounded in new hardware evidence ([`../validation/2026-07-02_string_write_probe_5069-L330ERM_fw38.md`](../validation/2026-07-02_string_write_probe_5069-L330ERM_fw38.md)) that **disproves the STRING-write firmware quirk** — it answers CODEX-AP's item 5 decision point and shares files with AM (`.DATA[i]` consumer note), AN (`tests/plc_sim.rs`), and AP (`client/string.rs`, 0x2107 text); whichever lands second rebases. AU is packaging-only (C header + C++ example + Qt guide) and should sequence after AS if AS is in flight (AS privatizes three raw exports the header must exclude).
 >
-> **1.2.0 release plan (2026-07-02 maintainer direction).** The open CODEX-AJ…AU set accumulates on `main` with no interim releases. When the set is merged: full local matrix, then a maintainer hardware full-coverage pass (all three bindings; expected counts: CODEX-AV completed the blocked-label re-validation at `463854a` — the gate run uses the AV-corrected manifest of 2304 total / 2268 writeable / 17 expected-blocked / 19 read-only; zero unexpected anomalies required), then version bump and publish as **1.2.0** — minor, not major: the set is behavioral fixes, deprecations, and additive surface (header, C++ example) with no Rust-API signature breaks; the deferred deletions stay queued for 2.0 per `docs/ROADMAP.md`. **ABI-version caveat (CODEX-AS, merged `00db89e`):** the C FFI ABI is now v2 — a linker-visible removal of three unusable `*mut EipClient` exports. This does not break the crates.io SemVer contract (not Rust API) or the shipped C#/Python packages (wrappers import only `_by_id` and move in lockstep with the native lib), and the `eip_abi_version()` bump fails-fast any hypothetical third-party direct C consumer. Maintainer sign-off requested at tag time that this is acceptable within a **minor** release. Packet captures for CODEX-AO phase 2 should be bundled into that same hardware session. Recommended implementation order: **AK → AJ → AT → AM → AN → AL → AS → AP → AQ → AR → AU**, with AO phase 1 free to interleave anywhere. Decisions relayed for open questions: AK item 4 resolves as "omit `authors` entirely from all five manifests" (matches the sibling-crate convention); AU waits for AS.
+> **1.2.0 release plan (2026-07-02 maintainer direction).** The open CODEX-AJ…AU set accumulates on `main` with no interim releases. When the set is merged: full local matrix, then a maintainer hardware full-coverage pass (all bindings; after CODEX-AY/AX the shared manifest resolves 2304 total / 2285 writeable / 0 expected-blocked / 19 read-only; zero unexpected anomalies required), then version bump and publish as **1.2.0** — minor, not major: the set is behavioral fixes, deprecations, and additive surface (header, C++ example) with no Rust-API signature breaks; the deferred deletions stay queued for 2.0 per `docs/ROADMAP.md`. **ABI-version caveat (CODEX-AS, merged `00db89e`):** the C FFI ABI is now v2 — a linker-visible removal of three unusable `*mut EipClient` exports. This does not break the crates.io SemVer contract (not Rust API) or the shipped C#/Python packages (wrappers import only `_by_id` and move in lockstep with the native lib), and the `eip_abi_version()` bump fails-fast any hypothetical third-party direct C consumer. Maintainer sign-off requested at tag time that this is acceptable within a **minor** release. Packet captures for CODEX-AO phase 2 should be bundled into that same hardware session. Recommended implementation order: **AK → AJ → AT → AM → AN → AL → AS → AP → AQ → AR → AU**, with AO phase 1 free to interleave anywhere. Decisions relayed for open questions: AK item 4 resolves as "omit `authors` entirely from all five manifests" (matches the sibling-crate convention); AU waits for AS.
 
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
 | CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open (Phase 1 merged) | 2026-07-01 |
-| CODEX-AW | Batch grouping ignores max_packet_size — large batch reads fail with EIP 0x65 (Invalid Length) | codex | open | 2026-07-08 |
-| CODEX-AX | Full-coverage harness never writes/blocked-probes STRINGs — release gate can't catch a STRING regression | codex | open | 2026-07-08 |
-| CODEX-AZ | CIP fragmented read/write for structures larger than one packet (Str500+, large UDTs) | codex | open | 2026-07-08 |
 
 > 2026-07-08 update: CODEX-AO Phase 1 reviewed and **merged** (UDT strictness /
 > RMW zero-fill hazard closed without hardware; template empty-name alignment
@@ -55,7 +52,7 @@
 
 ### 2026-07-08 hardware-validation findings (from the pre-1.2.0 cross-binding pass)
 
-From the 4-binding hardware pass on 5069-L330ERM fw38 ([`validation record`](../validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md)). Findings 1–2 are now briefed (open rows above); finding 3 is folded into CODEX-AX.
+From the 4-binding hardware pass on 5069-L330ERM fw38 ([`validation record`](../validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md)). Findings 1–2 are now submitted in CODEX-AW/CODEX-AX; finding 3 is folded into CODEX-AX.
 
 1. **Batch READ of ≥~20 long-path tags fails with EIP `0x65` (Invalid Length).** `optimize_operation_groups` in `src/client/batch_exec.rs` enforces `max_operations_per_packet` (20) but not `max_packet_size` (504 B). → **CODEX-AW**.
 2. **Full-coverage harness never exercises STRING writes/blocked-probes.** `rand_value()`/`nines()` in `examples/test_plc_full_coverage.rs` return `None` for `Kind::String` (`writes=2266` not 2268, `blocked=0` not 17); the new `examples/cpp/full_coverage.cpp` is the corrected reference (2268/17). → **CODEX-AX**.
@@ -132,6 +129,9 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-AZ | CIP fragmented read/write for large strings/UDTs (Claude fix-during-merge for array-element read path; hardware-validated on extended UDT) | codex | _pending push_ |
+| CODEX-AX | Full-coverage harness writes+verifies STRINGs — counts 2304/2285/0/19; hardware full-coverage PASS | codex | _pending push_ |
+| CODEX-AW | Packet-size-aware batch grouping — closes EIP 0x65 on large batch reads | codex | _pending push_ |
 | CODEX-AY | Handle-aware STRING writes — custom string types (Str82/Str400) write via the target's real structure handle (Claude-implemented) | claude | `4bbb74e` |
 | CODEX-AU | C++ consumer support — C header with parity gate, RAII example, Qt integration guide | codex | `7cb07a4` |
 | CODEX-AO (Phase 1) | UDT crate strictness — fail-closed RMW conversion, template empty-name alignment, packed-BOOL mechanism (Phase 2 still open) | codex | `7cb07a4` |

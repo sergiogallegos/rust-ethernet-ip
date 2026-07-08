@@ -141,6 +141,7 @@ internal static class Program
         Kind.Int  => (short)rng.Next(100, 20_000),
         Kind.Real => (float)(rng.NextDouble() * 9000 + 1.0),
         Kind.Bool => rng.Next(2) == 1,
+        Kind.String => $"FC{rng.Next():X8}",
         _ => null,
     };
 
@@ -150,6 +151,7 @@ internal static class Program
         Kind.Int  => (short)9_999,
         Kind.Real => 99.99f,
         Kind.Bool => true,
+        Kind.String => "SETTLED",
         _ => null,
     };
 
@@ -181,6 +183,7 @@ internal static class Program
                 case Kind.Int:  c.WriteInt(t.Name, (short)v); return true;
                 case Kind.Real: c.WriteReal(t.Name, (float)v); return true;
                 case Kind.Bool: c.WriteBool(t.Name, (bool)v); return true;
+                case Kind.String: c.WriteString(t.Name, (string)v); return true;
             }
         }
         catch { return false; }
@@ -197,6 +200,7 @@ internal static class Program
                 Kind.Int  => c.ReadInt(t.Name)  == (short)expected,
                 Kind.Bool => c.ReadBool(t.Name) == (bool)expected,
                 Kind.Real => Math.Abs(c.ReadReal(t.Name) - (float)expected) < 0.001f,
+                Kind.String => c.ReadString(t.Name) == (string)expected,
                 _ => false,
             };
         }
@@ -213,12 +217,16 @@ internal static class Program
         ("ctrl.UDT_members", new("gTestUDT.Member1_DINT", "ctrl.UDT_members", Kind.Dint, WriteMode.Writeable), 999_999),
         ("ctrl.UDT_nested", new("gTestUDT.Array_DINT[5]", "ctrl.UDT_nested", Kind.Dint, WriteMode.Writeable), 999_999),
         ("ctrl.UDTarr_elem_nested", new("gTestUDT_Array[2].Array_DINT[3]", "ctrl.UDTarr_elem_nested", Kind.Dint, WriteMode.Writeable), 999_999),
+        ("ctrl.STRING", new("gTest_STRING", "ctrl.STRING", Kind.String, WriteMode.Writeable), "SETTLED"),
+        ("ctrl.UDT_members", new("gTestUDT.Member5_String", "ctrl.UDT_members", Kind.String, WriteMode.Writeable), "SETTLED"),
         ("prog.BOOL_array", new("Program:TestProgram.gTestArray_BOOL[5]", "prog.BOOL_array", Kind.Bool, WriteMode.Writeable), true),
         ("prog.DINT_array", new("Program:TestProgram.gTestArray_DINT[42]", "prog.DINT_array", Kind.Dint, WriteMode.Writeable), 999_999),
         ("prog.REAL_array", new("Program:TestProgram.gTestArray_REAL[10]", "prog.REAL_array", Kind.Real, WriteMode.Writeable), 99.99f),
         ("prog.UDT_members", new("Program:TestProgram.gTestUDT.Member1_DINT", "prog.UDT_members", Kind.Dint, WriteMode.Writeable), 999_999),
         ("prog.UDT_nested", new("Program:TestProgram.gTestUDT.Array_DINT[5]", "prog.UDT_nested", Kind.Dint, WriteMode.Writeable), 999_999),
         ("prog.UDTarr_elem_nested", new("Program:TestProgram.gTestUDT_Array[2].Array_DINT[3]", "prog.UDTarr_elem_nested", Kind.Dint, WriteMode.Writeable), 999_999),
+        ("prog.STRING", new("Program:TestProgram.gTest_STRING", "prog.STRING", Kind.String, WriteMode.Writeable), "SETTLED"),
+        ("prog.UDT_members", new("Program:TestProgram.gTestUDT.Member5_String", "prog.UDT_members", Kind.String, WriteMode.Writeable), "SETTLED"),
     };
 
     private static int Main()
@@ -354,12 +362,12 @@ internal static class Program
             if (VerifyRead(client, tag, expected))
             {
                 settleVerifyOk++;
-                Console.WriteLine($"  verify-settle  {category,-28} {tag.Name,-48} ✓");
+                Console.WriteLine($"  verify-settle  {category,-28} {tag.Name,-48} OK");
             }
             else
             {
                 settleVerifyFail++;
-                Console.WriteLine($"  verify-settle  {category,-28} {tag.Name,-48} ✗ MISMATCH");
+                Console.WriteLine($"  verify-settle  {category,-28} {tag.Name,-48} FAIL MISMATCH");
             }
         }
         sw.Stop(); Console.WriteLine($"  done in {sw.Elapsed.TotalSeconds:F1}s  settle_verify={settleVerifyOk}/{settleVerifyOk + settleVerifyFail}");

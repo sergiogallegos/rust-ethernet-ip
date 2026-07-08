@@ -150,6 +150,32 @@ async fn simulated_plc_string_write_shorter_value_clears_residue() {
 }
 
 #[tokio::test]
+async fn simulated_plc_large_custom_string_round_trips_with_fragmentation() {
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+
+    let initial = client
+        .read_string_tag("LARGE_STRING")
+        .await
+        .expect("fragmented read large string");
+    assert_eq!(initial, "Large initial value");
+
+    let updated = "X".repeat(520);
+    client
+        .write_tag("LARGE_STRING", PlcValue::String(updated.clone()))
+        .await
+        .expect("fragmented write large string");
+
+    let read_back = client
+        .read_string_tag("LARGE_STRING")
+        .await
+        .expect("read back fragmented string");
+    assert_eq!(read_back, updated);
+}
+
+#[tokio::test]
 async fn simulated_plc_batch_string_write_read_round_trip() {
     let sim = SimulatedPlc::start().await;
     let addr = format!("{}", sim.address);

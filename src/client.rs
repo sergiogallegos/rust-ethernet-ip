@@ -39,6 +39,13 @@ mod subscriptions;
 
 pub use actor::{Backoff, Client, ConnectionEvent, RetryClient, RetryPolicy};
 
+const READ_TAG_FRAGMENTED: u8 = 0x52;
+const WRITE_TAG_FRAGMENTED: u8 = 0x53;
+const READ_TAG_FRAGMENTED_REPLY: u8 = 0xD2;
+const WRITE_TAG_FRAGMENTED_REPLY: u8 = 0xD3;
+const CIP_STATUS_SUCCESS: u8 = 0x00;
+const CIP_STATUS_PARTIAL_TRANSFER: u8 = 0x06;
+
 #[derive(Debug)]
 struct TagListPage {
     tags: Vec<TagAttributes>,
@@ -739,8 +746,8 @@ impl EipClient {
 
     fn diagnostic_operation_for(cip_request: &[u8]) -> Option<DiagnosticOperation> {
         match cip_request.first().copied() {
-            Some(READ_TAG) => Some(DiagnosticOperation::Read),
-            Some(WRITE_TAG) => Some(DiagnosticOperation::Write),
+            Some(READ_TAG | READ_TAG_FRAGMENTED) => Some(DiagnosticOperation::Read),
+            Some(WRITE_TAG | WRITE_TAG_FRAGMENTED) => Some(DiagnosticOperation::Write),
             Some(MULTIPLE_SERVICE_PACKET) => Some(DiagnosticOperation::Batch),
             _ => None,
         }
@@ -1187,7 +1194,39 @@ impl EipClient {
             .send_cip_request(&self.build_read_request(tag_name)?)
             .await?;
         let cip_data = self.extract_cip_from_response(&response)?;
+        if cip_data.get(2).copied() == Some(CIP_STATUS_PARTIAL_TRANSFER) {
+            return self.read_tag_fragmented(tag_name).await;
+        }
         self.parse_cip_response(&cip_data)
+    }
+
+    async fn read_tag_fragmented(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
+        let mut offset = 0u32;
+        let mut reassembled = Vec::new();
+
+        loop {
+            let request = self.build_read_fragmented_request(tag_name, 1, offset)?;
+            let response = self.send_cip_request(&request).await?;
+            let cip_data = self.extract_unconnected_data_item(&response)?;
+            let (status, fragment) = self.parse_read_fragmented_response(&cip_data)?;
+
+            if fragment.is_empty() && status == CIP_STATUS_PARTIAL_TRANSFER {
+                return Err(EtherNetIpError::Protocol(format!(
+                    "Read Tag Fragmented for '{tag_name}' returned an empty partial fragment at offset {offset}"
+                )));
+            }
+
+            offset = offset
+                .checked_add(fragment.len() as u32)
+                .ok_or_else(|| EtherNetIpError::Protocol("fragment offset overflow".to_string()))?;
+            reassembled.extend_from_slice(fragment);
+
+            if status == CIP_STATUS_SUCCESS {
+                break;
+            }
+        }
+
+        self.decode_type_prefixed_value(&reassembled)
     }
 
     /// Reads a single bit from a tag (e.g. a DINT used as a status word).
@@ -1423,17 +1462,22 @@ impl EipClient {
             .await?;
         let test_cip_data = self.extract_cip_from_response(&test_response)?;
 
-        // Check for errors in test read
-        self.check_cip_error(&test_cip_data)?;
+        // A Partial Transfer here means the element is a structure larger than one CIP packet
+        // (e.g. a big UDT) — it cannot be a BOOL array, so skip BOOL detection and let the
+        // element read below fall back to the fragmented path.
+        if test_cip_data.get(2).copied() != Some(CIP_STATUS_PARTIAL_TRANSFER) {
+            // Check for errors in test read
+            self.check_cip_error(&test_cip_data)?;
 
-        // Check if it's a BOOL array (data type 0x00D3 = DWORD)
-        if test_cip_data.len() >= 6 {
-            let test_data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
-            if test_data_type == 0x00D3 {
-                // BOOL array - use special workaround to extract the bit
-                return self
-                    .read_bool_array_element_workaround(base_array_name, index)
-                    .await;
+            // Check if it's a BOOL array (data type 0x00D3 = DWORD)
+            if test_cip_data.len() >= 6 {
+                let test_data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
+                if test_data_type == 0x00D3 {
+                    // BOOL array - use special workaround to extract the bit
+                    return self
+                        .read_bool_array_element_workaround(base_array_name, index)
+                        .await;
+                }
             }
         }
 
@@ -1443,6 +1487,15 @@ impl EipClient {
 
         let response = self.send_cip_request(&request).await?;
         let cip_data = self.extract_cip_from_response(&response)?;
+
+        // A whole array element that is a large structure (e.g. a UDT bigger than one CIP
+        // packet) comes back as Partial Transfer; reassemble it via the fragmented read path,
+        // mirroring read_tag_direct.
+        if cip_data.get(2).copied() == Some(CIP_STATUS_PARTIAL_TRANSFER) {
+            return self
+                .read_tag_fragmented(&format!("{base_array_name}[{index}]"))
+                .await;
+        }
 
         // Check for errors (including extended errors)
         self.check_cip_error(&cip_data)?;
@@ -3128,18 +3181,46 @@ impl EipClient {
         request.encode(&mut cip_request)?;
 
         if cip_request.len() > Self::SINGLE_PACKET_WRITE_LIMIT {
-            return Err(EtherNetIpError::Protocol(format!(
-                "STRING write for '{tag_name}' needs {} request bytes, over the ~{}-byte \
-                 single-packet limit for this path; CIP fragmentation (not yet supported) would \
-                 be required — use a shorter custom string type or a shorter tag path",
-                cip_request.len(),
-                Self::SINGLE_PACKET_WRITE_LIMIT,
-            )));
+            return self
+                .write_string_fragmented(tag_name, handle, &payload)
+                .await;
         }
 
         let response = self.send_cip_request(&cip_request).await?;
         let cip_response = self.extract_cip_from_response(&response)?;
         self.check_cip_error(&cip_response)?;
+        Ok(())
+    }
+
+    async fn write_string_fragmented(
+        &mut self,
+        tag_name: &str,
+        handle: u16,
+        payload: &[u8],
+    ) -> crate::error::Result<()> {
+        let max_fragment = self.max_write_fragment_payload_len(tag_name, handle)?;
+        let mut offset = 0usize;
+
+        while offset < payload.len() {
+            let end = usize::min(offset + max_fragment, payload.len());
+            let request = self.build_write_fragmented_request(
+                tag_name,
+                handle,
+                offset as u32,
+                &payload[offset..end],
+            )?;
+            let response = self.send_cip_request(&request).await?;
+            let cip_response = self.extract_cip_from_response(&response)?;
+            if cip_response.first().copied() != Some(WRITE_TAG_FRAGMENTED_REPLY) {
+                return Err(EtherNetIpError::Protocol(format!(
+                    "Unexpected Write Tag Fragmented reply service: 0x{:02X}",
+                    cip_response.first().copied().unwrap_or(0)
+                )));
+            }
+            self.check_cip_error(&cip_response)?;
+            offset = end;
+        }
+
         Ok(())
     }
 
@@ -3223,6 +3304,57 @@ impl EipClient {
             cip_request
         );
         Ok(cip_request.to_vec())
+    }
+
+    fn build_read_fragmented_request(
+        &self,
+        tag_name: &str,
+        element_count: u16,
+        byte_offset: u32,
+    ) -> crate::error::Result<Vec<u8>> {
+        let mut data = Vec::with_capacity(6);
+        data.extend_from_slice(&element_count.to_le_bytes());
+        data.extend_from_slice(&byte_offset.to_le_bytes());
+        let request = CipRequest::new(READ_TAG_FRAGMENTED, self.build_tag_path(tag_name), data);
+        let mut cip_request = BytesMut::new();
+        request.encode(&mut cip_request)?;
+        Ok(cip_request.to_vec())
+    }
+
+    fn build_write_fragmented_request(
+        &self,
+        tag_name: &str,
+        handle: u16,
+        byte_offset: u32,
+        fragment: &[u8],
+    ) -> crate::error::Result<Vec<u8>> {
+        let mut data = Vec::with_capacity(10 + fragment.len());
+        data.extend_from_slice(&values::AB_UDT.to_le_bytes());
+        data.extend_from_slice(&handle.to_le_bytes());
+        data.extend_from_slice(&1u16.to_le_bytes());
+        data.extend_from_slice(&byte_offset.to_le_bytes());
+        data.extend_from_slice(fragment);
+        let request = CipRequest::new(WRITE_TAG_FRAGMENTED, self.build_tag_path(tag_name), data);
+        let mut cip_request = BytesMut::new();
+        request.encode(&mut cip_request)?;
+        Ok(cip_request.to_vec())
+    }
+
+    fn max_write_fragment_payload_len(
+        &self,
+        tag_name: &str,
+        handle: u16,
+    ) -> crate::error::Result<usize> {
+        let empty_request = self.build_write_fragmented_request(tag_name, handle, 0, &[])?;
+        if empty_request.len() >= Self::SINGLE_PACKET_WRITE_LIMIT {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Write Tag Fragmented request for '{tag_name}' has {} bytes of overhead, exceeding the {}-byte single-packet limit before payload",
+                empty_request.len(),
+                Self::SINGLE_PACKET_WRITE_LIMIT
+            )));
+        }
+
+        Ok(Self::SINGLE_PACKET_WRITE_LIMIT - empty_request.len())
     }
 
     pub fn build_list_tags_request(&self) -> Vec<u8> {
@@ -3602,6 +3734,7 @@ impl EipClient {
             let use_direct_fallback = raw_cip_data.len() >= 3
                 && raw_cip_data[0] == 0xD2
                 && raw_cip_data[2] != 0x00
+                && cip_request.first().copied() != Some(READ_TAG_FRAGMENTED)
                 && self.route_path_snapshot().is_none();
 
             if use_direct_fallback {
@@ -3824,21 +3957,7 @@ impl EipClient {
         let response = CipResponse::decode(&mut response_bytes)?;
 
         if response.service == 0xCC {
-            if response.data.len() < 2 {
-                return Err(EtherNetIpError::Protocol(
-                    "Read response too short for data".to_string(),
-                ));
-            }
-
-            let data_type = u16::from_le_bytes([response.data[0], response.data[1]]);
-            let value_data = &response.data[2..];
-            tracing::trace!(
-                "Data type: 0x{:04X}, Value data ({} bytes): {:02X?}",
-                data_type,
-                value_data.len(),
-                value_data
-            );
-            Ok(values::decode_payload(data_type, value_data)?)
+            self.decode_type_prefixed_value(&response.data)
         } else if response.service == 0xCD {
             tracing::debug!("Write operation successful");
             Ok(PlcValue::Bool(true))
@@ -3848,6 +3967,49 @@ impl EipClient {
                 response.service
             )))
         }
+    }
+
+    fn parse_read_fragmented_response<'a>(
+        &self,
+        cip_response: &'a [u8],
+    ) -> crate::error::Result<(u8, &'a [u8])> {
+        if cip_response.len() < 4 {
+            return Err(EtherNetIpError::Protocol(
+                "Read Tag Fragmented response too short".to_string(),
+            ));
+        }
+
+        let service = cip_response[0];
+        if service != READ_TAG_FRAGMENTED_REPLY {
+            return Err(EtherNetIpError::Protocol(format!(
+                "Unexpected Read Tag Fragmented reply service: 0x{service:02X}"
+            )));
+        }
+
+        let status = cip_response[2];
+        if status != CIP_STATUS_SUCCESS && status != CIP_STATUS_PARTIAL_TRANSFER {
+            self.check_cip_error(cip_response)?;
+        }
+
+        Ok((status, &cip_response[4..]))
+    }
+
+    fn decode_type_prefixed_value(&self, data: &[u8]) -> crate::error::Result<PlcValue> {
+        if data.len() < 2 {
+            return Err(EtherNetIpError::Protocol(
+                "Read response too short for data".to_string(),
+            ));
+        }
+
+        let data_type = u16::from_le_bytes([data[0], data[1]]);
+        let value_data = &data[2..];
+        tracing::trace!(
+            "Data type: 0x{:04X}, Value data ({} bytes): {:02X?}",
+            data_type,
+            value_data.len(),
+            value_data
+        );
+        Ok(values::decode_payload(data_type, value_data)?)
     }
 
     /// Unregisters the EtherNet/IP session with the PLC

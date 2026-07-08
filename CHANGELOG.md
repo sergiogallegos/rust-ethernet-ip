@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Target next release: TBD.
 
 ### Added
+- CODEX-AZ added CIP Read Tag Fragmented (`0x52`) and Write Tag
+  Fragmented (`0x53`) support for large string/structure payloads. Custom
+  strings that exceed the single-packet ceiling can now be read and written via
+  the same string APIs, with simulator coverage for a 600-byte custom string.
+- Python `Client.read_string()` now exposes the native string-read path, so
+  Python callers can read built-in and custom Logix string types as text.
 - CODEX-AU added first-class C/C++ consumer support: checked-in
   `include/rust_ethernet_ip.h`, a simulator-backed CMake C++ smoke example,
   CI header/export parity checks, and a Qt threading guide.
@@ -40,6 +46,16 @@ Target next release: TBD.
   `UdtData::parse`, or the service-layer UDT member helpers instead.
 
 ### Fixed
+- CODEX-AW made batch operation grouping enforce both
+  `max_operations_per_packet` and `max_packet_size`, splitting oversized
+  Multiple Service Packet batches instead of sending a packet the controller
+  rejects with EIP status `0x65`.
+- CODEX-AX wires STRINGs into the Rust, C#, and Python full-coverage runners:
+  all manifest string targets now write, verify, and settle through string-aware
+  reads; the manifest now reflects CODEX-AY's handle-aware string fix at 2304
+  total / 2285 writeable / 0 expected-blocked / 19 read-only targets.
+- The Python full-coverage runner now uses ASCII status markers so redirected
+  stdout on Windows no longer depends on a UTF-8 console code page.
 - CODEX-AO Phase 1 made UDT member-map conversion fail closed: truncated UDT
   bytes now error instead of skipping members, missing member values now error
   instead of zero-filling them, template parsing preserves empty member-name
@@ -90,10 +106,10 @@ Target next release: TBD.
   rebuilt `get_tag_attributes` on the CIP request/response codec, and made the
   simulator serve spec-shaped Read Tag and Get Attribute List replies.
 - CODEX-AV relabeled the full-coverage manifest from the 2026-07-03 hardware
-  matrix: 60 scalar UDT-array-element-member targets are now writeable, UDT
-  STRING members use the honest `encoding_blocked_udt_string_member` label,
-  the missing program-scope `Member5_String` array-member entry is present, and
-  Rust/C#/Python runner expectations agree on 2304 total / 2268 writeable / 17
+  matrix: 60 scalar UDT-array-element-member targets became writeable and the
+  missing program-scope `Member5_String` array-member entry was added. CODEX-AY
+  and CODEX-AX subsequently moved the STRING-member labels to writeable, so the
+  current runner expectation is 2304 total / 2285 writeable / 0
   expected-blocked / 19 read-only targets.
 - Service-layer UDT member writes now try direct scalar member writes first and
   fall back to whole-UDT read-modify-write only on the `0x2107` data-type

@@ -3,10 +3,10 @@
 This folder contains project documentation for `rust-ethernet-ip`.
 
 Current release state:
-- Current stable line: `1.1.0` (tagged 2026-06-19, crates.io + NuGet + PyPI)
-- Previous stable line: `1.0.0` (tagged 2026-05-24)
-- Earlier stable lines: `0.7.0`, `0.6.3`
-- In progress (unreleased): the CODEX-AJ…AU remediation set on `main`, targeting `1.2.0` after a full cross-binding hardware validation pass
+- Current stable line: `1.2.0` (crates.io + NuGet + PyPI)
+- Previous stable line: `1.1.0` (tagged 2026-06-19)
+- Earlier stable lines: `1.0.0`, `0.7.0`, `0.6.3`
+- `1.2.0` carries the CODEX-AJ…AZ remediation set, hardware-validated cross-binding (Rust/C#/Python/C++) on CompactLogix 5069-L330ERM fw38
 
 ## Start Here
 

@@ -45,25 +45,30 @@
 //!
 //! ## Known PLC/Firmware Limits
 //!
-//! Real-hardware validation for the `1.2.0` release line classified some nested
-//! direct write shapes as controller/firmware limitations. Follow-up probes on
-//! 2026-07-02 and 2026-07-03 corrected that picture: standalone standard Logix
-//! `STRING` tags write successfully when encoded as the standard
-//! `0x02A0`/`0x0FCE` structure, and scalar UDT array element members
-//! (DINT/REAL/BOOL/INT) write successfully when the full member path is
-//! preserved.
+//! Earlier release lines classified several direct write shapes as
+//! controller/firmware limitations. Hardware probes on 2026-07-02 through
+//! 2026-07-08 corrected that picture, and the fixes ship in this line.
+//! Real-hardware validation for the `1.2.0` release line (CompactLogix
+//! 5069-L330ERM fw38, full-coverage across Rust/C#/Python/C++) confirmed:
 //!
-//! - Direct writes to scalar UDT array element members are confirmed on
-//!   5069-L330ERM fw38 and are attempted directly by the service layer.
-//! - Direct writes to `STRING` members inside UDTs still fail with
-//!   `0xFF/0x2107` under the current member encoding on 5069-L330ERM fw38.
-//!   Whether a member-specific direct encoding exists remains under
-//!   investigation.
+//! - Standalone standard Logix `STRING` tags write directly using the standard
+//!   `0x02A0`/`0x0FCE` structure encoding.
+//! - Scalar UDT array element members (DINT/REAL/BOOL/INT) write directly when
+//!   the full member path is preserved.
+//! - `STRING` members inside UDTs and UDT array elements — including **custom
+//!   string types** with a user-defined name/length (e.g. `Str82`, `Str400`) —
+//!   write directly: the library discovers the target's real structure handle
+//!   instead of assuming the built-in `0x0FCE`. A `0x2107` Read/Write Tag
+//!   data-type mismatch here now indicates a genuine type mismatch, not a
+//!   firmware block.
+//! - Strings/structures larger than one CIP packet are read and written via
+//!   CIP Read/Write Tag Fragmented (`0x52`/`0x53`).
 //!
-//! These failures surface as `0x2107` Read/Write Tag data-type mismatch errors.
-//!
-//! Recommended pattern for rejected STRING-member cases: read-modify-write the
-//! full UDT or UDT array element instead of directly writing the nested member.
+//! Remaining limits: whole-UDT *array-element* writes as a single structure are
+//! not supported (update members individually), and `read_tag` returns custom
+//! string types as [`PlcValue::Udt`] — use `read_string_tag` when the tag is
+//! known to be a string. See `docs/STRING_HANDLING.md` for size limits per tag
+//! scope.
 
 #![deny(unused_must_use, unsafe_op_in_unsafe_fn)]
 #![cfg_attr(not(test), warn(clippy::print_stdout, clippy::dbg_macro))]

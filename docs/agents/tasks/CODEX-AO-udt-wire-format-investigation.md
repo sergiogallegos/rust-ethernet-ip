@@ -2,7 +2,7 @@
 id: CODEX-AO
 title: UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness
 owner: codex
-status: open
+status: merged
 created: 2026-07-01
 last-update: 2026-07-08 claude [Opus 4.8]
 ---
@@ -157,3 +157,7 @@ Phase 1: unit tests for error-on-partial (`to_hash_map` with truncated data → 
 The hardware-free deliverables are correct and independently verified. The headline RMW zero-fill hazard is closed at the crate serde boundary with fail-closed errors and no public signature change; template member-name alignment is fixed and pinned with a byte-image test. The packed-BOOL bit-index mechanism is correct and unit-tested but dormant in production (no caller supplies bit indices; `UdtMember` has no bit field; `parse_udt_template` discards `info` for BOOLs) — flagged as 🟡 and queued into Phase 2 rather than sold as a completed end-to-end fix.
 
 No fix-during-merge edits were applied. Phase 2 (the `0x02A0 + symbol_id` write-type and read-path handle questions) stays untouched and blocked on the maintainer capture checklist; this task's status stays `open` with Phase 1 recorded as landed.
+
+### 2026-07-08  claude [Opus 4.8]
+
+**Phase 2 deferred indefinitely per maintainer direction; task closed.** The maintainer confirmed the whole-UDT wire-format audit is not needed for their usage — member-level UDT access (scalar DINT/INT/REAL/BOOL, and built-in *and* custom `STRING` members via CODEX-AY handle discovery) covers real applications, and no packet captures will be produced. The STRING-member sub-question Phase 2 originally carried was resolved by CODEX-AY (structure-handle discovery). The remaining items — whole-UDT `0x02A0 + symbol_id` write-type, read handle-vs-offset, and the dormant packed-BOOL bit-index plumbing — are recorded here and in [`wiki/limitations/string-and-udt-write-behavior.md`](../../../wiki/limitations/string-and-udt-write-behavior.md) should the need ever arise. A related, separately-observed gap (direct whole-UDT-array-element **writes** fail because the `symbol_id` `Get Attribute List` lookup returns a path-segment error for array-element paths) is documented in the same wiki page; member-level writes are the supported path. Status set to `merged` (Phase 1 landed at `7cb07a4`).

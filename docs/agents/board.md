@@ -12,16 +12,17 @@
 
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
-| CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open (Phase 1 merged) | 2026-07-01 |
+_No open tasks._
 
-> 2026-07-08 update: CODEX-AO Phase 1 reviewed and **merged** (UDT strictness /
-> RMW zero-fill hazard closed without hardware; template empty-name alignment
-> fixed). CODEX-AO stays open because Phase 2 wire-format decisions
-> (`0x02A0 + symbol_id` write-type, read-path handle-vs-offset) are still
-> blocked on maintainer packet captures. Review flagged the packed-BOOL
-> bit-index support as a dormant mechanism (correct + unit-tested but not wired
-> through the definition pipeline) — fold the end-to-end plumbing into Phase 2.
-> CODEX-AU (C++ consumer support) reviewed and **merged** → Done.
+> 2026-07-08 update: **CODEX-AO closed → Done.** Phase 1 merged (`7cb07a4`); Phase 2
+> (whole-UDT wire-format) deferred indefinitely per maintainer direction — not
+> needed for member-level usage, and the STRING-member sub-question was resolved
+> by CODEX-AY. Remaining wire-format items recorded in
+> `wiki/limitations/string-and-udt-write-behavior.md`. CODEX-AW / AX / AZ (batch
+> packet-sizing, full-coverage STRING writes, CIP fragmentation) reviewed and
+> **merged** → Done. The full CODEX-AJ…AZ remediation set is now merged and
+> hardware-validated (full-coverage 2304/2285/2285/0 on 5069-L330ERM fw38); next
+> step is the **1.2.0 release**.
 
 > CODEX-AI merged (2026-06-19): the manylinux Linux x86_64 wheel now ships. Root cause was a platlib-layout bug (native lib routed to `.data/purelib/`, rejected by auditwheel); fixed with an `install_lib = install_platlib` override in `python/setup.py`. `release.yml` builds the cdylib + wheel inside a `manylinux_2_28` container, auditwheel-repairs it, and a blocking smoke job installs+imports it in a clean container before publish. `rust_ethernet_ip-1.1.0-py3-none-manylinux_2_28_x86_64.whl` was added to the existing PyPI 1.1.0 release (no version bump) — `pip install` now works on Linux x86_64.
 
@@ -134,7 +135,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 | CODEX-AW | Packet-size-aware batch grouping — closes EIP 0x65 on large batch reads | codex | `7ea3df9` |
 | CODEX-AY | Handle-aware STRING writes — custom string types (Str82/Str400) write via the target's real structure handle (Claude-implemented) | claude | `4bbb74e` |
 | CODEX-AU | C++ consumer support — C header with parity gate, RAII example, Qt integration guide | codex | `7cb07a4` |
-| CODEX-AO (Phase 1) | UDT crate strictness — fail-closed RMW conversion, template empty-name alignment, packed-BOOL mechanism (Phase 2 still open) | codex | `7cb07a4` |
+| CODEX-AO | UDT wire-format investigation — Phase 1 (crate strictness / RMW fail-closed / template alignment) merged; Phase 2 deferred per maintainer (not needed) | codex | `7cb07a4` |
 | CODEX-AR | Subscription, fleet, and event lifecycle — stop() stops, no blocked poll tasks, lag-tolerant forwarding | codex | `f5c895c` |
 | CODEX-AQ | Dead-stratum deprecation — TagManager UDT pipeline, ProductionMonitor/Config, PlcManager, SubscriptionManager, TagCache; diagnostics honesty | codex | `272e0ae` |
 | CODEX-AP | Retire the string/UDT strategy graveyard — never-worked public paths return honest errors | codex | `1821e59` |

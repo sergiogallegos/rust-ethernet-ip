@@ -36,6 +36,16 @@ Current mainline separates formerly conflated `0x2107` and packet-size cases:
 - For UDT array element `STRING` members:
   - Use the direct member path through the string APIs; the old RMW-only
     recommendation is superseded for validated custom string members.
+- For a **whole UDT array element** written as one structure:
+  - `needs-care`: not supported today. `write_tag(..., PlcValue::Udt(...))` needs
+    the element's `symbol_id`, and the `Get Attribute List` lookup for an
+    array-element path (`gTestUDT_Array[0]`) returns a `Path segment error` on
+    5069-L330ERM fw38 (2026-07-08). Update the element's **members individually**
+    instead (~0.8 ms per scalar-member write). **Reading** a whole element works,
+    including large elements that reassemble via CODEX-AZ fragmentation
+    (~658-byte element ≈ 3 ms/read). Direct whole-element writes would need the
+    array-element `symbol_id` lookup fixed (unbriefed; low priority — member-level
+    access covers real usage).
 
 ## What This Is Not
 

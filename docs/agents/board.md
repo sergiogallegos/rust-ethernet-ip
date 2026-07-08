@@ -132,7 +132,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
-| CODEX-AY | Handle-aware STRING writes — custom string types (Str82/Str400) write via the target's real structure handle (Claude-implemented) | claude | _pending push_ |
+| CODEX-AY | Handle-aware STRING writes — custom string types (Str82/Str400) write via the target's real structure handle (Claude-implemented) | claude | `4bbb74e` |
 | CODEX-AU | C++ consumer support — C header with parity gate, RAII example, Qt integration guide | codex | `7cb07a4` |
 | CODEX-AO (Phase 1) | UDT crate strictness — fail-closed RMW conversion, template empty-name alignment, packed-BOOL mechanism (Phase 2 still open) | codex | `7cb07a4` |
 | CODEX-AR | Subscription, fleet, and event lifecycle — stop() stops, no blocked poll tasks, lag-tolerant forwarding | codex | `f5c895c` |

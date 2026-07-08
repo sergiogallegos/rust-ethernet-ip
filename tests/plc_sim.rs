@@ -20,6 +20,7 @@ const CIP_REPLY_GET_ATTRIBUTE_LIST: u8 = 0x83;
 const CIP_REPLY_MULTIPLE_SERVICE_PACKET: u8 = 0x8A;
 
 const CIP_STATUS_SUCCESS: u8 = 0x00;
+const CIP_STATUS_CONNECTION_FAILURE: u8 = 0x01;
 const CIP_STATUS_PATH_SEGMENT_ERROR: u8 = 0x04;
 const CIP_STATUS_EXTENDED_ERROR: u8 = 0xFF;
 const CIP_EXT_STATUS_TYPE_MISMATCH: u16 = 0x2107;
@@ -74,6 +75,12 @@ pub struct SimBehavior {
     pub corrupt_sender_context_after: Option<usize>,
     /// Tags that should fail READ requests with CIP status 0x04.
     pub fail_read_tags: Vec<String>,
+    /// Tags that should fail READ requests on specific per-tag read counts.
+    pub fail_read_once_on_counts: Vec<(String, usize)>,
+    /// Tags that should fail READ requests with CIP connection failure on specific read counts.
+    pub fail_read_once_connection_failure_on_counts: Vec<(String, usize)>,
+    /// Tags whose READ response should be the per-tag read count as a DINT.
+    pub count_reads_as_dint_tags: Vec<String>,
     /// Tags that should fail WRITE requests with CIP status 0x04.
     pub fail_write_tags: Vec<String>,
 }
@@ -81,6 +88,7 @@ pub struct SimBehavior {
 struct SimRuntimeBehavior {
     config: SimBehavior,
     send_rr_count: AtomicUsize,
+    read_counts: Mutex<HashMap<String, usize>>,
 }
 
 impl SimRuntimeBehavior {
@@ -88,12 +96,57 @@ impl SimRuntimeBehavior {
         Self {
             config,
             send_rr_count: AtomicUsize::new(0),
+            read_counts: Mutex::new(HashMap::new()),
         }
     }
 
-    fn should_fail_read(&self, tag_name: &str) -> bool {
-        self.config
+    fn record_read(&self, tag_name: &str) -> usize {
+        let mut read_counts = self.read_counts.lock().expect("read-count lock");
+        let count = read_counts.entry(tag_name.to_string()).or_insert(0);
+        *count += 1;
+        *count
+    }
+
+    #[allow(dead_code)]
+    fn read_count(&self, tag_name: &str) -> usize {
+        self.read_counts
+            .lock()
+            .expect("read-count lock")
+            .get(tag_name)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn read_failure_status(&self, tag_name: &str, read_count: usize) -> Option<u8> {
+        if self
+            .config
             .fail_read_tags
+            .iter()
+            .any(|configured| configured == tag_name)
+            || self
+                .config
+                .fail_read_once_on_counts
+                .iter()
+                .any(|(configured, count)| configured == tag_name && *count == read_count)
+        {
+            return Some(CIP_STATUS_PATH_SEGMENT_ERROR);
+        }
+
+        if self
+            .config
+            .fail_read_once_connection_failure_on_counts
+            .iter()
+            .any(|(configured, count)| configured == tag_name && *count == read_count)
+        {
+            return Some(CIP_STATUS_CONNECTION_FAILURE);
+        }
+
+        None
+    }
+
+    fn count_reads_as_dint(&self, tag_name: &str) -> bool {
+        self.config
+            .count_reads_as_dint_tags
             .iter()
             .any(|configured| configured == tag_name)
     }
@@ -109,6 +162,8 @@ impl SimRuntimeBehavior {
 pub struct SimulatedPlc {
     pub address: SocketAddr,
     shutdown: Option<oneshot::Sender<()>>,
+    #[allow(dead_code)]
+    behavior: Arc<SimRuntimeBehavior>,
 }
 
 impl SimulatedPlc {
@@ -171,12 +226,23 @@ impl SimulatedPlc {
             ),
         ])));
 
-        tokio::spawn(run_server(listener, tags, behavior, shutdown_rx));
+        tokio::spawn(run_server(
+            listener,
+            tags,
+            Arc::clone(&behavior),
+            shutdown_rx,
+        ));
 
         Self {
             address,
             shutdown: Some(shutdown_tx),
+            behavior,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn read_count(&self, tag_name: &str) -> usize {
+        self.behavior.read_count(tag_name)
     }
 }
 
@@ -416,12 +482,21 @@ fn build_read_response_from_cip_request(
 ) -> Vec<u8> {
     let (tag_name, element_index) =
         parse_tag_and_path(cip_request).unwrap_or(("DINT_TAG".to_string(), None));
+    let read_count = behavior.record_read(&tag_name);
 
-    if behavior.should_fail_read(&tag_name) {
-        return build_cip_error_reply(CIP_REPLY_READ, CIP_STATUS_PATH_SEGMENT_ERROR);
+    if let Some(status) = behavior.read_failure_status(&tag_name, read_count) {
+        return build_cip_error_reply(CIP_REPLY_READ, status);
     }
 
     let requested_count = parse_read_element_count(cip_request).unwrap_or(1) as usize;
+    if behavior.count_reads_as_dint(&tag_name) {
+        return build_value_response(
+            TagValue::Dint(read_count as i32),
+            element_index,
+            requested_count,
+        );
+    }
+
     let tags_guard = tags.lock().expect("tag lock");
     let Some(value) = tags_guard.get(&tag_name).cloned() else {
         return build_cip_error_reply(CIP_REPLY_READ, CIP_STATUS_PATH_SEGMENT_ERROR);
@@ -1169,6 +1244,7 @@ mod tests {
         let behavior = Arc::new(SimRuntimeBehavior {
             config: SimBehavior::default(),
             send_rr_count: AtomicUsize::new(0),
+            read_counts: Mutex::new(HashMap::new()),
         });
         let request = atomic_string_write_request("STRING_TAG", "OldShape");
 

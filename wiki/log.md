@@ -1072,3 +1072,26 @@ Sources used:
 - `src/monitoring.rs`
 - `src/plc_manager.rs`
 - `src/fleet.rs`
+
+## [2026-07-07] ingest | subscription and fleet lifecycle after CODEX-AR
+
+- Added `wiki/investigations/subscription-lifecycle-2026-07-07.md`.
+- Updated `wiki/investigations/fleet-api-2026-05-24.md`.
+- Updated `wiki/investigations/client-actor-service-retry-2026-05-24.md`.
+- Updated `wiki/index.md`.
+- Recorded that live single-tag subscriptions now stop cooperatively, expose
+  value/error events, and use drop-oldest backpressure; fleet forwarding now
+  survives lag and aborts replaced forwarders; `Client::events()` is
+  observation-only.
+
+Sources used:
+
+- `docs/agents/tasks/CODEX-AR-subscription-fleet-lifecycle.md`
+- `src/subscription.rs`
+- `src/client/subscriptions.rs`
+- `src/tag_group.rs`
+- `src/fleet.rs`
+- `src/client/actor.rs`
+- `tests/subscription_tests.rs`
+- `tests/fleet_tests.rs`
+- `tests/client_actor_tests.rs`

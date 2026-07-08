@@ -8,6 +8,9 @@ The 2026-05-24 CODEX-P/R/Q/S work adds an actor-backed `Client` API beside the e
 
 - `confirmed`: `Client` is a cheap clone handle that sends requests over an mpsc channel to a worker task owning the underlying `EipClient`.
 - `confirmed`: `ConnectionEvent` is currently a lifecycle broadcast with `Connected`, `Disconnected`, and `WorkerStopped` variants.
+- `confirmed`: as of CODEX-AR, `Client::events()` is observation-only. Creating
+  a new subscriber no longer broadcasts a synthetic `Connected` event to
+  existing subscribers.
 - `confirmed`: restricted-write helpers remain concrete to documented Logix behavior: STRING writes and UDT member / UDT-array-member writes route through full-value write flows rather than a generic service framework.
 - `confirmed`: `RetryPolicy` wraps the actor client and uses `EtherNetIpError::is_retriable()`; writes are not retried unless explicitly enabled with `retry_writes(true)`.
 - `unclear`: wrapper-level adoption is not implemented yet. Existing C# and Python APIs still call the FFI surface directly.
@@ -19,6 +22,7 @@ The 2026-05-24 CODEX-P/R/Q/S work adds an actor-backed `Client` API beside the e
 - Public re-exports: [`../../src/client.rs`](../../src/client.rs), [`../../src/lib.rs`](../../src/lib.rs)
 - Simulator coverage: [`../../tests/client_actor_tests.rs`](../../tests/client_actor_tests.rs)
 - Task records: [`../../docs/agents/tasks/CODEX-P-client-actor.md`](../../docs/agents/tasks/CODEX-P-client-actor.md), [`../../docs/agents/tasks/CODEX-R-client-events.md`](../../docs/agents/tasks/CODEX-R-client-events.md), [`../../docs/agents/tasks/CODEX-Q-service-layer.md`](../../docs/agents/tasks/CODEX-Q-service-layer.md), [`../../docs/agents/tasks/CODEX-S-retry-policy.md`](../../docs/agents/tasks/CODEX-S-retry-policy.md)
+- Lifecycle task: [`../../docs/agents/tasks/CODEX-AR-subscription-fleet-lifecycle.md`](../../docs/agents/tasks/CODEX-AR-subscription-fleet-lifecycle.md)
 
 ## Open Questions
 

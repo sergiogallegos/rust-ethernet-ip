@@ -1,4 +1,5 @@
 use crate::PlcValue;
+use crate::subscription::try_send_drop_oldest;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::SystemTime;
@@ -152,13 +153,12 @@ impl TagGroupSubscription {
         self.publish_event(event).await
     }
 
+    /// Publishes an event without blocking the polling task.
+    ///
+    /// If the bounded channel is full, the oldest queued event is dropped
+    /// where possible so a slow or abandoned consumer cannot wedge polling.
     pub async fn publish_event(&self, event: TagGroupEvent) -> Result<(), String> {
-        let sender = {
-            let sender = self.sender.lock().await;
-            sender.clone()
-        };
-        let send_result = sender.send(event).await;
-        send_result.map_err(|e| e.to_string())
+        try_send_drop_oldest(&self.sender, &self.receiver, event).await
     }
 
     pub async fn wait_for_update(&self) -> Option<TagGroupEvent> {

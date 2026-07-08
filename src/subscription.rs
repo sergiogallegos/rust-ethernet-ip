@@ -1,7 +1,9 @@
 use crate::PlcValue;
 use crate::error::{EtherNetIpError, Result};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::{LazyLock, Mutex as StdMutex};
 use tokio::sync::{Mutex, mpsc};
 
 use futures::{Stream, stream};
@@ -47,18 +49,39 @@ pub struct TagSubscription {
     pub is_active: Arc<AtomicBool>,
 }
 
+/// Event emitted by a tag subscription poll loop.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum TagSubscriptionEvent {
+    /// A value update passed the subscription's deadband and was published.
+    Value(PlcValue),
+    /// A polling error occurred. `terminal` means the poll loop stopped.
+    Error { message: String, terminal: bool },
+}
+
+#[derive(Clone)]
+struct TagSubscriptionEventChannels {
+    sender: Arc<Mutex<mpsc::Sender<TagSubscriptionEvent>>>,
+    receiver: Arc<Mutex<mpsc::Receiver<TagSubscriptionEvent>>>,
+}
+
+static TAG_SUBSCRIPTION_EVENTS: LazyLock<StdMutex<HashMap<usize, TagSubscriptionEventChannels>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
 impl TagSubscription {
     /// Creates a new tag subscription
     pub fn new(tag_name: String, options: SubscriptionOptions) -> Self {
         let (sender, receiver) = mpsc::channel(100); // Buffer size of 100
-        Self {
+        let subscription = Self {
             tag_path: tag_name,
             options,
             last_value: Arc::new(Mutex::new(None)),
             sender: Arc::new(Mutex::new(sender)),
             receiver: Arc::new(Mutex::new(receiver)),
             is_active: Arc::new(AtomicBool::new(true)),
-        }
+        };
+        subscription.event_channels();
+        subscription
     }
 
     /// Checks if the subscription is active
@@ -72,7 +95,11 @@ impl TagSubscription {
             .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Updates the subscription value
+    /// Updates the subscription value.
+    ///
+    /// Update delivery is nonblocking. If a consumer falls behind and the
+    /// bounded channel is full, the oldest queued item is dropped where possible
+    /// so the background poll task can keep running.
     pub async fn update_value(&self, value: &PlcValue) -> Result<()> {
         let mut last_value = self.last_value.lock().await;
 
@@ -86,16 +113,39 @@ impl TagSubscription {
         // Update value and send notification
         *last_value = Some(value.clone());
         drop(last_value);
-        let sender = {
-            let sender = self.sender.lock().await;
-            sender.clone()
-        };
-        sender
-            .send(value.clone())
+        try_send_drop_oldest(&self.sender, &self.receiver, value.clone())
             .await
             .map_err(|e| EtherNetIpError::Subscription(format!("Failed to send update: {e}")))?;
+        try_send_drop_oldest(
+            &self.event_channels().sender,
+            &self.event_channels().receiver,
+            TagSubscriptionEvent::Value(value.clone()),
+        )
+        .await
+        .map_err(|e| EtherNetIpError::Subscription(format!("Failed to send event: {e}")))?;
 
         Ok(())
+    }
+
+    /// Publishes a polling error without blocking the poll task.
+    ///
+    /// If the event buffer is full, the oldest queued event is dropped where
+    /// possible. If `terminal` is true, the subscription is marked inactive.
+    pub async fn publish_error(&self, error: &EtherNetIpError, terminal: bool) -> Result<()> {
+        if terminal {
+            self.stop();
+        }
+
+        try_send_drop_oldest(
+            &self.event_channels().sender,
+            &self.event_channels().receiver,
+            TagSubscriptionEvent::Error {
+                message: error.to_string(),
+                terminal,
+            },
+        )
+        .await
+        .map_err(|e| EtherNetIpError::Subscription(format!("Failed to send event: {e}")))
     }
 
     /// Checks whether a value has changed enough to warrant a notification.
@@ -128,6 +178,15 @@ impl TagSubscription {
         next_value.ok_or_else(|| EtherNetIpError::Subscription("Channel closed".to_string()))
     }
 
+    /// Waits for the next value/error event.
+    pub async fn wait_for_event(&self) -> Result<TagSubscriptionEvent> {
+        let channels = self.event_channels();
+        let mut receiver = channels.receiver.lock().await;
+        let next_event = receiver.recv().await;
+        drop(receiver);
+        next_event.ok_or_else(|| EtherNetIpError::Subscription("Channel closed".to_string()))
+    }
+
     /// Gets the last value received
     pub async fn get_last_value(&self) -> Option<PlcValue> {
         self.last_value.lock().await.clone()
@@ -138,6 +197,14 @@ impl TagSubscription {
         let next_value = receiver.recv().await;
         drop(receiver);
         next_value
+    }
+
+    async fn recv_next_event(&self) -> Option<TagSubscriptionEvent> {
+        let channels = self.event_channels();
+        let mut receiver = channels.receiver.lock().await;
+        let next_event = receiver.recv().await;
+        drop(receiver);
+        next_event
     }
 
     /// Returns an async stream of value updates for this subscription.
@@ -161,6 +228,73 @@ impl TagSubscription {
             let next_value = subscription.recv_next_value().await;
             next_value.map(|plc_value| (plc_value, subscription))
         })
+    }
+
+    /// Returns an async stream of value/error events for this subscription.
+    pub fn into_event_stream(self: Arc<Self>) -> impl Stream<Item = TagSubscriptionEvent> + Send {
+        stream::unfold(self, |subscription| async move {
+            let next_event = subscription.recv_next_event().await;
+            next_event.map(|event| (event, subscription))
+        })
+    }
+
+    fn event_channels(&self) -> TagSubscriptionEventChannels {
+        let key = self.event_key();
+        let mut channels = TAG_SUBSCRIPTION_EVENTS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        channels
+            .entry(key)
+            .or_insert_with(|| {
+                let (sender, receiver) = mpsc::channel(100);
+                TagSubscriptionEventChannels {
+                    sender: Arc::new(Mutex::new(sender)),
+                    receiver: Arc::new(Mutex::new(receiver)),
+                }
+            })
+            .clone()
+    }
+
+    fn event_key(&self) -> usize {
+        Arc::as_ptr(&self.is_active) as usize
+    }
+}
+
+impl Drop for TagSubscription {
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.is_active) == 1
+            && let Ok(mut channels) = TAG_SUBSCRIPTION_EVENTS.lock()
+        {
+            channels.remove(&self.event_key());
+        }
+    }
+}
+
+pub(crate) async fn try_send_drop_oldest<T>(
+    sender: &Arc<Mutex<mpsc::Sender<T>>>,
+    receiver: &Arc<Mutex<mpsc::Receiver<T>>>,
+    value: T,
+) -> std::result::Result<(), String> {
+    let sender = {
+        let sender = sender.lock().await;
+        sender.clone()
+    };
+
+    match sender.try_send(value) {
+        Ok(()) => Ok(()),
+        Err(mpsc::error::TrySendError::Closed(_)) => Err("channel closed".to_string()),
+        Err(mpsc::error::TrySendError::Full(value)) => {
+            if let Ok(mut receiver) = receiver.try_lock() {
+                let _ = receiver.try_recv();
+                match sender.try_send(value) {
+                    Ok(()) => Ok(()),
+                    Err(mpsc::error::TrySendError::Closed(_)) => Err("channel closed".to_string()),
+                    Err(mpsc::error::TrySendError::Full(_)) => Ok(()),
+                }
+            } else {
+                Ok(())
+            }
+        }
     }
 }
 

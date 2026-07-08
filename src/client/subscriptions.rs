@@ -7,6 +7,9 @@ use crate::tag_group::{
 };
 use crate::types::PlcValue;
 
+const CONNECTION_LOST_FAILURE_LIMIT: usize = 3;
+const RETRIABLE_ERROR_BACKOFF_MS: u64 = 250;
+
 impl EipClient {
     /// Subscribes to a tag for real-time updates.
     ///
@@ -36,25 +39,71 @@ impl EipClient {
 
         let tag_path = tag_path.to_string();
         let mut client = self.clone();
+        let subscription_task = subscription.clone();
         tokio::spawn(async move {
             let interval = std::time::Duration::from_millis(update_rate_ms as u64);
-            loop {
+            let retry_backoff = std::time::Duration::from_millis(RETRIABLE_ERROR_BACKOFF_MS);
+            let mut consecutive_connection_lost = 0usize;
+            while subscription_task.is_active() {
                 match client.read_tag(&tag_path).await {
                     Ok(value) => {
+                        consecutive_connection_lost = 0;
                         if let Err(e) = client.update_subscription(&tag_path, &value).await {
+                            let _ = subscription_task.publish_error(&e, true).await;
                             tracing::error!("Error updating subscription: {}", e);
                             break;
                         }
                     }
                     Err(e) => {
                         tracing::error!("Error reading tag {}: {}", tag_path, e);
-                        break;
+                        let is_connection_lost = matches!(e, EtherNetIpError::ConnectionLost(_));
+                        if is_connection_lost {
+                            consecutive_connection_lost += 1;
+                        } else {
+                            consecutive_connection_lost = 0;
+                        }
+
+                        let terminal = !e.is_retriable()
+                            || consecutive_connection_lost >= CONNECTION_LOST_FAILURE_LIMIT;
+                        let _ = subscription_task.publish_error(&e, terminal).await;
+                        if terminal {
+                            break;
+                        }
+
+                        tokio::time::sleep(interval.max(retry_backoff)).await;
+                        continue;
                     }
                 }
-                tokio::time::sleep(interval).await;
+                if subscription_task.is_active() {
+                    tokio::time::sleep(interval).await;
+                }
             }
         });
         Ok(subscription)
+    }
+
+    /// Stops and removes subscriptions for a tag path.
+    ///
+    /// Returns true when at least one subscription was found. Polling stops at
+    /// the next loop check, normally within one configured update interval.
+    pub async fn unsubscribe(&self, tag_path: &str) -> bool {
+        let mut subscriptions = self.subscriptions.lock().await;
+        let mut found = false;
+        for subscription in subscriptions.iter() {
+            if subscription.tag_path == tag_path {
+                subscription.stop();
+                found = true;
+            }
+        }
+        subscriptions.retain(TagSubscription::is_active);
+        found
+    }
+
+    #[doc(hidden)]
+    pub async fn subscription_count(&self) -> usize {
+        let mut subscriptions = self.subscriptions.lock().await;
+        subscriptions.retain(TagSubscription::is_active);
+        subscriptions.len()
     }
 
     /// Subscribes to multiple tags. Returns one [`TagSubscription`] per tag in order.
@@ -255,11 +304,16 @@ impl EipClient {
 
     async fn update_subscription(&self, tag_name: &str, value: &PlcValue) -> Result<()> {
         let subscriptions = {
-            let subscriptions = self.subscriptions.lock().await;
-            subscriptions.clone()
+            let mut subscriptions = self.subscriptions.lock().await;
+            subscriptions.retain(TagSubscription::is_active);
+            subscriptions
+                .iter()
+                .filter(|subscription| subscription.tag_path == tag_name)
+                .cloned()
+                .collect::<Vec<_>>()
         };
         for subscription in &subscriptions {
-            if subscription.tag_path == tag_name && subscription.is_active() {
+            if subscription.is_active() {
                 subscription.update_value(value).await?;
             }
         }

@@ -3,6 +3,7 @@ mod plc_sim;
 use plc_sim::SimulatedPlc;
 use rust_ethernet_ip::{BatchOperation, Client, ConnectionEvent, PlcValue, RetryPolicy};
 use std::time::Duration;
+use tokio::time::timeout;
 
 #[tokio::test]
 async fn actor_client_clone_handles_serialize_requests() {
@@ -60,9 +61,6 @@ async fn actor_client_emits_connection_events() {
     let client = Client::connect(&addr).await.expect("connect actor client");
     let mut events = client.events();
 
-    let connected = events.recv().await.expect("connected event");
-    assert_eq!(connected, ConnectionEvent::Connected);
-
     drop(client);
     let mut saw_terminal_event = false;
     for _ in 0..4 {
@@ -76,6 +74,23 @@ async fn actor_client_emits_connection_events() {
         }
     }
     assert!(saw_terminal_event, "expected actor terminal event");
+}
+
+#[tokio::test]
+async fn subscribing_to_events_has_no_side_effect_on_existing_subscribers() {
+    let sim = SimulatedPlc::start().await;
+    let addr = sim.address.to_string();
+    let client = Client::connect(&addr).await.expect("connect actor client");
+    let mut first = client.events();
+
+    let _ = timeout(Duration::from_millis(50), first.recv()).await;
+    let _second = client.events();
+
+    let result = timeout(Duration::from_millis(50), first.recv()).await;
+    assert!(
+        result.is_err(),
+        "a second subscriber must not inject an event into existing subscribers"
+    );
 }
 
 #[tokio::test]

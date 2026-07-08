@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Target next release: TBD.
 
 ### Added
+- CODEX-AR added `EipClient::unsubscribe` for live tag subscriptions and
+  `TagSubscriptionEvent` / `wait_for_event` / `into_event_stream` so single-tag
+  poll errors can be observed without changing the existing value stream API.
 - Added a Rust blocked-write-label hardware probe for CODEX-AV. It selects one
   representative per current `firmware_blocked_*` class by default, can sweep
   every blocked manifest tag with `--all-blocked`, verifies read-back and
@@ -34,6 +37,13 @@ Target next release: TBD.
   `UdtData::parse`, or the service-layer UDT member helpers instead.
 
 ### Fixed
+- CODEX-AR fixed live subscription and fleet lifecycle edges: `stop()` and
+  `unsubscribe()` now halt single-tag polling, stopped subscriptions are pruned,
+  value/tag-group notifications use drop-oldest backpressure instead of blocking
+  poll tasks, single-tag polling emits error events and survives retriable CIP
+  connection-failure statuses, `Fleet` forwarding survives broadcast lag and
+  aborts old forwarders on replacement, and `Client::events()` is now
+  observation-only instead of injecting synthetic `Connected` events.
 - CODEX-AQ removed the fabricated TagManager UDT definition request/parser.
   `discover_udt_members` now uses the real template-definition path, and tag
   discovery accepts legal Logix names such as `_Tag`, `Program:Main.Tag`, and

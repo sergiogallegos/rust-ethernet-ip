@@ -171,7 +171,7 @@ pub use subscription::SubscriptionManager;
 pub use subscription::SubscriptionManager as RealTimeSubscriptionManager;
 pub use subscription::{
     SubscriptionOptions, SubscriptionOptions as RealTimeSubscriptionOptions, TagSubscription,
-    TagSubscription as RealTimeSubscription,
+    TagSubscription as RealTimeSubscription, TagSubscriptionEvent,
 };
 pub use tag_group::{
     TagGroupConfig, TagGroupEvent, TagGroupEventKind, TagGroupFailureCategory,

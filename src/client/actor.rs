@@ -151,9 +151,7 @@ impl Client {
     }
 
     pub fn events(&self) -> broadcast::Receiver<ConnectionEvent> {
-        let rx = self.events.subscribe();
-        let _ = self.events.send(ConnectionEvent::Connected);
-        rx
+        self.events.subscribe()
     }
 
     pub fn with_retry(&self, policy: RetryPolicy) -> RetryClient {

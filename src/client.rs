@@ -3273,6 +3273,16 @@ impl EipClient {
 
         // Regular error code
         let error_msg = self.get_cip_error_message(general_status);
+        if general_status == 0x01 {
+            return Err(EtherNetIpError::Connection(format!(
+                "CIP Error 0x{general_status:02X}: {error_msg}"
+            )));
+        }
+        if general_status == 0x07 {
+            return Err(EtherNetIpError::ConnectionLost(format!(
+                "CIP Error 0x{general_status:02X}: {error_msg}"
+            )));
+        }
         Err(EtherNetIpError::Protocol(format!(
             "CIP Error 0x{general_status:02X}: {error_msg}"
         )))

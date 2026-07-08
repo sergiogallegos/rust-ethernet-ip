@@ -4,6 +4,7 @@ use crate::route::RoutePath;
 use std::collections::HashMap;
 use std::hash::Hash;
 use tokio::sync::broadcast;
+use tokio::task::JoinHandle;
 
 /// Fleet-level connection event annotated with the PLC identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,6 +17,7 @@ pub struct FleetEvent<PlcId> {
 #[derive(Debug)]
 pub struct Fleet<PlcId> {
     clients: HashMap<PlcId, Client>,
+    forwarders: HashMap<PlcId, JoinHandle<()>>,
     events: broadcast::Sender<FleetEvent<PlcId>>,
 }
 
@@ -38,6 +40,7 @@ where
         let (events, _) = broadcast::channel(128);
         Self {
             clients: HashMap::new(),
+            forwarders: HashMap::new(),
             events,
         }
     }
@@ -63,8 +66,18 @@ where
 
     /// Inserts an existing actor client into the fleet.
     pub fn insert_client(&mut self, plc_id: PlcId, client: Client) -> Option<Client> {
-        self.forward_events(plc_id.clone(), client.clone());
-        self.clients.insert(plc_id, client)
+        if let Some(forwarder) = self.forwarders.remove(&plc_id) {
+            forwarder.abort();
+        }
+
+        let previous = self.clients.insert(plc_id.clone(), client.clone());
+        let _ = self.events.send(FleetEvent {
+            plc_id: plc_id.clone(),
+            event: ConnectionEvent::Connected,
+        });
+        let forwarder = self.forward_events(plc_id.clone(), client);
+        self.forwarders.insert(plc_id, forwarder);
+        previous
     }
 
     /// Returns a cloneable client handle for one PLC.
@@ -99,16 +112,63 @@ where
         self.clients.is_empty()
     }
 
-    fn forward_events(&self, plc_id: PlcId, client: Client) {
+    fn forward_events(&self, plc_id: PlcId, client: Client) -> JoinHandle<()> {
         let events = self.events.clone();
         tokio::spawn(async move {
-            let mut client_events = client.events();
-            while let Ok(event) = client_events.recv().await {
+            forward_events_loop(plc_id, client.events(), events).await;
+        })
+    }
+}
+
+impl<PlcId> Drop for Fleet<PlcId> {
+    fn drop(&mut self) {
+        for (_, forwarder) in self.forwarders.drain() {
+            forwarder.abort();
+        }
+    }
+}
+
+async fn forward_events_loop<PlcId>(
+    plc_id: PlcId,
+    mut client_events: broadcast::Receiver<ConnectionEvent>,
+    events: broadcast::Sender<FleetEvent<PlcId>>,
+) where
+    PlcId: Clone,
+{
+    loop {
+        match client_events.recv().await {
+            Ok(ConnectionEvent::Connected) => continue,
+            Ok(event) => {
                 let _ = events.send(FleetEvent {
                     plc_id: plc_id.clone(),
                     event,
                 });
             }
-        });
+            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(broadcast::error::RecvError::Closed) => break,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn forward_events_loop_continues_after_lagged_source() {
+        let (source_tx, source_rx) = broadcast::channel(1);
+        let (fleet_tx, mut fleet_rx) = broadcast::channel(8);
+        let task = tokio::spawn(forward_events_loop("plc-a", source_rx, fleet_tx));
+
+        let _ = source_tx.send(ConnectionEvent::Connected);
+        let _ = source_tx.send(ConnectionEvent::Disconnected);
+        let _ = source_tx.send(ConnectionEvent::WorkerStopped);
+
+        let forwarded = fleet_rx.recv().await.expect("event after lag");
+        assert_eq!(forwarded.plc_id, "plc-a");
+        assert_eq!(forwarded.event, ConnectionEvent::WorkerStopped);
+
+        drop(source_tx);
+        task.await.expect("forwarder exits after source closes");
     }
 }

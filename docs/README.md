@@ -34,11 +34,13 @@ Current release state:
 
 - [../CHANGELOG.md](../CHANGELOG.md): `1.1.0` release notes and historical release history
 - [agents/board.md](agents/board.md): current `1.2.0` release gates and staged publish order
+- [release/1.2.0_RELEASE_NOTES.md](release/1.2.0_RELEASE_NOTES.md)
 - [release/1.1.0_RELEASE_NOTES.md](release/1.1.0_RELEASE_NOTES.md)
 - [release/0.8.0_RELEASE_NOTES_DRAFT.md](release/0.8.0_RELEASE_NOTES_DRAFT.md) (historical draft absorbed into `1.0.0`)
 - [0.7.0_HARDENING_GATE.md](0.7.0_HARDENING_GATE.md)
 - [validation/REAL_PLC_TESTING.md](validation/REAL_PLC_TESTING.md)
-- [validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md](validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md) (latest 4-binding hardware pass)
+- [validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md](validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md) (official 1.2.0 release gate, 4 bindings)
+- [validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md](validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md)
 - [validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 - [validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 - [audit/0.7.0_docs_api_audit.md](audit/0.7.0_docs_api_audit.md)

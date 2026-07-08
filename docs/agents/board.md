@@ -23,6 +23,14 @@ _No open tasks._
 > **merged** → Done. The full CODEX-AJ…AZ remediation set is now merged and
 > hardware-validated (full-coverage 2304/2285/2285/0 on 5069-L330ERM fw38); next
 > step is the **1.2.0 release**.
+>
+> **1.2.0 release gate PASSED** (2026-07-08, maintainer-monitored): clear pass +
+> 4-binding full-coverage on an extended manifest incl. custom-string members
+> Member6/Member7 — all four bindings byte-identical 2338/2319/2319/0, zero
+> anomalies ([gate record](../validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md)).
+> Version bump + release notes committed. Remaining: maintainer ABI-v2-in-minor
+> sign-off, staged crates.io publish (types → tag-path → protocol → udt → main),
+> tag `v1.2.0` (NuGet/PyPI publish via the tag workflow).
 
 > CODEX-AI merged (2026-06-19): the manylinux Linux x86_64 wheel now ships. Root cause was a platlib-layout bug (native lib routed to `.data/purelib/`, rejected by auditwheel); fixed with an `install_lib = install_platlib` override in `python/setup.py`. `release.yml` builds the cdylib + wheel inside a `manylinux_2_28` container, auditwheel-repairs it, and a blocking smoke job installs+imports it in a clean container before publish. `rust_ethernet_ip-1.1.0-py3-none-manylinux_2_28_x86_64.whl` was added to the existing PyPI 1.1.0 release (no version bump) — `pip install` now works on Linux x86_64.
 

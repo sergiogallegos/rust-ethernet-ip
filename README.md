@@ -139,6 +139,19 @@ See:
 - [docs/PYTHON_WRAPPER_STRATEGY.md](docs/PYTHON_WRAPPER_STRATEGY.md)
 - [docs/DOCKER_EXAMPLE_STACKS.md](docs/DOCKER_EXAMPLE_STACKS.md)
 
+### C and C++
+
+Build the native library and include the checked-in C header:
+
+```bash
+cargo build --release --features ffi --locked
+```
+
+Use [`include/rust_ethernet_ip.h`](include/rust_ethernet_ip.h) for the stable C
+ABI, or the small RAII wrapper in [`examples/cpp/`](examples/cpp/) for C++
+projects. Qt applications should keep the blocking FFI calls on a worker
+`QThread`; see [`docs/CPP_INTEGRATION.md`](docs/CPP_INTEGRATION.md).
+
 ## Integration and Deployment
 
 If you are evaluating the library for production use, start here:
@@ -313,12 +326,22 @@ PYTHONPATH=python python3 python/examples/collector_service.py --config python/e
 docker compose -f docker/python-stack/docker-compose.yml up --build
 ```
 
+### C++
+
+```bash
+cargo build --release --features ffi --locked
+cmake -S examples/cpp -B target/cpp -DRUST_ETHERNET_IP_NATIVE_LIB="$PWD/target/release/librust_ethernet_ip.so"
+cmake --build target/cpp
+ctest --test-dir target/cpp --output-on-failure
+```
+
 ## Documentation
 
 - [API docs (docs.rs)](https://docs.rs/rust-ethernet-ip)
 - [Programmer manual (Rust + C#)](docs/programmer_manual.md)
 - [Integration and deployment guide](docs/INTEGRATION_AND_DEPLOYMENT.md)
 - [Python wrapper guide](python/README.md)
+- [C/C++ integration guide](docs/CPP_INTEGRATION.md)
 - [Official sources traceability](docs/OFFICIAL_SOURCES.md)
 - [PLC/simulator compatibility matrix (0.7.0)](docs/compat/0.7.0_plc_simulator_compatibility_matrix.md)
 - [C# wrapper guide](csharp/RustEtherNetIp/README.md)

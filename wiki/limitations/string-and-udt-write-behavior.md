@@ -15,13 +15,19 @@ Current mainline separates three formerly conflated `0x2107` cases:
 - `confirmed`: On 2026-07-03, the CODEX-AV matrix showed all 60 scalar UDT-array-element-member targets (DINT, REAL, BOOL, INT; controller and program scopes) wrote successfully on 5069-L330ERM fw38.
 - `confirmed`: `STRING` members inside UDTs and UDT array elements still rejected with `0xFF/0x2107` under the current member encoding on 5069-L330ERM fw38.
 - `confirmed`: CODEX-AP retired old exploratory STRING writers and offset-based UDT member APIs as unsupported compatibility stubs; maintained writes use `write_tag`, `write_string_tag`, direct member tag writes, or service-layer helpers.
+- `confirmed`: CODEX-AO Phase 1 closed a read-modify-write safety gap in
+  `crates/udt`: truncated UDT bytes and missing member-map values now error
+  instead of silently skipping members or zero-filling bytes. This does not
+  resolve the capture-gated UDT wire-format question.
 
 ## Recommended Patterns
 
 - For standalone standard `STRING` tags:
   - Use `write_tag(..., PlcValue::String(...))`, `write_string_tag`, or wrapper `WriteString`/`write_tag` calls that route to the maintained structure encoding.
 - For `STRING` members inside a UDT:
-  - Read the containing UDT, modify in memory, and write the whole UDT back.
+  - Read the containing UDT, modify in memory, and write the whole UDT back;
+    current mainline fails closed if the read result is too short or the member
+    map is incomplete.
 - For scalar UDT array element members:
   - Use the direct member path; service-layer helpers fall back to whole-UDT read-modify-write only on the `0x2107` data-type mismatch shape.
 - For UDT array element `STRING` members:
@@ -45,6 +51,9 @@ Current mainline separates three formerly conflated `0x2107` cases:
 ## Open Questions
 
 - Whether CODEX-AO packet captures identify a member-specific direct encoding for `STRING` members inside UDTs.
+- Whether CODEX-AO packet captures confirm the current collapsed
+  `0x02A0 + symbol_id` structure write type or require marker-plus-handle
+  encoding.
 - Whether scalar UDT-array-element-member direct writes hold across older ControlLogix and CompactLogix firmware, beyond the 5069-L330ERM fw38 CODEX-AV matrix.
 
 ## Related Pages

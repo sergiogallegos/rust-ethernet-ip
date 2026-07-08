@@ -1095,3 +1095,25 @@ Sources used:
 - `tests/subscription_tests.rs`
 - `tests/fleet_tests.rs`
 - `tests/client_actor_tests.rs`
+
+## [2026-07-08] ingest | hardware-free CODEX-AO phase 1 and CODEX-AU
+
+- Updated `wiki/limitations/string-and-udt-write-behavior.md`.
+- Added `wiki/wrapper-parity/cpp-consumer-support.md`.
+- Updated `wiki/index.md`.
+- Recorded that CODEX-AO Phase 1 closes the UDT read-modify-write zero-fill
+  hazard without resolving the packet-capture-gated UDT wire-format question.
+- Recorded that CODEX-AU adds first-class C/C++ consumption through the
+  existing C ABI: checked-in header, export parity gate, CMake smoke example,
+  and Qt worker-thread guidance.
+
+Sources used:
+
+- `docs/agents/tasks/CODEX-AO-udt-wire-format-investigation.md`
+- `docs/agents/tasks/CODEX-AU-cpp-consumer-support.md`
+- `crates/udt/src/lib.rs`
+- `include/rust_ethernet_ip.h`
+- `scripts/check-ffi-header-parity.py`
+- `examples/cpp/`
+- `.github/workflows/ci.yml`
+- `docs/CPP_INTEGRATION.md`

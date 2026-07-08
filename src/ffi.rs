@@ -25,6 +25,8 @@ static RUNTIME_INIT_LOG: Once = Once::new();
 #[cfg(test)]
 static FORCE_RUNTIME_INIT_ERROR: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static FORCE_RUNTIME_INIT_ERROR_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[unsafe(no_mangle)]
 pub extern "C" fn eip_abi_version() -> u32 {
@@ -2747,12 +2749,17 @@ mod tests {
     use super::*;
     use std::ffi::CString;
 
-    struct ForceRuntimeInitErrorGuard;
+    struct ForceRuntimeInitErrorGuard {
+        _guard: std::sync::MutexGuard<'static, ()>,
+    }
 
     impl ForceRuntimeInitErrorGuard {
         fn enable() -> Self {
+            let guard = FORCE_RUNTIME_INIT_ERROR_TEST_LOCK
+                .lock()
+                .expect("runtime init test lock should not be poisoned");
             FORCE_RUNTIME_INIT_ERROR.store(true, std::sync::atomic::Ordering::SeqCst);
-            Self
+            Self { _guard: guard }
         }
     }
 
@@ -2824,6 +2831,9 @@ mod tests {
 
     #[test]
     fn ffi_block_on_converts_panic_to_last_error() {
+        let _guard = FORCE_RUNTIME_INIT_ERROR_TEST_LOCK
+            .lock()
+            .expect("runtime init test lock should not be poisoned");
         let client_id = -321;
         let rc = panic_probe(client_id);
         assert_eq!(rc, -1);

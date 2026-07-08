@@ -236,7 +236,6 @@ impl UdtManager {
 
     fn parse_null_terminated_strings(&self, data: &[u8]) -> Vec<String> {
         data.split(|byte| *byte == 0)
-            .filter(|chunk| !chunk.is_empty())
             .map(|chunk| String::from_utf8_lossy(chunk).to_string())
             .collect()
     }
@@ -459,6 +458,8 @@ pub struct UserDefinedType {
     pub members: Vec<UdtMember>,
     /// Cache of member offsets for quick lookup
     member_offsets: HashMap<String, u32>,
+    /// Optional Logix BOOL bit index by member name for packed BOOL members.
+    member_bit_indices: HashMap<String, u8>,
 }
 
 impl UserDefinedType {
@@ -469,13 +470,23 @@ impl UserDefinedType {
             size: 0,
             members: Vec::new(),
             member_offsets: HashMap::new(),
+            member_bit_indices: HashMap::new(),
         }
     }
 
     /// Adds a member to the UDT
     pub fn add_member(&mut self, member: UdtMember) {
+        self.add_member_with_bit_index(member, None);
+    }
+
+    /// Adds a member with optional packed-BOOL bit metadata.
+    pub fn add_member_with_bit_index(&mut self, member: UdtMember, bit_index: Option<u8>) {
         self.member_offsets
             .insert(member.name.clone(), member.offset);
+        if let Some(bit_index) = bit_index {
+            self.member_bit_indices
+                .insert(member.name.clone(), bit_index.min(7));
+        }
         self.members.push(member);
         // Calculate total size including padding
         self.size = self
@@ -508,11 +519,20 @@ impl UserDefinedType {
 
         for member in &self.members {
             let offset = member.offset as usize;
-            if offset + member.size as usize <= data.len() {
-                let member_data = &data[offset..offset + member.size as usize];
-                let value = self.parse_member_value(member, member_data)?;
-                result.insert(member.name.clone(), value);
+            let size = member.size as usize;
+            if offset.checked_add(size).is_none_or(|end| end > data.len()) {
+                return Err(UdtError::protocol(format!(
+                    "Member {} data incomplete: offset {} size {} exceeds UDT data length {}",
+                    member.name,
+                    member.offset,
+                    member.size,
+                    data.len()
+                )));
             }
+
+            let member_data = &data[offset..offset + size];
+            let value = self.parse_member_value(member, member_data)?;
+            result.insert(member.name.clone(), value);
         }
 
         Ok(result)
@@ -523,19 +543,49 @@ impl UserDefinedType {
         let mut data = vec![0u8; self.size as usize];
 
         for member in &self.members {
-            if let Some(value) = values.get(&member.name) {
-                let member_data = self.serialize_member_value(member, value)?;
-                let offset = member.offset as usize;
-                let end_offset = offset + member_data.len();
+            let Some(value) = values.get(&member.name) else {
+                return Err(UdtError::protocol(format!(
+                    "Missing UDT member value: {}",
+                    member.name
+                )));
+            };
 
-                if end_offset <= data.len() {
-                    data[offset..end_offset].copy_from_slice(&member_data);
-                } else {
+            if member.data_type == 0x00C1
+                && let Some(bit_index) = self.member_bit_indices.get(&member.name)
+            {
+                let PlcValue::Bool(value) = value else {
+                    return Err(UdtError::DataTypeMismatch {
+                        expected: "BOOL".to_string(),
+                        actual: format!("{:?}", value),
+                    });
+                };
+                let offset = member.offset as usize;
+                let Some(byte) = data.get_mut(offset) else {
                     return Err(UdtError::protocol(format!(
                         "Member {} data exceeds UDT size",
                         member.name
                     )));
+                };
+                let mask = 1_u8 << (*bit_index).min(7);
+                if *value {
+                    *byte |= mask;
+                } else {
+                    *byte &= !mask;
                 }
+                continue;
+            }
+
+            let member_data = self.serialize_member_value(member, value)?;
+            let offset = member.offset as usize;
+            let end_offset = offset + member_data.len();
+
+            if end_offset <= data.len() {
+                data[offset..end_offset].copy_from_slice(&member_data);
+            } else {
+                return Err(UdtError::protocol(format!(
+                    "Member {} data exceeds UDT size",
+                    member.name
+                )));
             }
         }
 
@@ -610,7 +660,13 @@ impl UserDefinedType {
                 if data.is_empty() {
                     return Err(UdtError::protocol("BOOL data too short".to_string()));
                 }
-                Ok(PlcValue::Bool(data[0] != 0))
+                let value = if let Some(bit_index) = self.member_bit_indices.get(&member.name) {
+                    let mask = 1_u8 << (*bit_index).min(7);
+                    data[0] & mask != 0
+                } else {
+                    data[0] != 0
+                };
+                Ok(PlcValue::Bool(value))
             }
             0x00C2 => {
                 // SINT (8-bit signed integer)
@@ -902,6 +958,86 @@ mod tests {
     }
 
     #[test]
+    fn to_hash_map_errors_on_truncated_member_data() {
+        let mut udt = UserDefinedType::new("TestUDT".to_string());
+        udt.add_member(UdtMember {
+            name: "Dint1".to_string(),
+            data_type: 0x00C4,
+            offset: 0,
+            size: 4,
+        });
+        udt.add_member(UdtMember {
+            name: "Dint2".to_string(),
+            data_type: 0x00C4,
+            offset: 4,
+            size: 4,
+        });
+
+        let error = udt.to_hash_map(&[1, 0, 0, 0, 2, 0]).unwrap_err();
+        assert!(error.to_string().contains("Dint2 data incomplete"));
+    }
+
+    #[test]
+    fn from_hash_map_errors_on_missing_member() {
+        let mut udt = UserDefinedType::new("TestUDT".to_string());
+        udt.add_member(UdtMember {
+            name: "Dint1".to_string(),
+            data_type: 0x00C4,
+            offset: 0,
+            size: 4,
+        });
+        udt.add_member(UdtMember {
+            name: "Dint2".to_string(),
+            data_type: 0x00C4,
+            offset: 4,
+            size: 4,
+        });
+
+        let values = HashMap::from([("Dint1".to_string(), PlcValue::Dint(1))]);
+        let error = udt.from_hash_map(&values).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Missing UDT member value: Dint2")
+        );
+    }
+
+    #[test]
+    fn packed_bool_members_use_template_info_bit_index() {
+        let mut udt = UserDefinedType::new("PackedBoolUDT".to_string());
+        udt.add_member_with_bit_index(
+            UdtMember {
+                name: "Bit0".to_string(),
+                data_type: 0x00C1,
+                offset: 0,
+                size: 1,
+            },
+            Some(0),
+        );
+        udt.add_member_with_bit_index(
+            UdtMember {
+                name: "Bit3".to_string(),
+                data_type: 0x00C1,
+                offset: 0,
+                size: 1,
+            },
+            Some(3),
+        );
+
+        let parsed = udt.to_hash_map(&[0b0000_1000]).unwrap();
+        assert_eq!(parsed.get("Bit0"), Some(&PlcValue::Bool(false)));
+        assert_eq!(parsed.get("Bit3"), Some(&PlcValue::Bool(true)));
+
+        let encoded = udt
+            .from_hash_map(&HashMap::from([
+                ("Bit0".to_string(), PlcValue::Bool(true)),
+                ("Bit3".to_string(), PlcValue::Bool(true)),
+            ]))
+            .unwrap();
+        assert_eq!(encoded, vec![0b0000_1001]);
+    }
+
+    #[test]
     fn test_from_cip_data_returns_explicit_error_until_implemented() {
         let result = UserDefinedType::from_cip_data(&[0x01, 0x02, 0x03]);
         assert!(result.is_err());
@@ -949,5 +1085,29 @@ mod tests {
         assert_eq!(template.members[2].data_type, 0x00C1);
         assert_eq!(template.members[2].offset, 8);
         assert_eq!(template.members[2].size, 1);
+    }
+
+    #[test]
+    fn test_parse_udt_template_preserves_empty_member_names_positionally() {
+        let manager = UdtManager::new();
+        let data = vec![
+            0x00, 0x00, 0xC4, 0x00, 0x00, 0x00, 0x00, 0x00, // DINT @ 0
+            0x00, 0x00, 0xC2, 0x00, 0x04, 0x00, 0x00, 0x00, // hidden host @ 4
+            0x01, 0x00, 0xC1, 0x00, 0x04, 0x00, 0x00, 0x00, // BOOL bit 1 @ 4
+            // Template strings are a NUL-separated template name followed by
+            // one member name per member record. The empty middle name models
+            // hidden/host members and must not shift following names left.
+            b'T', b'E', b'S', b'T', b'_', b'U', b'D', b'T', 0x00, b'C', b'o', b'u', b'n', b't',
+            0x00, 0x00, b'F', b'l', b'a', b'g', 0x00,
+        ];
+
+        let template = manager
+            .parse_udt_template(321, 3, 5, &data)
+            .expect("template should parse");
+
+        assert_eq!(template.members.len(), 2);
+        assert_eq!(template.members[0].name, "Count");
+        assert_eq!(template.members[1].name, "Flag");
+        assert_eq!(template.members[1].offset, 4);
     }
 }

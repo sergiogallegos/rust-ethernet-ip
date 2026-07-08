@@ -209,6 +209,47 @@ jobs:
     - name: Check public API against crates.io 1.1.0
       run: cargo semver-checks check-release --baseline-version 1.1.0
 
+  cpp:
+    name: C++ header/example (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: cpp
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Build native library (release, with ffi)
+      shell: bash
+      run: cargo build --release --features ffi --locked
+    - name: Resolve native library path
+      shell: bash
+      run: |
+        case "${{ runner.os }}" in
+          Windows) f="$GITHUB_WORKSPACE/target/release/rust_ethernet_ip.dll";;
+          *)       f="$GITHUB_WORKSPACE/target/release/librust_ethernet_ip.so";;
+        esac
+        echo "RUST_ETHERNET_IP_NATIVE_LIB=$f" >> "$GITHUB_ENV"
+    - name: Check C header/export parity
+      shell: bash
+      run: python scripts/check-ffi-header-parity.py --library "$RUST_ETHERNET_IP_NATIVE_LIB"
+    - name: Configure C++ example
+      shell: bash
+      run: cmake -S examples/cpp -B target/cpp -DRUST_ETHERNET_IP_NATIVE_LIB="$RUST_ETHERNET_IP_NATIVE_LIB"
+    - name: Build C++ example
+      shell: bash
+      run: cmake --build target/cpp --config Release
+    - name: Run C++ smoke
+      shell: bash
+      run: ctest --test-dir target/cpp --output-on-failure -C Release
+
   version-check:
     name: Version consistency
     runs-on: ubuntu-latest
@@ -323,7 +364,7 @@ jobs:
 
   build:
     name: Build
-    needs: [test, python, msrv, audit, semver-checks, package, version-check, validate-agent-files, release-readiness, agent-commit-tests, full-coverage-manifest]
+    needs: [test, python, msrv, audit, semver-checks, cpp, package, version-check, validate-agent-files, release-readiness, agent-commit-tests, full-coverage-manifest]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

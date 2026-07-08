@@ -623,10 +623,11 @@ async fn test_udt_edge_cases() {
     let result = udt.to_hash_map(&empty_data);
     assert!(result.is_err());
 
-    // Test partial UDT data
+    // Partial UDT data must fail closed so read-modify-write callers cannot
+    // silently skip members and write zeros for unrelated PLC data.
     let partial_data = vec![0u8; 10]; // Only enough for BOOL members
     let result = udt.to_hash_map(&partial_data);
-    assert!(result.is_ok()); // Should succeed but only parse available members
+    assert!(result.is_err());
 
     // Test STRING with maximum length
     let max_string = "X".repeat(82);

@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Target next release: TBD.
 
 ### Added
+- CODEX-AU added first-class C/C++ consumer support: checked-in
+  `include/rust_ethernet_ip.h`, a simulator-backed CMake C++ smoke example,
+  CI header/export parity checks, and a Qt threading guide.
 - CODEX-AR added `EipClient::unsubscribe` for live tag subscriptions and
   `TagSubscriptionEvent` / `wait_for_event` / `into_event_stream` so single-tag
   poll errors can be observed without changing the existing value stream API.
@@ -37,6 +40,10 @@ Target next release: TBD.
   `UdtData::parse`, or the service-layer UDT member helpers instead.
 
 ### Fixed
+- CODEX-AO Phase 1 made UDT member-map conversion fail closed: truncated UDT
+  bytes now error instead of skipping members, missing member values now error
+  instead of zero-filling them, template parsing preserves empty member-name
+  slots, and packed BOOL members can use Logix template bit metadata.
 - CODEX-AR fixed live subscription and fleet lifecycle edges: `stop()` and
   `unsubscribe()` now halt single-tag polling, stopped subscriptions are pruned,
   value/tag-group notifications use drop-oldest backpressure instead of blocking

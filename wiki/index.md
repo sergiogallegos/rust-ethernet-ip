@@ -36,6 +36,7 @@ Status values:
 
 - [wrapper-parity/rust-vs-csharp.md](wrapper-parity/rust-vs-csharp.md) — Current parity picture between the Rust core and the C# wrapper. `active`
 - [wrapper-parity/ffi-registry-clone-audit.md](wrapper-parity/ffi-registry-clone-audit.md) — FFI registry clone semantics, copied-field risks, and CODEX-M Phase A recommendation. `needs-review`
+- [wrapper-parity/cpp-consumer-support.md](wrapper-parity/cpp-consumer-support.md) — Current C/C++ header, parity gate, CMake example, and Qt integration support. `active`
 
 ## Investigations
 

@@ -4,7 +4,7 @@ title: UDT wire-format investigation — capture-gated audit of struct read/writ
 owner: codex
 status: open
 created: 2026-07-01
-last-update: 2026-07-01 claude [Fable 5]
+last-update: 2026-07-08 claude [Opus 4.8]
 ---
 
 ## Brief
@@ -67,6 +67,85 @@ Phase 1: unit tests for error-on-partial (`to_hash_map` with truncated data → 
 
 ## Codex log
 
+2026-07-08 codex [GPT-5] - Phase 1 submitted; Phase 2 remains blocked on maintainer captures.
+
+- Closed the hardware-free `crates/udt` RMW zero-fill hazard without changing
+  the public method signatures: `UserDefinedType::to_hash_map` now errors if
+  any member range exceeds the returned UDT bytes, and
+  `UserDefinedType::from_hash_map` now errors if any declared member is absent
+  from the input map.
+- Preserved empty NUL-separated template-name slots positionally so hidden/host
+  template members no longer shift later names onto the wrong member records.
+- Added private packed-BOOL bit metadata to `UserDefinedType` plus
+  `add_member_with_bit_index`; callers using plain `add_member` keep the
+  previous byte-level behavior, while template-aware code can decode and encode
+  BOOL members by Logix `info` bit index.
+- Added focused unit coverage for truncated data, missing members, empty
+  template names, and two BOOL members sharing one host byte.
+- Updated the stale `tests/udt_enhanced_tests.rs` partial-data expectation to
+  assert the new fail-closed contract.
+- Verification passed: `cargo test -p rust-ethernet-ip-udt --locked`;
+  `cargo test --test udt_enhanced_tests --locked`;
+  `cargo fmt -- --check`;
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+  `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked`
+  (outside sandbox for simulator localhost bind);
+  `cargo semver-checks check-release --baseline-version 1.1.0`.
+- No UDT wire-format encode/decode changes were made. Phase 2 still needs the
+  capture checklist above before any `0x02A0 + symbol_id` or read-handle
+  behavior changes.
+
 ## Claude review
 
+### 2026-07-08 15:40  claude [Opus 4.8]
+
+**Independent verification**
+- `cargo fmt -- --check` — clean.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — pass.
+- `cargo test -p rust-ethernet-ip-udt --locked` — 9/9 passed (includes the 4 new Phase 1 tests).
+- `cargo test --test udt_enhanced_tests --locked` — 13/13 passed.
+- `cargo test --test plc_sim_tests --locked` (SKIP_PLC_TESTS=1) — 24/24 passed.
+- `cargo semver-checks check-release --baseline-version 1.1.0` — no semver update required; `add_member_with_bit_index` is additive, `member_bit_indices` is private.
+
+**What's being fixed**
+- Phase 1 (hardware-free) only. Closes the read-modify-write zero-fill/skip hazard in `crates/udt` and fixes template member-name misalignment; adds a packed-BOOL bit-index mechanism. No UDT wire-format encode/decode change — Phase 2 remains capture-gated.
+
+**Root cause confirmation**
+- Confirmed zero-fill hazard: `to_hash_map` previously skipped out-of-range members (`crates/udt/src/lib.rs`, old `if offset + size <= len` branch) and `from_hash_map` zero-filled missing members; composed through `src/client/service_layer.rs:99` (`UdtData::from_hash_map`) a short read could write zeros for unrelated members. Both now fail closed (`to_hash_map` errors on any out-of-range member using `checked_add`/`is_none_or`; `from_hash_map` errors on any absent member). Since both methods already returned `Result`, all internal callers propagate the new error with no signature change — no `try_*`/deprecation dance needed.
+- Confirmed name-misalignment: `parse_null_terminated_strings` dropped empty chunks via `.filter(!is_empty())`, shifting names past a hidden/host member. Removing the filter preserves positional alignment; the `member_name.is_empty()` `continue` at `crates/udt/src/lib.rs:208` correctly skips both intentional empties and the trailing split empty within the `zip` with `raw_members`.
+
+**Fix appropriateness**
+- Fail-closed lands at the right layer (the crate's serde boundary), so every consumer of `to_hash_map`/`from_hash_map` inherits it without per-caller edits. Correct.
+- The `src/ffi.rs` change is a test-only (`#[cfg(test)]`) mutex serializing the `FORCE_RUNTIME_INIT_ERROR` global against the panic-probe test — no production behavior change; justified flake fix surfaced by the full-workspace run.
+
+**Test proof**
+- New unit tests cover error-on-truncation, error-on-missing-member, positional empty-name preservation, and two BOOLs in one host byte encode/decode by bit index. `tests/udt_enhanced_tests.rs:623` flipped from asserting partial-data `is_ok()` to `is_err()` — a legitimate contract tightening, not a weakening.
+
+**Residual risk**
+- Packed-BOOL support is a **dormant mechanism**. `UdtMember` (`crates/udt/src/lib.rs:42`) carries no bit-index field, and every production path builds `UserDefinedType` via plain `add_member` (`src/client/service_layer.rs:88`, `src/ffi.rs:1397`, the client doctests). `parse_udt_template` also discards `RawMember.info` for BOOL members (it only uses `info` for array element counts at `crates/udt/src/lib.rs:275`). So a real packed-BOOL UDT read through the client still collapses to `data[0] != 0`. The unit test proves the mechanism in isolation, not the end-to-end fix. End-to-end plumbing (thread `info` bit index through the definition pipeline into `UserDefinedType`) is left for Phase 2 or a small follow-up — see Findings.
+- Phase 2 (the `0x02A0 + symbol_id` write-type conflict and the read-path handle-vs-offset question) is untouched and remains blocked on the maintainer capture checklist. No wire change may land without it.
+
+**Strong points (✅)**
+- The RMW zero-fill hazard — the load-bearing safety fix — is genuinely closed and cannot silently corrupt unrelated PLC members on a short read (`crates/udt/src/lib.rs:519-560`).
+- Positional empty-name handling is verified against a hand-crafted template byte image with a cited format comment (`test_parse_udt_template_preserves_empty_member_names_positionally`).
+- No public signature churn; semver-clean.
+
+**Findings**
+- 🟢 `bit_index.min(7)` is applied both at insert (`crates/udt/src/lib.rs:488`) and at use (`:569`, `:664`) — redundant but harmless defense.
+- 🟡 Packed-BOOL bit-index support is not wired into any production caller and `RawMember.info` is not preserved as a bit index by `parse_udt_template`, so the "several BOOLs in one host SINT read the same value" hazard is **not yet closed in the real client path**. Non-blocking for Phase 1 (the brief scoped the BOOL item as "cover with unit tests," which is satisfied, and the natural home for the definition-pipeline plumbing is the capture-gated Phase 2), but it must not be reported as "packed BOOL fixed end-to-end." Tracked as a Phase 2 / follow-up item.
+
+**Acceptance criteria tally**
+- ✅ Phase 1 lands regardless of capture timing; the RMW zero-fill hazard is closed (a partial read can no longer silently produce a zero-filled or member-skipped write).
+- (deferred) Phase 2 either fixes the encoding with capture-pinned tests or documents the collapsed form as confirmed-correct — owner: codex, timing: after maintainer captures (checklist unfilled).
+- (deferred) Full-coverage hardware matrix re-validated before any release carrying a wire change — no wire change in this submission, so not yet due.
+
 ## Verdict
+
+### 2026-07-08 15:45  claude [Opus 4.8]
+
+**Phase 1 accepted and merged; task remains open for Phase 2 (capture-gated).**
+
+The hardware-free deliverables are correct and independently verified. The headline RMW zero-fill hazard is closed at the crate serde boundary with fail-closed errors and no public signature change; template member-name alignment is fixed and pinned with a byte-image test. The packed-BOOL bit-index mechanism is correct and unit-tested but dormant in production (no caller supplies bit indices; `UdtMember` has no bit field; `parse_udt_template` discards `info` for BOOLs) — flagged as 🟡 and queued into Phase 2 rather than sold as a completed end-to-end fix.
+
+No fix-during-merge edits were applied. Phase 2 (the `0x02A0 + symbol_id` write-type and read-path handle questions) stays untouched and blocked on the maintainer capture checklist; this task's status stays `open` with Phase 1 recorded as landed.

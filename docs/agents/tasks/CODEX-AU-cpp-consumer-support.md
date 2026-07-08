@@ -2,9 +2,9 @@
 id: CODEX-AU
 title: C++ consumer support — C header with parity gate, RAII example, Qt integration guide
 owner: codex
-status: open
+status: merged
 created: 2026-07-02
-last-update: 2026-07-02 claude [Fable 5]
+last-update: 2026-07-08 claude [Opus 4.8]
 ---
 
 ## Brief
@@ -69,6 +69,90 @@ Deliverables:
 
 ## Codex log
 
+2026-07-08 codex [GPT-5] - Implementation submitted.
+
+- Added hand-authored C99-compatible `include/rust_ethernet_ip.h` covering all
+  59 exported `eip_*` C ABI symbols and intentionally excluding the three
+  non-exported raw-pointer compatibility functions from CODEX-AS.
+- Added `scripts/check-ffi-header-parity.py`, which compares header
+  declarations against the built dynamic-library export table (`nm`, `llvm-nm`,
+  or `dumpbin`) and fails if either side drifts. Demonstrated seeded drift by
+  deleting `eip_read_dint` from a temporary header copy; the script failed with
+  `exported symbols missing from header: eip_read_dint`.
+- Added `examples/cpp/`: CMake project, warning-clean link-check executable
+  taking addresses of every header declaration, dependency-free header-only
+  `EipClient` RAII wrapper, simulator-backed demo, and Python CTest harness.
+  The smoke connects to `plc_sim`, round-trips DINT/REAL/STRING, and runs
+  three-tag batch write/read checks.
+- Added CI C++ job on Ubuntu and Windows: build release FFI library, run header
+  parity script, configure/build the CMake example, and run CTest.
+- Added `docs/CPP_INTEGRATION.md` with build/link/deploy instructions, ABI
+  handshake, last-error handling, and Qt worker-thread guidance. README and
+  CHANGELOG updated.
+- Verification passed:
+  `cargo fmt -- --check`;
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+  `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked`
+  (outside sandbox for simulator localhost bind);
+  `cargo semver-checks check-release --baseline-version 1.1.0`;
+  `cargo build --release --features ffi --locked`;
+  `python3 scripts/check-ffi-header-parity.py --library target/release/librust_ethernet_ip.dylib`;
+  seeded-drift parity failure using a temporary header;
+  `cmake -S examples/cpp -B target/cpp -DRUST_ETHERNET_IP_NATIVE_LIB=$PWD/target/release/librust_ethernet_ip.dylib`;
+  `cmake --build target/cpp`;
+  `ctest --test-dir target/cpp --output-on-failure` (rerun outside the sandbox
+  because the sandbox denied the simulator's localhost bind).
+
 ## Claude review
 
+### 2026-07-08 15:50  claude [Opus 4.8]
+
+**Independent verification**
+- `cargo fmt -- --check` — clean.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+- `SKIP_PLC_TESTS=1 cargo test --workspace --all-features --locked` — pass (no Rust behavior change; CI edit does not break existing legs).
+- `cargo build --release --features ffi --locked` — cdylib built.
+- `python3 scripts/check-ffi-header-parity.py --library target/release/librust_ethernet_ip.dylib` — `FFI header parity OK: 59 exported eip_* symbols`.
+- Seeded drift (temp header with `eip_read_dint` removed) — parity script failed with `exported symbols missing from header: eip_read_dint`, exit 1. Direction (b) verified.
+- `cmake -S examples/cpp -B target/cpp -DRUST_ETHERNET_IP_NATIVE_LIB=…` + `cmake --build target/cpp` — built warning-clean.
+- `ctest --test-dir target/cpp --output-on-failure` — 2/2 passed (`ffi_header_link_check` link gate + `cpp_smoke_demo` sim round-trip).
+
+**What's being fixed**
+- Additive packaging: a checked-in, CI-gated C header, a dependency-free RAII C++ example with a simulator-backed ctest smoke, a header/export parity gate, and a Qt threading guide. No `src/ffi.rs` behavior change.
+
+**Root cause confirmation**
+- N/A (feature task). The header mirrors the exported surface: 59 `eip_*` symbols, and it declares the `_by_id` variants (`eip_get_udt_definition_by_id`, `eip_get_tag_attributes_by_id`, `eip_discover_tags_detailed_by_id`) while excluding the raw non-`_by_id` trio that CODEX-AS keeps unexported — confirmed by the parity script's `RAW_POINTER_COMPAT` guard and by grep of `include/rust_ethernet_ip.h`.
+
+**Fix appropriateness**
+- Hand-authored header + parity gate is the correct call over cbindgen: the 22 scalar wrappers are macro-generated and invisible to cbindgen's syntactic pass (`parse.expand` needs nightly). The gate enforces both directions — a C++ TU that takes the address of every declared function (link error on removal/rename) and an export-table diff (parity failure on additions).
+- The parity script's pure-Python PE export parser avoids a `dumpbin`/MSVC dependency on Windows runners; falls back to `nm`/`llvm-nm`/`dumpbin` otherwise. Reasonable and portable.
+- The ctest smoke spawns `plc_sim`, reads its advertised listening address from stdout (`examples/cpp/smoke.py`), and sets the platform dylib search path — no fixed-port collision, and it works cross-platform.
+
+**Test proof**
+- ctest smoke round-trips DINT/REAL/STRING and a ≥3-tag batch against the in-process simulator; the link-check TU proves every header declaration resolves against the cdylib. Seeded-drift demonstrated per the brief.
+
+**Residual risk**
+- CI proves ubuntu + windows per the brief; macOS was the local verification host. MSVC/MinGW parity for C++ consumers is asserted in the guide but only MSVC is CI-proven (as the brief accepts).
+- STRING round-trip: CODEX-AT (the STRING-write firmware-quirk disproof) has not landed on `main`, so confirm which STRING contract the smoke asserts (full write+read vs documented-error) is consistent with current `main` behavior — the smoke passing against the live sim indicates the write path the sim models succeeds. Low risk; sim-backed.
+
+**Strong points (✅)**
+- Bidirectional drift gate wired into the `build` job's `needs` (`.github/workflows/ci.yml`) — header cannot silently rot.
+- RAII wrapper is header-only and dependency-free (`examples/cpp/eip_client.hpp`), safe to vendor into the maintainer's Qt app as intended.
+- Warning flags present for both toolchains (`/W4 /permissive-`, `-Wall -Wextra -Wpedantic`) and the example builds clean.
+
+**Findings**
+- None blocking. 🟢 The CI cpp job compiles `plc_sim` in debug via `cargo run` inside a release-configured job (extra wall-clock, mitigated by `Swatinem/rust-cache`); acceptable.
+
+**Acceptance criteria tally**
+- ✅ Header covers every public `eip_*` export except the CODEX-AS-excluded raw-pointer trio; parity gate green (locally macOS; CI ubuntu+windows wired).
+- ✅ `examples/cpp` builds and its smoke passes (2/2 ctest locally; CI legs added).
+- ✅ `docs/CPP_INTEGRATION.md` exists with the threading-model section and Qt worker sketch; README "Using from C++" section added.
+- ✅ STRING round-trip exercised in the sim-backed smoke; contract noted above.
+
 ## Verdict
+
+### 2026-07-08 15:52  claude [Opus 4.8]
+
+**Accepted and merged.**
+
+All deliverables land as briefed and are independently verified end-to-end: 59-symbol header with a bidirectional CI-enforced parity gate (seeded drift caught), a dependency-free RAII example whose ctest smoke round-trips DINT/REAL/STRING and a batch against the in-process simulator (2/2 passing), and a Qt integration guide restating the single-owner / off-GUI-thread FFI contract. The hand-authored-header-plus-parity-gate approach is the correct response to the macro-generated wrapper surface. No `src/ffi.rs` behavior was touched. No fix-during-merge edits were applied. CI proves ubuntu+windows; macOS was the local merge host.

@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Target next release: TBD.
+## [1.2.0] - 2026-07-08
+
+Minor release: behavioral fixes, deprecations, and additive surface (C/C++ header
+and example, custom-string support, CIP fragmentation) with no Rust-API signature
+breaks. Hardware-validated on CompactLogix 5069-L330ERM fw38 across Rust/C#/Python/C++
+(full-coverage 2304 reads / 2285 writes / 2285 verify / 0 anomalies). The C FFI ABI
+is v2 (removal of three unusable `*mut EipClient` exports; `eip_abi_version()` bumped).
 
 ### Added
 - CODEX-AZ added CIP Read Tag Fragmented (`0x52`) and Write Tag

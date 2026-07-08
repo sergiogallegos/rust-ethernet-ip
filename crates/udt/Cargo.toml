@@ -1,6 +1,6 @@
 [package]
 name = "rust-ethernet-ip-udt"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 license = "MIT"
 description = "Logix UDT parsing helpers used by rust-ethernet-ip"
@@ -17,7 +17,7 @@ name = "rust_ethernet_ip_udt"
 path = "src/lib.rs"
 
 [dependencies]
-rust-ethernet-ip-types = { path = "../types", version = "1.1.0" }
+rust-ethernet-ip-types = { path = "../types", version = "1.2.0" }
 
 [dev-dependencies]
 tracing = "0.1"

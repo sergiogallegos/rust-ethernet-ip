@@ -32,7 +32,7 @@ pub const CAPABILITIES: u64 = CAP_ROUTE_PATH_ORDERED_HOPS
 pub const MAJOR_VERSION: u32 = 1;
 
 /// Minor version number
-pub const MINOR_VERSION: u32 = 1;
+pub const MINOR_VERSION: u32 = 2;
 
 /// Patch version number
 pub const PATCH_VERSION: u32 = 0;

@@ -15,8 +15,8 @@ Validated scope today:
 
 ## Package Status
 
-- current published package: `1.1.0`
-- previous published package: `1.0.0`
+- current published package: `1.2.0`
+- previous published package: `1.1.0`
 - current published package target: `.NET 10`
 - current packaged native runtimes: `win-x64`, `linux-x64`, `osx-arm64`
 
@@ -30,13 +30,13 @@ If you are evaluating deployment, read:
 ### NuGet
 
 ```bash
-dotnet add package RustEtherNetIp --version 1.1.0
+dotnet add package RustEtherNetIp --version 1.2.0
 ```
 
 Or:
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="1.1.0" />
+<PackageReference Include="RustEtherNetIp" Version="1.2.0" />
 ```
 
 ### Source-based builds
@@ -526,7 +526,14 @@ The project is also open to:
 
 ## Version History
 
-### v1.1.0 (Current Stable)
+### v1.2.0 (Current Stable)
+- ✅ Custom Logix string types — `WriteString`/`ReadString` now work for built-in `STRING` **and** user-defined string types (own name/length, e.g. `Str82`/`Str400`); the native layer discovers the target's real structure handle. Strings larger than one CIP packet use CIP fragmentation.
+- ✅ Packet-size-aware batch grouping — large batch reads no longer fail with EtherNet/IP `0x65` (Invalid Length); batches split by both operation count and packet size.
+- ✅ Native transport/session hardening, tag-addressing correctness, and diagnostics honesty (from the CODEX-AJ…AZ remediation set).
+- ✅ Real 5069-L330ERM fw38 validation across Rust/C#/Python/C++: 2304/2304 reads, 2285/2285 writes, 2285/2285 verify, 0 anomalies (STRING members now written+verified).
+- ⚠️ C FFI ABI is now **v2** (removes three unusable `*mut EipClient` native exports; `eip_abi_version()` bumped). The C# package is unaffected — it imports only the `_by_id` exports and ships in lockstep with the native library.
+
+### v1.1.0
 - ✅ New async API — `ReadDintAsync` / `WriteBoolAsync` / `ReadStringAsync` / batch / `CheckHealthAsync`. **Note:** these are `Task.Run` wrappers over the blocking native calls — they let you `await` and keep UI threads responsive, but they do **not** make the underlying socket I/O non-blocking (one thread-pool thread is occupied per in-flight call). True non-blocking FFI is future work.
 - ✅ Richer errors — operations now throw `PlcException` carrying the native CIP failure reason via `eip_get_last_error` (capability `CAP_LAST_ERROR`), e.g. "CIP Error 0x04: Path segment error"
 - ✅ Fixed: typed UDT writes (`WriteUdt`/`WriteUdtData`) serialize correctly; a failed scalar write is no longer re-issued to the PLC; added a finalizer + thread-safe `Dispose`; `RoutePath.AddPort` before an address no longer drops the port

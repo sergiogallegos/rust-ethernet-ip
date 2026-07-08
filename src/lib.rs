@@ -2,7 +2,7 @@
 //!
 //! `rust-ethernet-ip` provides async Rust APIs for explicit EtherNet/IP and CIP
 //! tag operations, plus FFI surfaces used by the repository's .NET wrapper.
-//! The current released crate line is `1.1.0`.
+//! The current released crate line is `1.2.0`.
 //!
 //! ## Highlights
 //!
@@ -45,7 +45,7 @@
 //!
 //! ## Known PLC/Firmware Limits
 //!
-//! Real-hardware validation for the `1.1.0` release line classified some nested
+//! Real-hardware validation for the `1.2.0` release line classified some nested
 //! direct write shapes as controller/firmware limitations. Follow-up probes on
 //! 2026-07-02 and 2026-07-03 corrected that picture: standalone standard Logix
 //! `STRING` tags write successfully when encoded as the standard

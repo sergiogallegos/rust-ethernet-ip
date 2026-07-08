@@ -1,6 +1,6 @@
 [package]
 name = "rust-ethernet-ip-tag-path"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 license = "MIT"
 description = "Allen-Bradley Logix tag-path parser used by rust-ethernet-ip"

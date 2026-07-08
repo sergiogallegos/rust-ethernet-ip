@@ -42,15 +42,15 @@ This project exists to fill that gap with a single, MIT-licensed protocol implem
 
 ## Version Status
 
-- Current stable release: `1.1.0` (tagged 2026-06-19, crates.io + NuGet + PyPI)
-- Previous stable release: `1.0.0`
-- Earlier stable release: `0.7.0`
+- Current stable release: `1.2.0` (crates.io + NuGet + PyPI)
+- Previous stable release: `1.1.0` (tagged 2026-06-19)
+- Earlier stable releases: `1.0.0`, `0.7.0`
 - Real-hardware validation evidence is included for the release
 
 Release snapshot:
-- `1.1.0` is a non-breaking correctness + cleanup + feature release: client-side bit access (read-modify-write), C# UDT-write/Dispose/finalizer fixes, `RoutePath::add_port` fix, a Python wheel that bundles the native library, richer errors via `eip_get_last_error` (`CAP_LAST_ERROR`) surfaced through C# `PlcException` and Python, a C# async API, `thiserror` 2.0 + trimmed `tokio` features, and automated crates.io/PyPI/multi-RID-NuGet release packaging. The public Rust API and the C ABI (version 1) are unchanged. See [`CHANGELOG.md`](CHANGELOG.md).
-- Rust + C# + Python full-coverage hardware exercisers all pass against CompactLogix 5069-L330ERM fw38 (2026-06-19): byte-identical 2299/2299 reads, 2206/2206 writes, 2206/2206 verify, 60 then-expected blocked writes, 0 unexpected anomalies. CODEX-AV later revalidated those blocked labels before the 1.2.0 gate.
-- crates.io ships five workspace artifacts at `1.1.0`: `rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, and the top-level `rust-ethernet-ip`. NuGet ships `RustEtherNetIp 1.1.0` and PyPI ships `rust-ethernet-ip 1.1.0` from the GitHub release workflow on tag push.
+- `1.2.0` is a minor (non-breaking) release: behavioral fixes, deprecations, and additive surface with no Rust-API signature breaks. Highlights: **handle-aware STRING writes** so custom Logix string types (own name/length, e.g. `Str82`/`Str400`) read and write through the normal string APIs; **CIP fragmentation** (Read/Write Tag Fragmented) for strings/structures larger than one packet; **packet-size-aware batch grouping** (fixes large batch reads); first-class **C/C++ consumer support** (`include/rust_ethernet_ip.h` + CMake example); transport/session hardening, tag-addressing correctness, and diagnostics honesty. The C FFI ABI is now **v2** (removes three unusable `*mut EipClient` exports; `eip_abi_version()` bumped) — the Rust API and the C#/Python packages are unaffected. See [`CHANGELOG.md`](CHANGELOG.md).
+- Full-coverage hardware exercisers pass on CompactLogix 5069-L330ERM fw38 across Rust/C#/Python/C++: 2304/2304 reads, 2285/2285 writes, 2285/2285 verify, 0 unexpected anomalies (STRING members now written+verified via the handle-aware path). See [`docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md`](docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md).
+- crates.io ships five workspace artifacts at `1.2.0`: `rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, and the top-level `rust-ethernet-ip`. NuGet ships `RustEtherNetIp 1.2.0` and PyPI ships `rust-ethernet-ip 1.2.0` from the GitHub release workflow on tag push.
 
 ## Project Focus
 
@@ -78,7 +78,7 @@ Release snapshot:
 Some write behaviors depend on exact Logix wire encoding and controller firmware:
 
 - Direct writes to scalar UDT array element members (for example `MyUdtArray[0].Speed`) are confirmed writeable on 5069-L330ERM fw38 when the full member path is preserved.
-- Direct writes to `STRING` members inside UDTs reject with `0xFF/0x2107` under the current member encoding on 5069-L330ERM fw38. Whether a member-specific direct encoding exists remains under investigation.
+- `STRING` members inside UDTs — built-in `STRING` **and** custom string types (own name/length, e.g. `Str82`/`Str400`) — write and read through the normal string APIs as of `1.2.0`: the library discovers the target's real structure handle instead of assuming the built-in `0x0FCE`. Strings larger than one CIP packet use CIP fragmentation. See [`docs/STRING_HANDLING.md`](docs/STRING_HANDLING.md).
 
 Real-hardware note from the `0.7.0` release validation:
 - Validated on `5069-L320ERMS3`, firmware `35`, at `192.168.0.1:44818`
@@ -86,9 +86,7 @@ Real-hardware note from the `0.7.0` release validation:
 - On that CompactLogix target, normal reads/writes, route-path access, subscriptions, UDT reads, and batch operations are working
 - On that ControlLogix target, the same main read/write, route-path, subscription, UDT-read, and batch paths are working
 - On newer 2026-07-02 validation against 5069-L330ERM firmware 38, standalone standard `STRING` writes succeed when encoded as the Logix structure type (`0x02A0` + `0x0FCE` handle).
-- On 2026-07-03 validation against the same controller, all 60 scalar UDT-array-element-member writes succeeded; 17 UDT STRING-member writes remain expected `0x2107` current-encoding rejections.
-
-Recommended pattern for rejected STRING-member cases: **read-modify-write the full UDT/array element**.
+- On 2026-07-03 validation against the same controller, all 60 scalar UDT-array-element-member writes succeeded. As of `1.2.0` (2026-07-08), UDT `STRING` members — built-in and custom string types — also write+read directly via handle-aware writes; the earlier `0x2107` rejections were a structure-handle mismatch, not a firmware block.
 
 Detailed technical background and examples:
 - [AB String/UDT write limitations](docs/AB_String_UDT_Write_Limitations.md)
@@ -103,31 +101,31 @@ Detailed technical background and examples:
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "1.1.0"
+rust-ethernet-ip = "1.2.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
 ### C#
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="1.1.0" />
+<PackageReference Include="RustEtherNetIp" Version="1.2.0" />
 ```
 
 Or from the CLI:
 
 ```bash
-dotnet add package RustEtherNetIp --version 1.1.0
+dotnet add package RustEtherNetIp --version 1.2.0
 ```
 
 Current NuGet packaging note:
-- `RustEtherNetIp` `1.1.0` is published on NuGet
+- `RustEtherNetIp` `1.2.0` is published on NuGet
 - the package bundles native runtimes for `win-x64`, `linux-x64`, and `osx-arm64`
 - the managed package currently targets `.NET 10`
 
 ### Python
 
 ```bash
-pip install rust-ethernet-ip==1.1.0
+pip install rust-ethernet-ip==1.2.0
 ```
 
 The wheel bundles the native library, so a plain `pip install` works with no separate build. (The Rust and C# wrappers ship alongside it from the same release.)

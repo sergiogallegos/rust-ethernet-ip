@@ -3,9 +3,10 @@
 This folder contains project documentation for `rust-ethernet-ip`.
 
 Current release state:
-- Current stable line: `1.0.0` (tagged 2026-05-24, crates.io + NuGet)
-- Previous stable line: `0.7.0`
-- Earlier stable line: `0.6.3`
+- Current stable line: `1.1.0` (tagged 2026-06-19, crates.io + NuGet + PyPI)
+- Previous stable line: `1.0.0` (tagged 2026-05-24)
+- Earlier stable lines: `0.7.0`, `0.6.3`
+- In progress (unreleased): the CODEX-AJ…AU remediation set on `main`, targeting `1.2.0` after a full cross-binding hardware validation pass
 
 ## Start Here
 
@@ -31,11 +32,13 @@ Current release state:
 
 ## Release and Quality Gates
 
-- [../CHANGELOG.md](../CHANGELOG.md): `1.0.0` release notes and historical release history
-- [agents/board.md](agents/board.md): current `1.0.0` release gates and staged publish order
+- [../CHANGELOG.md](../CHANGELOG.md): `1.1.0` release notes and historical release history
+- [agents/board.md](agents/board.md): current `1.2.0` release gates and staged publish order
+- [release/1.1.0_RELEASE_NOTES.md](release/1.1.0_RELEASE_NOTES.md)
 - [release/0.8.0_RELEASE_NOTES_DRAFT.md](release/0.8.0_RELEASE_NOTES_DRAFT.md) (historical draft absorbed into `1.0.0`)
 - [0.7.0_HARDENING_GATE.md](0.7.0_HARDENING_GATE.md)
 - [validation/REAL_PLC_TESTING.md](validation/REAL_PLC_TESTING.md)
+- [validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md](validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md) (latest 4-binding hardware pass)
 - [validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 - [validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 - [audit/0.7.0_docs_api_audit.md](audit/0.7.0_docs_api_audit.md)

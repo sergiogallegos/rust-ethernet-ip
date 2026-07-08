@@ -99,7 +99,7 @@ The library handles full Allen-Bradley tag path syntax internally:
 
 Allen-Bradley firmware restrictions (CIP `0x2107` on STRING writes, UDT array element member writes, stale `symbol_id`) and the workarounds the library uses live in [`docs/agents/notes/ab-firmware-quirks.md`](docs/agents/notes/ab-firmware-quirks.md). Read that page before "simplifying" any write path.
 
-Other surface-specific decisions live alongside it under [`docs/agents/notes/`](docs/agents/notes/): `cip-framing.md` (wire codec boundary), `ffi-safety.md` (FFI invariants for `src/ffi.rs`), and `unconnected-send.md` (service `0x52` wrapping and route path placement).
+Other surface-specific decisions live alongside it under [`docs/agents/notes/`](docs/agents/notes/): `cip-framing.md` (wire codec boundary), `ffi-safety.md` (FFI invariants for `src/ffi.rs`), `unconnected-send.md` (service `0x52` wrapping and route path placement), and `release-hardware-validation.md` (the mandatory live cross-binding hardware pass before any release).
 
 ## Workspace Layout
 

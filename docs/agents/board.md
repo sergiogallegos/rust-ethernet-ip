@@ -13,6 +13,8 @@
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
 | CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open (Phase 1 merged) | 2026-07-01 |
+| CODEX-AW | Batch grouping ignores max_packet_size — large batch reads fail with EIP 0x65 (Invalid Length) | codex | open | 2026-07-08 |
+| CODEX-AX | Full-coverage harness never writes/blocked-probes STRINGs — release gate can't catch a STRING regression | codex | open | 2026-07-08 |
 
 > 2026-07-08 update: CODEX-AO Phase 1 reviewed and **merged** (UDT strictness /
 > RMW zero-fill hazard closed without hardware; template empty-name alignment
@@ -49,6 +51,14 @@
 > data-type-table dedup, FFI registry `Arc<Mutex>`, the 2.0 dead-public-surface
 > removals (`TagCache` / `update_health`), and **multi-chassis Ethernet routing
 > hardware validation**.
+
+### 2026-07-08 hardware-validation findings (from the pre-1.2.0 cross-binding pass)
+
+From the 4-binding hardware pass on 5069-L330ERM fw38 ([`validation record`](../validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md)). Findings 1–2 are now briefed (open rows above); finding 3 is folded into CODEX-AX.
+
+1. **Batch READ of ≥~20 long-path tags fails with EIP `0x65` (Invalid Length).** `optimize_operation_groups` in `src/client/batch_exec.rs` enforces `max_operations_per_packet` (20) but not `max_packet_size` (504 B). → **CODEX-AW**.
+2. **Full-coverage harness never exercises STRING writes/blocked-probes.** `rand_value()`/`nines()` in `examples/test_plc_full_coverage.rs` return `None` for `Kind::String` (`writes=2266` not 2268, `blocked=0` not 17); the new `examples/cpp/full_coverage.cpp` is the corrected reference (2268/17). → **CODEX-AX**.
+3. **Python full-coverage runner crashes on Windows under redirected stdout** (prints `✓`/`✗`, cp1252 `UnicodeEncodeError`). Folded into CODEX-AX.
 
 Resume order recommended by Claude. Each candidate brief is unwritten; the entry below summarises what the brief would cover so the next session can author and execute it without re-deriving context from chat history.
 

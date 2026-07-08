@@ -54,6 +54,7 @@ Current release state:
 - [CONTROLLOGIX_ROUTING_IMPLEMENTATION.md](CONTROLLOGIX_ROUTING_IMPLEMENTATION.md)
 - [ARRAY_ELEMENT_ADDRESSING_GUIDE.md](ARRAY_ELEMENT_ADDRESSING_GUIDE.md)
 - [tag_introspection.md](tag_introspection.md)
+- [STRING_HANDLING.md](STRING_HANDLING.md): built-in vs custom Logix string types, the handle mechanism, size limits, and how to use the API
 - [AB_String_UDT_Write_Limitations.md](AB_String_UDT_Write_Limitations.md)
 
 ## Troubleshooting and Operations

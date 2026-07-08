@@ -7,6 +7,17 @@ created: 2026-07-08
 last-update: 2026-07-08 claude [Opus 4.8]
 ---
 
+> **2026-07-08 update:** CODEX-AY (handle-aware STRING writes) is **merged**, so `write_tag` /
+> `write_string` / `eip_write_string` now write built-in *and* custom string members, and
+> `read_string_tag` / `eip_read_string` read them back. This task is unblocked. Because the fix
+> makes STRING members **writeable**, this task now *writes+verifies* the standard string entries
+> (standalone + Member5) rather than blocked-probing them — most `encoding_blocked_udt_string_member`
+> entries become `writeable` (blocked count drops toward 0; keep the blocked-probe only for any
+> genuinely over-one-packet case). A committed `examples/test_plc_strings.rs` already covers the
+> string surface as a standalone example and is the reference for the per-runner change. Adding
+> custom `Member6`/`Member7` to the *shared* manifest is optional and cross-PLC-sensitive (they
+> exist only on the extended test program) — prefer keeping them in the dedicated string example.
+
 ## Brief
 
 ### Goal

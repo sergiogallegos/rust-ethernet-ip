@@ -202,7 +202,10 @@ fn ffi_last_error_clears_after_successful_scalar_read() {
 }
 
 #[test]
-fn ffi_read_string_rejects_non_string_tag_without_ascii_scan() {
+fn ffi_read_string_rejects_non_string_scalar_without_ascii_scan() {
+    // A scalar (non-structure) tag is not a Logix string and must be rejected cleanly, without
+    // any ASCII-scanning heuristic. `eip_read_string` now decodes custom string *structures*
+    // (any handle) as text, but a DINT still surfaces a type-mismatch error.
     let sim = SimHarness::start(plc_sim::SimBehavior::default());
     let client = connect_ffi_client(&sim.address);
     let tag = CString::new("DINT_TAG").expect("CString");
@@ -210,7 +213,7 @@ fn ffi_read_string_rejects_non_string_tag_without_ascii_scan() {
 
     let rc = unsafe { ffi::eip_read_string(client.id(), tag.as_ptr(), buf.as_mut_ptr(), 128) };
     assert_eq!(rc, -1);
-    assert!(last_error(client.id()).contains("not a STRING"));
+    assert!(last_error(client.id()).contains("expected STRING"));
 }
 
 #[test]

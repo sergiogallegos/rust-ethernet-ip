@@ -1,8 +1,8 @@
 ---
 id: CODEX-AY
 title: STRING writes assume the built-in handle 0x0FCE — custom string types (Str82, etc.) reject with 0x2107
-owner: codex
-status: open
+owner: claude
+status: merged
 created: 2026-07-08
 last-update: 2026-07-08 claude [Opus 4.8]
 ---
@@ -116,6 +116,45 @@ entries once the write works (coordinate with CODEX-AX).
 
 ## Codex log
 
+_(none — implemented directly by Claude in the 2026-07-08 hardware session at maintainer
+direction, rather than routed to Codex.)_
+
 ## Claude review
 
+### 2026-07-08  claude [Opus 4.8]
+
+Implemented directly (maintainer chose "implement now" during the live hardware session).
+
+Changes:
+- `src/client.rs` — `write_tag_direct` now routes `PlcValue::String`: for values ≤ 82 chars it
+  tries the standard `0x0FCE` write first (fast path, sim-compatible) and on `0x2107` falls back
+  to `write_string_handle_aware`; values > 82 go straight to handle-aware. `write_string_handle_aware`
+  reads the target to obtain its real structure handle + total structure size, builds a payload
+  sized to that structure with the correct handle, guards against exceeding the ~494-byte
+  single-packet write ceiling (clear error, no raw `0x03`), and sends. The old body of
+  `write_tag_direct` became `write_tag_standard`.
+- `src/client/service_layer.rs` — `is_2107_type_mismatch` made `pub(crate)`; new
+  `read_string_tag` decodes both built-in `STRING` (0x0FCE → `PlcValue::String`) and custom
+  string structures (`PlcValue::Udt` → decode `[handle][LEN][DATA]`) to text.
+- `src/ffi.rs` — `eip_read_string` now calls `read_string_tag`, so C#/Python/C++ read custom
+  string types too. Scalar tags are still rejected (type-mismatch error).
+- `tests/ffi_tests.rs` — updated the renamed `ffi_read_string_rejects_non_string_scalar_*` test
+  to the new error text (scalar still rejected).
+
+Verification: `cargo fmt --check`, `cargo clippy --all-targets --features ffi -D warnings`,
+`SKIP_PLC_TESTS=1 cargo test --workspace --features ffi` (all pass, 0 failed), `plc_sim_tests`
+24/24, `ffi_tests` 16/16. Hardware (5069-L330ERM fw38): the public API round-trips built-in
+`STRING`, custom `Str82` (Member5), and custom `Str400` (Member7) in controller and program
+scope, UDT and array element, on **all four bindings** — Rust `write_tag`/`read_string_tag`
+14/14; Python/C#/C++ via `eip_write_string`/`eip_read_string` 4/4 each. Committed `test_plc_strings.rs`
+as a restore-safe, cross-PLC-safe suite example (14/14 PASS).
+
+Read decode caveat kept intentionally: `read_tag` still returns custom strings as `Udt` (a custom
+handle is indistinguishable from a UDT); `read_string_tag` is the string-typed accessor.
+
 ## Verdict
+
+**Merged 2026-07-08 (Claude-implemented).** Handle-aware STRING writes work through the public API
+on all four bindings for built-in and custom string types within one CIP packet. Follow-ups
+(separate tasks): wire strings into the shared full-coverage runners + manifest (CODEX-AX, now
+unblocked) and CIP fragmentation for structures over one packet, e.g. `Str500` (CODEX-AZ).

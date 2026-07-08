@@ -50,6 +50,26 @@ impl EipClient {
             .await
     }
 
+    /// Reads a Logix STRING tag as text, whether it is the built-in `STRING` type or a custom
+    /// string type (own name/length). `read_tag` decodes only the built-in handle (0x0FCE) to
+    /// `PlcValue::String` and returns any other structure as `PlcValue::Udt`; here the caller has
+    /// asserted the tag is a string, so a structure payload is decoded as `[handle][LEN][DATA]`.
+    pub async fn read_string_tag(&mut self, tag_name: &str) -> Result<String> {
+        match self.read_tag(tag_name).await? {
+            PlcValue::String(value) => Ok(value),
+            PlcValue::Udt(udt) if udt.data.len() >= 6 => {
+                let len = u32::from_le_bytes([udt.data[2], udt.data[3], udt.data[4], udt.data[5]])
+                    as usize;
+                let end = (6 + len).min(udt.data.len());
+                Ok(String::from_utf8_lossy(&udt.data[6..end]).to_string())
+            }
+            other => Err(EtherNetIpError::DataTypeMismatch {
+                expected: "STRING".to_string(),
+                actual: format!("{other:?}"),
+            }),
+        }
+    }
+
     pub async fn write_udt_member(
         &mut self,
         udt_tag_name: &str,
@@ -128,7 +148,7 @@ async fn write_udt_member_direct_first<T: MemberWriteStrategy>(
     }
 }
 
-fn is_2107_type_mismatch(error: &EtherNetIpError) -> bool {
+pub(crate) fn is_2107_type_mismatch(error: &EtherNetIpError) -> bool {
     error.to_string().to_ascii_lowercase().contains("0x2107")
 }
 

@@ -982,23 +982,16 @@ pub unsafe extern "C" fn eip_read_string(
         Err(_) => return -1,
     };
 
-    let value = match ffi_block_on!(client_id, client.read_tag(tag_name_str)) {
-        Ok(PlcValue::String(value)) => {
+    // `read_string_tag` decodes both the built-in STRING (0x0FCE) and custom Logix string types
+    // (own name/length, returned as a structure) to text.
+    let value = match ffi_block_on!(client_id, client.read_string_tag(tag_name_str)) {
+        Ok(value) => {
             tracing::info!(
                 "[FFI] Read STRING tag '{}' succeeded: '{}'",
                 tag_name_str,
                 value
             );
             value
-        }
-        Ok(other) => {
-            let message = format!(
-                "tag '{}' is not a STRING; native read returned {:?}",
-                tag_name_str,
-                std::mem::discriminant(&other)
-            );
-            tracing::error!("[FFI] {message}");
-            return fail_with_last_error(client_id, message);
         }
         Err(e) => {
             tracing::error!("[FFI] Read STRING tag '{}' failed: {}", tag_name_str, e);

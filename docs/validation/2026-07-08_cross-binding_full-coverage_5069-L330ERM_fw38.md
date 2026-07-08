@@ -161,6 +161,27 @@ Identical member/array-element path, opposite result by type → the failure is 
 structure handle. All four restored to their original value. This confirms the member-path
 handling is correct and isolates the fix to CODEX-AY (handle-aware STRING writes).
 
+## Handle-aware STRING writes implemented + validated (same session)
+
+After the diagnosis, the handle-aware write fix (CODEX-AY) was implemented in the core and
+validated on this controller. `write_tag`/`write_string`/`eip_write_string` now write built-in
+`STRING` **and** custom string types by discovering the target's real structure handle;
+`read_string_tag`/`eip_read_string` decode both. Result across **all four bindings** — built-in
+`STRING`, custom `Str82` (Member5), custom `Str400` (Member7), controller and program scope, UDT
+and array element:
+
+| Binding | Path | Result |
+|---|---|---|
+| Rust | `write_tag` + `read_string_tag` (`examples/test_plc_strings`) | 14/14 PASS |
+| Python | `write_tag` → `eip_write_string`, `eip_read_string` | 4/4 PASS |
+| C# | `WriteString` / `ReadString` | 4/4 PASS |
+| C/C++ | `write_string` / `read_string` | 4/4 PASS |
+
+Size limits (measured): single-packet write ceiling ~494 request bytes, read reply ~500 value
+bytes; max custom-string `DATA` ≈ 456 (controller) / 424 (program). `Str440` works in controller
+scope only; `Str400` works in every scope; `Str500`+ needs CIP fragmentation (CODEX-AZ). Full doc:
+[`docs/STRING_HANDLING.md`](../STRING_HANDLING.md).
+
 ## Restore / state
 
 Every probe read the original value first and wrote it back at the end

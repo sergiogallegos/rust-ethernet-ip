@@ -3046,6 +3046,108 @@ impl EipClient {
         tag_name: &str,
         value: &PlcValue,
     ) -> crate::error::Result<()> {
+        // STRING writes must carry the *target tag's* real structure handle. The built-in Logix
+        // `STRING` type (handle 0x0FCE) is the common case, but users routinely define their own
+        // string types with a custom name/length (e.g. `Str82`, `Str400`); each has its own
+        // structure handle, and the built-in handle is rejected with CIP 0x2107. Try the standard
+        // encoding first — it is the fast path and is all the simulator models — and on a type
+        // mismatch discover the target's real handle + structure size and retry. A value longer
+        // than the built-in 82-char capacity can only be a custom type, so skip straight to the
+        // handle-aware path. See docs/agents/notes/ab-firmware-quirks.md (STRING Members).
+        if let PlcValue::String(text) = value {
+            if text.len() <= values::STANDARD_STRING_DATA_LEN {
+                match self.write_tag_standard(tag_name, value).await {
+                    Ok(()) => return Ok(()),
+                    Err(error) if service_layer::is_2107_type_mismatch(&error) => {
+                        return self.write_string_handle_aware(tag_name, text).await;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            return self.write_string_handle_aware(tag_name, text).await;
+        }
+        self.write_tag_standard(tag_name, value).await
+    }
+
+    /// Single-request write ceiling for unconnected messaging. A request above this is rejected
+    /// by the controller with encapsulation status 0x03; CIP fragmentation (not yet implemented)
+    /// would be required. Measured on CompactLogix 5069-L330ERM fw38 (494 bytes OK, 498 rejected).
+    const SINGLE_PACKET_WRITE_LIMIT: usize = 494;
+
+    /// Writes a Logix STRING using the target tag's real structure handle and structure size,
+    /// discovered by reading the tag first. Handles built-in `STRING` and custom string types
+    /// (own name/length) uniformly. Returns a clear error when the structure is larger than one
+    /// CIP packet (fragmentation would be required).
+    async fn write_string_handle_aware(
+        &mut self,
+        tag_name: &str,
+        value: &str,
+    ) -> crate::error::Result<()> {
+        // Discover the target's structure handle and total structure size (LEN + DATA + pad).
+        let (handle, struct_size) = match self.read_tag(tag_name).await? {
+            PlcValue::String(_) => (
+                values::STANDARD_STRING_HANDLE,
+                values::STANDARD_STRING_PAYLOAD_LEN,
+            ),
+            PlcValue::Udt(udt) if udt.data.len() >= 6 => (
+                u16::from_le_bytes([udt.data[0], udt.data[1]]),
+                udt.data.len() - 2,
+            ),
+            other => {
+                return Err(EtherNetIpError::DataTypeMismatch {
+                    expected: "STRING structure".to_string(),
+                    actual: format!("{other:?}"),
+                });
+            }
+        };
+
+        // The value occupies the DATA region after the 4-byte LEN field.
+        let capacity = struct_size.saturating_sub(4);
+        if value.len() > capacity {
+            return Err(EtherNetIpError::StringTooLong {
+                max_length: capacity,
+                actual_length: value.len(),
+            });
+        }
+
+        // Structure payload: LEN (u32 LE) + value bytes + zero fill to the structure size.
+        let mut payload = vec![0u8; struct_size];
+        payload[0..4].copy_from_slice(&(value.len() as u32).to_le_bytes());
+        payload[4..4 + value.len()].copy_from_slice(value.as_bytes());
+
+        // Request data: structure type marker (0x02A0) + real handle + element count + payload.
+        let mut data = Vec::with_capacity(6 + payload.len());
+        data.extend_from_slice(&values::AB_UDT.to_le_bytes());
+        data.extend_from_slice(&handle.to_le_bytes());
+        data.extend_from_slice(&[0x01, 0x00]);
+        data.extend_from_slice(&payload);
+
+        let path = self.build_tag_path(tag_name);
+        let request = CipRequest::new(WRITE_TAG, path, data);
+        let mut cip_request = BytesMut::new();
+        request.encode(&mut cip_request)?;
+
+        if cip_request.len() > Self::SINGLE_PACKET_WRITE_LIMIT {
+            return Err(EtherNetIpError::Protocol(format!(
+                "STRING write for '{tag_name}' needs {} request bytes, over the ~{}-byte \
+                 single-packet limit for this path; CIP fragmentation (not yet supported) would \
+                 be required — use a shorter custom string type or a shorter tag path",
+                cip_request.len(),
+                Self::SINGLE_PACKET_WRITE_LIMIT,
+            )));
+        }
+
+        let response = self.send_cip_request(&cip_request).await?;
+        let cip_response = self.extract_cip_from_response(&response)?;
+        self.check_cip_error(&cip_response)?;
+        Ok(())
+    }
+
+    async fn write_tag_standard(
+        &mut self,
+        tag_name: &str,
+        value: &PlcValue,
+    ) -> crate::error::Result<()> {
         let cip_request = self.build_write_request(tag_name, value)?;
 
         let response = self.send_cip_request(&cip_request).await?;

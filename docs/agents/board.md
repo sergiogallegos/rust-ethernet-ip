@@ -129,9 +129,9 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
-| CODEX-AZ | CIP fragmented read/write for large strings/UDTs (Claude fix-during-merge for array-element read path; hardware-validated on extended UDT) | codex | _pending push_ |
-| CODEX-AX | Full-coverage harness writes+verifies STRINGs — counts 2304/2285/0/19; hardware full-coverage PASS | codex | _pending push_ |
-| CODEX-AW | Packet-size-aware batch grouping — closes EIP 0x65 on large batch reads | codex | _pending push_ |
+| CODEX-AZ | CIP fragmented read/write for large strings/UDTs (Claude fix-during-merge for array-element read path; hardware-validated on extended UDT) | codex | `7ea3df9` |
+| CODEX-AX | Full-coverage harness writes+verifies STRINGs — counts 2304/2285/0/19; hardware full-coverage PASS | codex | `7ea3df9` |
+| CODEX-AW | Packet-size-aware batch grouping — closes EIP 0x65 on large batch reads | codex | `7ea3df9` |
 | CODEX-AY | Handle-aware STRING writes — custom string types (Str82/Str400) write via the target's real structure handle (Claude-implemented) | claude | `4bbb74e` |
 | CODEX-AU | C++ consumer support — C header with parity gate, RAII example, Qt integration guide | codex | `7cb07a4` |
 | CODEX-AO (Phase 1) | UDT crate strictness — fail-closed RMW conversion, template empty-name alignment, packed-BOOL mechanism (Phase 2 still open) | codex | `7cb07a4` |

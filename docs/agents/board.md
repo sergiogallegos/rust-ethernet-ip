@@ -15,6 +15,7 @@
 | CODEX-AO | UDT wire-format investigation — capture-gated audit of struct read/write encoding and udt-crate strictness | codex | open (Phase 1 merged) | 2026-07-01 |
 | CODEX-AW | Batch grouping ignores max_packet_size — large batch reads fail with EIP 0x65 (Invalid Length) | codex | open | 2026-07-08 |
 | CODEX-AX | Full-coverage harness never writes/blocked-probes STRINGs — release gate can't catch a STRING regression | codex | open | 2026-07-08 |
+| CODEX-AY | STRING writes assume built-in handle 0x0FCE — custom string types (Str82) reject 0x2107; use the target's real handle | codex | open | 2026-07-08 |
 
 > 2026-07-08 update: CODEX-AO Phase 1 reviewed and **merged** (UDT strictness /
 > RMW zero-fill hazard closed without hardware; template empty-name alignment

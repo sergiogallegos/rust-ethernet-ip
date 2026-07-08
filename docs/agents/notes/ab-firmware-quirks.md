@@ -23,13 +23,16 @@ Historical validation classified direct writes to individual members of UDT arra
 - The full-coverage manifest now treats these scalar member paths as `writeable`.
 - Service-layer helpers attempt direct scalar member writes first and fall back to whole-UDT read-modify-write only if the controller returns the `0x2107` data-type mismatch shape.
 
-### STRING Members
+### STRING Members — root cause is a hardcoded structure handle, not a firmware/member block
 
-- Confirmed 2026-07-03 on 5069-L330ERM fw38: STRING members inside UDTs and UDT array elements reject direct writes with CIP `0xFF/0x2107` under the current `PlcValue::String` member encoding.
-- These manifest entries use `encoding_blocked_udt_string_member`, not a firmware-ban label.
-- Keep the read-modify-write service-layer path for STRING members unconditionally until CODEX-AO proves a direct member-specific encoding.
+- **Confirmed 2026-07-08 on 5069-L330ERM fw38: the `0x2107` on STRING-member writes is a structure-handle mismatch, and the member is fully writeable once the request carries the target's real handle.** The rejection is not firmware, not a member-path problem, and not a missing "member-specific encoding".
+- The library hardcodes the built-in STRING handle `0x0FCE` for *every* `PlcValue::String` write (`crates/protocol/src/values.rs::write_data_type_bytes` emits `A0 02 CE 0F` unconditionally). This matches a built-in `STRING` tag, so `gTest_STRING` writes succeed.
+- Studio 5000 lets users define their own string types with a custom name and length (e.g. `Str82` — DINT `LEN` + SINT `DATA[82]`, same layout as STRING but a different type). **A custom string type has its own structure handle.** On this controller the UDT member `gTestUDT.Member5_String` is type `Str82` with handle **`0x9621`** (the read reply's structure prefix is `21 96`), while the built-in STRING is `0x0FCE`. The controller compares the request handle against the target's real handle and returns `0xFF/0x2107` ("tag type used in request does not match the target's data type") on mismatch.
+- Proven end-to-end (2026-07-08 probe, values restored): (A) `write_tag(String)` → `0x2107`, unchanged; (B) raw write with wrong handle `0x0FCE` → unchanged; (C) raw write with correct handle `0x9621` → value changes, read-back confirms. The member is writeable in a single direct request with the correct handle.
+- **Fix direction (CODEX-AO):** discover the target's real structure handle instead of assuming `0x0FCE`. A read-before-write captures it (the read reply already carries `A0 02 <handle>`), mirroring the `symbol_id` read-before-write pattern below. This applies to standalone custom-string tags too, not only UDT members. Keep the RMW service-layer path as a fallback until the handle-aware write lands.
+- Manifest entries still use `encoding_blocked_udt_string_member` as a conservative label; once handle-aware writes land they become `writeable` (they read as writeable on hardware today).
 
-Evidence: [2026-07-02 tag-addressing smoke](../../validation/2026-07-02_tag_addressing_smoke_5069-L330ERM_fw38.md) and [2026-07-03 blocked write-label probe](../../validation/2026-07-03_blocked_write_label_probe_plan.md).
+Evidence: [2026-07-08 cross-binding validation](../../validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md), [2026-07-02 tag-addressing smoke](../../validation/2026-07-02_tag_addressing_smoke_5069-L330ERM_fw38.md), [2026-07-03 blocked write-label probe](../../validation/2026-07-03_blocked_write_label_probe_plan.md).
 
 ## UDT writes always need a symbol_id
 
@@ -41,8 +44,8 @@ Evidence: [2026-07-02 tag-addressing smoke](../../validation/2026-07-02_tag_addr
 
 When a user reports CIP error `0x2107`, the layer is almost always one of:
 1. Request data type does not match the target tag, including malformed STRING writes.
-2. Direct UDT array element member write through a malformed path. Scalar members are confirmed writeable on 5069-L330ERM fw38 when encoded correctly; STRING members are current-encoding blocked.
+2. Direct UDT array element member write through a malformed path. Scalar members are confirmed writeable on 5069-L330ERM fw38 when encoded correctly.
 3. Stale `symbol_id` — fix by reading the UDT first.
-4. Direct STRING member write inside a UDT — keep RMW-only until CODEX-AO resolves member-specific encoding.
+4. **STRING write to a custom string type** (custom name/length, e.g. `Str82`) — the library sends the hardcoded built-in STRING handle `0x0FCE`, which mismatches the custom type's real handle. Proven writeable with the correct handle (see STRING Members above). Not a firmware block.
 
 If the failure is none of these, escalate before "fixing" — `0x2107` from a different cause is a real bug and the wrong patch will mask it.

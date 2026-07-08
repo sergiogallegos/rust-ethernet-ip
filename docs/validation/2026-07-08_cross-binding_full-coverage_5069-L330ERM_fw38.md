@@ -127,6 +127,27 @@ functional correctness was identical.
 4. **Read-batching is far less effective than write-batching** (~1.7× vs ~28× per-tag speedup).
    Worth a look alongside finding 1, since both point at the read batch path.
 
+## Follow-up finding — UDT STRING members are writeable; the library sends the wrong handle
+
+Investigated the same day at the maintainer's prompt (the UDT member `Member5_String` is a
+**custom** `Str82` type, not the built-in `STRING`). Root cause of the member `0x2107`:
+
+- `write_data_type_bytes` (`crates/protocol/src/values.rs:36`) hardcodes the built-in STRING
+  handle `0x0FCE` (`A0 02 CE 0F`) for every `PlcValue::String` write.
+- On this controller `gTestUDT.Member5_String` is type `Str82` with real structure handle
+  **`0x9621`** (read reply prefix `21 96`); the built-in `STRING` is `0x0FCE`. The controller
+  rejects the handle mismatch with `0x2107`.
+- Proven end-to-end (values restored): (A) `write_tag(String)` → `0x2107`, unchanged;
+  (B) raw write with wrong handle `0x0FCE` → unchanged; (C) raw write with correct handle
+  `0x9621` → `"STR82_OK"`, read-back confirms. **The member is fully writeable with the correct
+  handle** — it was never firmware-blocked.
+
+This is common: Studio 5000 users routinely define custom string types (own name + length). Fix
+briefed as **CODEX-AY** (use the target's real structure handle instead of assuming `0x0FCE`);
+it supersedes the "STRING member current-encoding-blocked" understanding. See
+[`docs/agents/notes/ab-firmware-quirks.md`](../agents/notes/ab-firmware-quirks.md) STRING
+Members.
+
 ## Restore / state
 
 Every probe read the original value first and wrote it back at the end

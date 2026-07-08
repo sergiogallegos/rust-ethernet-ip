@@ -148,6 +148,19 @@ it supersedes the "STRING member current-encoding-blocked" understanding. See
 [`docs/agents/notes/ab-firmware-quirks.md`](../agents/notes/ab-firmware-quirks.md) STRING
 Members.
 
+**Side-by-side control (maintainer added a built-in-`STRING` `Member6_String` to the UDT):**
+
+| Target | Type | Handle | Library `write_tag` | Correct-handle raw write |
+|---|---|---|---|---|
+| `gTestUDT.Member5_String` | `Str82` | `0x9621` | ❌ `0x2107` | ✅ writes |
+| `gTestUDT.Member6_String` | `STRING` | `0x0FCE` | ✅ writes | n/a |
+| `gTestUDT_Array[0].Member5_String` | `Str82` | `0x9621` | ❌ `0x2107` | ✅ writes |
+| `gTestUDT_Array[0].Member6_String` | `STRING` | `0x0FCE` | ✅ writes | n/a |
+
+Identical member/array-element path, opposite result by type → the failure is purely the
+structure handle. All four restored to their original value. This confirms the member-path
+handling is correct and isolates the fix to CODEX-AY (handle-aware STRING writes).
+
 ## Restore / state
 
 Every probe read the original value first and wrote it back at the end

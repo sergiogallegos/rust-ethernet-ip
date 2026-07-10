@@ -31,6 +31,22 @@ _No open tasks._
 > Version bump + release notes committed. Remaining: maintainer ABI-v2-in-minor
 > sign-off, staged crates.io publish (types → tag-path → protocol → udt → main),
 > tag `v1.2.0` (NuGet/PyPI publish via the tag workflow).
+>
+> 2026-07-10 **1.2.0 SHIPPED.** Maintainer gave the ABI-v2-in-minor sign-off.
+> All five crates published to crates.io at 1.2.0 in dependency order (staged
+> manually after a `cargo login` credential refresh); annotated tag `v1.2.0`
+> pushed on `fcadd7a`, triggering the Release workflow (NuGet multi-RID + PyPI
+> wheels). Two release-day mechanical fixes landed first: the readiness script
+> now tolerates cargo's "failed to select a version" pre-publish sibling gap
+> (`7c36c92`), and the main-crate `include` patterns are root-anchored so
+> same-named files in ignored build caches can't enter the package — cargo
+> 1.96's dirty-ignored-files check caught nested `README.md`/`LICENSE`/
+> `CHANGELOG.md` matches under `.dotnet/` and `python/.pytest_cache/`
+> (`fcadd7a`). Known follow-ups: the repo secret `CARGO_REGISTRY_TOKEN` is
+> stale (token was regenerated release-day; the workflow's crates-io job is
+> idempotent-but-auth-blocked — cosmetic, crates already published) and the
+> ubuntu C# test-host crash flake on `main` CI (3 of 5 recent runs, docs-only
+> commits, crash dumps uploaded as artifacts) needs a root-cause pass.
 
 > CODEX-AI merged (2026-06-19): the manylinux Linux x86_64 wheel now ships. Root cause was a platlib-layout bug (native lib routed to `.data/purelib/`, rejected by auditwheel); fixed with an `install_lib = install_platlib` override in `python/setup.py`. `release.yml` builds the cdylib + wheel inside a `manylinux_2_28` container, auditwheel-repairs it, and a blocking smoke job installs+imports it in a clean container before publish. `rust_ethernet_ip-1.1.0-py3-none-manylinux_2_28_x86_64.whl` was added to the existing PyPI 1.1.0 release (no version bump) — `pip install` now works on Linux x86_64.
 
@@ -193,9 +209,9 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 ## Project context
 
-- **Current released version:** `v1.1.0` (tagged 2026-06-19; published to crates.io ×5, NuGet multi-RID, PyPI incl. the CODEX-AI manylinux wheel).
-- **Previous released version:** `v1.0.0` (tagged 2026-05-24, `f02eef5`).
-- **Active development line:** the CODEX-AJ…AU remediation set on `main`, targeting **1.2.0** after a full hardware validation pass (see the 1.2.0 release plan note in `## Open`).
+- **Current released version:** `v1.2.0` (tagged 2026-07-10, `fcadd7a`; crates.io ×5 published; NuGet/PyPI via the tag-triggered Release workflow).
+- **Previous released version:** `v1.1.0` (tagged 2026-06-19; published to crates.io ×5, NuGet multi-RID, PyPI incl. the CODEX-AI manylinux wheel).
+- **Active development line:** post-1.2.0 backlog per [`docs/ROADMAP.md`](../ROADMAP.md); no open tasks on the board. Near-term candidates: the ubuntu C# test-host crash flake on CI, and refreshing the stale `CARGO_REGISTRY_TOKEN` repo secret.
 - **Current development focus:** the .NET stack — C# wrappers and examples (per `CLAUDE.md` Project Overview).
 - **Hardware validation gate:** integration tests against real CompactLogix / ControlLogix PLCs are the maintainer's responsibility; CI runs `SKIP_PLC_TESTS=1` plus simulator-backed `plc_sim_tests`.
 

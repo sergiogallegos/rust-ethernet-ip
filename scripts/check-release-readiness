@@ -92,7 +92,10 @@ def package_checks(args: argparse.Namespace) -> int:
         env.setdefault("CARGO_NET_RETRY", "0")
         proc = subprocess.run(cmd, cwd=args.root, text=True, capture_output=True, env=env)
         output = f"{proc.stdout}\n{proc.stderr}"
-        missing_dep = "no matching package named" in output and "location searched: crates.io index" in output
+        missing_dep = (
+            "no matching package named" in output
+            or "failed to select a version for the requirement" in output
+        ) and "location searched: crates.io index" in output
         index_unavailable = "Could not resolve host" in output or "failed to download from `https://index.crates.io" in output
         if proc.returncode == 0:
             print(f"{package:<52} ✓")

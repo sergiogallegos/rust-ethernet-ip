@@ -23,15 +23,17 @@ categories = ["network-programming", "embedded", "api-bindings"]
 rust-version = "1.96"
 
 # Publish only the Rust crate payload needed by consumers.
+# Patterns are gitignore-style: anchor with a leading `/` so root-level names
+# don't also match same-named files nested in ignored build caches.
 include = [
-    "src/**",
-    "Cargo.toml",
-    "Cargo.lock",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md",
-    "build.rs",
-    "VERSION",
+    "/src/**",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/build.rs",
+    "/VERSION",
 ]
 
 [lib]

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `EipClient::write_tag_verified` writes a tag and reads it back to confirm the
+  value was actually applied, returning the new `EtherNetIpError::WriteNotApplied`
+  if the read-back does not match. Motivated by a reproducible case against a
+  FactoryTalk Logix Echo-emulated ControlLogix 5580 (firmware 36) where an
+  Unconnected-Send-routed Write Tag Service reply carried CIP status `0x00`
+  (success) for a plain DINT tag while the value never changed; a second client
+  (pylogix, using a connected/Forward-Open session) writing the same tag
+  succeeded immediately after, ruling out a PLC-side lock. `write_tag` cannot
+  detect this itself — the false-success reply is indistinguishable on the wire
+  from a real one. Not yet confirmed on physical hardware; the existing 1.2.0
+  hardware validation (CompactLogix 5069-L330ERM fw38, 2285 writes, 0 anomalies)
+  found no equivalent case, so this may be Echo-specific. New simulator
+  behavior `SimBehavior::ghost_write_tags` reproduces the scenario for
+  regression coverage. See `docs/validation/` for the write-up.
+
 ## [1.2.0] - 2026-07-08
 
 Minor release: behavioral fixes, deprecations, and additive surface (C/C++ header

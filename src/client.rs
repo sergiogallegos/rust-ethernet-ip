@@ -304,7 +304,8 @@ fn diagnostic_error_category(error: &EtherNetIpError) -> crate::ErrorCategory {
         | EtherNetIpError::InvalidString { .. } => crate::ErrorCategory::DataType,
         EtherNetIpError::ReadError { .. }
         | EtherNetIpError::WriteError { .. }
-        | EtherNetIpError::CipError { .. } => crate::ErrorCategory::CipProtocol,
+        | EtherNetIpError::CipError { .. }
+        | EtherNetIpError::WriteNotApplied { .. } => crate::ErrorCategory::CipProtocol,
         EtherNetIpError::Protocol(message)
             if message.contains("route") || message.contains("Route") =>
         {
@@ -3092,6 +3093,57 @@ impl EipClient {
         }
 
         self.write_tag_direct(tag_name, &value).await
+    }
+
+    /// Writes a tag, then reads it back and confirms the value was actually applied.
+    ///
+    /// `write_tag` reports success whenever the controller's Write Tag Service reply
+    /// carries CIP status `0x00`. That reply is normally trustworthy, but at least one
+    /// controller (a FactoryTalk Logix Echo-emulated ControlLogix 5580, firmware 36) has
+    /// been observed acknowledging an Unconnected-Send-routed write to a plain DINT tag
+    /// with status `0x00` while the tag's value never changed — confirmed by an
+    /// independent client (pylogix, using a connected/Forward-Open session) writing the
+    /// same tag successfully immediately after. `write_tag` cannot detect this at the
+    /// protocol level, because the false-success reply is indistinguishable on the wire
+    /// from a real one. Callers that need certainty a write was actually applied should
+    /// use this method in place of `write_tag` followed by a manual read.
+    ///
+    /// Whether this also occurs against physical hardware is not yet confirmed; treat it
+    /// as an Echo-specific caution until proven otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EtherNetIpError::WriteNotApplied`] if the read-back value does not equal
+    /// the written value. Returns any error `write_tag` or `read_tag` would return for
+    /// other failure modes (the write's error, if any, takes precedence over the read).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// # let mut client = rust_ethernet_ip::EipClient::connect("192.168.1.100:44818").await?;
+    /// use rust_ethernet_ip::PlcValue;
+    ///
+    /// client.write_tag_verified("Counter", PlcValue::Dint(42)).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn write_tag_verified(
+        &mut self,
+        tag_name: &str,
+        value: PlcValue,
+    ) -> crate::error::Result<()> {
+        self.write_tag(tag_name, value.clone()).await?;
+        let readback = self.read_tag(tag_name).await?;
+        if readback == value {
+            Ok(())
+        } else {
+            Err(crate::error::EtherNetIpError::WriteNotApplied {
+                tag_name: tag_name.to_string(),
+                expected: format!("{value:?}"),
+                actual: format!("{readback:?}"),
+            })
+        }
     }
 
     async fn write_tag_direct(

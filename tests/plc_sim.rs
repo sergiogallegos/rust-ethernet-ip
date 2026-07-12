@@ -93,6 +93,14 @@ pub struct SimBehavior {
     pub count_reads_as_dint_tags: Vec<String>,
     /// Tags that should fail WRITE requests with CIP status 0x04.
     pub fail_write_tags: Vec<String>,
+    /// Tags whose WRITE requests reply with CIP status 0x00 (success) but the
+    /// underlying stored value is left unchanged. Models the FactoryTalk Logix
+    /// Echo behavior observed 2026-07-12 on a ControlLogix 5580 emulator
+    /// (firmware 36): an Unconnected-Send-routed Write Tag Service request to a
+    /// plain DINT tag returned a clean success reply while the value never
+    /// changed, cross-validated against a second client (pylogix, connected
+    /// session) writing the same tag successfully. Exercises `write_tag_verified`.
+    pub ghost_write_tags: Vec<String>,
 }
 
 struct SimRuntimeBehavior {
@@ -164,6 +172,13 @@ impl SimRuntimeBehavior {
     fn should_fail_write(&self, tag_name: &str) -> bool {
         self.config
             .fail_write_tags
+            .iter()
+            .any(|configured| configured == tag_name)
+    }
+
+    fn should_ghost_write(&self, tag_name: &str) -> bool {
+        self.config
+            .ghost_write_tags
             .iter()
             .any(|configured| configured == tag_name)
     }
@@ -780,6 +795,12 @@ fn handle_write_cip_request(
     let Some(value) = value else {
         return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
     };
+
+    if behavior.should_ghost_write(&tag_name) {
+        // Reply success without touching the stored value — models a controller
+        // that acknowledges a write it never actually applies.
+        return build_cip_ok_write_reply();
+    }
 
     let mut tags = tags.lock().expect("tag lock");
     if let Some(index) = element_index

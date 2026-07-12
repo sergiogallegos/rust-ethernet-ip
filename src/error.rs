@@ -97,6 +97,23 @@ pub enum EtherNetIpError {
         /// Reason the API is unsupported and the replacement to use.
         reason: &'static str,
     },
+
+    /// The controller acknowledged a Write Tag Service request with a success
+    /// status, but a read-back of the same tag shows the value was never
+    /// actually applied. Observed against an Unconnected-Send-routed write on a
+    /// FactoryTalk Logix Echo-emulated ControlLogix 5580 (firmware 36); not yet
+    /// confirmed on physical hardware. See `write_tag_verified`.
+    #[error(
+        "Write to '{tag_name}' was acknowledged by the controller but not applied: expected {expected}, read back {actual}"
+    )]
+    WriteNotApplied {
+        /// Tag path that was written.
+        tag_name: String,
+        /// Debug-formatted value that was written.
+        expected: String,
+        /// Debug-formatted value read back immediately after the write.
+        actual: String,
+    },
 }
 
 impl EtherNetIpError {

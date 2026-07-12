@@ -399,6 +399,7 @@ impl ProductionMonitor {
             EtherNetIpError::Unsupported { .. } => ErrorCategory::CipProtocol,
             EtherNetIpError::StringTooLong { .. } => ErrorCategory::DataType,
             EtherNetIpError::Utf8(_) => ErrorCategory::DataType,
+            EtherNetIpError::WriteNotApplied { .. } => ErrorCategory::CipProtocol,
         }
     }
 

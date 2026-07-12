@@ -76,6 +76,7 @@ impl TagGroupFailureDiagnostic {
             | EtherNetIpError::WriteError { status, .. } => {
                 (TagGroupFailureCategory::PlcStatus, Some(*status))
             }
+            EtherNetIpError::WriteNotApplied { .. } => (TagGroupFailureCategory::PlcStatus, None),
             EtherNetIpError::Permission(_) => (TagGroupFailureCategory::Permission, None),
             EtherNetIpError::TagNotFound(_) | EtherNetIpError::Tag(_) => {
                 (TagGroupFailureCategory::Tag, None)

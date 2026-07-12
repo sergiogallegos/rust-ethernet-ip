@@ -721,3 +721,84 @@ async fn simulated_plc_partial_batch_failures_are_isolated() {
         other => panic!("expected CIP error for failed tag, got: {:?}", other),
     }
 }
+
+// Regression coverage for a controller that acknowledges a write it never applies.
+// See CHANGELOG "Unreleased" and docs/validation for the FactoryTalk Logix Echo repro
+// this models: an Unconnected-Send-routed Write Tag Service reply carried CIP status
+// 0x00 (success) for a plain DINT tag, but the value never changed.
+
+#[tokio::test]
+async fn simulated_plc_write_tag_reports_success_even_when_ghosted() {
+    // `write_tag` alone cannot see this failure mode — the reply it trusts is a lie.
+    let sim = SimulatedPlc::start_with_behavior(SimBehavior {
+        ghost_write_tags: vec!["DINT_TAG".to_string()],
+        ..Default::default()
+    })
+    .await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let before = client.read_tag("DINT_TAG").await.expect("read before");
+    assert_eq!(before, PlcValue::Dint(1234));
+
+    client
+        .write_tag("DINT_TAG", PlcValue::Dint(9999))
+        .await
+        .expect("write_tag reports success (this is the bug being modeled)");
+
+    let after = client.read_tag("DINT_TAG").await.expect("read after");
+    assert_eq!(
+        after,
+        PlcValue::Dint(1234),
+        "value must be unchanged — the simulated controller ghosted the write"
+    );
+}
+
+#[tokio::test]
+async fn simulated_plc_write_tag_verified_detects_ghosted_write() {
+    let sim = SimulatedPlc::start_with_behavior(SimBehavior {
+        ghost_write_tags: vec!["DINT_TAG".to_string()],
+        ..Default::default()
+    })
+    .await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let err = client
+        .write_tag_verified("DINT_TAG", PlcValue::Dint(9999))
+        .await
+        .expect_err("write_tag_verified must surface the ghosted write");
+
+    match err {
+        EtherNetIpError::WriteNotApplied {
+            tag_name,
+            expected,
+            actual,
+        } => {
+            assert_eq!(tag_name, "DINT_TAG");
+            assert_eq!(expected, format!("{:?}", PlcValue::Dint(9999)));
+            assert_eq!(actual, format!("{:?}", PlcValue::Dint(1234)));
+        }
+        other => panic!("expected WriteNotApplied, got: {other:?}"),
+    }
+
+    // The tag must be left genuinely unchanged — no partial/side-effect state.
+    let value = client.read_tag("DINT_TAG").await.expect("read after");
+    assert_eq!(value, PlcValue::Dint(1234));
+}
+
+#[tokio::test]
+async fn simulated_plc_write_tag_verified_passes_through_normal_writes() {
+    // Sanity check: verified writes must not regress the common, correct case.
+    let sim = SimulatedPlc::start().await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    client
+        .write_tag_verified("DINT_TAG", PlcValue::Dint(555))
+        .await
+        .expect("verified write of a genuinely-applied value must succeed");
+
+    let value = client.read_tag("DINT_TAG").await.expect("read after");
+    assert_eq!(value, PlcValue::Dint(555));
+}

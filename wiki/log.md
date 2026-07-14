@@ -1174,3 +1174,28 @@ Sources used:
 - `BUILD.md`
 - `docs/API_STABILITY.md`
 - `examples/desktop_app/README.md`
+
+## [2026-07-14] lint | reconcile toolchain baseline after PR 27
+
+- Updated `wiki/investigations/rust-toolchain-baseline-2026-04-19.md`, which
+  was omitted from the merged PR even though the preceding log entry and
+  `wiki/index.md` described it as updated.
+- Aligned the page with the centralized Rust `1.88` workspace MSRV, the
+  `1.87.0` dependency boundary, and the manifest-driven CI test gate.
+- Preserved the Rust `1.95` / `1.96` current-stable policy as historical
+  context and clarified that downstream consumers resolve their own lockfiles.
+- No additional user-facing documentation change was needed; the merged PR
+  already aligned the active MSRV documentation.
+
+Sources used:
+
+- `Cargo.toml`
+- `Cargo.lock`
+- `.github/workflows/ci.yml`
+- `README.md`
+- `BUILD.md`
+- `docs/API_STABILITY.md`
+- `examples/desktop_app/Cargo.toml`
+- `examples/desktop_app/README.md`
+- `docs/agents/tasks/CODEX-AH-rust-1.96-msrv-and-assert-matches.md`
+- GitHub PR `#27`

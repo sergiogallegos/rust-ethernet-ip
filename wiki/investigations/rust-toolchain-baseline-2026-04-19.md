@@ -2,61 +2,77 @@
 
 ## Summary
 
-- `confirmed`: local development is already on Rust `1.95.0`.
-- `confirmed`: the crate now declares `rust-version = "1.95"` and `edition = "2024"` in [Cargo.toml](../../Cargo.toml).
-- `likely`: no immediate Rust toolchain update is required for the repository.
-- `confirmed`: the Rust 2024 migration is now applied for repo manifests.
-- `confirmed`: the pre-pass removed the non-FFI Rust 2024 compatibility warnings before the edition bump.
-- `confirmed`: the FFI export layer now uses Rust 2024 `#[unsafe(no_mangle)]` attributes.
+- `confirmed`: the workspace MSRV is Rust `1.88` and all six workspace
+  packages inherit it from [Cargo.toml](../../Cargo.toml).
+- `confirmed`: Rust `1.88.0` passes the locked, all-features workspace test
+  suite; Rust `1.87.0` is rejected by the locked `time` dependencies.
+- `confirmed`: the workspace remains on the Rust `2024` edition.
+- `superseded`: the earlier policy of tracking the current stable compiler at
+  Rust `1.95` and then `1.96` no longer describes the mainline MSRV.
 
 ## Current Understanding
 
-- The current stable Rust release checked on `2026-04-19` is Rust `1.95.0`.
-  Source: [Rust 1.95.0 release post](https://blog.rust-lang.org/2026/04/16/Rust-1.95.0/)
-- The repository now targets Rust `2024` edition and declares a current-stable baseline of Rust `1.95`.
-  Source: [Cargo.toml](../../Cargo.toml)
-- The repository builds successfully on Rust `1.95.0` with `cargo check --all-targets`.
-- A Rust 2024 prep pass was completed on `2026-04-19` before the final manifest bump:
-  - async tail-expression and lock/drop-order sites were rewritten to use explicit locals or explicit guard release.
-  - the subscription stream path was rewritten away from `async_stream::stream!` to `futures::stream::unfold`.
-  - selected `unsafe_op_in_unsafe_fn` sites in `src/ffi.rs` were wrapped explicitly.
-- After that prep pass, the remaining repo-owned Rust 2024 warnings were limited to exported FFI entry points in `src/ffi.rs`.
-- The final migration step raised the compiler baseline to Rust `1.95` and converted the exported FFI entry points to `#[unsafe(no_mangle)]`.
-- The current state appears intentional:
-  - `edition = "2024"` matches the compatibility work already completed in repo code.
-  - `rust-version = "1.95"` matches the current stable toolchain baseline used for ongoing development.
+- `[workspace.package].rust-version = "1.88"` is the single source of truth.
+  The main library, four published sibling libraries, and desktop example
+  inherit that value.
+- The dedicated MSRV CI job reads the version from the root manifest and runs
+  `cargo test --workspace --all-features --locked` with that toolchain.
+- Rust `1.88` is the exact boundary for the repository's current locked graph:
+  - Rust `1.87.0` fails dependency selection because `time 0.3.47` and
+    `time-core 0.1.8` require Rust `1.88.0`.
+  - Rust `1.88.0` passes the complete locked workspace test suite with all
+    features.
+- PR [#27](https://github.com/sergiogallegos/rust-ethernet-ip/pull/27)
+  lowered the declared MSRV from Rust `1.96` without changing dependency
+  versions, the Rust API, or the C ABI. Test-only `std::assert_matches!` uses
+  were replaced with syntax available on Rust `1.88`.
+- The repository's [API stability policy](../../docs/API_STABILITY.md) treats a
+  future MSRV increase as a minor-version change; patch releases do not raise
+  it.
+- The `1.88` boundary is a verified repository baseline, not a promise that
+  every future downstream dependency resolution will match this lockfile.
+  Downstream consumers resolve and lock their own dependency graphs.
+
+## Historical Context
+
+- On `2026-04-19`, the workspace migrated to the Rust `2024` edition and set
+  `rust-version = "1.95"`, matching the then-current stable compiler.
+- Before that edition change, async temporary/drop-order sites were rewritten,
+  the subscription stream moved from `async_stream::stream!` to
+  `futures::stream::unfold`, and selected FFI unsafe operations were made
+  explicit.
+- Exported FFI entry points adopted Rust 2024 `#[unsafe(no_mangle)]`
+  attributes. Those edition changes remain in the current code and do not
+  require the former Rust `1.95` policy.
+- On `2026-05-29`, the baseline moved from `1.95` to `1.96` to track stable and
+  use `std::assert_matches!` in tests. PR #27 superseded that current-stable
+  choice with the verified `1.88` workspace floor on `2026-07-14`.
 
 ## Evidence
 
-- Manifest baseline:
+- Current declarations and inheritance:
   - [Cargo.toml](../../Cargo.toml)
-  - [examples/desktop_app/Cargo.toml](../../examples/desktop_app/Cargo.toml)
-  - [examples/web_app/backend/Cargo.toml](../../examples/web_app/backend/Cargo.toml)
-- Current user-facing MSRV messaging:
+  - [protocol manifest](../../crates/protocol/Cargo.toml)
+  - [tag-path manifest](../../crates/tag-path/Cargo.toml)
+  - [types manifest](../../crates/types/Cargo.toml)
+  - [UDT manifest](../../crates/udt/Cargo.toml)
+  - [desktop example manifest](../../examples/desktop_app/Cargo.toml)
+- Dependency boundary: [Cargo.lock](../../Cargo.lock)
+- Automated MSRV gate: [.github/workflows/ci.yml](../../.github/workflows/ci.yml)
+- Current user-facing policy and requirements:
   - [README.md](../../README.md)
+  - [BUILD.md](../../BUILD.md)
+  - [docs/API_STABILITY.md](../../docs/API_STABILITY.md)
   - [examples/desktop_app/README.md](../../examples/desktop_app/README.md)
-  - [docs/VERSION_MANAGEMENT.md](../../docs/VERSION_MANAGEMENT.md)
-- Migration probe outcome on `2026-04-19`:
-  - `cargo check --all-targets` passed on local Rust `1.95.0`.
-  - `cargo fix --edition --workspace --all-features --all-targets` reported Rust 2024 compatibility warnings instead of a clean mechanical migration.
-- Prep-pass outcome on `2026-04-19`:
-  - `cargo check --all-targets` still passes after the refactors.
-  - `RUSTFLAGS='--force-warn rust-2024-compatibility' cargo check --all-targets` no longer reports repo-owned async/drop-order warnings outside `src/ffi.rs`.
-- Final migration outcome on `2026-04-19`:
-  - workspace manifests now target Rust `2024`.
-  - the crate baseline is now Rust `1.95`.
-  - `src/ffi.rs` now uses `#[unsafe(no_mangle)]` for exported FFI symbols.
-- The pre-pass warnings were concentrated in async code where Rust 2024 changes temporary tail-expression drop order, including:
-  - `src/plc_manager.rs`
-  - `src/subscription.rs`
-  - `src/main.rs`
-  - `examples/desktop_app/src/main.rs`
-  - `tests/subscription_tests.rs`
+- Historical Rust `1.96` change:
+  [CODEX-AH task record](../../docs/agents/tasks/CODEX-AH-rust-1.96-msrv-and-assert-matches.md)
+- Rust `1.88` boundary and validation: PR
+  [#27](https://github.com/sergiogallegos/rust-ethernet-ip/pull/27)
 
 ## Open Questions
 
-- `unclear`: whether the project should keep the baseline at `1.95` for the next release line or continue advancing with each stable toolchain.
-- `needs-review`: whether `docs/VERSION_MANAGEMENT.md` should distinguish historical release-line compatibility from the current mainline baseline more explicitly.
+- `unclear`: whether future dependency updates should be held back when they
+  would raise the locked MSRV without providing a material project benefit.
 
 ## Related Pages
 

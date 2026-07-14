@@ -171,16 +171,26 @@ jobs:
       run: python -m unittest discover -v tests
 
   msrv:
-    name: MSRV (1.96)
+    name: MSRV
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@1.96.0
+    - name: Read MSRV from workspace manifest
+      id: msrv
+      shell: bash
+      run: |
+        msrv="$(sed -n 's/^rust-version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+        test -n "$msrv"
+        echo "version=$msrv" >> "$GITHUB_OUTPUT"
+    - name: Install MSRV toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ steps.msrv.outputs.version }}
     - uses: Swatinem/rust-cache@v2
       with:
         shared-key: msrv
-    - name: Check workspace builds on MSRV
-      run: cargo check --workspace --all-features --locked
+    - name: Test workspace on MSRV
+      run: cargo test --workspace --all-features --locked
 
   audit:
     name: cargo audit

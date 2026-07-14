@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Lowered the workspace MSRV from Rust 1.96 to Rust 1.88, the oldest compiler
+  supported by the locked dependency set and the complete Rust test suite.
+
 ## [1.2.0] - 2026-07-08
 
 Minor release: behavioral fixes, deprecations, and additive surface (C/C++ header

@@ -3,7 +3,6 @@ mod plc_sim;
 use plc_sim::{SimBehavior, SimulatedPlc};
 use rust_ethernet_ip::error::EtherNetIpError;
 use rust_ethernet_ip::{BatchError, EipClient, PlcValue};
-use std::assert_matches;
 
 #[tokio::test]
 async fn simulated_plc_read_write_dint() {
@@ -224,11 +223,11 @@ async fn retired_string_apis_return_unsupported_without_network_write() {
         client.write_string_connected("STRING_TAG", "value").await,
         client.write_string_unconnected("STRING_TAG", "value").await,
     ] {
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(EtherNetIpError::Unsupported { reason, .. })
                 if reason.contains("write_tag")
-        );
+        ));
     }
 
     client
@@ -248,20 +247,20 @@ async fn retired_udt_offset_apis_return_unsupported() {
     let read = client
         .read_udt_member_by_offset("UDT_TAG", 0, 4, 0x00C4)
         .await;
-    assert_matches!(
+    assert!(matches!(
         read,
         Err(EtherNetIpError::Unsupported { api, reason })
             if api == "read_udt_member_by_offset" && reason.contains("CIP reply envelope")
-    );
+    ));
 
     let write = client
         .write_udt_member_by_offset("UDT_TAG", 0, 4, 0x00C4, PlcValue::Dint(1))
         .await;
-    assert_matches!(
+    assert!(matches!(
         write,
         Err(EtherNetIpError::Unsupported { api, reason })
             if api == "write_udt_member_by_offset" && reason.contains("envelope bytes")
-    );
+    ));
 }
 
 #[tokio::test]
@@ -434,13 +433,13 @@ async fn simulated_plc_nested_bool_array_element_read_write() {
         assert_eq!(value, PlcValue::Bool(expected), "index {index}");
     }
 
-    assert_matches!(
+    assert!(matches!(
         client
             .read_tag("UDT_ARRAY[3].BOOL_NESTED[0]")
             .await
             .expect("read nested bit 0"),
         PlcValue::Bool(_)
-    );
+    ));
 
     client
         .write_tag("UDT_ARRAY[3].BOOL_NESTED[5]", PlcValue::Bool(true))

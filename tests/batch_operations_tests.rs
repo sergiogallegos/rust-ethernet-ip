@@ -11,7 +11,6 @@
 #[cfg(test)]
 mod tests {
     use rust_ethernet_ip::{BatchConfig, BatchOperation, EipClient, PlcValue};
-    use std::assert_matches;
     use std::env;
     use tokio::time::{Duration, timeout};
     // Helper function to get test PLC address from environment or use default
@@ -54,7 +53,7 @@ mod tests {
                     match result {
                         Ok(value) => {
                             tracing::info!("{}: {:?}", tag_name, value);
-                            assert_matches!(value, PlcValue::Dint(_));
+                            assert!(matches!(value, PlcValue::Dint(_)));
                         }
                         Err(e) => {
                             tracing::error!("{}: {}", tag_name, e);

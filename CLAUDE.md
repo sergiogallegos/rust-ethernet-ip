@@ -103,7 +103,7 @@ Other surface-specific decisions live alongside it under [`docs/agents/notes/`](
 
 ## Workspace Layout
 
-The root `Cargo.toml` defines a workspace containing `.` (main crate) and `examples/desktop_app`. The crate produces both `rlib` and `cdylib` outputs. Rust MSRV is 1.96.
+The root `Cargo.toml` defines a workspace containing `.` (main crate), four sibling crates under `crates/`, and `examples/desktop_app`. The crate produces both `rlib` and `cdylib` outputs. Rust MSRV is 1.88 and is inherited from `[workspace.package].rust-version`.
 
 ## CI
 

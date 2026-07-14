@@ -53,7 +53,7 @@ Status values:
 - [investigations/monitoring-diagnostics-plan-2026-04-19.md](investigations/monitoring-diagnostics-plan-2026-04-19.md) — Current monitoring and diagnostics gaps plus the recommended Rust-first improvement order. `active`
 - [investigations/docker-example-stacks-2026-04-19.md](investigations/docker-example-stacks-2026-04-19.md) — First local Docker packaging layer for the Python API, collector, and optional MQTT example services. `active`
 - [investigations/rockwell-official-docs-2026-04-16.md](investigations/rockwell-official-docs-2026-04-16.md) — 2026-04-16 check of current official Rockwell EtherNet/IP and Logix data-access publications. `active`
-- [investigations/rust-toolchain-baseline-2026-04-19.md](investigations/rust-toolchain-baseline-2026-04-19.md) — Current Rust baseline, Rust 2024 migration outcome, and MSRV posture after the 2026-04-19 refresh. `active`
+- [investigations/rust-toolchain-baseline-2026-04-19.md](investigations/rust-toolchain-baseline-2026-04-19.md) — Rust 2024 history and the exact Rust 1.88 workspace MSRV boundary verified on 2026-07-14. `confirmed`
 - [investigations/software-architecture-map.md](investigations/software-architecture-map.md) — Current architecture ownership map and links to the maintainer-facing architecture document. `active`
 - [investigations/architecture-review-2026-05-18.md](investigations/architecture-review-2026-05-18.md) — Post-books architecture synthesis and reconciled roadmap from Claude and Codex review passes. `active`
 - [investigations/client-actor-service-retry-2026-05-24.md](investigations/client-actor-service-retry-2026-05-24.md) — Current actor-backed client, connection-event, restricted-write helper, and retry-policy synthesis. `active`

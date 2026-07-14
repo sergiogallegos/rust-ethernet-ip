@@ -49,7 +49,7 @@ cargo run --release
 
 ## Requirements
 
-- Rust 1.95+
+- Rust 1.88+
 - Tokio runtime
 - egui/eframe for GUI
 

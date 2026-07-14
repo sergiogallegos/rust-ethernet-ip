@@ -18,10 +18,11 @@ The crate follows [Semantic Versioning](https://semver.org/). Within the
 
 ## MSRV policy
 
-- The current MSRV is **Rust 1.96**.
+- The current MSRV is **Rust 1.88**.
 - An MSRV bump is treated as a **minor-version** change, not a patch. Patch
   releases never raise the required compiler.
-- The MSRV is declared via `rust-version` in `Cargo.toml` and exercised by the
+- The MSRV is declared once via `[workspace.package].rust-version` in the root
+  `Cargo.toml`, inherited by every workspace member, and exercised by the
   dedicated CI MSRV job.
 
 ## Enum exhaustiveness

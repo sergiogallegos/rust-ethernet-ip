@@ -8,6 +8,9 @@ members = [
     "examples/desktop_app"  # Desktop application
 ]
 
+[workspace.package]
+rust-version = "1.88"
+
 [package]
 name = "rust-ethernet-ip"
 version = "1.2.0"
@@ -20,7 +23,7 @@ documentation = "https://docs.rs/rust_ethernet_ip"
 readme = "README.md"
 keywords = ["ethernet-ip", "plc", "industrial", "automation", "allen-bradley"]
 categories = ["network-programming", "embedded", "api-bindings"]
-rust-version = "1.96"
+rust-version.workspace = true
 
 # Publish only the Rust crate payload needed by consumers.
 # Patterns are gitignore-style: anchor with a leading `/` so root-level names

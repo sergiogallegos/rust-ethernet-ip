@@ -1151,3 +1151,26 @@ Sources used:
 - `python/rust_ethernet_ip/client.py`
 - `docs/STRING_HANDLING.md`
 - `docs/agents/notes/ab-firmware-quirks.md`
+
+## [2026-07-14] reframe | verify and centralize the Rust 1.88 workspace MSRV
+
+- Updated `wiki/investigations/rust-toolchain-baseline-2026-04-19.md` and
+  `wiki/index.md`.
+- Reframed the toolchain baseline from a current-stable policy to the exact
+  oldest compiler supporting the locked dependencies and complete Rust test
+  suite.
+- Recorded the adjacent boundary: Rust `1.87.0` fails because `time 0.3.47` and
+  `time-core 0.1.8` require Rust `1.88.0`; Rust `1.88.0` compiles the workspace
+  tests with all features.
+- Recorded the passing full Rust `1.88.0` suite and stable formatting/Clippy
+  gates.
+
+Sources used:
+
+- `Cargo.toml`
+- `Cargo.lock`
+- `.github/workflows/ci.yml`
+- `README.md`
+- `BUILD.md`
+- `docs/API_STABILITY.md`
+- `examples/desktop_app/README.md`

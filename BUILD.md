@@ -5,7 +5,7 @@ This guide covers building the enhanced Rust EtherNet/IP library with comprehens
 ## 📋 **Prerequisites**
 
 ### Rust Development Environment
-- **Rust 1.96+** (current stable baseline)
+- **Rust 1.88+**
 - **Cargo** (included with Rust)
 - **Git** for version control
 

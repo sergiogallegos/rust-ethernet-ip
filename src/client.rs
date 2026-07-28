@@ -562,6 +562,20 @@ impl std::fmt::Debug for EipClient {
     }
 }
 
+/// Returns the bare program name behind a caller-supplied program identifier.
+///
+/// [`EipClient::discover_program_tags`] accepts both spellings of the same
+/// program -- `"Dashboard"` and the wire form `"Program:Dashboard"` -- so the
+/// prefix has to be stripped exactly once, in one place: the request path
+/// re-adds it, and [`udt::TagScope::Program`] holds the BARE name everywhere
+/// else in the crate (see `schema::SchemaScope`). Normalizing here keeps the
+/// two spellings from producing two different scopes for one program.
+fn program_scope_name(program_name: &str) -> &str {
+    program_name
+        .strip_prefix("Program:")
+        .unwrap_or(program_name)
+}
+
 impl EipClient {
     /// Internal constructor that initializes an EipClient from any stream
     /// that implements AsyncRead + AsyncWrite + Unpin + Send
@@ -909,7 +923,8 @@ impl EipClient {
                 }
                 Err(err) => return Err(err),
             };
-            let page = match self.parse_tag_list_response_page(&cip_data) {
+            let page = match self.parse_tag_list_response_page(&cip_data, udt::TagScope::Controller)
+            {
                 Ok(page) => page,
                 Err(err) if best_effort && !tags.is_empty() => {
                     warnings.push(format!(
@@ -962,18 +977,25 @@ impl EipClient {
     ) -> crate::error::Result<Vec<TagAttributes>> {
         let mut start_instance = 0u32;
         let mut tags = Vec::new();
+        // The scope is the caller's knowledge: the Symbol Object reply carries
+        // no scope field, so it must be threaded in from the request. The
+        // callers' two accepted spellings ("Dashboard" and "Program:Dashboard")
+        // designate the same program and must yield the same scope.
+        let scope = udt::TagScope::Program(program_scope_name(program_name).to_string());
 
         loop {
             let request = self.build_program_tag_list_request(program_name, start_instance)?;
             let response = self.send_cip_request(&request).await?;
             let cip_data = self.extract_cip_from_response(&response)?;
 
-            let page = self.parse_tag_list_response_page(&cip_data).map_err(|e| {
-                crate::error::EtherNetIpError::Protocol(format!(
-                    "Program tag discovery failed for '{}': {}. Some PLCs may not support tag discovery. Try reading tags directly by name.",
-                    program_name, e
-                ))
-            })?;
+            let page = self
+                .parse_tag_list_response_page(&cip_data, scope.clone())
+                .map_err(|e| {
+                    crate::error::EtherNetIpError::Protocol(format!(
+                        "Program tag discovery failed for '{}': {}. Some PLCs may not support tag discovery. Try reading tags directly by name.",
+                        program_name, e
+                    ))
+                })?;
 
             tags.extend(page.tags);
 
@@ -2799,11 +2821,7 @@ impl EipClient {
                 start_instance
             ))
         })?;
-        let scoped_program = if program_name.starts_with("Program:") {
-            program_name.to_string()
-        } else {
-            format!("Program:{program_name}")
-        };
+        let scoped_program = format!("Program:{}", program_scope_name(program_name));
 
         let mut path = Vec::new();
         path.push(0x91);
@@ -2842,7 +2860,18 @@ impl EipClient {
     }
 
     /// Parses one page of tag discovery results from a Get Instance Attribute List response.
-    fn parse_tag_list_response_page(&self, response: &[u8]) -> crate::error::Result<TagListPage> {
+    ///
+    /// `scope` is the scope the REQUEST was addressed to, and it is stamped onto
+    /// every tag of the page. The Symbol Object reply carries no scope field --
+    /// a program-scoped enumeration and a controller-scoped one are
+    /// byte-identical on the wire -- so the scope is knowledge the CALLER holds
+    /// and the parser cannot recover. Hardcoding it here made every tag returned
+    /// by [`Self::discover_program_tags`] claim `TagScope::Controller`.
+    fn parse_tag_list_response_page(
+        &self,
+        response: &[u8],
+        scope: udt::TagScope,
+    ) -> crate::error::Result<TagListPage> {
         if response.len() < 4 {
             return Err(crate::error::EtherNetIpError::Protocol(
                 "Tag list response too short".to_string(),
@@ -2948,7 +2977,7 @@ impl EipClient {
                 },
                 dimensions: vec![0; array_dims],
                 permissions: udt::TagPermissions::ReadWrite,
-                scope: udt::TagScope::Controller,
+                scope: scope.clone(),
                 template_instance_id,
                 size: 0,
             });
@@ -4410,6 +4439,56 @@ mod discovery_tests {
     }
 
     #[test]
+    fn both_accepted_program_name_forms_yield_the_bare_scope() {
+        // `discover_program_tags` accepts a program either bare or in its wire
+        // form; both designate the same program, so both must stamp the same
+        // `TagScope::Program("Dashboard")` -- never `Program("Program:Dashboard")`.
+        // This is the exact expression `discover_program_tags` builds.
+        let bare =
+            super::udt::TagScope::Program(super::program_scope_name("Dashboard").to_string());
+        let prefixed = super::udt::TagScope::Program(
+            super::program_scope_name("Program:Dashboard").to_string(),
+        );
+
+        assert_eq!(
+            bare,
+            super::udt::TagScope::Program("Dashboard".to_string()),
+            "a bare program name is already the scope payload"
+        );
+        assert_eq!(
+            prefixed,
+            super::udt::TagScope::Program("Dashboard".to_string()),
+            "the wire prefix belongs to the request path, not to the scope payload"
+        );
+    }
+
+    #[test]
+    fn both_accepted_program_name_forms_build_the_same_request() {
+        // The same normalization feeds the request path: prefixing an already
+        // prefixed name would address `Program:Program:Dashboard`.
+        let client = EipClient::new_unconnected_for_testing();
+        let bare = client
+            .build_program_tag_list_request("Dashboard", 0)
+            .expect("request should build");
+        let prefixed = client
+            .build_program_tag_list_request("Program:Dashboard", 0)
+            .expect("request should build");
+
+        assert_eq!(bare, prefixed);
+
+        let mut expected = vec![0x55, 0x0D, 0x91, 0x11];
+        expected.extend_from_slice(b"Program:Dashboard");
+        expected.push(0x00);
+        expected.extend_from_slice(&[
+            0x20, 0x6B, 0x25, 0x00, 0x00, 0x00, // Symbol class, instance 0
+            0x02, 0x00, // attribute count
+            0x01, 0x00, // Symbol Name
+            0x02, 0x00, // Symbol Type
+        ]);
+        assert_eq!(bare, expected);
+    }
+
+    #[test]
     fn build_program_tag_list_request_rejects_out_of_range_start_instance() {
         let client = EipClient::new_unconnected_for_testing();
         let error = client
@@ -4435,7 +4514,7 @@ mod discovery_tests {
         ];
 
         let page = client
-            .parse_tag_list_response_page(&response)
+            .parse_tag_list_response_page(&response, super::udt::TagScope::Controller)
             .expect("response should parse");
 
         assert!(page.partial_transfer);
@@ -4444,6 +4523,44 @@ mod discovery_tests {
         assert_eq!(page.tags[0].name, "Rate");
         assert_eq!(page.tags[0].data_type, 0x00C4);
         assert_eq!(page.tags[0].data_type_name, "DINT");
+    }
+
+    #[test]
+    fn parse_tag_list_response_page_stamps_the_requested_scope() {
+        // The Symbol Object reply carries NO scope field: these exact bytes are
+        // what a program-scoped enumeration and a controller-scoped one both
+        // return. The scope therefore has to come from the request the caller
+        // issued -- hardcoding `Controller` in the parser made every tag from
+        // `discover_program_tags` claim controller scope.
+        let client = EipClient::new_unconnected_for_testing();
+        let response = [
+            0xD5, 0x00, 0x00, 0x00, // service, reserved, success, no addl status
+            0x01, 0x00, 0x00, 0x00, // instance id = 1
+            0x04, 0x00, // name length = 4
+            b'P', b'u', b'm', b'p', // tag name
+            0xC4, 0x00, // DINT
+        ];
+
+        let program = client
+            .parse_tag_list_response_page(
+                &response,
+                super::udt::TagScope::Program("Dashboard".to_string()),
+            )
+            .expect("response should parse");
+        assert_eq!(
+            program.tags[0].scope,
+            super::udt::TagScope::Program("Dashboard".to_string()),
+            "a program-scoped enumeration must report the program it was addressed to"
+        );
+
+        let controller = client
+            .parse_tag_list_response_page(&response, super::udt::TagScope::Controller)
+            .expect("response should parse");
+        assert_eq!(
+            controller.tags[0].scope,
+            super::udt::TagScope::Controller,
+            "the SAME bytes stay controller-scoped when the request was"
+        );
     }
 
     #[test]

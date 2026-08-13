@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lowered the workspace MSRV from Rust 1.96 to Rust 1.88, the oldest compiler
   supported by the locked dependency set and the complete Rust test suite.
 
+### Fixed
+
+- Program-scoped tag discovery aborted on CIP 0x06 "partial transfer" instead of
+  paging, so a program whose symbol table spans more than one response yielded no
+  tags at all.
+
 ## [1.2.0] - 2026-07-08
 
 Minor release: behavioral fixes, deprecations, and additive surface (C/C++ header

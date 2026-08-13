@@ -1199,3 +1199,44 @@ Sources used:
 - `examples/desktop_app/README.md`
 - `docs/agents/tasks/CODEX-AH-rust-1.96-msrv-and-assert-matches.md`
 - GitHub PR `#27`
+
+## [2026-08-13] query | review program-tag discovery PRs 28 and 29
+
+- Added `wiki/protocol/program-tag-discovery.md` and updated `wiki/index.md`.
+- Confirmed that both PRs address real defects: program Symbol Object paging on
+  CIP `0x06` and request-derived `TagScope` propagation.
+- Recorded a merge-blocking normalization defect in PR #29 for callers using
+  the already-supported `Program:Name` input form.
+- Recorded the textual conflict and recommended merge order: #28 first, then a
+  rebased #29 that keeps scope-aware page parsing and drops the deleted wrapper.
+- Verified formatting, focused discovery tests, targeted program-tag tests, and
+  all-feature Clippy independently on both PR heads. The full workspace run
+  exceeded the review timeout without a PR-specific failure before timeout.
+
+Sources used:
+
+- `src/client.rs`
+- `crates/udt/src/lib.rs`
+- `src/schema.rs`
+- `tests/udt_discovery_tests.rs`
+- `docs/agents/tasks/CODEX-AM-tag-addressing-correctness.md`
+- `docs/validation/2026-07-02_tag_addressing_smoke_5069-L330ERM_fw38.md`
+- GitHub PR `#28`
+- GitHub PR `#29`
+
+## [2026-08-13] query | verify PR 28 merge and PR 29 review request
+
+- Updated `wiki/protocol/program-tag-discovery.md`.
+- Confirmed PR #28 was squash-merged as `afac5ee` and is the tip of
+  `origin/main`.
+- Confirmed the maintainer comment on PR #29 requests a post-#28 rebase,
+  normalized `TagScope::Program` values for both accepted input forms, and
+  regression coverage.
+- Confirmed GitHub currently reports PR #29 as conflicting; the comment is a
+  regular issue comment rather than a formal request-changes review.
+
+Sources used:
+
+- `origin/main`
+- GitHub PR `#28`
+- GitHub PR `#29`

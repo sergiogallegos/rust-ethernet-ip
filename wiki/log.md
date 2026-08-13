@@ -1240,3 +1240,27 @@ Sources used:
 - `origin/main`
 - GitHub PR `#28`
 - GitHub PR `#29`
+
+## [2026-08-13] ingest | remediate desktop webbrowser audit failure
+
+- Updated `wiki/investigations/rust-toolchain-baseline-2026-04-19.md`.
+- Upgraded the desktop example from `egui`/`eframe 0.27.2` to `0.33.3`, which
+  permits the patched `webbrowser 1.2.2` dependency without raising the
+  workspace's Rust `1.88` MSRV.
+- Adapted the `eframe` application factory to its result-returning API.
+- Confirmed `cargo audit` exits successfully with no vulnerabilities; the
+  existing `RUSTSEC-2026-0221` `event-listener` item remains an allowed warning
+  in the Linux accessibility dependency chain.
+- Confirmed stable formatting, full workspace/all-target tests, and
+  all-target/all-feature Clippy with warnings denied.
+- Installed Rust `1.88.0` and confirmed the locked all-features workspace and
+  documentation tests pass on the declared MSRV.
+
+Sources used:
+
+- `Cargo.lock`
+- `examples/desktop_app/Cargo.toml`
+- `examples/desktop_app/src/main.rs`
+- `.github/workflows/ci.yml`
+- RustSec `RUSTSEC-2026-0257`
+- RustSec `RUSTSEC-2026-0221`

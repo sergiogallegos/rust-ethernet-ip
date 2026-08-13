@@ -676,6 +676,6 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Rust EtherNet/IP Desktop App",
         options,
-        Box::new(|_cc| Box::new(DesktopApp::default())),
+        Box::new(|_cc| Ok(Box::new(DesktopApp::default()))),
     )
 }

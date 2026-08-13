@@ -7,8 +7,8 @@ rust-version.workspace = true
 [dependencies]
 rust-ethernet-ip = { path = "../.." }
 tokio = { version = "1.0", features = ["full"] }
-egui = "0.27"
-eframe = "0.27"
+egui = "0.33.3"
+eframe = "0.33.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"

@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Program-scoped tag discovery aborted on CIP 0x06 "partial transfer" instead of
   paging, so a program whose symbol table spans more than one response yielded no
   tags at all.
+- Upgraded the desktop example to `egui`/`eframe` 0.33.3 and `webbrowser`
+  1.2.2, removing the `RUSTSEC-2026-0257` browser argument-injection
+  vulnerability from the workspace lockfile while preserving Rust 1.88 support.
 
 ## [1.2.0] - 2026-07-08
 

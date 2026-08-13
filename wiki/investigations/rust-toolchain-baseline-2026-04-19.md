@@ -6,6 +6,9 @@
   packages inherit it from [Cargo.toml](../../Cargo.toml).
 - `confirmed`: Rust `1.88.0` passes the locked, all-features workspace test
   suite; Rust `1.87.0` is rejected by the locked `time` dependencies.
+- `confirmed`: the 2026-08-13 desktop GUI security refresh to
+  `egui`/`eframe 0.33.3` and `webbrowser 1.2.2` preserves the Rust `1.88`
+  locked-workspace baseline.
 - `confirmed`: the workspace remains on the Rust `2024` edition.
 - `superseded`: the earlier policy of tracking the current stable compiler at
   Rust `1.95` and then `1.96` no longer describes the mainline MSRV.
@@ -32,6 +35,10 @@
 - The `1.88` boundary is a verified repository baseline, not a promise that
   every future downstream dependency resolution will match this lockfile.
   Downstream consumers resolve and lock their own dependency graphs.
+- The desktop example deliberately uses `egui`/`eframe 0.33.3`: it accepts the
+  patched `webbrowser` 1.x line and remains compatible with Rust `1.88`.
+  `egui` 0.34 raised its MSRV to Rust `1.92`, so that newer line is not suitable
+  without a separately reviewed MSRV change.
 
 ## Historical Context
 
@@ -68,11 +75,20 @@
   [CODEX-AH task record](../../docs/agents/tasks/CODEX-AH-rust-1.96-msrv-and-assert-matches.md)
 - Rust `1.88` boundary and validation: PR
   [#27](https://github.com/sergiogallegos/rust-ethernet-ip/pull/27)
+- Desktop dependency security refresh:
+  [desktop manifest](../../examples/desktop_app/Cargo.toml) and
+  [Cargo.lock](../../Cargo.lock). On 2026-08-13, `cargo audit` passed with no
+  vulnerabilities and one allowed `event-listener` unsoundness warning; stable
+  workspace tests/Clippy and the Rust `1.88.0` locked all-features suite passed.
 
 ## Open Questions
 
 - `unclear`: whether future dependency updates should be held back when they
   would raise the locked MSRV without providing a material project benefit.
+- `active`: `RUSTSEC-2026-0221` remains an allowed warning for
+  `event-listener 5.4.1` through the Linux accessibility stack used by the
+  desktop example. It is not the vulnerability that failed the audit, but
+  should be removed when the upstream stack provides a compatible resolution.
 
 ## Related Pages
 

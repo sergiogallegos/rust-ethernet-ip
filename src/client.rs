@@ -949,27 +949,56 @@ impl EipClient {
 
     /// Discovers program-scoped tags
     /// This method discovers tags within a specific program scope
+    ///
+    /// The Symbol Object enumeration is PAGED: a program holding more tags than
+    /// fit in one reply answers with general status `0x06` (partial transfer)
+    /// and the caller must resume from the last instance id returned. This loop
+    /// mirrors [`Self::discover_tags_detailed_internal`]; without it a program
+    /// with many tags surfaced only as `CIP Error 0x06: Partial transfer` and
+    /// none of its tags were reachable.
     pub async fn discover_program_tags(
         &mut self,
         program_name: &str,
     ) -> crate::error::Result<Vec<TagAttributes>> {
-        // Build CIP request for program-scoped tag list
-        let request = self.build_program_tag_list_request(program_name)?;
-        let response = self.send_cip_request(&request).await?;
+        let mut start_instance = 0u32;
+        let mut tags = Vec::new();
 
-        // Extract CIP data from response and check for errors
-        let cip_data = self.extract_cip_from_response(&response)?;
+        loop {
+            let request = self.build_program_tag_list_request(program_name, start_instance)?;
+            let response = self.send_cip_request(&request).await?;
+            let cip_data = self.extract_cip_from_response(&response)?;
 
-        // Check for CIP errors before parsing
-        if let Err(e) = self.check_cip_error(&cip_data) {
-            return Err(crate::error::EtherNetIpError::Protocol(format!(
-                "Program tag discovery failed for '{}': {}. Some PLCs may not support tag discovery. Try reading tags directly by name.",
-                program_name, e
-            )));
+            let page = self.parse_tag_list_response_page(&cip_data).map_err(|e| {
+                crate::error::EtherNetIpError::Protocol(format!(
+                    "Program tag discovery failed for '{}': {}. Some PLCs may not support tag discovery. Try reading tags directly by name.",
+                    program_name, e
+                ))
+            })?;
+
+            tags.extend(page.tags);
+
+            if !page.partial_transfer {
+                break;
+            }
+
+            let Some(last_instance_id) = page.last_instance_id else {
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "Program tag discovery for '{}' returned Partial transfer without a last instance ID",
+                    program_name
+                )));
+            };
+
+            if last_instance_id == u32::MAX || last_instance_id < start_instance {
+                return Err(crate::error::EtherNetIpError::Protocol(format!(
+                    "Program tag discovery for '{}' pagination stalled at instance {}",
+                    program_name, last_instance_id
+                )));
+            }
+
+            start_instance = last_instance_id.saturating_add(1);
         }
 
-        // Parse response
-        self.parse_tag_list_response(&cip_data)
+        Ok(tags)
     }
 
     /// Lists all cached tag attributes
@@ -2753,8 +2782,23 @@ impl EipClient {
         Ok(request)
     }
 
-    /// Builds CIP request for program-scoped tag list discovery.
-    fn build_program_tag_list_request(&self, program_name: &str) -> crate::error::Result<Vec<u8>> {
+    /// Builds CIP request for program-scoped tag list discovery, resuming the
+    /// Symbol Object enumeration at `start_instance`.
+    ///
+    /// A program with more tags than fit in one reply answers `0x06`
+    /// (partial transfer); the caller resumes from `last_instance_id + 1`, the
+    /// same paging contract as [`Self::build_tag_list_request_from_instance`].
+    fn build_program_tag_list_request(
+        &self,
+        program_name: &str,
+        start_instance: u32,
+    ) -> crate::error::Result<Vec<u8>> {
+        let start_instance = u16::try_from(start_instance).map_err(|_| {
+            crate::error::EtherNetIpError::Protocol(format!(
+                "Program tag discovery start instance {} exceeds 16-bit Symbol Object range",
+                start_instance
+            ))
+        })?;
         let scoped_program = if program_name.starts_with("Program:") {
             program_name.to_string()
         } else {
@@ -2768,10 +2812,9 @@ impl EipClient {
         if !path.len().is_multiple_of(2) {
             path.push(0x00);
         }
-        path.extend_from_slice(&[
-            // Symbol Object (Class 0x6B), start instance 0.
-            0x20, 0x6B, 0x25, 0x00, 0x00, 0x00,
-        ]);
+        // Symbol Object (Class 0x6B), 16-bit start instance.
+        path.extend_from_slice(&[0x20, 0x6B, 0x25, 0x00]);
+        path.extend_from_slice(&start_instance.to_le_bytes());
 
         let path_words = u8::try_from(path.len() / 2).map_err(|_| {
             crate::error::EtherNetIpError::Protocol(format!(
@@ -2916,11 +2959,6 @@ impl EipClient {
             last_instance_id,
             partial_transfer,
         })
-    }
-
-    /// Parses tag list response from CIP
-    fn parse_tag_list_response(&self, response: &[u8]) -> crate::error::Result<Vec<TagAttributes>> {
-        Ok(self.parse_tag_list_response_page(response)?.tags)
     }
 
     /// Negotiates packet size with the PLC
@@ -4333,7 +4371,7 @@ mod discovery_tests {
     fn build_program_tag_list_request_includes_program_symbol_scope() {
         let client = EipClient::new_unconnected_for_testing();
         let request = client
-            .build_program_tag_list_request("MainProgram")
+            .build_program_tag_list_request("MainProgram", 0)
             .expect("request should build");
 
         let mut expected = vec![0x55, 0x0E, 0x91, 0x13];
@@ -4347,6 +4385,41 @@ mod discovery_tests {
         ]);
 
         assert_eq!(request, expected);
+    }
+
+    #[test]
+    fn build_program_tag_list_request_resumes_at_start_instance() {
+        let client = EipClient::new_unconnected_for_testing();
+        let request = client
+            .build_program_tag_list_request("MainProgram", 0x1235)
+            .expect("request should build");
+
+        // Only the instance segment moves: the program symbolic path, the
+        // service and the requested attributes are identical to instance 0.
+        let mut expected = vec![0x55, 0x0E, 0x91, 0x13];
+        expected.extend_from_slice(b"Program:MainProgram");
+        expected.push(0x00);
+        expected.extend_from_slice(&[
+            0x20, 0x6B, 0x25, 0x00, 0x35, 0x12, // Symbol class, instance 0x1235 LE
+            0x02, 0x00, // attribute count
+            0x01, 0x00, // Symbol Name
+            0x02, 0x00, // Symbol Type
+        ]);
+
+        assert_eq!(request, expected);
+    }
+
+    #[test]
+    fn build_program_tag_list_request_rejects_out_of_range_start_instance() {
+        let client = EipClient::new_unconnected_for_testing();
+        let error = client
+            .build_program_tag_list_request("MainProgram", u32::from(u16::MAX) + 1)
+            .expect_err("start instance beyond the 16-bit range must be refused");
+
+        assert!(
+            error.to_string().contains("16-bit Symbol Object range"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

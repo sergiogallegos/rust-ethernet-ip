@@ -2,10 +2,10 @@
 
 ## Summary
 
-`needs-review` as of 2026-08-13: PR #28 merged as `afac5ee`, fixing missing
-Symbol Object pagination in `discover_program_tags`. PR #29 addresses the
-separate incorrect-`TagScope` defect, but remains open and conflicting until it
-is rebased and program-name normalization is added.
+`confirmed` as of 2026-08-14: PR #28 merged as `afac5ee`, fixing missing
+Symbol Object pagination in `discover_program_tags`. PR #29 then merged as
+`481f20d`, addressing the separate incorrect-`TagScope` defect with normalized
+program names and regression coverage for both accepted input forms.
 
 ## Current Understanding
 
@@ -18,18 +18,20 @@ is rebased and program-name normalization is added.
   existing controller-scope loop, parameterizes the program request's start
   instance, and adds overflow and stalled-pagination guards.
 - `confirmed`: Symbol Object replies do not encode controller-versus-program
-  scope. Current parsing hardcodes every result to `TagScope::Controller`; the
-  request caller must supply the scope, as proposed in PR #29.
-- `needs-review`: `discover_program_tags` accepts either `"Dashboard"` or
-  `"Program:Dashboard"`, but PR #29 constructs `TagScope::Program` from the raw
-  argument. The prefixed form would therefore produce
-  `Program("Program:Dashboard")`, contrary to repository examples and schema
-  tests that store only the program name. Normalize once and use the normalized
-  name for both the request and returned scope.
-- `confirmed`: PR #29 still targets the pre-#28 base and GitHub reports it as
-  conflicting. Its rebase should retain the scope parameter on
-  `parse_tag_list_response_page` and both scope-aware call sites; the private
-  wrapper removed by #28 should stay removed.
+  scope. Before PR #29, parsing hardcoded every result to
+  `TagScope::Controller`; current code supplies the scope held by the request
+  caller.
+- `confirmed`: PR #29 centralizes the accepted-name normalization in
+  `program_scope_name`. Both `"Dashboard"` and `"Program:Dashboard"` now build
+  the same request path and produce `TagScope::Program("Dashboard")`.
+- `confirmed`: PR #29 retains the scope parameter on
+  `parse_tag_list_response_page`, passes controller scope from controller
+  discovery, and hoists normalized program scope outside the program paging
+  loop. The private wrapper removed by PR #28 remains removed.
+- `confirmed`: PR #29 was squash-merged as `481f20d` on 2026-08-14. Its PR CI
+  completed successfully across all 29 jobs, including stable and beta Rust
+  jobs on Windows, Ubuntu, and macOS; the post-merge `main` workflow also passed.
+  Stable jobs include the C# unit and native P/Invoke integration suites.
 
 ## Evidence
 
@@ -48,10 +50,12 @@ is rebased and program-name normalization is added.
 - [PR #29](https://github.com/sergiogallegos/rust-ethernet-ip/pull/29)
   reports hardware evidence for program-scope labeling with both patches
   applied.
-- Local review on 2026-08-13: formatting, focused discovery tests, targeted
-  program-tag tests, and all-feature Clippy passed independently for both PR
-  heads. The all-workspace/all-target run exceeded the review timeout after
-  many passing suites and produced no PR-specific failure before timeout.
+- Independent local review of PR #29 head `fcedeb4` on 2026-08-14: formatting,
+  all-target Clippy with warnings denied, and all 16 focused discovery tests
+  passed. A release FFI build and `RustEtherNetIp.Tests` also passed all 86 C#
+  tests on .NET 10. Replacing `program_scope_name` with an identity function
+  made exactly the two new accepted-name regression tests fail while the other
+  14 discovery tests remained green.
 
 ## Open Questions
 
@@ -59,7 +63,7 @@ is rebased and program-name normalization is added.
   16-bit start-instance ceiling. A 32-bit logical instance segment should be
   considered for both discovery paths in one follow-up rather than changed in
   only the program path.
-- `needs-review`: Neither PR has an automated end-to-end pagination test that
+- `likely non-blocking`: Neither PR has an automated end-to-end pagination test that
   feeds multiple Symbol Object replies through `discover_program_tags`; PR #28
   has request-builder coverage plus real-hardware evidence.
 - `unconfirmed`: The contributor's CompactLogix firmware revision was not

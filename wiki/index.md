@@ -31,7 +31,7 @@ Status values:
 - [protocol/route-path-behavior.md](protocol/route-path-behavior.md) — Current route-path behavior, validation status, and implementation guidance. `active`
 - [protocol/abi-contract.md](protocol/abi-contract.md) — FFI ABI version, capability bitmap, and wrapper load-time compatibility policy. `active`
 - [protocol/cip-path-validation.md](protocol/cip-path-validation.md) — CIP request path-size validation rules and current empty-path policy. `confirmed`
-- [protocol/program-tag-discovery.md](protocol/program-tag-discovery.md) — Program-scoped Symbol Object paging from merged PR #28 and pending scope propagation in PR #29. `needs-review`
+- [protocol/program-tag-discovery.md](protocol/program-tag-discovery.md) — Program-scoped Symbol Object paging and scope propagation from merged PRs #28 and #29. `confirmed`
 
 ## Wrapper Parity
 

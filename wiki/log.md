@@ -1264,3 +1264,40 @@ Sources used:
 - `.github/workflows/ci.yml`
 - RustSec `RUSTSEC-2026-0257`
 - RustSec `RUSTSEC-2026-0221`
+
+## [2026-08-14] query | verify PR 29 rebase, normalization, tests, and CI
+
+- Updated `wiki/protocol/program-tag-discovery.md` and `wiki/index.md`.
+- Confirmed PR #29 head `fcedeb4` is based directly on current `main` at
+  `1d675bd`, is cleanly mergeable, and preserves PR #28's paging structure.
+- Confirmed both accepted program-name forms normalize to the bare program name
+  for `TagScope::Program` and build byte-identical requests.
+- Independently passed formatting, all-target Clippy with warnings denied, all
+  16 focused discovery tests, the release FFI build, and all 86 C# unit tests.
+- Confirmed the regression tests discriminate the normalization fix: replacing
+  the helper with an identity function failed exactly the two new tests and left
+  the other 14 focused discovery tests green.
+- Confirmed GitHub's CI run completed successfully across all 29 jobs, including
+  the stable/beta Rust platform matrix and stable C# unit/native integration
+  coverage.
+
+Sources used:
+
+- `src/client.rs` at PR #29 head `fcedeb4`
+- `CHANGELOG.md` at PR #29 head `fcedeb4`
+- `.github/workflows/ci.yml`
+- GitHub PR `#29` and Actions run `31825631742`
+
+## [2026-08-14] ingest | record PR 29 merge and green main workflow
+
+- Updated `wiki/protocol/program-tag-discovery.md` and `wiki/index.md`.
+- Fast-forwarded local `main` from `1d675bd` to the PR #29 squash merge
+  `481f20d` while preserving the pending wiki synthesis edits.
+- Confirmed the post-merge `main` CI/CD workflow completed successfully.
+
+Sources used:
+
+- `src/client.rs` at `481f20d`
+- `CHANGELOG.md` at `481f20d`
+- GitHub PR `#29`
+- GitHub Actions post-merge run for `481f20d`

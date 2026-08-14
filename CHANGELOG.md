@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Program-scoped tag discovery aborted on CIP 0x06 "partial transfer" instead of
   paging, so a program whose symbol table spans more than one response yielded no
   tags at all.
+- Program-scoped tag discovery reported every tag as controller-scoped: the
+  Symbol Object reply carries no scope field, so the requested scope is now
+  threaded from the caller into every discovered tag. Both accepted spellings of
+  a program name (`Dashboard` and `Program:Dashboard`) normalize to the same
+  `TagScope::Program("Dashboard")`.
 - Upgraded the desktop example to `egui`/`eframe` 0.33.3 and `webbrowser`
   1.2.2, removing the `RUSTSEC-2026-0257` browser argument-injection
   vulnerability from the workspace lockfile while preserving Rust 1.88 support.

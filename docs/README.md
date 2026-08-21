@@ -4,6 +4,7 @@ This folder contains project documentation for `rust-ethernet-ip`.
 
 Current release state:
 - Current stable line: `1.2.0` (crates.io + NuGet + PyPI)
+- Next patch in preparation: `1.2.1` (not yet published)
 - Previous stable line: `1.1.0` (tagged 2026-06-19)
 - Earlier stable lines: `1.0.0`, `0.7.0`, `0.6.3`
 - `1.2.0` carries the CODEX-AJ…AZ remediation set, hardware-validated cross-binding (Rust/C#/Python/C++) on CompactLogix 5069-L330ERM fw38
@@ -13,6 +14,8 @@ Current release state:
 - [../README.md](../README.md): Project overview and quick start
 - [programmer_manual.md](programmer_manual.md): Programmer manual (Rust + C# integration tracks)
 - [INTEGRATION_AND_DEPLOYMENT.md](INTEGRATION_AND_DEPLOYMENT.md): Step-by-step integration and deployment guide for Rust, C#, and Python users
+- [HARDWARE_COMPATIBILITY.md](HARDWARE_COMPATIBILITY.md): Exact processor/firmware/binding matrix plus functional, endurance, and performance contribution protocol
+- [audit/1.2.1_wrapper_and_platform_gap_analysis.md](audit/1.2.1_wrapper_and_platform_gap_analysis.md): Wrapper documentation status and prioritized C/C++ adoption gaps
 - [SOFTWARE_ARCHITECTURE.md](SOFTWARE_ARCHITECTURE.md): Current architecture map, design boundaries, and refactor guidance
 - [PLATFORM_EXPANSION_BACKLOG.md](PLATFORM_EXPANSION_BACKLOG.md): Planned Python/data-platform expansion backlog and rationale
 - [CODEX_PYTHON_PLATFORM_EXPANSION_PROMPT.md](CODEX_PYTHON_PLATFORM_EXPANSION_PROMPT.md): Detailed Codex prompt for planning and implementing the Python/data-platform path
@@ -32,13 +35,15 @@ Current release state:
 
 ## Release and Quality Gates
 
-- [../CHANGELOG.md](../CHANGELOG.md): `1.1.0` release notes and historical release history
+- [../CHANGELOG.md](../CHANGELOG.md): `1.2.0` release notes and historical release history
 - [agents/board.md](agents/board.md): current `1.2.0` release gates and staged publish order
 - [release/1.2.0_RELEASE_NOTES.md](release/1.2.0_RELEASE_NOTES.md)
+- [release/1.2.1_RELEASE_NOTES_DRAFT.md](release/1.2.1_RELEASE_NOTES_DRAFT.md)
 - [release/1.1.0_RELEASE_NOTES.md](release/1.1.0_RELEASE_NOTES.md)
 - [release/0.8.0_RELEASE_NOTES_DRAFT.md](release/0.8.0_RELEASE_NOTES_DRAFT.md) (historical draft absorbed into `1.0.0`)
 - [0.7.0_HARDENING_GATE.md](0.7.0_HARDENING_GATE.md)
 - [validation/REAL_PLC_TESTING.md](validation/REAL_PLC_TESTING.md)
+- [validation/REAL_HARDWARE_RESULT_TEMPLATE.md](validation/REAL_HARDWARE_RESULT_TEMPLATE.md)
 - [validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md](validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md) (official 1.2.0 release gate, 4 bindings)
 - [validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md](validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md)
 - [validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)

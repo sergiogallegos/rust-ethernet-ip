@@ -20,9 +20,10 @@ For older Windows-only DLL notes, see [DLL_DEPLOYMENT.md](DLL_DEPLOYMENT.md), wh
 
 Current packaging state:
 
-- Rust crate: `0.7.0` published; `1.0.0` release candidate prepared in-repo, pending staged crates.io publish
-- C# NuGet package: `0.7.0` published; `1.0.0` project metadata prepared in-repo, pending NuGet publish
-- Python wrapper: `1.0.0` in-repo draft layer, not published to PyPI yet
+- Rust crate: `1.2.0` published on crates.io
+- C# NuGet package: `RustEtherNetIp 1.2.0` published with native runtime assets
+- Python package: `rust-ethernet-ip 1.2.0` published on PyPI with native wheels
+- C/C++: stable ABI v2 header and CMake example ship in the source repository
 
 ## Rust Integration
 
@@ -30,11 +31,11 @@ Current packaging state:
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "0.7.0"
+rust-ethernet-ip = "1.2.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
-For source builds from `main`, the crate manifests are currently prepared as `1.0.0`. The crates.io release requires the staged sibling-crate publish order documented in [agents/board.md](agents/board.md).
+For source builds from `main`, the crate manifests and four sibling crates are aligned at `1.2.0`.
 
 ### 2. Connect and read/write
 
@@ -76,13 +77,13 @@ Ship the compiled executable the same way you would ship any other Rust applicat
 ### 1. Add the NuGet package
 
 ```bash
-dotnet add package RustEtherNetIp --version 0.7.0
+dotnet add package RustEtherNetIp --version 1.2.0
 ```
 
 Or in the project file:
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="0.7.0" />
+<PackageReference Include="RustEtherNetIp" Version="1.2.0" />
 ```
 
 ### 2. Use the wrapper

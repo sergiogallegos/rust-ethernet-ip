@@ -1,5 +1,9 @@
 # Wrapper Update Summary
 
+> **Historical reference.** This summary predates the current `1.2.0`
+> published release and `1.2.1` preparation. Use current wrapper READMEs and
+> validation records for support claims.
+
 > Historical reference: this document describes an earlier multi-wrapper layout and still references removed `gowrapper/` and `pywrapper/` trees. Do not treat it as the current maintained architecture.
 
 ## Overview

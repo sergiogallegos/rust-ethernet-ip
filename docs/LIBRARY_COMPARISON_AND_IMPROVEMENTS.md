@@ -1,18 +1,23 @@
 # Library Comparison and Improvement Analysis
 
+> **Historical reference.** This analysis records the `0.5.3` era and is not a
+> current feature or performance comparison. The latest published release is
+> `1.2.0`; use current validation records for measured claims.
+
 > Historical reference: this analysis reflects the repo state and roadmap assumptions from October 2025. Treat planned-version statements and wrapper references here as historical context, not current release guidance.
 
 **Date:** October 6, 2025  
 **Version:** v0.5.3  
-**Analysis Scope:** Rust EtherNet/IP vs libplctag vs pycomm3
+**Analysis Scope:** Historical Rust EtherNet/IP ecosystem feature comparison
 
 ---
 
 ## Executive Summary
 
-This document provides a comprehensive analysis of the current Rust EtherNet/IP library implementation compared to two mature libraries in the industrial automation space:
-- **libplctag** - Cross-platform C library for PLC communication
-- **pycomm3** - Python library for Allen-Bradley PLCs
+This document provides a historical analysis of the Rust EtherNet/IP library
+implementation compared with mature native and Python industrial-automation
+libraries. Product names are intentionally omitted; only general ecosystem
+patterns are retained.
 
 ### Key Findings
 
@@ -31,7 +36,7 @@ This document provides a comprehensive analysis of the current Rust EtherNet/IP 
 2. **Tag Listing/Discovery** - Limited functionality
 3. **Route Path Support** - No support for remote racks or multi-hop routing
 4. **Slot Configuration** - Hardcoded to slot 0
-5. **Modbus Support** - Not implemented (libplctag has this)
+5. **Modbus Support** - Not implemented (available in broader third-party libraries)
 6. **Packet Size Negotiation** - Not fully implemented
 7. **Multiple Request Support** - Not yet optimized
 8. **Older PLC Support** - No PLC-5, SLC 500, or MicroLogix support
@@ -83,12 +88,12 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 
 ---
 
-## 2. libplctag Comparison
+## 2. Native-Library Comparison
 
-### 2.1 Features libplctag Has That We Don't
+### 2.1 Features Broader Native Libraries Had That We Didn't
 
 #### 2.1.1 PLC Support
-**libplctag supports:**
+**Broader native libraries supported:**
 - ✅ ControlLogix/CompactLogix (we have this)
 - ✅ Micro800/850 PLCs (we have this)
 - ✅ **PLC-5 PLCs** (Ethernet upgraded) - ❌ We don't have
@@ -111,7 +116,7 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 - **v0.9.0:** Legacy PLC support (PLC-5, SLC 500) if requested
 
 #### 2.1.2 Advanced CIP Features
-**libplctag has:**
+**Broader native libraries had:**
 - ✅ **Packet size negotiation** with firmware 20+ - ⚠️ We have partial support
 - ✅ **Multiple-request support per packet** - ⚠️ We have batch ops, but not optimized
 - ✅ **Tag listing (controller and program tags)** - ⚠️ We have basic discovery
@@ -128,7 +133,7 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 - **v0.6.0:** Enhance tag discovery with full attribute support
 
 #### 2.1.3 Data Type Support
-**libplctag supports:**
+**Broader native libraries supported:**
 - ✅ All standard types (we have this)
 - ✅ Arrays (we have this)
 - ✅ UDT raw access (we have this now)
@@ -136,7 +141,7 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 
 **Impact:** Low priority (we're on par)
 
-### 2.2 Features We Have That libplctag Doesn't
+### 2.2 Features That Differentiated This Project
 
 - ✅ **Real-time subscriptions** with event-driven notifications
 - ✅ **Type-safe Rust API** with memory safety guarantees
@@ -149,12 +154,12 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 
 ---
 
-## 3. pycomm3 Comparison
+## 3. Python-Library Comparison
 
-### 3.1 Features pycomm3 Has That We Don't
+### 3.1 Features Mature Python Libraries Had That We Didn't
 
 #### 3.1.1 UDT Support
-**pycomm3 has:**
+**Mature Python libraries had:**
 - ✅ **Automatic UDT definition discovery** - ❌ We don't have
 - ✅ **UDT template management** - ❌ We don't have
 - ✅ **Nested UDT navigation** - ❌ We don't have
@@ -164,7 +169,7 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 **Impact:** **CRITICAL** priority
 - This is the most significant gap in our library
 - Essential for industrial applications with complex data structures
-- Prevents easy migration from pycomm3
+- Prevents easy migration from mature Python alternatives
 
 **Recommendation:** **v0.6.0 - HIGH PRIORITY**
 1. Implement UDT definition discovery from PLC
@@ -174,7 +179,7 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 5. Add UDT array support
 
 #### 3.1.2 Tag Discovery
-**pycomm3 has:**
+**Mature Python libraries had:**
 - ✅ **Comprehensive tag discovery** with all attributes
 - ✅ **Controller-scoped tags** discovery
 - ✅ **Program-scoped tags** discovery
@@ -193,7 +198,7 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 - Cache discovered tags for performance
 
 #### 3.1.3 Data Type Features
-**pycomm3 has:**
+**Mature Python libraries had:**
 - ✅ All standard types (we have this)
 - ✅ **Automatic type detection** - ⚠️ We have partial support
 - ✅ **Type conversion** - ⚠️ We have basic support
@@ -207,7 +212,7 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 - Support structure templates
 
 #### 3.1.4 Connection Features
-**pycomm3 has:**
+**Mature Python libraries had:**
 - ✅ **Route path support** for remote racks - ❌ We don't have
 - ✅ **Slot configuration** (any slot, not just 0) - ❌ We only support slot 0
 - ✅ **Multi-hop routing** - ❌ We don't have
@@ -224,7 +229,7 @@ Users must know the UDT structure (member offsets, sizes, data types) and use `r
 - Add multi-hop routing
 - Enable remote rack connections
 
-### 3.2 Features We Have That pycomm3 Doesn't
+### 3.2 Features That Differentiated This Project
 
 - ✅ **Rust-based performance** (faster than Python)
 - ✅ **Memory safety** guarantees
@@ -637,7 +642,7 @@ pub enum TagScope {
 ## 7. Performance Comparison
 
 ### Current Performance (v0.5.3)
-| Operation | Our Library | libplctag | pycomm3 |
+| Operation | Our Library | Native comparison | Python comparison |
 |-----------|-------------|-----------|----------|
 | Single Read | 3,000+ ops/sec | ~2,000 ops/sec | ~500 ops/sec |
 | Single Write | 1,500+ ops/sec | ~1,000 ops/sec | ~300 ops/sec |
@@ -646,8 +651,8 @@ pub enum TagScope {
 | Connection Setup | 50-200ms | 100-300ms | 200-500ms |
 
 **Analysis:**
-- ✅ We outperform pycomm3 significantly (Python overhead)
-- ✅ We outperform libplctag moderately (async + Rust optimizations)
+- ✅ The historical measurements showed a significant advantage over the Python comparison (runtime overhead)
+- ✅ The historical measurements showed a moderate advantage over the native comparison (async + Rust optimizations)
 - ✅ Memory efficiency is excellent
 - ✅ Connection setup is fast
 
@@ -688,7 +693,9 @@ pub enum TagScope {
 3. ❌ **Slot Configuration** - Limits installation flexibility
 
 ### Recommendation
-**Focus on v0.6.0 with UDT and discovery enhancements.** This will make the library feature-competitive with pycomm3 and libplctag for the most common use cases, while maintaining our performance and safety advantages.
+**Focus on v0.6.0 with UDT and discovery enhancements.** This was expected to
+make the library feature-competitive with mature ecosystem options for the most
+common use cases, while maintaining its performance and safety advantages.
 
 ---
 
@@ -697,8 +704,8 @@ pub enum TagScope {
 ### Documentation Reviewed
 1. `/docs/enet-wp001_-en-p.pdf` - EtherNet/IP white paper
 2. `/docs/PUB00213R0_EtherNetIP_Developers_Guide.pdf` - Developer's guide
-3. libplctag repository: https://github.com/libplctag/libplctag
-4. pycomm3 repository: https://github.com/ottowayi/pycomm3
+3. Public native industrial-library documentation reviewed at the time
+4. Public Python industrial-library documentation reviewed at the time
 
 ### Key CIP Services for Implementation
 - **Service 0x01** (Read Tag) - Already implemented

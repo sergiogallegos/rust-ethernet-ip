@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Production-focused EtherNet/IP for Allen-Bradley CompactLogix and ControlLogix, available for Rust, .NET, Python, C, and C++.">
+  <meta name="theme-color" content="#f8f5ef">
+  <title>rust-ethernet-ip — One protocol core. Every modern stack.</title>
+  <link rel="icon" href="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/favicon/icon-32.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand brand-wordmark" href="#top" aria-label="rust-ethernet-ip home"><span class="brand-rust">rust</span><span class="brand-rest">-ethernet-ip</span></a>
+    <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button>
+    <nav id="site-nav" class="site-nav" aria-label="Primary navigation">
+      <a href="#languages">Languages</a>
+      <a href="#architecture">How it fits</a>
+      <a href="#hardware">Hardware</a>
+      <a href="#why">Why this library</a>
+      <a href="https://docs.rs/rust-ethernet-ip/1.2.0/rust_ethernet_ip/">API docs</a>
+      <a href="https://github.com/sponsors/sergiogallegos">Sponsor</a>
+      <a class="nav-cta" href="https://github.com/sergiogallegos/rust-ethernet-ip">GitHub ↗</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section id="top" class="hero section-shell">
+      <div class="hero-copy">
+        <p class="eyebrow"><span></span> Stable 1.2.0 · 1.2.1 preview · C ABI v2</p>
+        <h1>One protocol core.<br><em>Every modern stack.</em></h1>
+        <p class="hero-lede">A memory-safe EtherNet/IP client for Allen-Bradley CompactLogix and ControlLogix—with first-class Rust, .NET, Python, C, and C++ paths.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#quick-start">Start building <span>→</span></a>
+          <a class="button button-secondary" href="https://github.com/sergiogallegos/rust-ethernet-ip">View source</a>
+        </div>
+        <div class="trust-row" aria-label="Project qualities">
+          <span>MIT licensed</span><span>No OPC or RSLinx</span><span>Real-PLC tested</span><span>Rust 1.88+</span>
+        </div>
+      </div>
+      <div class="hero-visual" aria-label="Library architecture diagram">
+        <div class="signal-card">
+          <div class="signal-head"><span>LIVE / TAG STREAM</span><span class="signal-dot"></span></div>
+          <div class="signal-chart" aria-hidden="true">
+            <svg viewBox="0 0 560 210" preserveAspectRatio="none">
+              <path class="grid" d="M0 42H560M0 84H560M0 126H560M0 168H560M112 0V210M224 0V210M336 0V210M448 0V210"/>
+              <path class="trace-shadow" d="M0 148 C35 145 40 122 72 125 S110 160 145 143 S177 69 210 86 S247 138 284 117 S318 52 353 72 S393 152 429 118 S469 39 505 70 S535 93 560 62"/>
+              <path class="trace" d="M0 148 C35 145 40 122 72 125 S110 160 145 143 S177 69 210 86 S247 138 284 117 S318 52 353 72 S393 152 429 118 S469 39 505 70 S535 93 560 62"/>
+            </svg>
+          </div>
+          <div class="signal-stats">
+            <div><span>READ</span><strong>1.9 ms</strong></div>
+            <div><span>WRITE</span><strong>2.0 ms</strong></div>
+            <div><span>STATE</span><strong class="status-ok">CONNECTED</strong></div>
+          </div>
+        </div>
+        <div class="architecture-strip">
+          <span>Rust core</span><i>→</i><span>C ABI</span><i>→</i><span>4 ecosystems</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="proof-bar" aria-label="Release validation highlights">
+      <div><strong>2,338</strong><span>real tags read</span></div>
+      <div><strong>2,319</strong><span>writes verified</span></div>
+      <div><strong>4 / 4</strong><span>bindings passed</span></div>
+      <div><strong>0</strong><span>unexpected anomalies</span></div>
+    </section>
+
+    <section class="use-case-bar" aria-label="Common application types">
+      <span>HMI</span><span>SCADA integration</span><span>MES / OEE</span><span>Historians</span><span>Data logging</span><span>IIoT gateways</span><span>Edge services</span>
+    </section>
+
+    <section id="architecture" class="section-shell section-block architecture-section">
+      <div class="section-heading architecture-heading">
+        <p class="eyebrow"><span></span> Where the library fits</p>
+        <h2>Your application.<br>Direct Logix data.</h2>
+        <p>Build the interface your users need. This project owns the protocol, routing, and controller details between your application code and CompactLogix or ControlLogix tags.</p>
+      </div>
+      <ol class="solution-flow" aria-label="Application to PLC communication flow">
+        <li>
+          <span class="flow-number">01</span>
+          <div class="flow-icon">UI</div>
+          <h3>Interface or service</h3>
+          <p>Desktop HMI, web backend, MES service, collector, historian, or edge gateway.</p>
+        </li>
+        <li>
+          <span class="flow-number">02</span>
+          <div class="flow-icon">APP</div>
+          <h3>Your application</h3>
+          <p>Write normal application code in Rust, C#, Python, C, or C++.</p>
+          <div class="flow-chips"><span>Rs</span><span>C#</span><span>Py</span><span>C</span><span>C++</span></div>
+        </li>
+        <li class="flow-library">
+          <span class="flow-number">03</span>
+          <div class="flow-icon">EIP</div>
+          <h3>rust-ethernet-ip</h3>
+          <p>Thin language bindings over one memory-safe Rust protocol core.</p>
+          <strong>The layer this project provides</strong>
+        </li>
+        <li>
+          <span class="flow-number">04</span>
+          <div class="flow-icon">CIP</div>
+          <h3>EtherNet/IP + CIP</h3>
+          <p>Sessions, symbolic paths, chassis routing, batching, fragmentation, and errors.</p>
+        </li>
+        <li>
+          <span class="flow-number">05</span>
+          <div class="flow-icon">PLC</div>
+          <h3>Logix controller</h3>
+          <p>Read, write, discover, batch, and monitor CompactLogix or ControlLogix tags.</p>
+        </li>
+      </ol>
+      <div class="direct-path">
+        <strong>Direct application-to-controller path</strong>
+        <span>No OPC server</span><span>No RSLinx dependency</span><span>No proprietary runtime key</span>
+      </div>
+      <p class="browser-note"><strong>Web application note:</strong> the PLC connection belongs in your backend or edge service; browser JavaScript should call that service rather than opening an industrial protocol connection directly.</p>
+    </section>
+
+    <section id="languages" class="section-shell section-block">
+      <div class="section-heading">
+        <p class="eyebrow"><span></span> Choose your stack</p>
+        <h2>Native where it matters.<br>Familiar where you work.</h2>
+        <p>Every binding runs through the same Rust implementation, so protocol fixes and controller behavior stay consistent.</p>
+      </div>
+      <div class="language-grid">
+        <article class="language-card rust-card">
+          <div class="language-icon">Rs</div><span class="tag">CORE</span>
+          <h3>Rust</h3><p>Async, typed access with full control over routes, batches, UDTs, diagnostics, and subscriptions.</p>
+          <code>rust-ethernet-ip = "1.2.0"</code>
+          <div class="card-links"><a href="https://docs.rs/rust-ethernet-ip/1.2.0/rust_ethernet_ip/">API reference →</a><a href="https://crates.io/crates/rust-ethernet-ip">crates.io ↗</a></div>
+        </article>
+        <article class="language-card">
+          <div class="language-icon dotnet">.N</div><span class="tag">WRAPPER</span>
+          <h3>.NET / C#</h3><p>Typed, idiomatic APIs for HMIs, MES integrations, Windows services, and ASP.NET applications.</p>
+          <code>dotnet add package RustEtherNetIp</code>
+          <div class="card-links"><a href="https://github.com/sergiogallegos/rust-ethernet-ip/tree/main/csharp/RustEtherNetIp">Documentation →</a><a href="https://www.nuget.org/packages/RustEtherNetIp/1.2.0">NuGet ↗</a></div>
+        </article>
+        <article class="language-card">
+          <div class="language-icon python">Py</div><span class="tag">WRAPPER</span>
+          <h3>Python</h3><p>PLC data for collectors, analytics, historians, APIs, pandas workflows, and edge services.</p>
+          <code>pip install rust-ethernet-ip==1.2.0</code>
+          <div class="card-links"><a href="https://github.com/sergiogallegos/rust-ethernet-ip/tree/main/python">Documentation →</a><a href="https://pypi.org/project/rust-ethernet-ip/1.2.0/">PyPI ↗</a></div>
+        </article>
+        <article class="language-card">
+          <div class="language-icon cpp">C++</div><span class="tag">ABI v2</span>
+          <h3>C / C++</h3><p>A checked-in C header and compact RAII wrapper for native, Qt, and industrial PC applications.</p>
+          <code>#include "rust_ethernet_ip.h"</code>
+          <div class="card-links"><a href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/docs/CPP_INTEGRATION.md">Integration guide →</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/tree/main/examples/cpp">Examples ↗</a></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="quick-start" class="quick-start section-shell section-block">
+      <div class="code-panel">
+        <div class="code-tabs" role="tablist" aria-label="Quick start language">
+          <button type="button" class="code-tab active" role="tab" aria-selected="true" data-lang="rust">Rust</button>
+          <button type="button" class="code-tab" role="tab" aria-selected="false" data-lang="csharp">C#</button>
+          <button type="button" class="code-tab" role="tab" aria-selected="false" data-lang="python">Python</button>
+        </div>
+        <pre data-code="rust"><code><span class="kw">use</span> rust_ethernet_ip::{EipClient, PlcValue};
+
+<span class="kw">let mut</span> plc = EipClient::connect(<span class="str">"192.168.1.10:44818"</span>).await?;
+<span class="kw">let</span> speed = plc.read_tag(<span class="str">"Program:Main.Speed"</span>).await?;
+plc.write_tag(<span class="str">"Program:Main.Setpoint"</span>, PlcValue::Dint(<span class="num">1500</span>)).await?;</code></pre>
+        <pre data-code="csharp" hidden><code><span class="kw">using var</span> plc = <span class="kw">new</span> EtherNetIpClient();
+plc.Connect(<span class="str">"192.168.1.10:44818"</span>);
+
+<span class="kw">var</span> speed = plc.ReadDint(<span class="str">"Program:Main.Speed"</span>);
+plc.WriteDint(<span class="str">"Program:Main.Setpoint"</span>, <span class="num">1500</span>);</code></pre>
+        <pre data-code="python" hidden><code><span class="kw">from</span> rust_ethernet_ip <span class="kw">import</span> EtherNetIpClient
+
+<span class="kw">with</span> EtherNetIpClient(<span class="str">"192.168.1.10:44818"</span>) <span class="kw">as</span> plc:
+    speed = plc.read_tag(<span class="str">"Program:Main.Speed"</span>)
+    plc.write_tag(<span class="str">"Program:Main.Setpoint"</span>, <span class="num">1500</span>)</code></pre>
+      </div>
+      <div class="quick-copy">
+        <p class="eyebrow"><span></span> Start in minutes</p>
+        <h2>One connection.<br>The API you expect.</h2>
+        <p>Direct CompactLogix or routed ControlLogix, controller tags or program tags—the same symbolic paths work across every supported language.</p>
+        <a class="text-link" href="https://github.com/sergiogallegos/rust-ethernet-ip#installation">Installation guide →</a>
+      </div>
+    </section>
+
+    <section id="hardware" class="hardware section-block">
+      <div class="section-shell hardware-grid">
+        <div>
+          <p class="eyebrow light"><span></span> Evidence, not assumptions</p>
+          <h2>Tested on real Logix hardware.</h2>
+          <p>The library targets CompactLogix and ControlLogix explicit tag access, including integrated Ethernet and chassis routing. Compatibility claims are tied to an exact processor, firmware, topology, release, and language binding—not only a family name.</p>
+          <div class="target-families"><span><strong>Designed targets</strong> CompactLogix 5370 / 5380 · ControlLogix 5570 / 5580</span><span><strong>Validated routes</strong> Direct Ethernet · 1756-EN2T · 1756-EN3TR</span></div>
+          <div class="hardware-actions"><a class="button button-light" href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/docs/HARDWARE_COMPATIBILITY.md">View full matrix</a><a class="button button-ghost" href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/docs/validation/REAL_HARDWARE_RESULT_TEMPLATE.md">Contribute a test →</a></div>
+        </div>
+        <div class="matrix-card">
+          <div class="matrix-row matrix-head"><span>Processor / firmware</span><span>Bindings</span><span></span></div>
+          <div class="matrix-row"><span><strong>5069-L330ERM</strong><small>Firmware 38</small></span><span>Rs · C# · Py · C++</span><b>DONE</b></div>
+          <div class="matrix-row"><span><strong>1756-L75</strong><small>Firmware 33</small></span><span>Rs · C# · Py</span><b>DONE</b></div>
+          <div class="matrix-row"><span><strong>1769-L18ER</strong><small>Firmware 33</small></span><span>Rs · C# · Py</span><b>DONE</b></div>
+          <div class="matrix-row"><span><strong>1756-L81ES</strong><small>Firmware 37</small></span><span>Rs · C# · Py</span><b>DONE</b></div>
+          <div class="matrix-row"><span><strong>Your PLC</strong><small>L7, L8, 5069…</small></span><span>Help expand coverage</span><b class="open">OPEN</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="why" class="section-shell section-block why-section">
+      <div class="section-heading"><p class="eyebrow"><span></span> Built for industrial software</p><h2>Protocol depth without protocol duplication.</h2></div>
+      <div class="feature-grid">
+        <article><span>01</span><h3>Memory-safe core</h3><p>Rust owns wire parsing, session state, routing, fragmentation, and controller-specific behavior.</p></article>
+        <article><span>02</span><h3>Thin wrappers</h3><p>C#, Python, and C/C++ share one native implementation and one compatibility contract.</p></article>
+        <article><span>03</span><h3>Logix-aware</h3><p>Program tags, arrays, packed BOOLs, built-in and custom strings, nested UDTs, and routed chassis access.</p></article>
+        <article><span>04</span><h3>Inspectable evidence</h3><p>Simulator tests, cross-language contracts, release gates, and real-hardware records live beside the code.</p></article>
+      </div>
+      <div class="platform-band">
+        <div><span>Direct connectivity</span><strong>No OPC server, RSLinx, or proprietary runtime key required.</strong></div>
+        <div><span>Packaged runtimes</span><strong>Windows x64 · Linux x64 · macOS arm64</strong></div>
+        <div><span>Examples included</span><strong>Rust · C# desktop/web · Python data services · CMake C++</strong></div>
+        <div><span>Support path</span><strong>GitHub Issues for defects · Discussions for integration help</strong></div>
+      </div>
+    </section>
+
+    <section class="final-cta section-shell">
+      <p class="eyebrow"><span></span> Open source · MIT</p>
+      <h2>Connect modern software<br>to the factory floor.</h2>
+      <p>Read the docs, inspect the protocol core, or bring another processor and firmware into the compatibility matrix.</p>
+      <div class="hero-actions"><a class="button button-primary" href="https://github.com/sergiogallegos/rust-ethernet-ip">Explore on GitHub <span>→</span></a><a class="button button-secondary" href="https://docs.rs/rust-ethernet-ip/1.2.0/rust_ethernet_ip/">Read Rust API docs</a><a class="button button-secondary" href="https://github.com/sponsors/sergiogallegos">Sponsor development ♡</a></div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-brand"><img src="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/logo-light.png" alt="rust-ethernet-ip mascot logo"><p>Production-focused EtherNet/IP for modern software stacks.</p></div>
+    <div><strong>Documentation</strong><a href="https://docs.rs/rust-ethernet-ip/1.2.0/rust_ethernet_ip/">Rust API</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/tree/main/csharp/RustEtherNetIp">C#</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/tree/main/python">Python</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/docs/CPP_INTEGRATION.md">C / C++</a></div>
+    <div><strong>Packages</strong><a href="https://crates.io/crates/rust-ethernet-ip">crates.io</a><a href="https://www.nuget.org/packages/RustEtherNetIp/1.2.0">NuGet</a><a href="https://pypi.org/project/rust-ethernet-ip/1.2.0/">PyPI</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/releases">Releases</a></div>
+    <div><strong>Community</strong><a href="https://github.com/sergiogallegos/rust-ethernet-ip/issues">Issues</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/discussions">Discussions</a><a href="https://github.com/sponsors/sergiogallegos">Sponsor development</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/CONTRIBUTING.md">Contributing</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/security">Security</a></div>
+    <div><strong>Legal</strong><a href="privacy.html">Privacy</a><a href="license.html">MIT license</a><a href="license.html#safety">Safety notice</a></div>
+    <p class="copyright">© 2026 rust-ethernet-ip contributors</p>
+  </footer>
+  <script src="site.js"></script>
+</body>
+</html>

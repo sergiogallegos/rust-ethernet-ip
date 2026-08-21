@@ -2,7 +2,7 @@
 //!
 //! `rust-ethernet-ip` provides async Rust APIs for explicit EtherNet/IP and CIP
 //! tag operations, plus FFI surfaces used by the repository's .NET wrapper.
-//! The current released crate line is `1.2.0`.
+//! The current released crate line is `1.2.1`.
 //!
 //! ## Highlights
 //!
@@ -48,7 +48,7 @@
 //! Earlier release lines classified several direct write shapes as
 //! controller/firmware limitations. Hardware probes on 2026-07-02 through
 //! 2026-07-08 corrected that picture, and the fixes ship in this line.
-//! Real-hardware validation for the `1.2.0` release line (CompactLogix
+//! Real-hardware validation for the `1.2.1` release line (CompactLogix
 //! 5069-L330ERM fw38, full-coverage across Rust/C#/Python/C++) confirmed:
 //!
 //! - Standalone standard Logix `STRING` tags write directly using the standard
@@ -71,6 +71,7 @@
 //! scope.
 
 #![deny(unused_must_use, unsafe_op_in_unsafe_fn)]
+#![deny(missing_docs)]
 #![cfg_attr(not(test), warn(clippy::print_stdout, clippy::dbg_macro))]
 
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -110,24 +111,41 @@ pub trait EtherNetIpStream: AsyncRead + AsyncWrite + Unpin + Send {}
 
 impl<S> EtherNetIpStream for S where S: AsyncRead + AsyncWrite + Unpin + Send {}
 
+/// Batch operation types and packet-grouping configuration.
 pub mod batch;
+/// Async EtherNet/IP clients and high-level tag operations.
 pub mod client;
+/// Legacy production configuration models.
 pub mod config; // Production-ready configuration management
+/// Error and result types.
 pub mod error;
 #[cfg(feature = "ffi")]
+/// Stable C ABI used by the C/C++, C#, and Python bindings.
 pub mod ffi;
+/// Multi-controller client collection and event forwarding.
 pub mod fleet;
+/// Connection, operation, performance, error, and health metrics.
 pub mod monitoring; // Enterprise-grade monitoring and health checks
+/// Legacy PLC connection manager.
 pub mod plc_manager;
 pub(crate) mod protocol;
+/// Ordered CIP routing paths for backplane and network hops.
 pub mod route;
+/// Portable controller tag and UDT schema export models.
 pub mod schema;
+/// Legacy single-tag subscription primitives.
 pub mod subscription;
+/// Named tag-group polling and subscription models.
 pub mod tag_group;
+/// Tag metadata discovery and caching.
 pub mod tag_manager;
+/// Structured symbolic Logix tag paths.
 pub mod tag_path;
+/// Values exchanged with Logix tags.
 pub mod types;
+/// User-defined type metadata and conversion helpers.
 pub mod udt;
+/// Library, ABI, capability, and build version metadata.
 pub mod version;
 
 // Re-export commonly used items

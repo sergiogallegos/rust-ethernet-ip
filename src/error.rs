@@ -24,19 +24,37 @@ pub enum EtherNetIpError {
 
     /// Data type mismatch
     #[error("Data type mismatch: expected {expected}, got {actual}")]
-    DataTypeMismatch { expected: String, actual: String },
+    DataTypeMismatch {
+        /// Data type required by the target.
+        expected: String,
+        /// Data type supplied by the caller or response.
+        actual: String,
+    },
 
     /// Write error with status code
     #[error("Write error: {message} (status: {status})")]
-    WriteError { status: u8, message: String },
+    WriteError {
+        /// CIP general status code.
+        status: u8,
+        /// Human-readable write failure detail.
+        message: String,
+    },
 
     /// Read error with status code
     #[error("Read error: {message} (status: {status})")]
-    ReadError { status: u8, message: String },
+    ReadError {
+        /// CIP general status code.
+        status: u8,
+        /// Human-readable read failure detail.
+        message: String,
+    },
 
     /// Invalid response from PLC
     #[error("Invalid response: {reason}")]
-    InvalidResponse { reason: String },
+    InvalidResponse {
+        /// Explanation of the malformed or inconsistent response.
+        reason: String,
+    },
 
     /// Timeout error
     #[error("Operation timed out after {0:?}")]
@@ -56,18 +74,28 @@ pub enum EtherNetIpError {
 
     /// CIP protocol error with status code (from PLC)
     #[error("CIP error 0x{code:02X}: {message}")]
-    CipError { code: u8, message: String },
+    CipError {
+        /// CIP general status code.
+        code: u8,
+        /// Human-readable controller response.
+        message: String,
+    },
 
     /// String is too long for the PLC's string type
     #[error("String too long: max length is {max_length}, but got {actual_length}")]
     StringTooLong {
+        /// Maximum encoded string byte length for the target type/path.
         max_length: usize,
+        /// Supplied UTF-8 byte length.
         actual_length: usize,
     },
 
     /// String contains invalid characters
     #[error("Invalid string: {reason}")]
-    InvalidString { reason: String },
+    InvalidString {
+        /// Explanation of the invalid length, encoding, or payload.
+        reason: String,
+    },
 
     /// Tag error
     #[error("Tag error: {0}")]

@@ -56,7 +56,12 @@ pub enum TagSubscriptionEvent {
     /// A value update passed the subscription's deadband and was published.
     Value(PlcValue),
     /// A polling error occurred. `terminal` means the poll loop stopped.
-    Error { message: String, terminal: bool },
+    Error {
+        /// Human-readable polling failure.
+        message: String,
+        /// Whether the subscription stopped after this error.
+        terminal: bool,
+    },
 }
 
 #[derive(Clone)]

@@ -1,16 +1,30 @@
-# Rust Vs C# Wrapper Parity
+# Rust Vs Wrapper Parity
 
 ## Summary
 
-The current C# wrapper is close to parity with the exercised Rust core feature set for `0.7.0`, with the clearest exceptions being intentionally unsupported batch-configuration APIs and wrapper-specific surface differences in error reporting and lifecycle semantics.
+The strongest current parity evidence is the `1.2.0` CompactLogix
+`5069-L330ERM` fw38 release gate: Rust, C#, Python, and C/C++ completed the same
+2,338 reads and 2,319 writes/verifications with zero anomalies. API shape and
+error/lifecycle behavior still differ by language even when wire behavior is
+shared.
 
 ## Current Understanding
 
 - `confirmed`: Real-hardware wrapper validation was completed on the same CompactLogix and ControlLogix targets used for the Rust validation pass.
+- `confirmed`: C/C++ joined the real-hardware parity gate in `1.2.0` on the
+  5069-L330ERM fw38 target.
 - `confirmed`: Primitive reads and writes, batch operations, route-path connection, subscriptions, tag groups, and health-check flows were exercised successfully in the wrapper on both validated PLC targets.
 - `confirmed`: Wrapper failures in the comprehensive matrix matched the Rust/native limitation profile rather than exposing a separate wrapper-only regression class.
 - `confirmed`: `ConfigureBatchOperations(...)` and `GetBatchConfig()` are intentionally unsupported in this release line and throw `NotSupportedException`.
 - `needs-care`: Parity should be interpreted as "validated for the exercised feature set", not "all wrapper behavior is identical to Rust internals."
+- `confirmed`: The checked-in C ABI is the complete native wrapper contract;
+  the header-only C++ RAII class is an intentionally smaller example covering
+  direct connection, DINT/REAL/STRING, and batch calls.
+- `confirmed`: C++ compilation, header parity, and the simulator smoke are
+  blocking on Linux, Windows, and macOS in the `1.2.1` preparation line.
+- `needs-care`: Generic C/C++ consumers still lack installable
+  CMake/`pkg-config` metadata, standalone SDK archives, and generated reference
+  documentation.
 
 ## Areas With Strong Parity Evidence
 
@@ -32,9 +46,11 @@ The current C# wrapper is close to parity with the exercised Rust core feature s
 
 ### Error Mapping
 
-- `confirmed`: Some PLC write-limit failures surface as wrapper-specific user-facing messages rather than raw native status detail.
-- `confirmed`: Direct `STRING` write failures may surface as batch-level `0x1E` embedded service errors in the wrapper.
-- `confirmed`: Direct UDT-array-member writes are surfaced as the documented `0x2107` limitation in the wrapper.
+- `confirmed`: C# and Python preserve native last-error detail through
+  wrapper-specific exception types; C/C++ callers use return codes plus the
+  last-error API.
+- `superseded`: Earlier direct STRING and scalar UDT-array-member `0x2107`
+  limitations were request-encoding/path defects, not permanent wrapper gaps.
 
 ### Lifecycle And Cleanup
 
@@ -58,11 +74,16 @@ The current C# wrapper is close to parity with the exercised Rust core feature s
 - [docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md](../../docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md)
 - [docs/validation/2026-04-07_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](../../docs/validation/2026-04-07_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 - [docs/audit/0.7.0_docs_api_audit.md](../../docs/audit/0.7.0_docs_api_audit.md)
+- [docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md](../../docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md)
+- [docs/audit/1.2.1_wrapper_and_platform_gap_analysis.md](../../docs/audit/1.2.1_wrapper_and_platform_gap_analysis.md)
+- [docs/CPP_INTEGRATION.md](../../docs/CPP_INTEGRATION.md)
 
 ## Open Questions
 
 - Whether wrapper parity should get split into separate pages for API parity, performance parity, and failure-surface parity as more features are validated.
 - Whether richer native PLC error detail should be preserved through the wrapper for direct `STRING` write failures instead of the current summarized `0x1E` surface.
+- Whether the C++ RAII example should become a supported SDK surface or remain
+  an example while the C ABI stays the sole native compatibility contract.
 
 ## Related Pages
 

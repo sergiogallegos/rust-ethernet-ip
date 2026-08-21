@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and may not reflect the current 1.0.0 codebase.
+> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
 
 # Library Limitations
 

@@ -1,15 +1,28 @@
+//! UDT template parsing, cached metadata, and member value conversion.
+
 use rust_ethernet_ip_types::{PlcValue, TypeError, UdtCodec, UdtData};
 
+/// Result type returned by UDT operations.
 pub type Result<T> = std::result::Result<T, UdtError>;
 
+/// Error returned while parsing or converting a UDT.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UdtError {
+    /// The PLC response or UDT payload is malformed.
     Protocol(String),
+    /// The requested tag was not found.
     TagNotFound(String),
-    DataTypeMismatch { expected: String, actual: String },
+    /// A member value has a different type than its definition.
+    DataTypeMismatch {
+        /// Data type required by the UDT definition.
+        expected: String,
+        /// Data type supplied by the caller.
+        actual: String,
+    },
 }
 
 impl UdtError {
+    /// Creates a protocol-format error.
     pub fn protocol(message: impl Into<String>) -> Self {
         Self::Protocol(message.into())
     }
@@ -33,39 +46,58 @@ use std::collections::HashMap;
 /// Definition of a User Defined Type
 #[derive(Debug, Clone)]
 pub struct UdtDefinition {
+    /// Logix data type name.
     pub name: String,
+    /// Members in template order.
     pub members: Vec<UdtMember>,
 }
 
 /// Member of a UDT
 #[derive(Debug, Clone)]
 pub struct UdtMember {
+    /// Member name.
     pub name: String,
+    /// CIP data type code.
     pub data_type: u16,
+    /// Byte offset from the start of the structure.
     pub offset: u32,
+    /// Encoded member size in bytes.
     pub size: u32,
 }
 
 /// UDT Template information from PLC
 #[derive(Debug, Clone)]
 pub struct UdtTemplate {
+    /// Template object instance id.
     pub template_id: u32,
+    /// Logix data type name.
     pub name: String,
+    /// Encoded structure size in bytes.
     pub size: u32,
+    /// Member count reported by the controller.
     pub member_count: u16,
+    /// Parsed, named members.
     pub members: Vec<UdtMember>,
 }
 
 /// Tag attributes from PLC
 #[derive(Debug, Clone)]
 pub struct TagAttributes {
+    /// Fully qualified symbolic tag name.
     pub name: String,
+    /// CIP data type code.
     pub data_type: u16,
+    /// Human-readable data type name.
     pub data_type_name: String,
+    /// Declared array dimensions, or an empty vector for a scalar.
     pub dimensions: Vec<u32>,
+    /// Reported access permissions.
     pub permissions: TagPermissions,
+    /// Controller or program scope.
     pub scope: TagScope,
+    /// Template instance id for a structured value, when known.
     pub template_instance_id: Option<u32>,
+    /// Encoded tag size in bytes.
     pub size: u32,
 }
 
@@ -79,17 +111,24 @@ struct RawMember {
 /// Tag permissions
 #[derive(Debug, Clone, PartialEq)]
 pub enum TagPermissions {
+    /// Reads are allowed and writes are not.
     ReadOnly,
+    /// Reads and writes are allowed.
     ReadWrite,
+    /// Writes are allowed and reads are not.
     WriteOnly,
+    /// Permissions were not reported or could not be inferred.
     Unknown,
 }
 
 /// Tag scope
 #[derive(Debug, Clone, PartialEq)]
 pub enum TagScope {
+    /// Controller-scoped tag.
     Controller,
+    /// Program-scoped tag carrying the program name.
     Program(String),
+    /// Scope was not reported or could not be inferred.
     Unknown,
 }
 
@@ -102,6 +141,7 @@ pub struct UdtManager {
 }
 
 impl UdtManager {
+    /// Creates an empty UDT metadata cache.
     pub fn new() -> Self {
         Self {
             definitions: HashMap::new(),

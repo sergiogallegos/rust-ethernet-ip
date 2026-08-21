@@ -603,6 +603,9 @@ impl EipClient {
         Ok(client)
     }
 
+    /// Connects directly to a controller.
+    ///
+    /// This is an alias for [`Self::connect`].
     pub async fn new(addr: &str) -> Result<Self> {
         let addr = addr
             .parse::<SocketAddr>()
@@ -968,7 +971,7 @@ impl EipClient {
     /// The Symbol Object enumeration is PAGED: a program holding more tags than
     /// fit in one reply answers with general status `0x06` (partial transfer)
     /// and the caller must resume from the last instance id returned. This loop
-    /// mirrors [`Self::discover_tags_detailed_internal`]; without it a program
+    /// mirrors `discover_tags_detailed_internal`; without it a program
     /// with many tags surfaced only as `CIP Error 0x06: Partial transfer` and
     /// none of its tags were reachable.
     pub async fn discover_program_tags(
@@ -3424,6 +3427,7 @@ impl EipClient {
         Ok(Self::SINGLE_PACKET_WRITE_LIMIT - empty_request.len())
     }
 
+    /// Builds the initial controller-scoped Symbol Object enumeration request.
     pub fn build_list_tags_request(&self) -> Vec<u8> {
         tracing::debug!("Building list tags request");
 

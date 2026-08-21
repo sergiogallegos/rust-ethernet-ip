@@ -76,3 +76,35 @@ ctest --test-dir target/cpp --output-on-failure
 
 The smoke starts the checked-in simulator, connects through the C ABI,
 round-trips DINT, REAL, and STRING tags, then runs batch read/write calls.
+
+## C ABI Versus the C++ Convenience Class
+
+`include/rust_ethernet_ip.h` is the complete supported native interface. It
+includes typed scalar access, generic JSON values, arrays, UDTs, discovery,
+ordered route hops, diagnostics, health, and batch operations.
+
+`examples/cpp/eip_client.hpp` is a deliberately small example wrapper. It adds
+move-only RAII ownership, structured errors, direct connection, DINT/REAL/STRING
+access, and batch calls. Features not represented by that class remain usable
+by calling the C ABI directly; their absence from the example class is not an
+absence from the library.
+
+Current C/C++ integration gaps for contributors:
+
+- expand the RAII convenience class to cover routed connections, every scalar
+  type, discovery, UDTs, diagnostics, and health;
+- provide installable CMake package metadata and `pkg-config` metadata instead
+  of requiring consumers to define an imported library manually;
+- publish standalone native SDK archives containing the header, library,
+  import library where applicable, license, and examples;
+- generate a browsable C/C++ API reference from the checked-in header;
+- add a sanitizer-enabled native consumer job and broader compiler coverage.
+
+The blocking C++ header/example matrix covers Ubuntu, Windows, and macOS as of
+the `1.2.1` preparation line.
+
+These are distribution and ergonomics improvements. They do not expand the
+project's protocol scope beyond EtherNet/IP access to CompactLogix and
+ControlLogix controllers. See the
+[wrapper/platform gap analysis](audit/1.2.1_wrapper_and_platform_gap_analysis.md)
+for the comparison and priorities.

@@ -18,6 +18,11 @@ PACKAGE_ORDER = [
     "rust-ethernet-ip",
 ]
 EXAMPLE_PREFIX = "examples/"
+DEVELOPMENT_EXEMPT_SITES = {
+    ("CHANGELOG.md", "latest [X.Y.Z] heading"),
+    ("README.md", "Rust install snippet"),
+    ("csharp/RustEtherNetIp/README.md", "current published package"),
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,6 +30,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("version", help="expected version, e.g. 1.0.0")
     parser.add_argument("--root", default=".", help="repository root")
     parser.add_argument("--strict", action="store_true", help="fail on pre-publish dependency resolution gaps")
+    parser.add_argument(
+        "--development",
+        action="store_true",
+        help="allow registry-facing docs to remain on the published version while main prepares this version",
+    )
     parser.add_argument("--ignore-examples", action="store_true", help="skip demo .csproj version checks")
     parser.add_argument("--skip-package", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
@@ -73,10 +83,36 @@ def check_versions(args: argparse.Namespace) -> int:
                     actual = "<not found>"
             else:
                 raise SystemExit(f"unknown manifest kind: {kind}")
-        if not ok:
+        development_pending = (
+            args.development
+            and not ok
+            and (rel, label) in DEVELOPMENT_EXEMPT_SITES
+            and re.match(r"^\d+\.\d+\.\d+$", actual) is not None
+        )
+        if not ok and not development_pending:
             failures += 1
-        mark = "✓" if ok else "✗"
+        mark = "✓" if ok else ("~" if development_pending else "✗")
         print(f"{rel:<52} {label:<34} {expected:<12} {actual:<12} {mark}")
+    if args.development:
+        markers = [
+            (
+                "CHANGELOG.md",
+                rf"Target release:\s*`{re.escape(args.version)}`",
+                "Unreleased target",
+            ),
+            (
+                "README.md",
+                rf"Next patch in preparation:\s*`{re.escape(args.version)}`",
+                "development-line marker",
+            ),
+        ]
+        for rel, pattern, label in markers:
+            text = (root / rel).read_text(encoding="utf-8")
+            ok = re.search(pattern, text) is not None
+            if not ok:
+                failures += 1
+            mark = "✓" if ok else "✗"
+            print(f"{rel:<52} {label:<34} {args.version:<12} {'present' if ok else 'missing':<12} {mark}")
     return failures
 
 

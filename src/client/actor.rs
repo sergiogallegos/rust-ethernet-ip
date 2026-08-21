@@ -1,3 +1,5 @@
+//! Actor-backed shared client and opt-in retry wrapper.
+
 use super::EipClient;
 use crate::batch::{BatchError, BatchOperation, BatchResult};
 use crate::error::{EtherNetIpError, Result};
@@ -10,37 +12,53 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 type BatchReadResults = Vec<(String, std::result::Result<PlcValue, BatchError>)>;
 type BatchWriteResults = Vec<(String, std::result::Result<(), BatchError>)>;
 
+/// Connection lifecycle event emitted by [`Client`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionEvent {
+    /// The worker started with a connected EtherNet/IP session.
     Connected,
+    /// The worker explicitly disconnected from the controller.
     Disconnected,
+    /// The actor command loop exited.
     WorkerStopped,
 }
 
+/// Cloneable client handle that serializes operations through one worker task.
 #[derive(Debug, Clone)]
 pub struct Client {
     tx: mpsc::Sender<ClientCommand>,
     events: broadcast::Sender<ConnectionEvent>,
 }
 
+/// Delay strategy applied between retry attempts.
 #[derive(Debug, Clone)]
 pub enum Backoff {
+    /// Use the same delay between every attempt.
     Constant(Duration),
+    /// Multiply the delay after each failed attempt up to a ceiling.
     Exponential {
+        /// Delay before the first retry.
         initial: Duration,
+        /// Maximum delay between attempts.
         max: Duration,
+        /// Multiplier applied after each attempt.
         factor: u32,
     },
 }
 
+/// Retry limits and backoff behavior for [`RetryClient`].
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
+    /// Maximum total attempts, including the initial request.
     pub max_attempts: usize,
+    /// Delay strategy between attempts.
     pub backoff: Backoff,
+    /// Whether writes may be retried; disabled by default to avoid duplicate effects.
     pub retry_writes: bool,
 }
 
 impl RetryPolicy {
+    /// Creates a policy with a fixed delay and writes disabled.
     pub fn constant(max_attempts: usize, delay: Duration) -> Self {
         Self {
             max_attempts: max_attempts.max(1),
@@ -49,6 +67,7 @@ impl RetryPolicy {
         }
     }
 
+    /// Creates a factor-two exponential policy capped at `max`.
     pub fn exponential(max_attempts: usize, initial: Duration, max: Duration) -> Self {
         Self {
             max_attempts: max_attempts.max(1),
@@ -61,6 +80,7 @@ impl RetryPolicy {
         }
     }
 
+    /// Enables or disables write retries.
     pub fn retry_writes(mut self, retry_writes: bool) -> Self {
         self.retry_writes = retry_writes;
         self
@@ -81,6 +101,7 @@ impl RetryPolicy {
     }
 }
 
+/// Actor-backed client plus a retry policy for transient errors.
 #[derive(Clone)]
 pub struct RetryClient {
     client: Client,
@@ -130,14 +151,17 @@ enum ClientCommand {
 }
 
 impl Client {
+    /// Connects directly to a controller and starts the client worker.
     pub async fn connect(addr: &str) -> Result<Self> {
         Self::from_eip_client(EipClient::connect(addr).await?)
     }
 
+    /// Connects using an ordered route and starts the client worker.
     pub async fn with_route_path(addr: &str, route: RoutePath) -> Result<Self> {
         Self::from_eip_client(EipClient::with_route_path(addr, route).await?)
     }
 
+    /// Takes ownership of an existing connected client and starts its worker.
     pub fn from_eip_client(client: EipClient) -> Result<Self> {
         let (tx, rx) = mpsc::channel(128);
         let (events, _) = broadcast::channel(128);
@@ -150,10 +174,12 @@ impl Client {
         Ok(actor)
     }
 
+    /// Subscribes to connection lifecycle events.
     pub fn events(&self) -> broadcast::Receiver<ConnectionEvent> {
         self.events.subscribe()
     }
 
+    /// Returns a retrying view of this client.
     pub fn with_retry(&self, policy: RetryPolicy) -> RetryClient {
         RetryClient {
             client: self.clone(),
@@ -161,6 +187,7 @@ impl Client {
         }
     }
 
+    /// Reads one symbolic tag.
     pub async fn read_tag(&self, tag_name: &str) -> Result<PlcValue> {
         let (reply, rx) = oneshot::channel();
         self.send(ClientCommand::ReadTag {
@@ -171,6 +198,7 @@ impl Client {
         rx.await.unwrap_or_else(|_| actor_stopped())
     }
 
+    /// Writes one symbolic tag.
     pub async fn write_tag(&self, tag_name: &str, value: PlcValue) -> Result<()> {
         let (reply, rx) = oneshot::channel();
         self.send(ClientCommand::WriteTag {
@@ -182,6 +210,7 @@ impl Client {
         rx.await.unwrap_or_else(|_| actor_stopped())
     }
 
+    /// Writes a built-in or custom Logix string using handle discovery.
     pub async fn write_string_tag(&self, tag_name: &str, value: &str) -> Result<()> {
         let (reply, rx) = oneshot::channel();
         self.send(ClientCommand::WriteStringTag {
@@ -193,6 +222,7 @@ impl Client {
         rx.await.unwrap_or_else(|_| actor_stopped())
     }
 
+    /// Writes one named member of a UDT tag.
     pub async fn write_udt_member(
         &self,
         udt_tag_name: &str,
@@ -210,6 +240,7 @@ impl Client {
         rx.await.unwrap_or_else(|_| actor_stopped())
     }
 
+    /// Writes one member of a UDT array element.
     pub async fn write_udt_array_member(
         &self,
         udt_array_element_path: &str,
@@ -220,6 +251,7 @@ impl Client {
             .await
     }
 
+    /// Executes mixed read and write operations using batch packet grouping.
     pub async fn execute_batch(&self, operations: &[BatchOperation]) -> Result<Vec<BatchResult>> {
         let (reply, rx) = oneshot::channel();
         self.send(ClientCommand::ExecuteBatch {
@@ -230,6 +262,7 @@ impl Client {
         rx.await.unwrap_or_else(|_| actor_stopped())
     }
 
+    /// Reads several tags and preserves per-tag errors.
     pub async fn read_tags_batch(&self, tag_names: &[&str]) -> Result<BatchReadResults> {
         let (reply, rx) = oneshot::channel();
         self.send(ClientCommand::ReadTagsBatch {
@@ -240,6 +273,7 @@ impl Client {
         rx.await.unwrap_or_else(|_| actor_stopped())
     }
 
+    /// Writes several tags and preserves per-tag errors.
     pub async fn write_tags_batch(
         &self,
         tag_values: &[(&str, PlcValue)],
@@ -256,16 +290,19 @@ impl Client {
         rx.await.unwrap_or_else(|_| actor_stopped())
     }
 
+    /// Performs an active controller health check.
     pub async fn check_health(&self) -> Result<bool> {
         let (reply, rx) = oneshot::channel();
         self.send(ClientCommand::CheckHealth { reply }).await?;
         rx.await.map_err(|_| actor_stopped_error())
     }
 
+    /// Returns a passive diagnostics snapshot from recorded operation state.
     pub async fn get_diagnostics_snapshot(&self) -> Result<DiagnosticsSnapshot> {
         self.diagnostics(false).await
     }
 
+    /// Performs a health check and returns a verified diagnostics snapshot.
     pub async fn get_diagnostics_snapshot_detailed(&self) -> Result<DiagnosticsSnapshot> {
         self.diagnostics(true).await
     }
@@ -286,11 +323,13 @@ impl Client {
 }
 
 impl RetryClient {
+    /// Reads a tag, retrying retriable failures according to the policy.
     pub async fn read_tag(&self, tag_name: &str) -> Result<PlcValue> {
         self.retry(|| async { self.client.read_tag(tag_name).await })
             .await
     }
 
+    /// Writes a tag; retries occur only when explicitly enabled by the policy.
     pub async fn write_tag(&self, tag_name: &str, value: PlcValue) -> Result<()> {
         if !self.policy.retry_writes {
             return self.client.write_tag(tag_name, value).await;
@@ -303,6 +342,7 @@ impl RetryClient {
         .await
     }
 
+    /// Writes a string; retries occur only when explicitly enabled by the policy.
     pub async fn write_string_tag(&self, tag_name: &str, value: &str) -> Result<()> {
         if !self.policy.retry_writes {
             return self.client.write_string_tag(tag_name, value).await;

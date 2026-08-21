@@ -1,12 +1,22 @@
 # Roadmap — future work
 
-> Status as of 2026-06-19: **1.1.0 is shipped** to crates.io (×5), NuGet (multi-RID
-> win/linux/osx-arm64), and PyPI (win/macOS/manylinux + sdist), CI green on all
-> three OSes. The items below are the planned follow-up work, grouped by target
-> release. Each is scoped enough to become a `docs/agents/` CODEX brief when it
-> is picked up; nothing here is in progress yet.
+> Status as of 2026-08-21: **1.2.0 is shipped** to crates.io (×5), NuGet, and
+> PyPI. `1.2.1` is in preparation with post-1.2.0 program-tag discovery fixes,
+> complete public API docs, a real-hardware test program, and the project
+> website. Historical `1.2.0` planning below is retained for traceability.
 
-## 1.2.0 — next minor (additive, non-breaking)
+## 1.2.1 — patch in preparation
+
+- Finish the full Markdown/link audit and API documentation gate.
+- Ship the static project website and deployment instructions.
+- Publish the exact hardware matrix, contributor result template, endurance
+  profiles, and performance characterization protocol.
+- Re-run the cross-binding hardware gate for program discovery paging/scope
+  propagation before publishing when the maintained controller is available.
+- Complete the local/package checks in
+  [release/1.2.1_RELEASE_NOTES_DRAFT.md](release/1.2.1_RELEASE_NOTES_DRAFT.md).
+
+## 1.2.0 — shipped minor (historical plan)
 
 Recommended sequencing for this release line:
 
@@ -17,7 +27,7 @@ Recommended sequencing for this release line:
    and stable.
 4. Platform/package coverage and internal refactors as capacity allows.
 
-### 1. Full documentation refresh  *(priority for this release)*
+### 1. Full documentation refresh *(completed during 1.2.1 preparation)*
 The 1.1.0 version bump only swept the 22 release-readiness-checked files plus the
 root and C# READMEs. A complete pass is owed:
 

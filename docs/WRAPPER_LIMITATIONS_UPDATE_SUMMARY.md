@@ -1,5 +1,9 @@
 # Wrapper Limitations Update Summary
 
+> **Historical reference.** This summary predates the current `1.2.0`
+> published release and `1.2.1` preparation. Several earlier STRING and UDT
+> limitations were superseded by `1.2.0` fixes.
+
 > Historical reference: this summary reflects an earlier wrapper layout and still references removed `gowrapper/` and `pywrapper/` trees. Use the current Rust, C#, and Python wrapper docs for active behavior.
 
 ## Overview

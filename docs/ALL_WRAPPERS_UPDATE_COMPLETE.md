@@ -1,5 +1,9 @@
 # All Wrappers Update Complete ✅
 
+> **Historical reference.** This completion note predates the current `1.2.0`
+> published release and `1.2.1` preparation. Use `README.md`, `docs/README.md`,
+> and current wrapper READMEs for supported behavior.
+
 > Historical reference: this document describes an earlier wrapper layout and still references removed `gowrapper/` and `pywrapper/` trees. Do not treat it as the current maintained architecture.
 
 ## Summary

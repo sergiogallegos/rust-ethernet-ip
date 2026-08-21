@@ -413,7 +413,7 @@ Version 0.5.4 represents a major milestone in the library's evolution, providing
 ✅ **Enterprise Support** - Route paths for complex topologies  
 ✅ **Developer Friendly** - Rich APIs and comprehensive documentation  
 
-The library now provides **feature parity** with mature libraries like libplctag and pycomm3 while maintaining its **performance and safety advantages**.
+The library now provides **feature parity** with mature third-party libraries for the exercised UDT scenarios while maintaining its **performance and safety advantages**.
 
 ---
 

@@ -43,6 +43,7 @@ This project exists to fill that gap with a single, MIT-licensed protocol implem
 ## Version Status
 
 - Current stable release: `1.2.0` (crates.io + NuGet + PyPI)
+- Next patch in preparation: `1.2.1` (post-1.2.0 fixes, API documentation, hardware test program, and project website; not yet published)
 - Previous stable release: `1.1.0` (tagged 2026-06-19)
 - Earlier stable releases: `1.0.0`, `0.7.0`
 - Real-hardware validation evidence is included for the release
@@ -50,7 +51,31 @@ This project exists to fill that gap with a single, MIT-licensed protocol implem
 Release snapshot:
 - `1.2.0` is a minor (non-breaking) release: behavioral fixes, deprecations, and additive surface with no Rust-API signature breaks. Highlights: **handle-aware STRING writes** so custom Logix string types (own name/length, e.g. `Str82`/`Str400`) read and write through the normal string APIs; **CIP fragmentation** (Read/Write Tag Fragmented) for strings/structures larger than one packet; **packet-size-aware batch grouping** (fixes large batch reads); first-class **C/C++ consumer support** (`include/rust_ethernet_ip.h` + CMake example); transport/session hardening, tag-addressing correctness, and diagnostics honesty. The C FFI ABI is now **v2** (removes three unusable `*mut EipClient` exports; `eip_abi_version()` bumped) — the Rust API and the C#/Python packages are unaffected. See [`CHANGELOG.md`](CHANGELOG.md).
 - Full-coverage hardware exercisers pass on CompactLogix 5069-L330ERM fw38 across Rust/C#/Python/C++: 2304/2304 reads, 2285/2285 writes, 2285/2285 verify, 0 unexpected anomalies (STRING members now written+verified via the handle-aware path). See [`docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md`](docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md).
+- The [real-hardware compatibility matrix and contributor test program](docs/HARDWARE_COMPATIBILITY.md) tracks exact processor/firmware/binding evidence and defines 24-hour endurance and performance characterization profiles.
 - crates.io ships five workspace artifacts at `1.2.0`: `rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, and the top-level `rust-ethernet-ip`. NuGet ships `RustEtherNetIp 1.2.0` and PyPI ships `rust-ethernet-ip 1.2.0` from the GitHub release workflow on tag push.
+
+## Release Validation Tiers
+
+Inspired by the useful "Tier One platform" convention used by mature native
+libraries, Tier 1 here means a target is a blocking automated release gate. It
+does **not** mean that every CompactLogix or ControlLogix model has been tested.
+Exact controller and firmware evidence is tracked separately in the
+[real-hardware compatibility matrix](docs/HARDWARE_COMPATIBILITY.md).
+
+| Target | Platforms/toolchains | What the blocking gate exercises | Tier 1 |
+|---|---|---|:---:|
+| Rust core | Ubuntu, Windows, macOS; stable and beta | Format, Clippy, complete workspace tests, all features | Yes |
+| Rust MSRV | Ubuntu; Rust 1.88 | Complete workspace tests with all features | Yes |
+| C# wrapper | Ubuntu, Windows, macOS; .NET 10 | Managed tests plus native P/Invoke integration tests | Yes |
+| Python wrapper | Ubuntu, Windows, macOS; Python 3.10–3.12 | Import, source compilation, unit and simulator-backed integration tests | Yes |
+| C/C++ ABI and example | Ubuntu, Windows, and macOS; C++17/CMake | Header/export parity, link test, RAII smoke example, full-coverage runner build | Yes |
+| Package assembly | Linux x64, Windows x64, macOS arm64 | Cargo package, NuGet pack, Python wheel build/install/import | Yes |
+| Real PLC release gate | 5069-L330ERM firmware 38 | Full read/write/read-back manifest in Rust, C#, Python, and C/C++ | Yes, for `1.2.0` |
+
+“Yes” records the required target and scope, not the latest GitHub Actions run.
+Before relying on a commit, confirm its checks are green. New platforms become
+Tier 1 only after repeatable CI coverage exists; community-tested combinations
+remain in the hardware matrix until promoted into a release gate.
 
 ## Project Focus
 
@@ -148,7 +173,9 @@ cargo build --release --features ffi --locked
 Use [`include/rust_ethernet_ip.h`](include/rust_ethernet_ip.h) for the stable C
 ABI, or the small RAII wrapper in [`examples/cpp/`](examples/cpp/) for C++
 projects. Qt applications should keep the blocking FFI calls on a worker
-`QThread`; see [`docs/CPP_INTEGRATION.md`](docs/CPP_INTEGRATION.md).
+`QThread`; see [`docs/CPP_INTEGRATION.md`](docs/CPP_INTEGRATION.md). The C ABI is
+the complete native wrapper boundary; the example RAII class is intentionally a
+smaller convenience layer, not yet a full C++ SDK.
 
 ## Integration and Deployment
 
@@ -340,6 +367,7 @@ ctest --test-dir target/cpp --output-on-failure
 - [Integration and deployment guide](docs/INTEGRATION_AND_DEPLOYMENT.md)
 - [Python wrapper guide](python/README.md)
 - [C/C++ integration guide](docs/CPP_INTEGRATION.md)
+- [Wrapper and native-platform gap analysis](docs/audit/1.2.1_wrapper_and_platform_gap_analysis.md)
 - [Official sources traceability](docs/OFFICIAL_SOURCES.md)
 - [PLC/simulator compatibility matrix (0.7.0)](docs/compat/0.7.0_plc_simulator_compatibility_matrix.md)
 - [C# wrapper guide](csharp/RustEtherNetIp/README.md)

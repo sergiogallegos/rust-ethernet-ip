@@ -26,6 +26,7 @@ pub struct ProductionConfig {
     pub plc_settings: HashMap<String, PlcSpecificConfig>,
 }
 
+/// Network timeouts, retry behavior, and connection limits.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionConfig {
     /// Default connection timeout
@@ -44,6 +45,7 @@ pub struct ConnectionConfig {
     pub keep_alive_interval: Duration,
 }
 
+/// Packet, batching, pooling, and memory settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceConfig {
     /// Maximum packet size
@@ -56,6 +58,7 @@ pub struct PerformanceConfig {
     pub memory_limits: MemoryLimits,
 }
 
+/// Legacy batch execution configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchConfig {
     /// Maximum operations per batch
@@ -68,6 +71,7 @@ pub struct BatchConfig {
     pub optimize_packet_packing: bool,
 }
 
+/// Legacy connection-pool sizing and cleanup settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionPoolConfig {
     /// Initial pool size
@@ -82,6 +86,7 @@ pub struct ConnectionPoolConfig {
     pub cleanup_interval: Duration,
 }
 
+/// Advisory process memory thresholds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryLimits {
     /// Maximum memory usage in MB
@@ -92,6 +97,7 @@ pub struct MemoryLimits {
     pub enable_monitoring: bool,
 }
 
+/// Diagnostic collection and health-check settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitoringConfig {
     /// Enable production monitoring
@@ -108,6 +114,7 @@ pub struct MonitoringConfig {
     pub alert_thresholds: AlertThresholds,
 }
 
+/// Thresholds used to raise monitoring alerts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertThresholds {
     /// Error rate threshold (0.0 to 1.0)
@@ -120,6 +127,7 @@ pub struct AlertThresholds {
     pub connection_failure_threshold: u32,
 }
 
+/// Input validation, rate limiting, and reserved encryption settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
     /// Enable connection encryption (if supported by PLC)
@@ -132,6 +140,7 @@ pub struct SecurityConfig {
     pub rate_limiting: RateLimitingConfig,
 }
 
+/// Request-rate limiter settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RateLimitingConfig {
     /// Enable rate limiting
@@ -142,6 +151,7 @@ pub struct RateLimitingConfig {
     pub burst_capacity: u32,
 }
 
+/// Log level, format, destination, and rotation settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggingConfig {
     /// Log level (trace, debug, info, warn, error)
@@ -158,6 +168,7 @@ pub struct LoggingConfig {
     pub rotation: LogRotationConfig,
 }
 
+/// Rotating log-file policy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogRotationConfig {
     /// Enable log rotation
@@ -170,31 +181,45 @@ pub struct LogRotationConfig {
     pub schedule: LogRotationSchedule,
 }
 
+/// Minimum severity emitted by configured logging.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
+    /// Very detailed diagnostic events.
     Trace,
+    /// Debugging events.
     Debug,
+    /// Normal informational events.
     Info,
+    /// Potential problems that do not stop operation.
     Warn,
+    /// Operation failures.
     Error,
 }
 
+/// Log record serialization format.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LogFormat {
+    /// Structured JSON records.
     Json,
+    /// Human-readable text records.
     Text,
 }
 
+/// Calendar interval for log rotation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LogRotationSchedule {
+    /// Rotate once per day.
     Daily,
+    /// Rotate once per week.
     Weekly,
+    /// Rotate once per month.
     Monthly,
 }
 
+/// Per-controller overrides keyed by PLC address.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlcSpecificConfig {
     /// PLC model/type
@@ -207,6 +232,7 @@ pub struct PlcSpecificConfig {
     pub performance_tuning: HashMap<String, String>,
 }
 
+/// Periodic tag-discovery settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TagDiscoveryConfig {
     /// Enable automatic tag discovery

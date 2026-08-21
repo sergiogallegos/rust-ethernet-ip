@@ -28,7 +28,7 @@ Trigger: maintainer question — since a Logix STRING is internally a `DINT .LEN
 Supporting observations:
 
 - **Structure instance size is 88 bytes** (`LEN` DINT 4 + `DATA` 82 + 2 alignment pad). B1 vs B2 isolates this: the same request with an 86-byte payload gets `0x13` "not enough data"; with 88 bytes it succeeds. This matches the `0x00CE => 88` size already recorded in `crates/udt/src/lib.rs`.
-- **`0x0FCE` is the structure handle for the standard STRING template**, carried in the type field as `A0 02 CE 0F` (structure marker `0x02A0` + handle). This is the same encoding pycomm3 and libplctag use for Logix STRING writes.
+- **`0x0FCE` is the structure handle for the standard STRING template**, carried in the type field as `A0 02 CE 0F` (structure marker `0x02A0` + handle). This matches the ecosystem-standard encoding for Logix STRING writes.
 - **Reads return the raw structure**: `read_tag("gTest_STRING")` on this hardware returns `PlcValue::Udt` whose data is `[CE 0F][LEN u32 LE][DATA 82][pad 2]` (90 bytes), not `PlcValue::String`. The in-process simulator returns atomic type `0x00CE` for STRING reads, so sim tests decode to `PlcValue::String` — a sim/hardware divergence.
 - Strategy C succeeded through today's public `write_tag`, but the mechanism was not traced (the `.DATA[i]` writes are likely routed through the array-element read-modify-write workaround rather than a direct element-segment path). This does **not** contradict CODEX-AM's finding that `TagPath`'s `StringData` segment encoding is malformed.
 
@@ -41,7 +41,7 @@ Supporting observations:
 ## Limitations
 
 - Only a **controller-scoped, standard (82-char) STRING** was probed. Not yet hardware-tested: program-scoped STRING tags, STRING members inside UDTs and UDT array elements, custom-length `STRINGnn` types (different template handles and instance sizes), and batch STRING writes.
-- Single controller / single firmware (5069-L330ERM fw38). The encoding matches the format used broadly by the ecosystem (pycomm3, libplctag), so cross-firmware risk is low, but the full-coverage manifest relabel must be confirmed by a full hardware run.
+- Single controller / single firmware (5069-L330ERM fw38). The encoding matches the format used broadly by the ecosystem, so cross-firmware risk is low, but the full-coverage manifest relabel must be confirmed by a full hardware run.
 
 ## Follow-up
 

@@ -1,6 +1,6 @@
-# 🚀 Rust EtherNet/IP ASP.NET Core Example (1.0.0)
+# 🚀 Rust EtherNet/IP ASP.NET Core Example (1.2.0)
 
-A comprehensive ASP.NET Core Web API demonstrating batch operations and STRING handling in the released `rust-ethernet-ip` 1.0.0 line.
+A comprehensive ASP.NET Core Web API demonstrating batch operations and STRING handling in the released `rust-ethernet-ip` 1.2.0 line.
 
 Release-readiness note:
 - The ASP.NET sample builds cleanly against the current wrapper.

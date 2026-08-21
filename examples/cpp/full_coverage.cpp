@@ -331,7 +331,7 @@ int main(int argc, char **argv) {
         if (!is_writeable(t.write)) continue;
         CatStats &s = stats[t.category];
         int rc = -1;
-        Written w{idx, t.kind};
+        Written w{idx, t.kind, 0, 0.0, {}};
         switch (t.kind) {
             case Kind::Dint: { w.i = (int)(nextr() % 100000); rc = eip_write_dint(cid, t.name.c_str(), w.i); break; }
             case Kind::Int:  { w.i = (int)(nextr() % 20000) - 10000; rc = eip_write_int(cid, t.name.c_str(), (int16_t)w.i); break; }

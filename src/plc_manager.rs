@@ -226,6 +226,7 @@ impl PlcManager {
         }
     }
 
+    /// Returns a connected client for `address`, creating the legacy pool entry if needed.
     pub async fn get_client(&mut self, address: &str) -> Result<&mut EipClient> {
         let addr = address
             .parse::<SocketAddr>()

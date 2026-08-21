@@ -1,20 +1,30 @@
+//! CIP request, response, and Common Packet Format codecs.
+
 use bytes::{Buf, BufMut, BytesMut};
 
 use crate::{Decode, Encode, ProtocolError, Result};
 
+/// CIP Read Tag service code.
 pub const READ_TAG: u8 = 0x4C;
+/// CIP Write Tag service code.
 pub const WRITE_TAG: u8 = 0x4D;
 #[allow(dead_code)]
+/// CIP Multiple Service Packet service code.
 pub const MULTIPLE_SERVICE_PACKET: u8 = 0x0A;
 
+/// An unconnected CIP service request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CipRequest {
+    /// CIP service code.
     pub service: u8,
+    /// Word-aligned encoded request path.
     pub path: Vec<u8>,
+    /// Service-specific request data.
     pub data: Vec<u8>,
 }
 
 impl CipRequest {
+    /// Creates a request from an encoded path and service data.
     pub fn new(service: u8, path: Vec<u8>, data: Vec<u8>) -> Self {
         Self {
             service,
@@ -23,6 +33,7 @@ impl CipRequest {
         }
     }
 
+    /// Validates path presence, alignment, and the one-byte word-count limit.
     pub fn validate(&self) -> Result<()> {
         if self.path.is_empty() {
             return Err(ProtocolError::new(format!(
@@ -51,6 +62,7 @@ impl CipRequest {
         Ok(())
     }
 
+    /// Validates and appends the encoded request to `buf`.
     pub fn encode(&self, buf: &mut BytesMut) -> Result<()> {
         self.validate()?;
         buf.put_u8(self.service);
@@ -86,11 +98,16 @@ impl Decode for CipRequest {
     }
 }
 
+/// A decoded CIP service response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CipResponse {
+    /// Reply service code, normally the request service with bit 7 set.
     pub service: u8,
+    /// CIP general status code.
     pub status: u8,
+    /// Optional 16-bit extended status words.
     pub additional_status: Vec<u16>,
+    /// Service-specific response data.
     pub data: Vec<u8>,
 }
 
@@ -138,20 +155,28 @@ impl Decode for CipResponse {
     }
 }
 
+/// One Common Packet Format item.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CpfItem {
+    /// CPF item type identifier.
     pub type_id: u16,
+    /// Item payload.
     pub data: Vec<u8>,
 }
 
+/// Payload carried by SendRRData or SendUnitData encapsulation commands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendDataRequest {
+    /// Encapsulation interface handle; zero for CIP.
     pub interface_handle: u32,
+    /// Encapsulation timeout in seconds.
     pub timeout: u16,
+    /// Common Packet Format items.
     pub items: Vec<CpfItem>,
 }
 
 impl SendDataRequest {
+    /// Wraps an unconnected CIP message in the standard null-address/data items.
     pub fn unconnected(item_data: &[u8]) -> Self {
         Self {
             interface_handle: 0,

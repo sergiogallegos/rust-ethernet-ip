@@ -16,7 +16,10 @@ pub enum BatchOperation {
     /// # Fields
     ///
     /// * `tag_name` - The name of the tag to read
-    Read { tag_name: String },
+    Read {
+        /// Fully qualified symbolic tag to read.
+        tag_name: String,
+    },
 
     /// Write operation for a specific tag with a value
     ///
@@ -24,7 +27,12 @@ pub enum BatchOperation {
     ///
     /// * `tag_name` - The name of the tag to write
     /// * `value` - The value to write to the tag
-    Write { tag_name: String, value: PlcValue },
+    Write {
+        /// Fully qualified symbolic tag to write.
+        tag_name: String,
+        /// Value to write.
+        value: PlcValue,
+    },
 }
 
 /// Result of a single operation in a batch request
@@ -56,7 +64,12 @@ pub enum BatchError {
 
     /// Data type mismatch between expected and actual
     #[error("Data type mismatch: expected {expected}, got {actual}")]
-    DataTypeMismatch { expected: String, actual: String },
+    DataTypeMismatch {
+        /// Data type required by the target.
+        expected: String,
+        /// Data type supplied by the operation.
+        actual: String,
+    },
 
     /// Network communication error
     #[error("Network error: {0}")]
@@ -64,7 +77,12 @@ pub enum BatchError {
 
     /// CIP protocol error with status code
     #[error("CIP error (0x{status:02X}): {message}")]
-    CipError { status: u8, message: String },
+    CipError {
+        /// CIP general status code.
+        status: u8,
+        /// Human-readable controller response.
+        message: String,
+    },
 
     /// Tag name parsing error
     #[error("Tag path error: {0}")]

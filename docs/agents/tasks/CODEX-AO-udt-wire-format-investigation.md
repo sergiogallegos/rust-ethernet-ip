@@ -19,7 +19,7 @@ Resolve the conflict between the 2026-07-01 repository analysis ([`docs/agents/r
 
 Attach to this task (or `docs/validation/`):
 
-1. Wireshark capture of a **known-good third-party client** (Studio 5000, RSLinx, pycomm3, or libplctag) writing a whole UDT tag — the ground-truth write-type bytes.
+1. Wireshark capture of a **known-good third-party client** writing a whole UDT tag — the ground-truth write-type bytes.
 2. Capture of *this library* reading the same UDT tag — the reply's type/handle bytes, to confirm what precedes the struct payload.
 3. Capture of this library writing the same UDT via the RMW path — what actually goes on the wire today.
 4. The UDT's Template attribute values (structure handle vs template instance id) — obtainable via the library's own `read_udt_template` path or a third-party tool.

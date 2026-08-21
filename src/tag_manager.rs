@@ -18,14 +18,18 @@ pub enum TagScope {
     Controller,
     /// Tag in a program scope
     Program(String),
+    /// Legacy global scope classification.
     Global,
+    /// Legacy local scope classification.
     Local,
 }
 
 /// Array information for tags
 #[derive(Debug, Clone)]
 pub struct ArrayInfo {
+    /// Declared lengths for each array dimension.
     pub dimensions: Vec<u32>,
+    /// Product of all declared dimensions.
     pub element_count: u32,
 }
 
@@ -46,7 +50,9 @@ pub struct TagMetadata {
     pub scope: TagScope,
     /// Last time this tag was accessed
     pub last_access: Instant,
+    /// Optional normalized array shape and element count.
     pub array_info: Option<ArrayInfo>,
+    /// Time at which discovery last refreshed this metadata.
     pub last_updated: Instant,
 }
 
@@ -122,12 +128,15 @@ impl TagCache {
 /// Manager for PLC tag discovery and caching
 #[derive(Debug)]
 pub struct TagManager {
+    /// Discovered tag metadata keyed by fully qualified symbolic name.
     pub cache: RwLock<HashMap<String, TagMetadata>>,
     cache_duration: Duration,
+    /// Discovered UDT definitions keyed by type name.
     pub udt_definitions: RwLock<HashMap<String, UdtDefinition>>,
 }
 
 impl TagManager {
+    /// Creates an empty metadata and UDT cache.
     pub fn new() -> Self {
         Self {
             cache: RwLock::new(HashMap::new()),
@@ -136,6 +145,7 @@ impl TagManager {
         }
     }
 
+    /// Returns unexpired cached metadata for a tag.
     pub async fn get_metadata(&self, tag_name: &str) -> Result<Option<TagMetadata>> {
         let cache = self.cache.read()?;
         Ok(cache.get(tag_name).and_then(|metadata| {
@@ -147,11 +157,13 @@ impl TagManager {
         }))
     }
 
+    /// Inserts or replaces cached tag metadata.
     pub async fn update_metadata(&self, tag_name: String, metadata: TagMetadata) -> Result<()> {
         self.cache.write()?.insert(tag_name, metadata);
         Ok(())
     }
 
+    /// Validates that a cached tag grants the requested permissions.
     pub async fn validate_tag(
         &self,
         tag_name: &str,
@@ -174,11 +186,13 @@ impl TagManager {
         }
     }
 
+    /// Removes all cached tag metadata.
     pub async fn clear_cache(&self) -> Result<()> {
         self.cache.write()?.clear();
         Ok(())
     }
 
+    /// Removes metadata older than the configured cache duration.
     pub async fn remove_stale_entries(&self) -> Result<()> {
         self.cache
             .write()?
@@ -186,6 +200,7 @@ impl TagManager {
         Ok(())
     }
 
+    /// Enumerates controller tags and refreshes the metadata cache.
     pub async fn discover_tags(&self, client: &mut EipClient) -> Result<()> {
         let response = client
             .send_cip_request(&client.build_list_tags_request())
@@ -388,6 +403,7 @@ impl TagManager {
         }
     }
 
+    /// Parses a Symbol Object enumeration response into named metadata entries.
     pub fn parse_tag_list(&self, response: &[u8]) -> Result<Vec<(String, TagMetadata)>> {
         tracing::trace!(
             "Raw tag list response ({} bytes): {:02X?}",

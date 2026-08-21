@@ -2,7 +2,10 @@
 
 ## Summary
 
-The current implementation treats route-path support as stable for the validated `0.7.0` scenarios. For ControlLogix, the route path must be carried through Unconnected Send handling rather than prepended to the symbolic service request path.
+The `1.2.0` implementation treats ordered route paths as stable for direct
+CompactLogix access and single-chassis ControlLogix access through validated
+`1756-EN2T` and `1756-EN3TR` modules. True multi-hop routes remain `likely`
+rather than confirmed.
 
 ## Current Understanding
 
@@ -34,6 +37,7 @@ The current implementation treats route-path support as stable for the validated
 - [docs/validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md](../../docs/validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md)
 - [src/route.rs](../../src/route.rs)
 - [tests/udt_discovery_tests.rs](../../tests/udt_discovery_tests.rs)
+- [docs/HARDWARE_COMPATIBILITY.md](../../docs/HARDWARE_COMPATIBILITY.md)
 
 ## Open Questions
 

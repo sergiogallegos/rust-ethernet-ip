@@ -45,6 +45,7 @@ impl MemberWriteStrategy for EipClient {
 }
 
 impl EipClient {
+    /// Writes a built-in or custom Logix string using its discovered structure handle.
     pub async fn write_string_tag(&mut self, tag_name: &str, value: &str) -> Result<()> {
         self.write_tag(tag_name, PlcValue::String(value.to_string()))
             .await
@@ -70,6 +71,7 @@ impl EipClient {
         }
     }
 
+    /// Writes one named member of a UDT tag.
     pub async fn write_udt_member(
         &mut self,
         udt_tag_name: &str,
@@ -79,6 +81,7 @@ impl EipClient {
         write_udt_member_direct_first(self, udt_tag_name, member_name, value).await
     }
 
+    /// Writes one named member of a UDT array element.
     pub async fn write_udt_array_member(
         &mut self,
         udt_array_element_path: &str,

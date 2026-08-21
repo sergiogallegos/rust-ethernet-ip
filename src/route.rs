@@ -3,9 +3,19 @@
 #[non_exhaustive]
 pub enum RouteHop {
     /// Backplane/chassis hop. Rockwell ControlLogix backplanes normally use port 1.
-    Backplane { port: u8, slot: u8 },
+    Backplane {
+        /// CIP port number used to enter the backplane.
+        port: u8,
+        /// Destination chassis slot.
+        slot: u8,
+    },
     /// Ethernet hop using an IPv4 link address. Rockwell Ethernet ports commonly use port 2.
-    Ethernet { port: u8, address: String },
+    Ethernet {
+        /// CIP network port number.
+        port: u8,
+        /// Link address, normally an IP address.
+        address: String,
+    },
 }
 
 /// Route path for PLC communication.

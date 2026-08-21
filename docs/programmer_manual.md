@@ -2,11 +2,11 @@
 
 Practical manual for developers integrating the library in Rust projects or through the C# wrapper.
 
-- Last updated: `2026-05-24`
-- Source baseline commit: `ecadf95`
+- Last updated for release: `1.2.0`
+- Release date: `2026-07-08`
 
-- Current published stable crate line: `1.0.0` (crates.io + NuGet)
-- Previous stable crate line: `0.7.0`
+- Current published stable line: `1.2.0` (crates.io + NuGet + PyPI)
+- Previous stable line: `1.1.0`
 - Target PLCs: CompactLogix / ControlLogix
 
 ## Contents
@@ -56,11 +56,11 @@ MixerRecipe.Stage[2].TemperatureSetpoint
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "1.0.0"
+rust-ethernet-ip = "1.2.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
-`1.0.0` is the current published stable release on crates.io and NuGet. The crate re-exports four publishable sibling crates (`rust-ethernet-ip-{types,protocol,tag-path,udt}`); source builds from `main` track the same line.
+`1.2.0` is the current published stable release on crates.io, NuGet, and PyPI. The crate re-exports four publishable sibling crates (`rust-ethernet-ip-{types,protocol,tag-path,udt}`); source builds from `main` track the same line.
 
 ### Quick Start
 
@@ -392,4 +392,4 @@ Recommended workaround pattern for rejected STRING members in both Rust and C#: 
 - Run sustained read/write soak tests in your target network topology.
 - Capture error handling for disconnects, timeouts, and type mismatches.
 - Lock down network access (firewall/VLAN) because EtherNet/IP has limited built-in security.
-- Pin stable crate versions in production deployments (`1.0.0` is the current published stable release).
+- Pin stable crate versions in production deployments (`1.2.0` is the current published stable release).

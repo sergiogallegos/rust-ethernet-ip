@@ -25,7 +25,7 @@ The primary human-facing architecture document is [docs/SOFTWARE_ARCHITECTURE.md
 - [src/lib.rs](../../src/lib.rs)
 - [src/ffi.rs](../../src/ffi.rs)
 - [src/subscription.rs](../../src/subscription.rs)
-- [src/tag_subscription.rs](../../src/tag_subscription.rs)
+- [src/subscription.rs](../../src/subscription.rs)
 - [src/plc_manager.rs](../../src/plc_manager.rs)
 - [csharp/RustEtherNetIp/EthernetNetIpClient.cs](../../csharp/RustEtherNetIp/EthernetNetIpClient.cs)
 - [docs/SOFTWARE_ARCHITECTURE.md](../../docs/SOFTWARE_ARCHITECTURE.md)

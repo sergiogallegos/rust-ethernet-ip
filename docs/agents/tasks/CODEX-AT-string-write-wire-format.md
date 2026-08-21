@@ -68,7 +68,7 @@ Also `examples/data_types_showcase.rs`: its embedded `#[cfg(test)]` tests (run o
 
 ### Risks and gotchas
 
-- Single-controller evidence (5069-L330ERM fw38). The encoding matches the ecosystem-standard format (pycomm3, libplctag), so cross-firmware risk is low — but do not extrapolate to the UDT-member cases; those keep the RMW workaround.
+- Single-controller evidence (5069-L330ERM fw38). The encoding matches the ecosystem-standard format, so cross-firmware risk is low — but do not extrapolate to the UDT-member cases; those keep the RMW workaround.
 - The read-decode change alters observable behavior: hardware consumers who learned to fish STRINGs out of `PlcValue::Udt` blobs will now get `PlcValue::String`. That's the documented contract (sim tests and docs always promised `String`), so it's a fix, but call it out in the CHANGELOG and verify the C# `ReadString`/Python `read_string` paths against the new shape.
 - `ALT_STRING` (`0x00DA`) decode exists (`decode_short_string`) — leave it alone; it's a different reply shape, not part of this evidence.
 - Batch-error text special-casing STRING writes (`src/client.rs:3407-3419`) becomes stale once batch STRING writes work — update or remove it with the fix, don't leave a message describing a failure that no longer happens.

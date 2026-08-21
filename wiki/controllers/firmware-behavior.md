@@ -2,17 +2,27 @@
 
 ## Summary
 
-The current `0.7.0` evidence suggests the validated CompactLogix and ControlLogix targets share the same major direct-write limitation profile, while differing more in seeded data state and topology than in core supported behavior.
+Current evidence spans five exact processor/firmware combinations. The strongest
+current-release result is the `1.2.0` four-binding gate on CompactLogix
+`5069-L330ERM` firmware `38`; older rows remain useful historical evidence but
+must not be treated as `1.2.0` certification.
 
 ## Current Understanding
 
-- `confirmed`: The CompactLogix `5069-L320ERMS3` firmware `35` target and the ControlLogix `1756-L81ES` firmware `37` target both passed the main exercised feature set for `0.7.0`.
-- `confirmed`: Both validated targets show the same main direct-write restriction pattern:
-  - standalone `STRING` writes fail
-  - `STRING` members inside UDTs fail when written directly
-  - UDT array element members fail when written directly
-- `confirmed`: Both targets supported the exercised read/write, batch, route-path, health-check, tag discovery, and UDT/nested access flows.
-- `confirmed`: The ControlLogix validation specifically adds routed-path confidence via `1756-EN3TR` slot `0`.
+- `confirmed`: CompactLogix `5069-L330ERM` firmware `38` passed the `1.2.0`
+  release gate across Rust, C#, Python, and C/C++ with 2,338 reads, 2,319
+  writes/read-back verifications, and zero anomalies.
+- `confirmed`: On that target, standalone and UDT-member built-in/custom
+  strings write through handle-aware and fragmented paths; scalar UDT array
+  element members also write when the full path is preserved.
+- `confirmed`: Historical physical coverage also includes CompactLogix
+  `5069-L320ERMS3` fw35 and `1769-L18ER-BB1B` fw33 plus ControlLogix
+  `1756-L75` fw33 and `1756-L81ES` fw37.
+- `confirmed`: Routed single-chassis access is proven through `1756-EN2T` and
+  `1756-EN3TR`; true multi-hop routing remains unvalidated.
+- `superseded`: The `0.7.0` interpretation that direct standalone STRING,
+  STRING-member, and scalar UDT-array-member writes were firmware-blocked was
+  corrected by the `1.2.0` encoding/path fixes and fw38 hardware probes.
 
 ## Notable Differences
 
@@ -35,7 +45,8 @@ The current `0.7.0` evidence suggests the validated CompactLogix and ControlLogi
 
 ## Practical Guidance
 
-- Treat both validated controller families as supported for the exercised `0.7.0` scenarios.
+- Use [the authoritative hardware matrix](../../docs/HARDWARE_COMPATIBILITY.md)
+  for exact model/firmware/binding claims.
 - Do not assume that seeded tag values or controller-scoped fixture state will match across hardware families.
 - Keep firmware-specific claims tied to exact model and firmware references until more hardware evidence exists.
 
@@ -45,6 +56,8 @@ The current `0.7.0` evidence suggests the validated CompactLogix and ControlLogi
 - [docs/validation/2026-04-07_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](../../docs/validation/2026-04-07_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
 - [docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md](../../docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md)
 - [docs/validation/2026-04-07_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md](../../docs/validation/2026-04-07_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
+- [docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md](../../docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md)
+- [docs/HARDWARE_COMPATIBILITY.md](../../docs/HARDWARE_COMPATIBILITY.md)
 
 ## Open Questions
 

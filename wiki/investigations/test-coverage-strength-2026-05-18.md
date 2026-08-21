@@ -30,7 +30,7 @@
 
 ## Strong Areas
 
-- Rust protocol frame and value round-trips are well covered by [src/protocol/tests.rs](../../src/protocol/tests.rs).
+- Rust protocol frame and value round-trips are well covered by [crates/protocol/src/tests.rs](../../crates/protocol/src/tests.rs).
 - Rust route-path and tag-path behavior is covered by [src/route.rs](../../src/route.rs), [src/tag_path.rs](../../src/tag_path.rs), [tests/route_path_operations_tests.rs](../../tests/route_path_operations_tests.rs), and [tests/route_path_sim_compat_tests.rs](../../tests/route_path_sim_compat_tests.rs).
 - Rust FFI input validation and JSON batch paths have targeted coverage in [tests/ffi_tests.rs](../../tests/ffi_tests.rs).
 - Rust simulator coverage gives deterministic protocol-level checks without real hardware in [tests/plc_sim.rs](../../tests/plc_sim.rs) and [tests/plc_sim_tests.rs](../../tests/plc_sim_tests.rs).

@@ -1,30 +1,53 @@
+//! Logix atomic and structure type codes and payload codecs.
+
 use bytes::{Buf, BufMut, BytesMut};
 
 use crate::{Decode, Encode, ProtocolError, Result};
 use rust_ethernet_ip_types::{PlcValue, UdtData};
 
+/// CIP type code for `BOOL`.
 pub const BOOL: u16 = 0x00C1;
+/// CIP type code for `SINT`.
 pub const SINT: u16 = 0x00C2;
+/// CIP type code for `INT`.
 pub const INT: u16 = 0x00C3;
+/// CIP type code for `DINT`.
 pub const DINT: u16 = 0x00C4;
+/// CIP type code for `LINT`.
 pub const LINT: u16 = 0x00C5;
+/// CIP type code for `USINT`.
 pub const USINT: u16 = 0x00C6;
+/// CIP type code for `UINT`.
 pub const UINT: u16 = 0x00C7;
+/// CIP type code for `UDINT`.
 pub const UDINT: u16 = 0x00C8;
+/// CIP type code for `ULINT`.
 pub const ULINT: u16 = 0x00C9;
+/// CIP type code for `REAL`.
 pub const REAL: u16 = 0x00CA;
+/// CIP type code for `LREAL`.
 pub const LREAL: u16 = 0x00CB;
+/// CIP type code for a standard string payload.
 pub const STRING: u16 = 0x00CE;
+/// CIP type code for a short string payload.
 pub const ALT_STRING: u16 = 0x00DA;
+/// CIP type code returned for packed `BOOL` array storage.
 pub const BOOL_ARRAY_DWORD: u16 = 0x00D3;
+/// Generic structure type marker.
 pub const UDT: u16 = 0x00A0;
+/// Logix abbreviated structure type marker.
 pub const AB_UDT: u16 = 0x02A0;
+/// Structure handle used by the built-in Logix `STRING` type.
 pub const STANDARD_STRING_HANDLE: u16 = 0x0FCE;
+/// Maximum byte length of the built-in Logix `STRING.DATA` array.
 pub const STANDARD_STRING_DATA_LEN: usize = 82;
+/// Padding bytes following a built-in Logix `STRING.DATA` array.
 pub const STANDARD_STRING_PAD_LEN: usize = 2;
+/// Total encoded payload length of a built-in Logix `STRING`.
 pub const STANDARD_STRING_PAYLOAD_LEN: usize =
     4 + STANDARD_STRING_DATA_LEN + STANDARD_STRING_PAD_LEN;
 
+/// Returns the CIP type word used for a write request.
 pub fn write_data_type(value: &PlcValue) -> u16 {
     if let PlcValue::Udt(_) = value {
         value.known_data_type().unwrap_or(UDT)
@@ -33,6 +56,7 @@ pub fn write_data_type(value: &PlcValue) -> u16 {
     }
 }
 
+/// Encodes the CIP type prefix used for a write request.
 pub fn write_data_type_bytes(value: &PlcValue) -> Vec<u8> {
     if matches!(value, PlcValue::String(_)) {
         let mut bytes = Vec::with_capacity(4);
@@ -44,6 +68,7 @@ pub fn write_data_type_bytes(value: &PlcValue) -> Vec<u8> {
     }
 }
 
+/// Appends a value payload without a type prefix.
 pub fn encode_payload(value: &PlcValue, buf: &mut BytesMut) {
     match value {
         PlcValue::Bool(v) => buf.put_u8(if *v { 0xFF } else { 0x00 }),
@@ -62,6 +87,7 @@ pub fn encode_payload(value: &PlcValue, buf: &mut BytesMut) {
     }
 }
 
+/// Appends a CIP type prefix followed by the encoded value payload.
 pub fn encode_type_prefixed(value: &PlcValue, buf: &mut BytesMut) {
     buf.put_slice(&write_data_type_bytes(value));
     match value {
@@ -71,6 +97,7 @@ pub fn encode_type_prefixed(value: &PlcValue, buf: &mut BytesMut) {
     }
 }
 
+/// Decodes a value payload for the supplied CIP type code.
 pub fn decode_payload(data_type: u16, value_data: &[u8]) -> Result<PlcValue> {
     match data_type {
         BOOL => {
@@ -173,6 +200,7 @@ pub fn decode_payload(data_type: u16, value_data: &[u8]) -> Result<PlcValue> {
     }
 }
 
+/// Decodes one array element for the supplied CIP element type.
 pub fn decode_array_element(data_type: u16, chunk: &[u8]) -> Result<PlcValue> {
     decode_payload(data_type, chunk)
 }

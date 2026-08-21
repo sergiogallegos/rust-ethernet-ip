@@ -9,7 +9,9 @@ use tokio::task::JoinHandle;
 /// Fleet-level connection event annotated with the PLC identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FleetEvent<PlcId> {
+    /// Application-defined controller identifier.
     pub plc_id: PlcId,
+    /// Connection lifecycle event from that controller's client.
     pub event: ConnectionEvent,
 }
 

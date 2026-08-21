@@ -1301,3 +1301,44 @@ Sources used:
 - `CHANGELOG.md` at `481f20d`
 - GitHub PR `#29`
 - GitHub Actions post-merge run for `481f20d`
+
+## [2026-08-21] reframe | prepare 1.2.1 documentation, hardware program, and website
+
+- Added `wiki/releases/1.2.0-validation-synthesis.md` and
+  `wiki/controllers/hardware-validation-program.md`.
+- Updated `wiki/index.md`, controller/firmware behavior, route behavior,
+  wrapper parity, documentation state, and stale source links.
+- Established `1.2.0` as the latest published evidence baseline and `1.2.1` as
+  the patch in preparation.
+- Documented the exact meaning of hardware-matrix `Done` cells and separated
+  functional, endurance, and performance evidence.
+
+Sources used:
+
+- `docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md`
+- `docs/validation/2026-05-25_real_plc_two-controller_cross-binding_full-coverage.md`
+- `docs/HARDWARE_COMPATIBILITY.md`
+- `docs/audit/1.2.0_markdown_release_audit.md`
+- `docs/release/1.2.1_RELEASE_NOTES_DRAFT.md`
+- `CHANGELOG.md`
+
+## [2026-08-21] ingest | compare validation tiers and native-wrapper adoption gaps
+
+- Updated `wiki/wrapper-parity/rust-vs-csharp.md` and `wiki/index.md`.
+- Confirmed that software OS/toolchain release gates and exact PLC hardware
+  evidence must remain separate matrices.
+- Recorded that the C ABI is the complete native contract while the C++ RAII
+  class is a smaller example; added macOS to blocking C++ CI; and prioritized
+  native SDK packaging, generated reference docs, RAII coverage, and
+  compiler/sanitizer breadth.
+
+Sources used:
+
+- `.github/workflows/ci.yml`
+- `.github/workflows/release.yml`
+- `include/rust_ethernet_ip.h`
+- `examples/cpp/eip_client.hpp`
+- `examples/cpp/CMakeLists.txt`
+- `docs/audit/1.2.1_wrapper_and_platform_gap_analysis.md`
+- Public native-library platform, packaging, C API, and contributor-testing
+  conventions reviewed 2026-08-21

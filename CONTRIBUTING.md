@@ -4,8 +4,8 @@ Thanks for contributing. This project targets production-grade EtherNet/IP commu
 
 ## Scope and Release Line
 
-- `0.6.3` is the latest published stable crate line.
-- Current work on `main` is preparing `0.7.0` (unreleased).
+- `1.2.0` is the current published stable line across crates.io, NuGet, and PyPI.
+- Current work on `main` must preserve the public Rust 1.x API and C ABI v2 contracts.
 - Do not bump crate/package version unless explicitly requested during release cut.
 
 ## Development Workflow
@@ -28,14 +28,14 @@ cargo test --workspace --all-targets
 dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal
 ```
 
-For PLC-dependent validation, include what was tested on real hardware (model, firmware, route path, tags used).
+For PLC-dependent validation, follow the [real-hardware test program](docs/HARDWARE_COMPATIBILITY.md) and include the exact model, firmware, topology, binding, library version, tags, restore state, and result counts.
 
 ## Testing Guidelines
 
 - Add regression tests for every bug fix.
 - Prefer deterministic simulator tests when possible.
 - Keep FFI boundary tests strict on return codes and payload shape.
-- For cross-language changes (Rust <-> C#), include tests on both sides.
+- For cross-language changes, include Rust plus every affected C#, Python, or C/C++ surface.
 
 ## Coding Standards
 
@@ -83,6 +83,7 @@ See `AGENTS.md` and `wiki/README.md` for the maintenance rules and current struc
 - [ ] Rust checks pass
 - [ ] C# tests pass
 - [ ] Documentation updated (README/docs/changelog) if needed
+- [ ] Real-hardware matrix/result template updated when physical PLCs were used
 - [ ] Wiki updated if the change adds durable engineering knowledge
 - [ ] Breaking changes called out explicitly
 

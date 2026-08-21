@@ -16,11 +16,13 @@ Status values:
 ## Releases
 
 - [releases/0.7.0-validation-synthesis.md](releases/0.7.0-validation-synthesis.md) — Consolidated real-hardware and gate-level view of `0.7.0` validation. `active`
-- [releases/0.8.0-validation-synthesis.md](releases/0.8.0-validation-synthesis.md) — Follow-up ControlLogix validation view for the current draft `0.8.0` line. `active`
+- [releases/0.8.0-validation-synthesis.md](releases/0.8.0-validation-synthesis.md) — Historical follow-up ControlLogix validation for the unreleased draft later absorbed into `1.0.0`. `historical`
+- [releases/1.2.0-validation-synthesis.md](releases/1.2.0-validation-synthesis.md) — Four-binding 5069-L330ERM fw38 release gate and current hardware-confidence boundary. `confirmed`
 
 ## Controllers
 
 - [controllers/firmware-behavior.md](controllers/firmware-behavior.md) — Current controller-family and firmware-specific behavior synthesis from validated targets. `active`
+- [controllers/hardware-validation-program.md](controllers/hardware-validation-program.md) — Meaning of matrix evidence plus functional, endurance, and performance contribution rules. `active`
 
 ## Limitations
 
@@ -35,7 +37,7 @@ Status values:
 
 ## Wrapper Parity
 
-- [wrapper-parity/rust-vs-csharp.md](wrapper-parity/rust-vs-csharp.md) — Current parity picture between the Rust core and the C# wrapper. `active`
+- [wrapper-parity/rust-vs-csharp.md](wrapper-parity/rust-vs-csharp.md) — Current Rust/C#/Python/C++ parity evidence and the distinction between the complete C ABI and smaller C++ convenience class. `active`
 - [wrapper-parity/ffi-registry-clone-audit.md](wrapper-parity/ffi-registry-clone-audit.md) — FFI registry clone semantics, copied-field risks, and CODEX-M Phase A recommendation. `needs-review`
 - [wrapper-parity/cpp-consumer-support.md](wrapper-parity/cpp-consumer-support.md) — Current C/C++ header, parity gate, CMake example, and Qt integration support. `active`
 

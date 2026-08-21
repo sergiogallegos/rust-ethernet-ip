@@ -1,6 +1,8 @@
 /// Library version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Cargo package name compiled into the library.
 pub const NAME: &str = env!("CARGO_PKG_NAME");
+/// Cargo package description compiled into the library.
 pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
 /// C FFI ABI version expected by downstream wrappers.
@@ -35,7 +37,7 @@ pub const MAJOR_VERSION: u32 = 1;
 pub const MINOR_VERSION: u32 = 2;
 
 /// Patch version number
-pub const PATCH_VERSION: u32 = 0;
+pub const PATCH_VERSION: u32 = 1;
 
 /// Version string in format "v0.1.0"
 pub const VERSION_STRING: &str = concat!("v", env!("CARGO_PKG_VERSION"));

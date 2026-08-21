@@ -1,5 +1,9 @@
 # DLL Deployment Guide
 
+> **Historical reference.** This Windows DLL guide predates the current
+> `1.2.0` multi-RID NuGet and Python-wheel packaging. Use
+> [INTEGRATION_AND_DEPLOYMENT.md](INTEGRATION_AND_DEPLOYMENT.md) first.
+
 > Historical reference: this guide is Windows- and legacy-wrapper-centric and still references removed `gowrapper/` paths. Use [INTEGRATION_AND_DEPLOYMENT.md](INTEGRATION_AND_DEPLOYMENT.md), the root [README.md](../README.md), and the active wrapper READMEs for the current deployment story.
 
 ## Overview

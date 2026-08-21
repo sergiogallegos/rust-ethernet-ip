@@ -1,3 +1,5 @@
+//! Named groups of tags polled as one logical stream.
+
 use crate::PlcValue;
 use crate::subscription::try_send_drop_oldest;
 use std::sync::Arc;
@@ -8,24 +10,33 @@ use tokio::sync::{Mutex, mpsc};
 /// Defines a named tag group with a polling interval.
 #[derive(Debug, Clone)]
 pub struct TagGroupConfig {
+    /// Stable group name used in snapshots and events.
     pub name: String,
+    /// Fully qualified symbolic tags to read.
     pub tags: Vec<String>,
+    /// Polling interval in milliseconds.
     pub update_rate_ms: u32,
 }
 
 /// Per-tag result in a group snapshot.
 #[derive(Debug, Clone)]
 pub struct TagGroupValueResult {
+    /// Tag associated with this result.
     pub tag_name: String,
+    /// Decoded value when the read succeeded.
     pub value: Option<PlcValue>,
+    /// Human-readable error when the read failed.
     pub error: Option<String>,
 }
 
 /// Snapshot of one polling cycle for a group.
 #[derive(Debug, Clone)]
 pub struct TagGroupSnapshot {
+    /// Group that produced the snapshot.
     pub group_name: String,
+    /// Time at which the group was sampled.
     pub sampled_at: SystemTime,
+    /// One result for each configured tag.
     pub values: Vec<TagGroupValueResult>,
 }
 
@@ -33,8 +44,11 @@ pub struct TagGroupSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TagGroupEventKind {
+    /// Every tag read succeeded.
     Data,
+    /// The polling cycle returned both values and per-tag errors.
     PartialError,
+    /// The polling cycle failed before per-tag results were available.
     ReadFailure,
 }
 
@@ -42,25 +56,37 @@ pub enum TagGroupEventKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TagGroupFailureCategory {
+    /// Socket or connection failure.
     Network,
+    /// Request deadline exceeded.
     Timeout,
+    /// Controller returned a CIP status code.
     PlcStatus,
+    /// Malformed or unsupported protocol data.
     Protocol,
+    /// Access was denied.
     Permission,
+    /// Tag or symbolic path problem.
     Tag,
+    /// Value type or encoding problem.
     Data,
+    /// Failure did not fit another category.
     Other,
 }
 
 /// Structured diagnostics for read failures during tag-group polling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagGroupFailureDiagnostic {
+    /// Stable failure category.
     pub category: TagGroupFailureCategory,
+    /// Whether retrying the same request may succeed.
     pub retriable: bool,
+    /// CIP general status code when supplied by the controller.
     pub status_code: Option<u8>,
 }
 
 impl TagGroupFailureDiagnostic {
+    /// Converts a library error into wrapper-friendly failure details.
     pub fn from_error(error: &crate::EtherNetIpError) -> Self {
         use crate::EtherNetIpError;
 
@@ -103,16 +129,22 @@ impl TagGroupFailureDiagnostic {
 /// Event emitted by background tag-group polling.
 #[derive(Debug, Clone)]
 pub struct TagGroupEvent {
+    /// Overall result of the polling cycle.
     pub kind: TagGroupEventKind,
+    /// Snapshot produced by the cycle; may contain per-tag errors.
     pub snapshot: TagGroupSnapshot,
+    /// Cycle-level error message, when no normal snapshot was possible.
     pub error: Option<String>,
+    /// Structured cycle-level failure details.
     pub failure: Option<TagGroupFailureDiagnostic>,
 }
 
 /// Live subscription to a tag group polling stream.
 #[derive(Debug, Clone)]
 pub struct TagGroupSubscription {
+    /// Subscribed group name.
     pub group_name: String,
+    /// Polling interval in milliseconds.
     pub update_rate_ms: u32,
     is_active: Arc<AtomicBool>,
     sender: Arc<Mutex<mpsc::Sender<TagGroupEvent>>>,
@@ -120,6 +152,7 @@ pub struct TagGroupSubscription {
 }
 
 impl TagGroupSubscription {
+    /// Creates an active subscription with a bounded event queue.
     pub fn new(group_name: String, update_rate_ms: u32) -> Self {
         let (sender, receiver) = mpsc::channel(64);
         Self {
@@ -131,14 +164,17 @@ impl TagGroupSubscription {
         }
     }
 
+    /// Returns whether polling should continue.
     pub fn is_active(&self) -> bool {
         self.is_active.load(Ordering::Relaxed)
     }
 
+    /// Marks the subscription inactive.
     pub fn stop(&self) {
         self.is_active.store(false, Ordering::Relaxed);
     }
 
+    /// Classifies and publishes a polling snapshot.
     pub async fn publish(&self, snapshot: TagGroupSnapshot) -> Result<(), String> {
         let event = TagGroupEvent {
             kind: if snapshot.values.iter().any(|v| v.error.is_some()) {
@@ -161,6 +197,7 @@ impl TagGroupSubscription {
         try_send_drop_oldest(&self.sender, &self.receiver, event).await
     }
 
+    /// Waits for the next queued event, or `None` when all senders close.
     pub async fn wait_for_update(&self) -> Option<TagGroupEvent> {
         let mut receiver = self.receiver.lock().await;
         let next_event = receiver.recv().await;

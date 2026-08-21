@@ -7,10 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Target release: `1.2.1`.
+
+### Added
+
+- Added complete public Rust API documentation across the main crate and all
+  four published support crates. The workspace now denies undocumented public
+  items, and rustdoc is verified with warnings treated as errors.
+- Added a real-hardware compatibility program with an exact
+  processor/firmware/topology/binding matrix, a contributor result template,
+  safe controller setup, 1–24 hour endurance profiles, and repeatable
+  performance characterization guidance.
+- Added a dependency-free light-theme project website under `website/`, ready
+  for Cloudflare Pages or GitHub Pages and linking Rust, C#, Python, and C/C++
+  documentation, packages, source, releases, and hardware evidence.
+- Added website privacy, MIT license, industrial safety, security, and
+  contribution links; the shipped site uses no analytics, cookies, forms, or
+  third-party font requests.
+- Added prominent GitHub Sponsors links to the website navigation, final
+  call-to-action, and community footer.
+- Switched website navigation to a responsive CSS text wordmark while retaining
+  the full mascot logo in the footer.
+- Added a responsive application-to-controller architecture flow showing where
+  the language bindings, Rust core, EtherNet/IP/CIP, and Logix tag operations
+  fit, including the correct backend boundary for browser-based applications.
+- Added draft `1.2.1` release notes and a tracked Markdown release-state audit.
+- Added a README Tier 1 release-target matrix and a wrapper/platform gap
+  analysis, separating automated OS/toolchain gates from exact PLC hardware
+  and firmware evidence.
+- Extended the blocking C++ header/export/CMake/simulator job to macOS, matching
+  the three operating systems already used by the Rust and managed wrappers.
+
 ### Changed
 
 - Lowered the workspace MSRV from Rust 1.96 to Rust 1.88, the oldest compiler
   supported by the locked dependency set and the complete Rust test suite.
+- Updated active guides, examples, historical banners, and wiki synthesis so
+  `1.2.0` remains clearly identified as the latest published baseline while
+  the repository prepares `1.2.1`.
+- Added an explicit development-line mode to release readiness so `main` can
+  carry 1.2.1 machine metadata without advertising unpublished registry
+  packages; final release checks remain strict.
 
 ### Fixed
 

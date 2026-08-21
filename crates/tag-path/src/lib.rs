@@ -1,3 +1,4 @@
+//! Parse and encode symbolic Logix tag paths.
 // tag_path.rs - Advanced Tag Path Parsing for Allen-Bradley PLCs
 // =========================================================================
 //
@@ -12,20 +13,24 @@
 //
 // =========================================================================
 
+/// Result type returned by tag-path parsing and encoding operations.
 pub type Result<T> = std::result::Result<T, TagPathError>;
 
+/// Error produced by an invalid symbolic tag path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagPathError {
     message: String,
 }
 
 impl TagPathError {
+    /// Creates a path/protocol error with a human-readable message.
     pub fn protocol(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
         }
     }
 
+    /// Returns the error message.
     pub fn message(&self) -> &str {
         &self.message
     }
@@ -45,37 +50,56 @@ use std::fmt;
 #[non_exhaustive]
 pub enum TagPath {
     /// Simple controller-scoped tag: `MyTag`
-    Controller { tag_name: String },
+    Controller {
+        /// Controller-scoped symbolic tag name.
+        tag_name: String,
+    },
 
     /// Program-scoped tag: `Program:MainProgram.MyTag`
     Program {
+        /// Program name without the `Program:` prefix.
         program_name: String,
+        /// Tag name relative to the program scope.
         tag_name: String,
     },
 
     /// Array element access: `MyArray[5]` or `MyArray[1,2,3]`
     Array {
+        /// Path to the array value.
         base_path: Box<TagPath>,
+        /// One or more zero-based Logix array indices.
         indices: Vec<u32>,
     },
 
     /// Bit access within a tag: "MyDINT.15"
     Bit {
+        /// Path to the containing integer value.
         base_path: Box<TagPath>,
+        /// Zero-based bit index.
         bit_index: u8,
     },
 
     /// UDT member access: "MyUDT.Member1"
     Member {
+        /// Path to the containing structure.
         base_path: Box<TagPath>,
+        /// Structure member name.
         member_name: String,
     },
 
     /// String length access: "MyString.LEN"
-    StringLength { base_path: Box<TagPath> },
+    StringLength {
+        /// Path to the containing Logix string.
+        base_path: Box<TagPath>,
+    },
 
     /// String data access: `"MyString.DATA[5]"`
-    StringData { base_path: Box<TagPath>, index: u32 },
+    StringData {
+        /// Path to the containing Logix string.
+        base_path: Box<TagPath>,
+        /// Zero-based byte index in the string data array.
+        index: u32,
+    },
 }
 
 impl TagPath {

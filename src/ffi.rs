@@ -29,6 +29,7 @@ static FORCE_RUNTIME_INIT_ERROR: std::sync::atomic::AtomicBool =
 static FORCE_RUNTIME_INIT_ERROR_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[unsafe(no_mangle)]
+/// Returns the stable C ABI contract version.
 pub extern "C" fn eip_abi_version() -> u32 {
     crate::version::ABI_VERSION
 }
@@ -45,6 +46,7 @@ pub extern "C" fn eip_library_version() -> *const c_char {
 }
 
 #[unsafe(no_mangle)]
+/// Returns the feature bitmap supported by this native library.
 pub extern "C" fn eip_capabilities() -> u64 {
     crate::version::CAPABILITIES
 }
@@ -2115,50 +2117,75 @@ pub unsafe extern "C" fn eip_write_udt_member_by_offset(
 /// C struct for UDT member
 #[repr(C)]
 pub struct UdtMemberC {
+    /// Owned NUL-terminated member name.
     pub name: *mut c_char,
+    /// CIP member data type code.
     pub data_type: c_short,
+    /// Byte offset from the start of the structure.
     pub offset: c_int,
+    /// Encoded member size in bytes.
     pub size: c_int,
 }
 
 /// C struct for UDT definition result
 #[repr(C)]
 pub struct UdtDefinitionResult {
+    /// Whether discovery completed successfully.
     pub success: bool,
+    /// Owned error string, or null on success.
     pub error_message: *mut c_char,
+    /// Owned UDT type name.
     pub name: *mut c_char,
+    /// Owned array of `member_count` members.
     pub members: *mut UdtMemberC,
+    /// Number of elements in `members`.
     pub member_count: c_int,
 }
 
 /// C struct for tag attributes
 #[repr(C)]
 pub struct TagAttributesC {
+    /// Owned fully qualified tag name.
     pub name: *mut c_char,
+    /// Owned human-readable data type name.
     pub data_type_name: *mut c_char,
+    /// CIP tag data type code.
     pub data_type: c_short,
+    /// Encoded tag size in bytes.
     pub size: c_int,
+    /// UDT template instance id, or a negative sentinel when unknown.
     pub template_instance_id: c_int,
 }
 
 /// C struct for tag attributes result
 #[repr(C)]
 pub struct TagAttributesResult {
+    /// Whether the attribute request completed successfully.
     pub success: bool,
+    /// Owned error string, or null on success.
     pub error_message: *mut c_char,
+    /// Owned fully qualified tag name.
     pub name: *mut c_char,
+    /// Owned human-readable data type name.
     pub data_type_name: *mut c_char,
+    /// CIP tag data type code.
     pub data_type: c_short,
+    /// Encoded tag size in bytes.
     pub size: c_int,
+    /// UDT template instance id, or a negative sentinel when unknown.
     pub template_instance_id: c_int,
 }
 
 /// C struct for tag discovery result
 #[repr(C)]
 pub struct TagDiscoveryResult {
+    /// Whether discovery completed successfully.
     pub success: bool,
+    /// Owned error string, or null on success.
     pub error_message: *mut c_char,
+    /// Owned array of `tag_count` tag records.
     pub tags: *mut TagAttributesC,
+    /// Number of elements in `tags`.
     pub tag_count: c_int,
 }
 

@@ -1,5 +1,10 @@
 # Documentation State 2026-04-20
 
+> `superseded`: This snapshot predates the `1.2.0` release and the 2026-08-21
+> full Markdown/API documentation pass. See
+> [`docs/audit/1.2.0_markdown_release_audit.md`](../../docs/audit/1.2.0_markdown_release_audit.md)
+> for the current state.
+
 ## Summary
 
 The repository documentation is in good shape for the current active surfaces, but it is not uniformly up to date across the full `docs/` tree.

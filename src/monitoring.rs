@@ -1,3 +1,5 @@
+//! Diagnostic metric models and the deprecated standalone monitor.
+
 use crate::error::EtherNetIpError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -26,108 +28,183 @@ impl MonitoringMetrics {
     }
 }
 
+/// Connection lifecycle counters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionMetrics {
+    /// Connections currently considered active.
     pub active_connections: u32,
+    /// Successful connections recorded since startup.
     pub total_connections: u64,
+    /// Failed connection attempts recorded since startup.
     pub failed_connections: u64,
+    /// Average connection uptime when supplied by the caller.
     pub connection_uptime_avg: Duration,
+    /// Time of the most recent successful connection.
     pub last_connection_time: Option<SystemTime>,
 }
 
+/// Tag-operation counters and timestamps.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OperationMetrics {
+    /// Total read attempts.
     pub total_reads: u64,
+    /// Total write attempts.
     pub total_writes: u64,
+    /// Successful reads.
     pub successful_reads: u64,
+    /// Successful writes.
     pub successful_writes: u64,
+    /// Failed reads.
     pub failed_reads: u64,
+    /// Failed writes.
     pub failed_writes: u64,
+    /// Batch operations recorded.
     pub batch_operations: u64,
+    /// Subscription updates recorded.
     pub subscription_updates: u64,
+    /// Batches containing at least one failed item.
     pub partial_batch_failures: u64,
+    /// Time of the most recent successful read.
     pub last_successful_read_time: Option<SystemTime>,
+    /// Time of the most recent failed read.
     pub last_failed_read_time: Option<SystemTime>,
+    /// Time of the most recent successful write.
     pub last_successful_write_time: Option<SystemTime>,
+    /// Time of the most recent failed write.
     pub last_failed_write_time: Option<SystemTime>,
 }
 
+/// Aggregate latency and throughput measurements.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceMetrics {
+    /// Arithmetic mean read latency in milliseconds.
     pub avg_read_latency_ms: f64,
+    /// Arithmetic mean write latency in milliseconds.
     pub avg_write_latency_ms: f64,
+    /// Highest observed read latency in milliseconds.
     pub max_read_latency_ms: f64,
+    /// Highest observed write latency in milliseconds.
     pub max_write_latency_ms: f64,
+    /// Successful reads divided by monitor uptime.
     pub reads_per_second: f64,
+    /// Successful writes divided by monitor uptime.
     pub writes_per_second: f64,
+    /// Legacy placeholder; not measured by this monitor.
     pub memory_usage_mb: f64,
+    /// Legacy placeholder; not measured by this monitor.
     pub cpu_usage_percent: f64,
 }
 
+/// Error counters grouped by actionable category.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorMetrics {
+    /// Network I/O errors.
     pub network_errors: u64,
+    /// CIP or other protocol errors.
     pub protocol_errors: u64,
+    /// Operation timeouts.
     pub timeout_errors: u64,
+    /// Missing-tag errors.
     pub tag_not_found_errors: u64,
+    /// Data type or encoding errors.
     pub data_type_errors: u64,
+    /// Session or connection-loss errors.
     pub session_errors: u64,
+    /// Route-path errors.
     pub route_path_errors: u64,
+    /// Multiple Service Packet item failures.
     pub embedded_service_errors: u64,
+    /// Rejections classified as known controller limitations.
     pub known_controller_limitation_errors: u64,
+    /// Errors safe to retry according to [`ErrorCategory::is_retriable`].
     pub retriable_errors: u64,
+    /// Errors that should not be retried automatically.
     pub non_retriable_errors: u64,
+    /// Time of the most recent error.
     pub last_error_time: Option<SystemTime>,
+    /// Message from the most recent error.
     pub last_error_message: Option<String>,
+    /// Category of the most recent error.
     pub last_error_category: Option<ErrorCategory>,
+    /// Time of the most recent retriable error.
     pub last_retriable_error_time: Option<SystemTime>,
 }
 
+/// Current health assessment and recovery history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthMetrics {
+    /// Derived overall health state.
     pub overall_health: HealthStatus,
+    /// Time the health state was last calculated.
     pub last_health_check: SystemTime,
+    /// Whether health is passive or confirmed by an active request.
     pub health_mode: HealthCheckMode,
+    /// Time of the most recent active health check.
     pub last_verified_health_check: Option<SystemTime>,
+    /// Consecutive failures since the last success.
     pub consecutive_failures: u32,
+    /// Recovery resets requested by the caller.
     pub recovery_attempts: u32,
+    /// Elapsed time since monitoring began.
     pub system_uptime: Duration,
+    /// Time of the most recent successful operation.
     pub last_success_time: Option<SystemTime>,
+    /// Time of the most recent failed operation.
     pub last_failure_time: Option<SystemTime>,
 }
 
+/// Coarse health state derived from connection and error metrics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum HealthStatus {
+    /// Connected with no significant recent failure rate.
     Healthy,
+    /// Elevated failure rate or repeated failures.
     Warning,
+    /// High failure rate or sustained failures.
     Critical,
+    /// Health cannot be established, commonly because there is no connection.
     Unknown,
 }
 
+/// Source of the current health assessment.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum HealthCheckMode {
+    /// Inferred from ordinary operation results.
     Passive,
+    /// Confirmed by an explicit health request.
     Verified,
 }
 
+/// Stable error classification used by diagnostics and retry decisions.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ErrorCategory {
+    /// Socket or other network I/O failure.
     Network,
+    /// Request deadline exceeded.
     Timeout,
+    /// EtherNet/IP session or connection failure.
     Session,
+    /// Invalid or unreachable CIP route.
     RoutePath,
+    /// General CIP protocol rejection.
     CipProtocol,
+    /// Failure reported by an embedded batch service.
     BatchEmbeddedService,
+    /// Recognized controller/firmware restriction.
     KnownControllerLimitation,
+    /// Value type or encoding mismatch.
     DataType,
+    /// Requested tag or path was not found.
     NotFound,
+    /// Error did not match a stable category.
     Unknown,
 }
 
 impl ErrorCategory {
+    /// Returns whether retrying may succeed without changing the request.
     pub fn is_retriable(self) -> bool {
         matches!(
             self,
@@ -136,14 +213,22 @@ impl ErrorCategory {
     }
 }
 
+/// Point-in-time diagnostic data suitable for serialization by wrappers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiagnosticsSnapshot {
+    /// Time at which the snapshot was assembled.
     pub captured_at: SystemTime,
+    /// Connection counters.
     pub connections: ConnectionMetrics,
+    /// Operation counters.
     pub operations: OperationMetrics,
+    /// Latency and throughput measurements.
     pub performance: PerformanceMetrics,
+    /// Error counters and last-error details.
     pub errors: ErrorMetrics,
+    /// Current health assessment.
     pub health: HealthMetrics,
+    /// Whether CPU and memory fields are placeholders.
     pub system_metrics_are_placeholders: bool,
 }
 
@@ -172,6 +257,7 @@ impl Default for ProductionMonitor {
     reason = "CODEX-AQ keeps ProductionMonitor compatibility until 2.0 removal"
 )]
 impl ProductionMonitor {
+    /// Creates a zeroed standalone monitor.
     pub fn new() -> Self {
         Self {
             metrics: Arc::new(RwLock::new(MonitoringMetrics {
@@ -368,6 +454,7 @@ impl ProductionMonitor {
         metrics.health.last_failure_time = Some(now);
     }
 
+    /// Classifies a structured library error for diagnostics and retries.
     pub fn classify_error(error: &EtherNetIpError) -> ErrorCategory {
         match error {
             EtherNetIpError::Io(_) => ErrorCategory::Network,
@@ -402,6 +489,7 @@ impl ProductionMonitor {
         }
     }
 
+    /// Classifies a legacy string error name or message.
     pub fn classify_error_type(error_type: &str) -> ErrorCategory {
         match error_type {
             "network" => ErrorCategory::Network,

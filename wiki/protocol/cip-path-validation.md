@@ -14,8 +14,8 @@
 
 ## Evidence
 
-- [`src/protocol/cip.rs`](../../src/protocol/cip.rs) validates `CipRequest` paths before writing the service, path word count, path bytes, or payload.
-- [`src/protocol/tests.rs`](../../src/protocol/tests.rs) covers valid even path lengths through 510 bytes and rejects empty, odd, and 512-byte paths.
+- [`crates/protocol/src/cip.rs`](../../crates/protocol/src/cip.rs) validates `CipRequest` paths before writing the service, path word count, path bytes, or payload.
+- [`crates/protocol/src/tests.rs`](../../crates/protocol/src/tests.rs) covers valid even path lengths through 510 bytes and rejects empty, odd, and 512-byte paths.
 - [`docs/agents/tasks/CODEX-N-cip-path-encoding-validation.md`](../../docs/agents/tasks/CODEX-N-cip-path-encoding-validation.md) records the implementation decision and verification.
 
 ## Open Questions

@@ -1,5 +1,9 @@
 # Codex Prompt: Python and Data Platform Expansion
 
+> **Historical planning prompt.** This captured the `1.0.0` expansion plan.
+> The latest published release is `1.2.0`, and `1.2.1` is in preparation; use
+> `README.md`, `docs/README.md`, and `docs/ROADMAP.md` for current status.
+
 You are working inside the repository `rust-ethernet-ip`.
 
 ## Project Context
@@ -9,7 +13,7 @@ You are working inside the repository `rust-ethernet-ip`.
   - a Rust core library
   - a C# wrapper
   - tests, examples, docs, build scripts, and release notes
-- The current working line in this repo is `1.0.0`, not `0.8.0`.
+- The working line at the time of this prompt was `1.0.0`, not `0.8.0`.
 - The Rust baseline is on Rust 2024 with workspace MSRV `rust-version = "1.88"`.
 - The C# wrapper targets `.NET 10` and `C# 14`.
 

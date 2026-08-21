@@ -10,11 +10,11 @@
     <PlatformTarget>x64</PlatformTarget>
     
     <!-- Version Information -->
-    <Version>1.2.0</Version>
-    <AssemblyVersion>1.2.0.0</AssemblyVersion>
-    <FileVersion>1.2.0.0</FileVersion>
+    <Version>1.2.1</Version>
+    <AssemblyVersion>1.2.1.0</AssemblyVersion>
+    <FileVersion>1.2.1.0</FileVersion>
     <Product>Rust EtherNet/IP WPF Example</Product>
-    <Description>WPF example application demonstrating the released Rust EtherNet/IP 1.2.0 line with real PLC tag reads, writes, subscriptions, and batch operations</Description>
+    <Description>WPF example application demonstrating the released Rust EtherNet/IP 1.2.1 line with real PLC tag reads, writes, subscriptions, and batch operations</Description>
   </PropertyGroup>
 
   <ItemGroup>

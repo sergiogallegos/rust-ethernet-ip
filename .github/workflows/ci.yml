@@ -225,7 +225,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
     - uses: actions/checkout@v4
@@ -244,6 +244,7 @@ jobs:
       run: |
         case "${{ runner.os }}" in
           Windows) f="$GITHUB_WORKSPACE/target/release/rust_ethernet_ip.dll";;
+          macOS)   f="$GITHUB_WORKSPACE/target/release/librust_ethernet_ip.dylib";;
           *)       f="$GITHUB_WORKSPACE/target/release/librust_ethernet_ip.so";;
         esac
         echo "RUST_ETHERNET_IP_NATIVE_LIB=$f" >> "$GITHUB_ENV"
@@ -290,8 +291,8 @@ jobs:
     - uses: dtolnay/rust-toolchain@stable
     - name: Check release readiness for current version
       run: |
-        VERSION=$(sed -n '0,/^version = "\([^"]*\)"/s//\1/p' Cargo.toml)
-        scripts/check-release-readiness "$VERSION"
+        VERSION=$(awk -F '"' '/^version = / { print $2; exit }' Cargo.toml)
+        scripts/check-release-readiness "$VERSION" --development
     - name: Run release-readiness script tests
       run: tests/release_readiness_tests.sh
 

@@ -7,9 +7,6 @@ namespace RustEtherNetIp.Tests
 {
     internal sealed class SimulatorTestHarness : IDisposable
     {
-        private static readonly object NativeLibraryLock = new();
-        private static bool _nativeLibraryStaged;
-
         private Process? _process;
 
         public string Address { get; }
@@ -94,34 +91,21 @@ namespace RustEtherNetIp.Tests
             }
         }
 
-        public static void StageNativeLibrary()
+        public static string StageNativeLibrary()
         {
-            lock (NativeLibraryLock)
+            // MSBuild stages the native library before testhost starts. Never
+            // replace, load, or unload this file from inside the running test
+            // process: the CLR may already have loaded it for a DllImport, and
+            // replacing/reloading that image can crash the Linux dynamic loader.
+            var path = Path.Combine(AppContext.BaseDirectory, NativeLibraryFileName);
+            if (!File.Exists(path))
             {
-                if (_nativeLibraryStaged)
-                    return;
-
-                var source = ResolveNativeLibraryWithFfiExports();
-                var destination = Path.Combine(AppContext.BaseDirectory, NativeLibraryFileName);
-
-                if (!PathsEqual(source, destination))
-                {
-                    try
-                    {
-                        File.Copy(source, destination, overwrite: true);
-                    }
-                    catch (IOException) when (File.Exists(destination))
-                    {
-                        // Another parallel testhost process already loaded and
-                        // locked the destination DLL (Windows file-locking on
-                        // LoadLibrary). The export assertion below validates
-                        // that the existing copy is the right one.
-                    }
-                }
-
-                AssertNativeLibraryHasRequiredExports(destination);
-                _nativeLibraryStaged = true;
+                throw new FileNotFoundException(
+                    $"Could not find staged {NativeLibraryFileName}; build the native library with `cargo build --release --features ffi --locked` before running dotnet test.",
+                    path);
             }
+
+            return path;
         }
 
         private string ReadSimulatorStartupError(string prefix)
@@ -158,31 +142,6 @@ namespace RustEtherNetIp.Tests
                 throw new FileNotFoundException("Cargo build completed but simulator binary was not produced.", simulatorPath);
 
             return simulatorPath;
-        }
-
-        private static string ResolveNativeLibraryWithFfiExports()
-        {
-            var configured = Environment.GetEnvironmentVariable("RUST_ETHERNET_IP_NATIVE_LIB");
-            if (!string.IsNullOrWhiteSpace(configured))
-            {
-                AssertNativeLibraryHasRequiredExports(configured);
-                return configured;
-            }
-
-            var debugPath = Path.Combine(RepoRoot, "target", "debug", NativeLibraryFileName);
-            if (File.Exists(debugPath) && HasRequiredExports(debugPath))
-                return debugPath;
-
-            RunCargo("build", "--features", "ffi");
-
-            if (File.Exists(debugPath) && HasRequiredExports(debugPath))
-                return debugPath;
-
-            var releasePath = Path.Combine(RepoRoot, "target", "release", NativeLibraryFileName);
-            if (File.Exists(releasePath) && HasRequiredExports(releasePath))
-                return releasePath;
-
-            throw new FileNotFoundException($"Could not find a native {NativeLibraryFileName} with required FFI exports.");
         }
 
         private static string NativeLibraryFileName
@@ -243,43 +202,5 @@ namespace RustEtherNetIp.Tests
                 throw new InvalidOperationException($"cargo {string.Join(' ', args)} failed. {stderr}{stdout}");
         }
 
-        private static bool HasRequiredExports(string path)
-        {
-            try
-            {
-                AssertNativeLibraryHasRequiredExports(path);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static void AssertNativeLibraryHasRequiredExports(string path)
-        {
-            if (!File.Exists(path))
-                throw new FileNotFoundException("Native library does not exist.", path);
-
-            var handle = NativeLibrary.Load(path);
-            try
-            {
-                NativeLibrary.GetExport(handle, "eip_connect");
-                NativeLibrary.GetExport(handle, "eip_get_diagnostics_json");
-                NativeLibrary.GetExport(handle, "eip_execute_batch");
-            }
-            finally
-            {
-                NativeLibrary.Free(handle);
-            }
-        }
-
-        private static bool PathsEqual(string first, string second)
-        {
-            return string.Equals(
-                Path.GetFullPath(first).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                Path.GetFullPath(second).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                StringComparison.OrdinalIgnoreCase);
-        }
     }
 }

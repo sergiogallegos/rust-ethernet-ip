@@ -21,4 +21,19 @@
     <ProjectReference Include="..\RustEtherNetIp\RustEtherNetIp.csproj" />
   </ItemGroup>
 
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <NativeLibraryFileName>librust_ethernet_ip.dylib</NativeLibraryFileName>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <NativeLibraryFileName>rust_ethernet_ip.dll</NativeLibraryFileName>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <NativeLibraryFileName>librust_ethernet_ip.so</NativeLibraryFileName>
+  </PropertyGroup>
+
+  <Target Name="CopyRustEtherNetIpNativeLibrary" AfterTargets="Build">
+    <Copy SourceFiles="..\..\target\release\$(NativeLibraryFileName)" DestinationFolder="$(OutputPath)" />
+    <Message Text="Copying native library to $(OutputPath)" Importance="high" />
+  </Target>
+
 </Project>

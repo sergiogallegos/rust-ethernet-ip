@@ -1,7 +1,5 @@
 using System;
 using System.IO;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using Xunit;
 
 namespace RustEtherNetIp.Tests
@@ -17,35 +15,21 @@ namespace RustEtherNetIp.Tests
         }
 
         [Fact]
-        public void CanLoadNativeLibrary()
+        public void StagedNativeLibraryRemainsUnchangedAfterPInvokeLoad()
         {
-            SimulatorTestHarness.StageNativeLibrary();
+            var nativeLibPath = SimulatorTestHarness.StageNativeLibrary();
+            var before = new FileInfo(nativeLibPath);
+            long originalLength = before.Length;
+            DateTime originalWriteTime = before.LastWriteTimeUtc;
 
-            var nativeLibName = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                ? "librust_ethernet_ip.dylib"
-                : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                    ? "librust_ethernet_ip.so"
-                    : "rust_ethernet_ip.dll";
-            
-            var nativeLibPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, nativeLibName);
-            if (!File.Exists(nativeLibPath))
-            {
-                return;
-            }
+            // Exercise the library through the same CLR-managed P/Invoke path
+            // used by consumers, then verify staging is a read-only operation.
+            Assert.Equal(2u, NativeRuntime.AbiVersion);
+            Assert.Equal(nativeLibPath, SimulatorTestHarness.StageNativeLibrary());
 
-            // Try to load the native library
-            var handle = NativeLibrary.Load(nativeLibPath);
-            try
-            {
-                Assert.True(handle != IntPtr.Zero, "Failed to load native library");
-                Assert.NotEqual(IntPtr.Zero, NativeLibrary.GetExport(handle, "eip_connect"));
-                Assert.NotEqual(IntPtr.Zero, NativeLibrary.GetExport(handle, "eip_get_diagnostics_json"));
-                Assert.NotEqual(IntPtr.Zero, NativeLibrary.GetExport(handle, "eip_execute_batch"));
-            }
-            finally
-            {
-                NativeLibrary.Free(handle);
-            }
+            var after = new FileInfo(nativeLibPath);
+            Assert.Equal(originalLength, after.Length);
+            Assert.Equal(originalWriteTime, after.LastWriteTimeUtc);
         }
     }
 } 

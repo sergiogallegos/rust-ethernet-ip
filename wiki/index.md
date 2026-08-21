@@ -66,7 +66,7 @@ Status values:
 - [investigations/roadmap-gap-review-2026-06-20.md](investigations/roadmap-gap-review-2026-06-20.md) — Architecture and wrapper-surface review that informed the post-1.1.0 roadmap additions. `active`
 - [investigations/documentation-state-2026-04-20.md](investigations/documentation-state-2026-04-20.md) — Current documentation-health assessment, including active docs that are healthy and older docs that need clearer historical framing. `active`
 - [investigations/test-coverage-strength-2026-05-18.md](investigations/test-coverage-strength-2026-05-18.md) — Current assessment of Rust, C#, and Python test strength, local command results, and prioritized coverage gaps. `active`
-- [investigations/dotnet-testhost-shutdown-2026-05-26.md](investigations/dotnet-testhost-shutdown-2026-05-26.md) — Ubuntu .NET 10 testhost shutdown failure analysis and current CI mitigation. `active`
+- [investigations/dotnet-testhost-shutdown-2026-05-26.md](investigations/dotnet-testhost-shutdown-2026-05-26.md) — Dump-confirmed Ubuntu .NET testhost crash caused by replacing and reloading the staged shared library. `confirmed`
 
 ## Planned High-Value Pages
 

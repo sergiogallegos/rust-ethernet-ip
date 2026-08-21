@@ -88,28 +88,13 @@ public sealed class PlcSimulatorFixture : IDisposable
 
     private static void StageNativeLibrary()
     {
-        string source = ResolveNativeLibrary();
         string destination = Path.Combine(AppContext.BaseDirectory, NativeLibraryFileName);
-        if (!File.Exists(destination) || File.GetLastWriteTimeUtc(destination) < File.GetLastWriteTimeUtc(source))
-            File.Copy(source, destination, overwrite: true);
-    }
-
-    private static string ResolveNativeLibrary()
-    {
-        var configured = Environment.GetEnvironmentVariable("RUST_ETHERNET_IP_NATIVE_LIB");
-        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
-            return configured;
-
-        var repoRoot = FindRepoRoot();
-        var releasePath = Path.Combine(repoRoot, "target", "release", NativeLibraryFileName);
-        if (File.Exists(releasePath))
-            return releasePath;
-
-        var debugPath = Path.Combine(repoRoot, "target", "debug", NativeLibraryFileName);
-        if (File.Exists(debugPath))
-            return debugPath;
-
-        throw new FileNotFoundException($"Could not find {NativeLibraryFileName}; build the native library with `cargo build --release --features ffi --locked`.");
+        if (!File.Exists(destination))
+        {
+            throw new FileNotFoundException(
+                $"Could not find staged {NativeLibraryFileName}; build the native library with `cargo build --release --features ffi --locked` before running dotnet test.",
+                destination);
+        }
     }
 
     private static string FindRepoRoot()

@@ -4,7 +4,7 @@
 
 `confirmed`: GitHub Actions run `26424069105` failed only in `Test (ubuntu-latest / stable)` after the C# suite reported `64/64` passing; VSTest then aborted because the testhost process crashed during shutdown.
 
-`likely`: The immediate CI fix is to stop installing a .NET 10 preview SDK on top of the runner image and to use a .NET 10-aware test runner stack.
+`confirmed`: A 2026-08-21 crash-dump analysis superseded the earlier shutdown-race hypothesis. The faulting thread was inside `NativeLibrary.GetExport`, called by the test harness after another test had already loaded the same staged `.so` through P/Invoke.
 
 ## Current Understanding
 
@@ -12,6 +12,7 @@
 - The C# test project was still pinned to `Microsoft.NET.Test.Sdk 17.9.0`, `xunit 2.6.6`, and `xunit.runner.visualstudio 2.5.6`.
 - GitHub's Ubuntu stable job reached the C# test step, built the wrapper, ran the test assembly, reported all 64 tests passed, then returned exit code 1 with `Test host process crashed`.
 - Local validation after updating the runner stack to `Microsoft.NET.Test.Sdk 18.5.1`, `xunit 2.9.3`, and `xunit.runner.visualstudio 3.1.5` passed `79/79` C# tests on .NET 10.
+- The durable 2026-08-21 fix makes MSBuild the sole owner of native-library staging. Running tests only check that the staged file exists and exercise it through CLR-managed P/Invoke; they never overwrite, manually reload, or unload it.
 
 ## Evidence
 
@@ -36,9 +37,19 @@
 
 `next`: Pull `csharp-testhost-dumps-ubuntu-latest-*` from any run where the first attempt crashed and inspect whether the faulting thread is a Tokio worker inside the cdylib or the testhost's own teardown. A durable fix belongs to the FFI lifecycle work (CODEX-AS: unwind guard, teardown discipline), not to CI.
 
+## Update 2026-08-21 — dump confirms unsafe shared-library restaging
+
+`confirmed`: The crash dump from GitHub Actions run `32528795950` identifies the faulting managed stack as `System.Runtime.InteropServices.NativeLibrary.GetExport` → `SimulatorTestHarness.AssertNativeLibraryHasRequiredExports` → `SimulatorTestHarness.StageNativeLibrary` → the reported simulator test. No Tokio worker or batch-operation frame appears in the faulting path.
+
+`confirmed`: ABI contract tests had already loaded the test-output `librust_ethernet_ip.so` through `DllImport`. The simulator harness then copied over that same output path and manually loaded, inspected, and freed it. Replacing and independently reloading an image already mapped by the CLR is unsafe on Linux. The batch test named by VSTest was only the next test constructing the harness, not evidence of a batch FFI defect.
+
+`fix applied`: Both C# test projects now stage the release cdylib through MSBuild before testhost starts. The unit harness and native integration fixture only verify that the staged file exists. The manual `NativeLibrary.Load` / `GetExport` / `Free` test was replaced with a regression that loads through normal P/Invoke and proves repeated staging checks do not modify the file. CI retries were removed so every platform must pass once; crash-dump upload remains available for future failures.
+
+`superseded`: The beta-codegen and leaked-Tokio-runtime shutdown theories were reasonable before a dump was available but do not match the captured faulting stack.
+
 ## Open Questions
 
-- Whether beta codegen exposes a real data race / UB in the FFI shutdown path (clients cloned out of `FFI_CLIENTS` while background timers/keep-alive tasks call `block_on`) versus a transient beta-rustc regression is still `unclear`. If the crash ever appears on `ubuntu/stable`, the `--blame-crash` dump should isolate `SimulatorTestHarness.Dispose()` versus native library shutdown.
+- Whether unrelated FFI shutdown hazards exist remains a separate question; the captured Ubuntu testhost crash does not provide evidence for one.
 
 ## Related Pages
 

@@ -1342,3 +1342,20 @@ Sources used:
 - `docs/audit/1.2.1_wrapper_and_platform_gap_analysis.md`
 - Public native-library platform, packaging, C API, and contributor-testing
   conventions reviewed 2026-08-21
+
+## [2026-08-21] ingest | resolve Ubuntu .NET testhost crash from captured dump
+
+- Updated `wiki/investigations/dotnet-testhost-shutdown-2026-05-26.md` and
+  `wiki/index.md`.
+- Confirmed the faulting path was the test harness manually inspecting a shared
+  library after the CLR had already loaded it, not batch FFI or Tokio shutdown.
+- Replaced runtime copy/load/free behavior with deterministic pre-testhost
+  MSBuild staging, added a non-mutation regression, and removed CI retries.
+
+Sources used:
+
+- GitHub Actions run `32528795950` crash dump and test sequence
+- `csharp/RustEtherNetIp.Tests/SimulatorTestHarness.cs`
+- `csharp/RustEtherNetIp.Tests/MinimalLoadTest.cs`
+- `csharp/RustEtherNetIp.IntegrationTests/PlcSimulatorFixture.cs`
+- `.github/workflows/ci.yml`

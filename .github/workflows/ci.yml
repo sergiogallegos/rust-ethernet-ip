@@ -46,30 +46,20 @@ jobs:
     - name: Run tests
       run: cargo test --workspace --all-features --locked --verbose
 
-    # The C# wrapper P/Invokes a stable C ABI, so testing it against a
-    # stable-toolchain-built cdylib is sufficient. Running the .NET test host
-    # against a beta-built cdylib on Linux intermittently aborts during testhost
-    # shutdown (native Tokio runtime threads torn down by the host); the Rust
-    # side is already covered by `cargo test` on beta. See
+    # The C# wrapper consumes the stable C ABI, so a stable-toolchain-built
+    # cdylib is sufficient. The Rust side is already covered by `cargo test`
+    # on beta. See
     # wiki/investigations/dotnet-testhost-shutdown-2026-05-26.md.
     - name: Build release cdylib (ffi) for C# tests
       if: matrix.rust == 'stable'
       shell: bash
       run: |
-        # Remove any cached/stale cdylib so the C# harness can't pick up a
-        # non-ffi build (which intermittently caused EntryPointNotFound for
-        # eip_connect on the Ubuntu leg), then build a fresh ffi cdylib.
+        # Remove any cached/stale cdylib, then build the exact native image that
+        # MSBuild will stage before testhost starts.
         rm -f target/release/librust_ethernet_ip.so \
               target/release/librust_ethernet_ip.dylib \
               target/release/rust_ethernet_ip.dll
         cargo build --release --features ffi --locked
-        # Point the harness directly at this known-good ffi cdylib.
-        case "${{ runner.os }}" in
-          Windows) f="rust_ethernet_ip.dll";;
-          macOS)   f="librust_ethernet_ip.dylib";;
-          *)       f="librust_ethernet_ip.so";;
-        esac
-        echo "RUST_ETHERNET_IP_NATIVE_LIB=$GITHUB_WORKSPACE/target/release/$f" >> "$GITHUB_ENV"
 
     - name: Setup .NET
       if: matrix.rust == 'stable'
@@ -77,27 +67,19 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
-    # The ubuntu testhost intermittently crashes at teardown AFTER all tests
-    # pass (leaked native runtime threads racing process exit — see
-    # wiki/investigations/dotnet-testhost-shutdown-2026-05-26.md). One retry
-    # absorbs the flake; a genuine test failure still fails twice.
     - name: Run C# tests
       if: matrix.rust == 'stable'
       shell: bash
       run: |
-        dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release --blame-crash \
-          || dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release --blame-crash
+        dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release --blame-crash
 
     - name: Run C# native P/Invoke integration tests
       if: matrix.rust == 'stable'
       shell: bash
       run: |
-        dotnet test csharp/RustEtherNetIp.IntegrationTests/RustEtherNetIp.IntegrationTests.csproj -c Release --blame-crash \
-          || dotnet test csharp/RustEtherNetIp.IntegrationTests/RustEtherNetIp.IntegrationTests.csproj -c Release --blame-crash
+        dotnet test csharp/RustEtherNetIp.IntegrationTests/RustEtherNetIp.IntegrationTests.csproj -c Release --blame-crash
 
-    # Preserve --blame-crash dumps even when the retry absorbed the flake, so
-    # the open question in the testhost-shutdown investigation can be answered
-    # from a real stable-toolchain dump.
+    # Preserve --blame-crash evidence for any future native-process failure.
     - name: Upload C# testhost crash dumps
       if: matrix.rust == 'stable' && always()
       uses: actions/upload-artifact@v4

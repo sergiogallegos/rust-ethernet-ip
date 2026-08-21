@@ -14,6 +14,22 @@ navigation?.addEventListener('click', (event) => {
   }
 });
 
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && navigation?.classList.contains('open')) {
+    navigation.classList.remove('open');
+    menuButton?.setAttribute('aria-expanded', 'false');
+    menuButton?.focus();
+  }
+});
+
+const desktopNavigation = window.matchMedia('(min-width: 901px)');
+desktopNavigation.addEventListener('change', (event) => {
+  if (event.matches) {
+    navigation?.classList.remove('open');
+    menuButton?.setAttribute('aria-expanded', 'false');
+  }
+});
+
 document.querySelectorAll('.code-tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     const language = tab.getAttribute('data-lang');

@@ -34,6 +34,10 @@ Target release: `1.2.1`.
 - Added a responsive application-to-controller architecture flow showing where
   the language bindings, Rust core, EtherNet/IP/CIP, and Logix tag operations
   fit, including the correct backend boundary for browser-based applications.
+- Refined the website launch copy around the common “EtherNet/IP library” and
+  “PLC driver” search terms, replaced decorative live-state claims with a real
+  hardware validation snapshot, linked every headline result to its dated
+  evidence, and strengthened mobile keyboard and viewport behavior.
 - Added draft `1.2.1` release notes and a tracked Markdown release-state audit.
 - Added a README Tier 1 release-target matrix and a wrapper/platform gap
   analysis, separating automated OS/toolchain gates from exact PLC hardware

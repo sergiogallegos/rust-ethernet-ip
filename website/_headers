@@ -9,5 +9,8 @@
 /styles.css
   Cache-Control: public, max-age=3600
 
+/launch.css
+  Cache-Control: public, max-age=3600
+
 /site.js
   Cache-Control: public, max-age=3600

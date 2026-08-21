@@ -3,20 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Production-focused EtherNet/IP for Allen-Bradley CompactLogix and ControlLogix, available for Rust, .NET, Python, C, and C++.">
+  <meta name="description" content="Open-source EtherNet/IP library and PLC driver for Allen-Bradley CompactLogix and ControlLogix, with Rust, C#, Python, C, and C++ APIs.">
   <meta name="theme-color" content="#f8f5ef">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="rust-ethernet-ip">
-  <meta property="og:title" content="rust-ethernet-ip — One protocol core. Every modern stack.">
-  <meta property="og:description" content="Production-focused EtherNet/IP for CompactLogix and ControlLogix, available for Rust, .NET, Python, C, and C++.">
+  <meta property="og:title" content="rust-ethernet-ip — EtherNet/IP Library and PLC Driver">
+  <meta property="og:description" content="Open-source EtherNet/IP library and PLC driver for CompactLogix and ControlLogix, with Rust, C#, Python, C, and C++ APIs.">
   <meta property="og:url" content="https://rustethernetip.com/">
   <meta property="og:image" content="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/package-preview.png">
   <meta property="og:image:alt" content="rust-ethernet-ip project preview">
   <meta name="twitter:card" content="summary_large_image">
-  <title>rust-ethernet-ip — One protocol core. Every modern stack.</title>
+  <title>EtherNet/IP Library &amp; PLC Driver — rust-ethernet-ip</title>
   <link rel="canonical" href="https://rustethernetip.com/">
   <link rel="icon" href="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/favicon/icon-32.png">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="launch.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -37,9 +38,10 @@
   <main id="main">
     <section id="top" class="hero section-shell">
       <div class="hero-copy">
-        <p class="eyebrow"><span></span> Stable 1.2.0 · 1.2.1 preview · C ABI v2</p>
-        <h1>One protocol core.<br><em>Every modern stack.</em></h1>
-        <p class="hero-lede">A memory-safe EtherNet/IP client for Allen-Bradley CompactLogix and ControlLogix—with first-class Rust, .NET, Python, C, and C++ paths.</p>
+        <p class="eyebrow"><span></span> Open-source EtherNet/IP library &amp; PLC driver</p>
+        <h1>Direct Logix data.<br><em>Every modern stack.</em></h1>
+        <p class="hero-lede">A cross-platform PLC communication library for direct CompactLogix and ControlLogix tag access, with first-class Rust, .NET, Python, C, and C++ APIs.</p>
+        <p class="hero-explainer"><strong>What it does:</strong> EtherNet/IP is the industrial Ethernet protocol Logix controllers use to exchange tag data. This driver lets your application read and write those tags without adding an OPC server.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="#quick-start">Start building <span>→</span></a>
           <a class="button button-secondary" href="https://github.com/sergiogallegos/rust-ethernet-ip">View source</a>
@@ -50,7 +52,7 @@
       </div>
       <div class="hero-visual" aria-label="Library architecture diagram">
         <div class="signal-card">
-          <div class="signal-head"><span>LIVE / TAG STREAM</span><span class="signal-dot"></span></div>
+          <div class="signal-head"><span>REAL-HARDWARE VALIDATION</span><span class="signal-dot"></span></div>
           <div class="signal-chart" aria-hidden="true">
             <svg viewBox="0 0 560 210" preserveAspectRatio="none">
               <path class="grid" d="M0 42H560M0 84H560M0 126H560M0 168H560M112 0V210M224 0V210M336 0V210M448 0V210"/>
@@ -59,9 +61,9 @@
             </svg>
           </div>
           <div class="signal-stats">
-            <div><span>READ</span><strong>1.9 ms</strong></div>
-            <div><span>WRITE</span><strong>2.0 ms</strong></div>
-            <div><span>STATE</span><strong class="status-ok">CONNECTED</strong></div>
+            <div><span>PROCESSOR</span><strong>5069-L330ERM</strong></div>
+            <div><span>FIRMWARE</span><strong>38</strong></div>
+            <div><span>RESULT</span><strong class="status-ok">PASS</strong></div>
           </div>
         </div>
         <div class="architecture-strip">
@@ -70,11 +72,14 @@
       </div>
     </section>
 
-    <section class="proof-bar" aria-label="Release validation highlights">
-      <div><strong>2,338</strong><span>real tags read</span></div>
-      <div><strong>2,319</strong><span>writes verified</span></div>
-      <div><strong>4 / 4</strong><span>bindings passed</span></div>
-      <div><strong>0</strong><span>unexpected anomalies</span></div>
+    <section class="proof-section" aria-label="Release validation highlights">
+      <div class="proof-bar">
+        <div><strong>2,338</strong><span>tag paths read per binding</span></div>
+        <div><strong>2,319</strong><span>write paths verified by readback</span></div>
+        <div><strong>4 / 4</strong><span>language bindings passed</span></div>
+        <div><strong>0</strong><span>unexpected anomalies</span></div>
+      </div>
+      <a class="proof-source" href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md">Source: 1.2.0 real-hardware gate · 5069-L330ERM firmware 38 · July 8, 2026 <span>View evidence →</span></a>
     </section>
 
     <section class="use-case-bar" aria-label="Common application types">

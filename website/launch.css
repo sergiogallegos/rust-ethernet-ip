@@ -1,0 +1,77 @@
+/* Launch clarity and mobile interaction refinements. */
+.hero-lede {
+  margin-bottom: 12px;
+}
+
+.hero-explainer {
+  max-width: 640px;
+  margin: 0 0 32px;
+  padding-left: 14px;
+  border-left: 2px solid var(--rust);
+  color: var(--muted);
+  font-size: .87rem;
+}
+
+.hero-explainer strong {
+  color: var(--ink);
+}
+
+.signal-stats {
+  grid-template-columns: 1.5fr .7fr .7fr;
+}
+
+.signal-stats div:first-child strong {
+  font-size: .74rem;
+}
+
+.proof-section {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #f4f0e9;
+}
+
+.proof-section .proof-bar {
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.proof-source {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 13px max(52px, calc((100vw - 1124px) / 2));
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: 600 .67rem var(--mono);
+}
+
+.proof-source span {
+  color: var(--rust);
+  white-space: nowrap;
+}
+
+.proof-source:hover {
+  color: var(--ink);
+}
+
+.menu-toggle,
+.code-tab {
+  min-height: 44px;
+}
+
+@media (max-width: 600px) {
+  .proof-source {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+    padding: 14px;
+  }
+
+  .hero-explainer {
+    font-size: .82rem;
+  }
+
+  .signal-stats div:first-child strong {
+    font-size: .68rem;
+  }
+}

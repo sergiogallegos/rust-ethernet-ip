@@ -10,6 +10,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.88+-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Documentation](https://docs.rs/rust-ethernet-ip/badge.svg)](https://docs.rs/rust-ethernet-ip)
+[![Website](https://img.shields.io/badge/website-rustethernetip.com-cf6636.svg)](https://rustethernetip.com/)
 
 Production-focused EtherNet/IP library for **Allen-Bradley CompactLogix and ControlLogix PLCs**.
 

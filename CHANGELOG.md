@@ -38,6 +38,9 @@ Target release: `1.2.1`.
   “PLC driver” search terms, replaced decorative live-state claims with a real
   hardware validation snapshot, linked every headline result to its dated
   evidence, and strengthened mobile keyboard and viewport behavior.
+- Launched the project at `rustethernetip.com`, added the live site to the main
+  README, aligned legal-page canonical URLs with Cloudflare's clean paths, and
+  made direct Logix PLC read/write access the homepage headline.
 - Added draft `1.2.1` release notes and a tracked Markdown release-state audit.
 - Added a README Tier 1 release-target matrix and a wrapper/platform gap
   analysis, separating automated OS/toolchain gates from exact PLC hardware

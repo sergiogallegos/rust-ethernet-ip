@@ -48,7 +48,7 @@ local file server.
 
 ### Launch verification
 
-- Confirm `/`, `/privacy.html`, `/license.html`, `/404.html`, `/robots.txt`,
+- Confirm `/`, `/privacy`, `/license`, `/404.html`, `/robots.txt`,
   `/sitemap.xml`, and `/.well-known/security.txt` return successfully.
 - Confirm HTTPS works without certificate warnings and HTTP redirects to HTTPS.
 - Confirm `www` redirects to the apex while preserving a test path and query.

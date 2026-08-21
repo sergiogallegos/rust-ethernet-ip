@@ -43,6 +43,9 @@ Target release: `1.2.1`.
   made direct Logix PLC read/write access the homepage headline.
 - Matched the website footer to the mascot logo's white canvas so the original
   full-brand artwork blends cleanly without a visible rectangular background.
+- Added a linked `Stable release 1.2.0` marker near the website hero actions so
+  visitors can identify the latest published version without confusing it with
+  the unpublished `1.2.1` development line.
 - Added draft `1.2.1` release notes and a tracked Markdown release-state audit.
 - Added a README Tier 1 release-target matrix and a wrapper/platform gap
   analysis, separating automated OS/toolchain gates from exact PLC hardware

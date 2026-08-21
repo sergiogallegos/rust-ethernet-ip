@@ -63,6 +63,16 @@ footer {
   background: #fff;
 }
 
+.trust-row a::before {
+  margin-right: 6px;
+  color: var(--rust);
+  content: "✓";
+}
+
+.trust-row a:hover {
+  color: var(--rust);
+}
+
 @media (max-width: 600px) {
   .proof-source {
     align-items: flex-start;

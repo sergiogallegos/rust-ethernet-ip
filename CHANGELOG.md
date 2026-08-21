@@ -69,6 +69,9 @@ Target release: `1.2.1`.
 - Fixed intermittent Linux .NET testhost crashes by staging the Rust shared
   library before testhost starts and never overwriting, manually reloading, or
   unloading an image that the CLR may already be using for P/Invoke.
+- Fixed development-line package validation so the unpublished `1.2.1` root
+  crate is checked through the dependency-order-aware readiness gate instead
+  of requiring its same-version sibling crates to already exist on crates.io.
 - Program-scoped tag discovery aborted on CIP 0x06 "partial transfer" instead of
   paging, so a program whose symbol table spans more than one response yielded no
   tags at all.

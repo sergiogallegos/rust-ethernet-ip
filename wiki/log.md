@@ -1359,3 +1359,20 @@ Sources used:
 - `csharp/RustEtherNetIp.Tests/MinimalLoadTest.cs`
 - `csharp/RustEtherNetIp.IntegrationTests/PlcSimulatorFixture.cs`
 - `.github/workflows/ci.yml`
+
+## [2026-08-21] ingest | align package CI with unpublished 1.2.1 development line
+
+- Confirmed raw `cargo package` for the root crate cannot resolve unpublished
+  same-version workspace siblings from crates.io, even with `--no-verify`.
+- Removed the contradictory root-only package invocation from the wrapper
+  package job and made that job depend on the existing dependency-order-aware
+  Rust release-readiness gate.
+- Preserved strict release-day behavior: `check-release-readiness --strict`
+  still requires sibling crates to be published in dependency order.
+
+Sources used:
+
+- `.github/workflows/ci.yml`
+- `scripts/check-release-readiness`
+- `tests/release_readiness_tests.sh`
+- `docs/release/1.2.1_RELEASE_NOTES_DRAFT.md`

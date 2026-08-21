@@ -59,6 +59,10 @@
   min-height: 44px;
 }
 
+footer {
+  background: #fff;
+}
+
 @media (max-width: 600px) {
   .proof-source {
     align-items: flex-start;

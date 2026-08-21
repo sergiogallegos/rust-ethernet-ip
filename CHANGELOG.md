@@ -41,6 +41,8 @@ Target release: `1.2.1`.
 - Launched the project at `rustethernetip.com`, added the live site to the main
   README, aligned legal-page canonical URLs with Cloudflare's clean paths, and
   made direct Logix PLC read/write access the homepage headline.
+- Matched the website footer to the mascot logo's white canvas so the original
+  full-brand artwork blends cleanly without a visible rectangular background.
 - Added draft `1.2.1` release notes and a tracked Markdown release-state audit.
 - Added a README Tier 1 release-target matrix and a wrapper/platform gap
   analysis, separating automated OS/toolchain gates from exact PLC hardware

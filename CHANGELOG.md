@@ -21,6 +21,9 @@ Target release: `1.2.1`.
 - Added a dependency-free light-theme project website under `website/`, ready
   for Cloudflare Pages or GitHub Pages and linking Rust, C#, Python, and C/C++
   documentation, packages, source, releases, and hardware evidence.
+- Added production launch metadata for `rustethernetip.com`, including canonical
+  and social URLs, a sitemap, crawler rules, browser security headers, a custom
+  404 page, a security contact, and a Cloudflare Pages launch checklist.
 - Added website privacy, MIT license, industrial safety, security, and
   contribution links; the shipped site uses no analytics, cookies, forms, or
   third-party font requests.

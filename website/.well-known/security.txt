@@ -1,0 +1,5 @@
+Contact: https://github.com/sergiogallegos/rust-ethernet-ip/security
+Canonical: https://rustethernetip.com/.well-known/security.txt
+Expires: 2027-08-21T00:00:00.000Z
+Preferred-Languages: en
+Policy: https://github.com/sergiogallegos/rust-ethernet-ip/security/policy

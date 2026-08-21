@@ -1,0 +1,13 @@
+/*
+  Content-Security-Policy: default-src 'self'; img-src 'self' https://raw.githubusercontent.com data:; script-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'; upgrade-insecure-requests
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+
+/styles.css
+  Cache-Control: public, max-age=3600
+
+/site.js
+  Cache-Control: public, max-age=3600

@@ -1,6 +1,7 @@
 # Project Website
 
-Static, dependency-free website for the `1.2.0` release line. Open
+Static, dependency-free website for the stable `1.2.0` release line and the
+`1.2.1` development preview. Open
 `website/index.html` directly or serve the repository root for local review:
 
 ```bash
@@ -26,13 +27,37 @@ the PLC connection.
 
 ### Cloudflare Pages
 
-- Connect the GitHub repository.
-- Framework preset: `None`.
-- Build command: leave empty.
-- Build output directory: `website`.
-- Add `rustethernetip.com` as the canonical custom domain after registration.
-- Optionally register `rust-ethernet-ip.com` and configure a permanent redirect
-  to the canonical unhyphenated domain.
+1. In Cloudflare, open **Workers & Pages**, choose **Create**, then **Pages** and
+   **Connect to Git**.
+2. Select the `sergiogallegos/rust-ethernet-ip` repository and production branch
+   `main`.
+3. Use framework preset `None`, leave the build command empty, and set the build
+   output directory to `website`. The repository root stays at its default.
+4. Deploy and verify the generated `*.pages.dev` preview before attaching DNS.
+5. In the Pages project, open **Custom domains**, choose **Set up a domain**, and
+   add `rustethernetip.com`. Cloudflare should configure the apex record because
+   the domain uses Cloudflare DNS.
+6. Add `www.rustethernetip.com` as a proxied DNS name and configure a permanent
+   redirect to `https://rustethernetip.com` that preserves paths and query
+   strings. Keep the apex domain as the only canonical URL.
+
+Every push to `main` deploys the production site. Pull-request branches receive
+preview deployments. The `_headers` file adds browser security headers; verify
+them after deployment because they are applied by Cloudflare, not by a basic
+local file server.
+
+### Launch verification
+
+- Confirm `/`, `/privacy.html`, `/license.html`, `/404.html`, `/robots.txt`,
+  `/sitemap.xml`, and `/.well-known/security.txt` return successfully.
+- Confirm HTTPS works without certificate warnings and HTTP redirects to HTTPS.
+- Confirm `www` redirects to the apex while preserving a test path and query.
+- Test the header, navigation, language tabs, outbound package links, sponsor
+  link, and footer at desktop and mobile widths.
+- Inspect response headers for the content security policy, HSTS, frame denial,
+  MIME sniffing protection, referrer policy, and permissions policy.
+- Keep analytics disabled unless the privacy policy is updated before enabling
+  it.
 
 ### GitHub Pages
 

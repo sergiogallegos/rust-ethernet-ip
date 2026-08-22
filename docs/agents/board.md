@@ -18,6 +18,7 @@
 | CODEX-BG | Cross-binding one-hour and 24-hour endurance soak | codex | open | 2026-08-22 |
 | CODEX-BH | Tag-shape and scope performance matrix | codex | open | 2026-08-22 |
 | CODEX-BI | Bump CI actions off deprecated Node.js 20 runtime | codex | open | 2026-08-22 |
+| CODEX-BJ | Investigate get_tag_attributes/get_udt_definition path-segment error on a live controller-scope UDT tag | codex | open | 2026-08-22 |
 
 > 2026-08-22 **1.2.1 cache-safety plan.** CODEX-BA → BB → BC → BD are
 > release-blocking and should run in that order. CODEX-BE (packet policy), BF
@@ -32,6 +33,16 @@
 > Node.js 20 runtime onto Node 24 via GitHub's compatibility shim. Jobs pass
 > today only because of that shim; bump the affected action major versions
 > before GitHub removes it.
+>
+> 2026-08-22 **CODEX-BJ opened** (severity/scope unknown, flagged for
+> maintainer triage): the CODEX-BD live UDT-layout gate session found
+> `get_tag_attributes()`/`get_udt_definition()` failing with a CIP
+> path-segment error against a real, controller-scope UDT tag on the live
+> 1756-L75 (fw33), while `read_tag()` and `discover_tags_detailed()` both
+> succeeded against the same tag in the same session. Not blocking 1.2.1 —
+> the live gate tool routes around it using `read_tag()` +
+> `discover_tags_detailed()`. Full repro and comparison table in the task
+> file.
 >
 > 2026-08-22 **CODEX-BA/BB/BC merged → Done** after independent Claude review
 > (offline gate: fmt, clippy -D warnings, full locked workspace tests,

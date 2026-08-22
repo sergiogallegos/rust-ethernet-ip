@@ -12,10 +12,7 @@
 
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
-| CODEX-BA | Comprehensive schema refresh and shared cache generation | codex | open | 2026-08-22 |
-| CODEX-BB | Schema-drift eviction and safe read self-healing | codex | open | 2026-08-22 |
-| CODEX-BC | Cross-binding schema refresh API and cache diagnostics | codex | open | 2026-08-22 |
-| CODEX-BD | Schema-change simulator and real-hardware validation gate | codex | open | 2026-08-22 |
+| CODEX-BD | Schema-change simulator and real-hardware validation gate | codex | in-progress | 2026-08-22 |
 | CODEX-BE | Batch packet-policy characterization and safe tuning | codex | open | 2026-08-22 |
 | CODEX-BF | Python native batch writes with safe typed fallbacks | codex | open | 2026-08-22 |
 | CODEX-BG | Cross-binding one-hour and 24-hour endurance soak | codex | open | 2026-08-22 |
@@ -27,6 +24,22 @@
 > accepted follow-ups rather than silent deferrals; they do not block 1.2.1
 > unless the maintainer explicitly promotes them. Recommended follow-up order:
 > BE after BD; BF after BB/BC; BG after BD; BH after BE.
+>
+> 2026-08-22 **CODEX-BA/BB/BC merged → Done** after independent Claude review
+> (offline gate: fmt, clippy -D warnings, full locked workspace tests,
+> `plc_sim_tests`, and `scripts/schema-change-gate` across Rust/C-ABI/C#/
+> Python/C++, all green). BA and BB landed in one commit because their
+> changes are physically interleaved in the same `src/client.rs` /
+> `src/client/batch_exec.rs` hunks: `dce5a89`. BC's cross-binding surface
+> (C ABI v3 + `CAP_SCHEMA_REFRESH`, C#/Python/C++ wrappers, diagnostics)
+> landed separately: `dc23ad2`. CODEX-BD's remaining offline deliverables
+> (dynamic schema-mutation simulator, `schema_drift_recovery_tests.rs`,
+> `scripts/schema-change-gate`, the dated 1756-L75 record) landed at
+> `824ba0e`; cross-cutting CHANGELOG/release-notes/cache-lifecycle doc sync
+> spanning all four tasks landed at `f2ce7e4`. **CODEX-BD stays in-progress**
+> — the live Studio 5000 sequence on the maintainer's 1756-L75 is the only
+> remaining release-blocking work; `examples/schema_change_gate_live.rs`
+> (committed earlier at `2bb0e04`) automates its non-editing steps.
 
 > 2026-07-08 update: **CODEX-AO closed → Done.** Phase 1 merged (`7cb07a4`); Phase 2
 > (whole-UDT wire-format) deferred indefinitely per maintainer direction — not
@@ -168,6 +181,9 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-BC | Cross-binding schema refresh API (ABI v3, `CAP_SCHEMA_REFRESH`) and cache diagnostics across C#/Python/C++ | codex | `dc23ad2` |
+| CODEX-BB | Schema-drift eviction and bounded read self-healing, fail-closed writes | codex | `dce5a89` |
+| CODEX-BA | Clone-shared schema generation and comprehensive `refresh_schema()` | codex | `dce5a89` |
 | CODEX-AZ | CIP fragmented read/write for large strings/UDTs (Claude fix-during-merge for array-element read path; hardware-validated on extended UDT) | codex | `7ea3df9` |
 | CODEX-AX | Full-coverage harness writes+verifies STRINGs — counts 2304/2285/0/19; hardware full-coverage PASS | codex | `7ea3df9` |
 | CODEX-AW | Packet-size-aware batch grouping — closes EIP 0x65 on large batch reads | codex | `7ea3df9` |
@@ -225,7 +241,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 - **Current released version:** `v1.2.0` (tagged 2026-07-10, `fcadd7a`; crates.io ×5 published; NuGet/PyPI via the tag-triggered Release workflow).
 - **Previous released version:** `v1.1.0` (tagged 2026-06-19; published to crates.io ×5, NuGet multi-RID, PyPI incl. the CODEX-AI manylinux wheel).
-- **Active development line:** post-1.2.0 backlog per [`docs/ROADMAP.md`](../ROADMAP.md); no open tasks on the board. Near-term candidates: the ubuntu C# test-host crash flake on CI, and refreshing the stale `CARGO_REGISTRY_TOKEN` repo secret.
+- **Active development line:** `1.2.1` preparation with five active tasks on the board. CODEX-BA, BB, and BC (the ordered schema-safety sequence) are merged; CODEX-BD (same sequence, offline-complete, live Studio 5000 hardware pass pending) is the sole remaining release blocker. CODEX-BE through CODEX-BH are accepted follow-up performance and endurance work.
 - **Current development focus:** the .NET stack — C# wrappers and examples (per `CLAUDE.md` Project Overview).
 - **Hardware validation gate:** integration tests against real CompactLogix / ControlLogix PLCs are the maintainer's responsibility; CI runs `SKIP_PLC_TESTS=1` plus simulator-backed `plc_sim_tests`.
 

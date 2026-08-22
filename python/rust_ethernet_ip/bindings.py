@@ -51,8 +51,8 @@ def _candidate_paths() -> list[Path]:
     for name in names:
         candidates.extend(
             [
-                repo_root / "target" / "debug" / name,
                 repo_root / "target" / "release" / name,
+                repo_root / "target" / "debug" / name,
                 repo_root / "csharp" / "RustEtherNetIp" / "bin" / "Release" / "net10.0" / name,
                 repo_root / "csharp" / "RustEtherNetIp" / name,
             ]

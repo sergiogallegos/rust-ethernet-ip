@@ -12,7 +12,21 @@
 
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
-_No open tasks._
+| CODEX-BA | Comprehensive schema refresh and shared cache generation | codex | open | 2026-08-22 |
+| CODEX-BB | Schema-drift eviction and safe read self-healing | codex | open | 2026-08-22 |
+| CODEX-BC | Cross-binding schema refresh API and cache diagnostics | codex | open | 2026-08-22 |
+| CODEX-BD | Schema-change simulator and real-hardware validation gate | codex | open | 2026-08-22 |
+| CODEX-BE | Batch packet-policy characterization and safe tuning | codex | open | 2026-08-22 |
+| CODEX-BF | Python native batch writes with safe typed fallbacks | codex | open | 2026-08-22 |
+| CODEX-BG | Cross-binding one-hour and 24-hour endurance soak | codex | open | 2026-08-22 |
+| CODEX-BH | Tag-shape and scope performance matrix | codex | open | 2026-08-22 |
+
+> 2026-08-22 **1.2.1 cache-safety plan.** CODEX-BA → BB → BC → BD are
+> release-blocking and should run in that order. CODEX-BE (packet policy), BF
+> (Python native writes), BG (endurance), and BH (tag-shape matrix) remain
+> accepted follow-ups rather than silent deferrals; they do not block 1.2.1
+> unless the maintainer explicitly promotes them. Recommended follow-up order:
+> BE after BD; BF after BB/BC; BG after BD; BH after BE.
 
 > 2026-07-08 update: **CODEX-AO closed → Done.** Phase 1 merged (`7cb07a4`); Phase 2
 > (whole-UDT wire-format) deferred indefinitely per maintainer direction — not

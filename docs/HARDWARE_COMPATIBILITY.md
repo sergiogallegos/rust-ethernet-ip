@@ -15,7 +15,7 @@ Simulator-only results are intentionally excluded.
 | CompactLogix 5380 | 5069-L320ERMS3 | 35 | Direct EtherNet/IP | Done | Done | — | — | `0.7.0` development line | [Rust](validation/2026-04-07_real_plc_5069-L320ERMS3_fw35.md), [C#](validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md) |
 | CompactLogix 5370 | 1769-L18ER-BB1B | 33 | Integrated Ethernet | Done | Done | Done | — | `1.0.0` | [cross-binding run](validation/2026-05-25_real_plc_two-controller_cross-binding_full-coverage.md) |
 | ControlLogix 5580 | 1756-L81ES | 37 | 1756-EN3TR to backplane slot 0 | Done | Done | Done | — | `0.8.0` development line | [Rust](validation/2026-04-16_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md), [C#](validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md), [Python](validation/2026-04-21_python_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md) |
-| ControlLogix 5570 | 1756-L75 | 33 | 1756-EN2T to backplane slot 0 | Done | Done | Done | — | `1.0.0` | [cross-binding run](validation/2026-05-25_real_plc_two-controller_cross-binding_full-coverage.md) |
+| ControlLogix 5570 | 1756-L75 | 33 | 1756-EN2T to backplane slot 0 | Done | Done | Done | Done | `1.2.1` development line | [functional/sequential](validation/2026-08-21_1756-L75_fw33_cross-binding-performance.md), [batch baseline](validation/2026-08-21_1756-L75_fw33_cross-binding-batch-performance.md), [array-cache rerun](validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md) |
 
 Legend: `Done` = a traceable real-hardware pass exists; `—` = no submitted
 evidence for that processor/firmware/binding combination.
@@ -137,6 +137,29 @@ longer. Report sample count and distribution; do not publish only the fastest
 observation. Existing hardware baselines are recorded in the linked validation
 files and should not be compared across controllers without noting topology and
 test-method differences.
+
+The full-manifest runners provide a comparable sequential baseline across all
+four bindings. After verifying the controller project and write targets, add
+`--benchmark-passes 3 --allow-writes --out-dir <directory>` to each runner.
+Benchmark mode performs an untimed 2,304-tag preflight, measures every
+individual read and write, leaves the standard terminal values in writeable
+test tags, and emits JSON with average, minimum, p50, p95, p99, maximum,
+throughput, sample count, and failures. See the
+[1756-L75 firmware 33 baseline](validation/2026-08-21_1756-L75_fw33_cross-binding-performance.md)
+for a complete example.
+
+For logical batch-size characterization, add:
+
+```text
+--batch-benchmark --batch-min-tag-operations 1000 \
+  --batch-min-seconds 30 --allow-writes
+```
+
+The first numeric minimum is a tag-operation floor; the runner derives the
+necessary number of logical calls for each batch size. Results at sizes 50 and
+100 may span multiple CIP packets under the conservative default packet policy.
+See the historical [1756-L75 batch baseline](validation/2026-08-21_1756-L75_fw33_cross-binding-batch-performance.md)
+and its controlled [array-cache rerun](validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md).
 
 ## Submitting Results
 

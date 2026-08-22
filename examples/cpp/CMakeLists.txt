@@ -25,6 +25,25 @@ add_library(rust_ethernet_ip_native SHARED IMPORTED GLOBAL)
 set_target_properties(rust_ethernet_ip_native PROPERTIES
     IMPORTED_LOCATION "${RUST_ETHERNET_IP_NATIVE_LIB}")
 
+if(APPLE)
+    # Rust's cdylib may carry an absolute LC_ID_DYLIB pointing into Cargo's
+    # deps directory. Capture it so each example can be rewritten to load the
+    # copy placed beside the executable instead of a stale Cargo stub.
+    execute_process(
+        COMMAND otool -D "${RUST_ETHERNET_IP_NATIVE_LIB}"
+        OUTPUT_VARIABLE NATIVE_OTOOL_OUTPUT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND_ERROR_IS_FATAL ANY)
+    string(REPLACE "\n" ";" NATIVE_OTOOL_LINES "${NATIVE_OTOOL_OUTPUT}")
+    list(LENGTH NATIVE_OTOOL_LINES NATIVE_OTOOL_LINE_COUNT)
+    if(NATIVE_OTOOL_LINE_COUNT GREATER 1)
+        list(GET NATIVE_OTOOL_LINES 1 NATIVE_INSTALL_NAME)
+        string(STRIP "${NATIVE_INSTALL_NAME}" NATIVE_INSTALL_NAME)
+    else()
+        message(FATAL_ERROR "Could not determine install name for ${RUST_ETHERNET_IP_NATIVE_LIB}")
+    endif()
+endif()
+
 if(WIN32)
     get_filename_component(NATIVE_DIR "${RUST_ETHERNET_IP_NATIVE_LIB}" DIRECTORY)
     set(NATIVE_IMPORT_LIB "${NATIVE_DIR}/rust_ethernet_ip.dll.lib")
@@ -68,17 +87,30 @@ add_executable(cpp_full_coverage full_coverage.cpp)
 target_include_directories(cpp_full_coverage PRIVATE "${REPO_ROOT}/include")
 target_link_libraries(cpp_full_coverage PRIVATE rust_ethernet_ip_native cpp_warnings)
 
+# Restore-safe batch / whole-UDT / discovery companion gate. Live mode needs a
+# PLC; CI only invokes its --dry-run path.
+add_executable(cpp_hardware_feature_gate hardware_feature_gate.cpp)
+target_include_directories(cpp_hardware_feature_gate PRIVATE "${REPO_ROOT}/include")
+target_link_libraries(cpp_hardware_feature_gate PRIVATE rust_ethernet_ip_native cpp_warnings)
+
 if(UNIX AND NOT APPLE)
-    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage PROPERTIES BUILD_RPATH "$ORIGIN")
+    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage cpp_hardware_feature_gate PROPERTIES BUILD_RPATH "$ORIGIN")
 elseif(APPLE)
-    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage PROPERTIES BUILD_RPATH "@loader_path")
+    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage cpp_hardware_feature_gate PROPERTIES BUILD_RPATH "@loader_path")
 endif()
 
-foreach(target ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage)
+foreach(target ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage cpp_hardware_feature_gate)
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${RUST_ETHERNET_IP_NATIVE_LIB}"
                 "$<TARGET_FILE_DIR:${target}>")
+    if(APPLE)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND install_name_tool -change
+                    "${NATIVE_INSTALL_NAME}"
+                    "@loader_path/librust_ethernet_ip.dylib"
+                    "$<TARGET_FILE:${target}>")
+    endif()
 endforeach()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -90,3 +122,4 @@ add_test(
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/smoke.py" "$<TARGET_FILE:cpp_smoke_demo>")
 set_tests_properties(cpp_smoke_demo PROPERTIES
     ENVIRONMENT "RUST_ETHERNET_IP_REPO_ROOT=${REPO_ROOT}")
+add_test(NAME cpp_hardware_feature_gate_dry_run COMMAND cpp_hardware_feature_gate --dry-run)

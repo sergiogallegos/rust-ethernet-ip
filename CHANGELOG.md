@@ -18,6 +18,20 @@ Target release: `1.2.1`.
   processor/firmware/topology/binding matrix, a contributor result template,
   safe controller setup, 1–24 hour endurance profiles, and repeatable
   performance characterization guidance.
+- Added restore-safe Rust, C#, Python, and C/C++ companion hardware runners for
+  native batch reads, applicable batch/grouped writes, whole-UDT reads, and
+  the discovery surfaces each binding exposes.
+- Added opt-in, full-manifest sequential latency benchmarks to the Rust, C#,
+  Python, and C/C++ hardware runners, including average, min, p50, p95, p99,
+  max, throughput, sample counts, failure counts, and JSON output. A 1756-L75
+  firmware 33 baseline records 27,648 successful reads and 27,420 successful
+  writes across the four bindings with no failures.
+- Added batch-size performance modes at 1, 5, 10, 20, 50, and 100 tags with
+  30-second/1,000-tag-operation sampling floors, raw latency distributions,
+  Tukey-IQR filtered averages, outlier counts, logical batches/second,
+  tags/second, terminal-value verification, and explicit Python grouped-write
+  labeling. The L75 firmware 33 baseline reached about 2,830 native DINT
+  writes/second at size 100 across Rust, C#, and C/C++.
 - Added a dependency-free light-theme project website under `website/`, ready
   for Cloudflare Pages or GitHub Pages and linking Rust, C#, Python, and C/C++
   documentation, packages, source, releases, and hardware evidence.
@@ -80,6 +94,11 @@ Target release: `1.2.1`.
 
 ### Fixed
 
+- Fixed macOS CMake examples loading a stale Cargo `deps` dylib install name
+  instead of the native library copied beside each executable.
+- Fixed C# `WriteTagsBatch` classifying a program-scoped scalar path such as
+  `Program:MainProgram.Counter` as a UDT member instead of sending it through
+  the native batch path.
 - Fixed intermittent Linux .NET testhost crashes by staging the Rust shared
   library before testhost starts and never overwriting, manually reloading, or
   unloading an image that the CLR may already be using for P/Invoke.
@@ -100,6 +119,14 @@ Target release: `1.2.1`.
 - Upgraded the desktop example to `egui`/`eframe` 0.33.3 and `webbrowser`
   1.2.2, removing the `RUSTSEC-2026-0257` browser argument-injection
   vulnerability from the workspace lockfile while preserving Rust 1.88 support.
+- Cached positive and negative packed-BOOL array classification per connection,
+  shared the cache across FFI client clones, and invalidate it on route changes
+  or explicit cache clearing.
+  On the 1756-L75 firmware 33 size-100 DINT workload, build-identical Rust, C#,
+  and C/C++ reads improved from 286–303 to about 3,305 tags/second while native
+  write throughput remained stable.
+- Fixed the Python source-checkout native loader preferring a debug artifact
+  over an available release artifact, with a regression test for search order.
 
 ## [1.2.0] - 2026-07-08
 

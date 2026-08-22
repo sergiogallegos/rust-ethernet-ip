@@ -43,6 +43,8 @@ Current release state:
 - [release/0.8.0_RELEASE_NOTES_DRAFT.md](release/0.8.0_RELEASE_NOTES_DRAFT.md) (historical draft absorbed into `1.0.0`)
 - [0.7.0_HARDENING_GATE.md](0.7.0_HARDENING_GATE.md)
 - [validation/REAL_PLC_TESTING.md](validation/REAL_PLC_TESTING.md)
+- [validation/CROSS_BINDING_FEATURE_GATE.md](validation/CROSS_BINDING_FEATURE_GATE.md): Restore-safe batch, whole-UDT, and discovery companion gate for all four bindings
+- [validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md](validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md): Controlled four-binding before/after result for cached array-type detection
 - [validation/REAL_HARDWARE_RESULT_TEMPLATE.md](validation/REAL_HARDWARE_RESULT_TEMPLATE.md)
 - [validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md](validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md) (official 1.2.0 release gate, 4 bindings)
 - [validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md](validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md)

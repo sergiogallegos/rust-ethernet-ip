@@ -10,6 +10,7 @@ header-only `eip_client.hpp` is a small optional RAII layer.
 | `cpp_discovery` | [`discovery.cpp`](discovery.cpp) | Controller tag discovery and correct result cleanup |
 | `cpp_udt_and_scope` | [`udt_and_scope.cpp`](udt_and_scope.cpp) | Controller/program paths, whole-UDT reads, member writes, STRINGs |
 | `cpp_full_coverage` | [`full_coverage.cpp`](full_coverage.cpp) | Maintainer real-hardware parity runner |
+| `cpp_hardware_feature_gate` | [`hardware_feature_gate.cpp`](hardware_feature_gate.cpp) | Restore-safe batch, whole-UDT, and discovery hardware gate |
 | `ffi_header_link_check` | [`parity_link_check.cpp`](parity_link_check.cpp) | Compile/link check for every declared C export |
 
 Build from the repository root:
@@ -31,6 +32,7 @@ Run against dedicated test tags, not uncontrolled production outputs:
 target/cpp/cpp_discovery 192.168.0.10:44818
 target/cpp/cpp_route_and_diagnostics 192.168.0.20:44818 0
 target/cpp/cpp_udt_and_scope 192.168.0.10:44818 MainProgram
+target/cpp/cpp_hardware_feature_gate --plc-address 192.168.0.20:44818 --plc-slot 0 --program TestProgram --allow-writes
 ```
 
 The smoke demo is run automatically against the checked-in simulator by

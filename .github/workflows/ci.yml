@@ -313,10 +313,16 @@ jobs:
       run: tests/full_coverage_manifest_tests.sh
     - name: Rust dry run
       run: cargo run --example test_plc_full_coverage --locked -- --dry-run
+    - name: Rust companion feature-gate dry run
+      run: cargo run --example hardware_feature_gate --locked -- --dry-run
     - name: C# dry run
       run: dotnet run --project examples/CSharpFullCoverage/CSharpFullCoverage.csproj -c Release -- --dry-run
+    - name: C# companion feature-gate dry run
+      run: dotnet run --project examples/CSharpHardwareFeatureGate/CSharpHardwareFeatureGate.csproj -c Release -- --dry-run
     - name: Python dry run
       run: PYTHONPATH=python python3 python/examples/test_plc_full_coverage.py --dry-run
+    - name: Python companion feature-gate dry run
+      run: PYTHONPATH=python python3 python/examples/hardware_feature_gate.py --dry-run
 
   package:
     name: Package validation

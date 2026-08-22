@@ -162,6 +162,7 @@ Sources used:
 - `examples/desktop_app/Cargo.toml`
 - `examples/web_app/backend/Cargo.toml`
 - `src/ffi.rs`
+
 - `README.md`
 - `examples/desktop_app/README.md`
 - Rust Edition Guide, unsafe attributes, `https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-attributes.html`
@@ -341,6 +342,7 @@ Sources used:
 - `python/pyproject.toml`
 - `python/rust_ethernet_ip/bindings.py`
 - `python/rust_ethernet_ip/client.py`
+
 - `python/tests/test_client_value_mapping.py`
 - `python/tests/test_import.py`
 - `python/README.md`
@@ -881,6 +883,7 @@ Sources used:
 - `python/rust_ethernet_ip/exceptions.py`
 - `python/tests/test_client_contract.py`
 - `python/tests/test_bindings.py`
+
 - `wiki/investigations/test-coverage-strength-2026-05-18.md`
 
 ## [2026-05-18] query | book-derived architecture documentation check
@@ -1439,3 +1442,208 @@ Sources used:
 - `website/launch.css`
 - `website/_headers`
 - `website/privacy.html`
+
+## [2026-08-21] query | separate full-coverage, batch, UDT, and discovery evidence
+
+- Updated `wiki/releases/1.2.0-validation-synthesis.md`.
+- Confirmed that the 2,338-tag four-binding release gate used per-tag reads and
+  writes, including STRING members and fragmented whole-UDT reads.
+- Clarified that batch operations and discovery were validated separately and
+  were not invoked by the four full-coverage runners.
+
+Sources used:
+
+- `docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md`
+- `docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md`
+- `examples/test_plc_full_coverage.rs`
+- `examples/CSharpFullCoverage/Program.cs`
+- `python/examples/test_plc_full_coverage.py`
+- `examples/cpp/full_coverage.cpp`
+
+## [2026-08-21] ingest | add cross-binding hardware feature companion gate
+
+- Updated `wiki/controllers/hardware-validation-program.md`.
+- Added restore-safe Rust, C#, Python, and C/C++ runners for batch operations,
+  whole-UDT reads, and the discovery surfaces each binding exposes.
+- Added explicit `--allow-writes` protection, a serial macOS/Linux
+  orchestration script, offline CI dry runs, and a maintainer runbook.
+- Fixed and unit-tested the C# program-scope versus UDT-member path classifier
+  found while preparing program-scoped batch-write coverage.
+- Kept Python and program-discovery `N/A` cells explicit rather than treating
+  unavailable wrapper APIs as hardware failures.
+
+Sources used:
+
+- `docs/validation/CROSS_BINDING_FEATURE_GATE.md`
+- `examples/hardware_feature_gate.rs`
+- `examples/CSharpHardwareFeatureGate/Program.cs`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.cs`
+- `csharp/RustEtherNetIp.Tests/WriteTagsBatchTests.cs`
+- `python/examples/hardware_feature_gate.py`
+- `examples/cpp/hardware_feature_gate.cpp`
+- `scripts/run-cross-binding-feature-gate.sh`
+
+## [2026-08-21] ingest | record 1756-L75 fw33 four-binding performance baseline
+
+- Updated `wiki/controllers/hardware-validation-program.md`.
+- Added a repeatable opt-in benchmark mode to all four full-coverage runners.
+- Recorded the 1756-L75 fw33 / 1756-EN2T topology and MacBook Pro M2 host.
+- Confirmed 27,648/27,648 sequential reads and 27,420/27,420 sequential writes
+  across Rust, Python, C#, and C/C++ with zero failures.
+- Kept this single-tag mixed-manifest baseline distinct from future batch,
+  endurance, reconnect, host-resource, and controller-load measurements.
+
+Sources used:
+
+- `docs/validation/2026-08-21_1756-L75_fw33_cross-binding-performance.md`
+- `docs/HARDWARE_COMPATIBILITY.md`
+- `examples/full_coverage_tags.json`
+- `examples/test_plc_full_coverage.rs`
+- `python/examples/test_plc_full_coverage.py`
+- `examples/CSharpFullCoverage/Program.cs`
+- `examples/cpp/full_coverage.cpp`
+
+## [2026-08-21] ingest | add 1756-L75 fw33 batch-size performance baseline
+
+- Updated `wiki/controllers/hardware-validation-program.md`.
+- Added sizes 1, 5, 10, 20, 50, and 100 to all four performance runners with
+  30-second and 1,000-tag-operation sampling floors.
+- Preserved complete latency distributions while adding Tukey-IQR filtered
+  averages and outlier counts rather than deleting tail evidence.
+- Confirmed zero call/per-tag failures across the four bindings.
+- Recorded approximately 2,830 native DINT writes/second at size 100 through
+  Rust, C#, and C/C++; kept Python grouped sequential writes distinct.
+- Identified uncached array-type detection as the main batch-read optimization
+  candidate for a controlled future before/after benchmark.
+
+Sources used:
+
+- `docs/validation/2026-08-21_1756-L75_fw33_cross-binding-batch-performance.md`
+- `docs/validation/2026-08-21_1756-L75_fw33_cross-binding-performance.md`
+- `docs/HARDWARE_COMPATIBILITY.md`
+- `src/client/batch_exec.rs`
+- `src/client.rs`
+- `examples/test_plc_full_coverage.rs`
+- `python/examples/test_plc_full_coverage.py`
+- `examples/CSharpFullCoverage/Program.cs`
+- `examples/cpp/full_coverage.cpp`
+
+## [2026-08-21] ingest | validate cached array classification on 1756-L75 fw33
+
+- Updated `wiki/controllers/hardware-validation-program.md` and
+  `wiki/wrapper-parity/ffi-registry-clone-audit.md`.
+- Preserved the original six-size batch run as a before baseline and added a
+  controlled optimized rerun on the same controller, route, host, and workload.
+- Confirmed zero failures and 100/100 terminal-value verification in all four
+  bindings. Size-100 native reads converged near 3,305 tags/second.
+- For build-identical Rust, C#, and C/C++, size-100 read throughput improved
+  10.9–11.6x while native writes remained near 2,830 tags/second.
+- Corrected Python source-checkout artifact priority; its optimized result is
+  valid, but its historical debug-build baseline is excluded from exact
+  build-identical attribution.
+
+Sources used:
+
+- `docs/validation/2026-08-21_1756-L75_fw33_cross-binding-batch-performance.md`
+- `docs/validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md`
+- `docs/HARDWARE_COMPATIBILITY.md`
+- `src/client.rs`
+- `python/rust_ethernet_ip/bindings.py`
+- `python/tests/test_bindings.py`
+
+## [2026-08-21] query | prioritize post-cache performance work
+
+- Updated `wiki/controllers/hardware-validation-program.md`.
+- Ranked a controlled packet-policy sweep and a 24-hour read soak ahead of
+  speculative allocation-level optimizations.
+- Identified Python grouped writes as the largest measured wrapper-specific
+  opportunity: size-100 grouped writes were about 272 tags/second versus about
+  2,830 tags/second for native Rust/C#/C++ writes.
+- Kept a native Python write change conditional on parity coverage for atomic,
+  STRING, packed-BOOL, partial-failure, and result-order behavior.
+
+Sources used:
+
+- `docs/validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md`
+- `docs/HARDWARE_COMPATIBILITY.md`
+- `src/client/batch_exec.rs`
+- `src/batch.rs`
+- `src/ffi.rs`
+- `python/rust_ethernet_ip/client.py`
+
+## [2026-08-21] query | define array-type cache lifecycle after PLC downloads
+
+- Added `wiki/investigations/array-type-cache-lifecycle.md` and updated the
+  wiki index.
+- Confirmed that new native clients, route changes, and Rust `clear_caches()`
+  invalidate the cache, but a PLC download is not directly detected.
+- Identified transitions to or from packed BOOL arrays as the safety-relevant
+  stale-classification case.
+- Recommended explicit cross-language cache clearing plus response-validated,
+  read-only self-healing before treating downloads as transparent.
+
+Sources used:
+
+- `src/client.rs`
+- `src/client/batch_exec.rs`
+- `src/client/actor.rs`
+- `src/ffi.rs`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.Connection.cs`
+- `python/rust_ethernet_ip/client.py`
+
+## [2026-08-22] reframe | include online tag replacement in cache lifecycle
+
+- Updated `wiki/investigations/array-type-cache-lifecycle.md`.
+- Added the practitioner-confirmed online workflow where a temporary tag
+  replaces an old tag under the same final symbolic name without reconnecting.
+- Expanded invalidation requirements from PLC downloads to online Symbol Not
+  Found/delete/recreate transitions and offline UDT layout changes.
+- Recommended one cross-language schema refresh operation covering array,
+  metadata, STRING-handle, and UDT-definition caches.
+
+Sources used:
+
+- Maintainer-provided 1756-L75/Studio 5000 workflow description, 2026-08-22
+- `src/client.rs`
+- `src/client/batch_exec.rs`
+- Rockwell Studio 5000 Tag Editor documentation
+- Rockwell Studio 5000 download options documentation
+
+## [2026-08-22] query | define cache-safety implementation checklist
+
+- Updated `wiki/investigations/array-type-cache-lifecycle.md`.
+- Found that Rust `clear_caches()` does not clear `TagManager`'s separate UDT
+  definition map, so it is not yet a complete schema refresh.
+- Added a shared schema generation requirement to prevent in-flight FFI/client
+  clones from repopulating stale entries after invalidation.
+- Prioritized comprehensive invalidation, wrapper parity, safe read
+  self-healing, tests, hardware validation, and diagnostics before further
+  packet-level performance tuning.
+
+Sources used:
+
+- `src/client.rs`
+- `src/tag_manager.rs`
+- `src/client/batch_exec.rs`
+- `src/ffi.rs`
+
+## [2026-08-22] ingest | open schema-safety and performance task sequence
+
+- Updated `wiki/investigations/array-type-cache-lifecycle.md` with links to the
+  durable agent backlog.
+- Opened CODEX-BA through CODEX-BD as the ordered, release-blocking 1.2.1
+  cache/schema safety sequence.
+- Retained packet-policy tuning, Python native writes, endurance, and tag-shape
+  characterization as CODEX-BE through CODEX-BH non-blocking follow-ups.
+
+Sources used:
+
+- `docs/agents/tasks/CODEX-BA-schema-cache-generation.md`
+- `docs/agents/tasks/CODEX-BB-schema-drift-self-healing.md`
+- `docs/agents/tasks/CODEX-BC-cross-binding-schema-refresh-diagnostics.md`
+- `docs/agents/tasks/CODEX-BD-schema-change-validation-gate.md`
+- `docs/agents/tasks/CODEX-BE-batch-packet-policy-sweep.md`
+- `docs/agents/tasks/CODEX-BF-python-native-batch-writes.md`
+- `docs/agents/tasks/CODEX-BG-cross-binding-endurance-soak.md`
+- `docs/agents/tasks/CODEX-BH-tag-shape-performance-matrix.md`
+- `docs/agents/board.md`

@@ -15,7 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from rust_ethernet_ip import Client, RoutePath  # noqa: E402
+import rust_ethernet_ip as eip_package  # noqa: E402
+from rust_ethernet_ip import BatchWriteItem, Client, RoutePath  # noqa: E402
 
 
 class Kind(Enum):
@@ -128,6 +129,194 @@ def read_value(client: Client, tag: Tag) -> object:
     return client.read_tag(tag.name)
 
 
+def latency_summary(samples_ms: list[float], failures: int) -> dict[str, float | int]:
+    ordered = sorted(samples_ms)
+    total_ms = sum(ordered)
+
+    def percentile(fraction: float) -> float:
+        if not ordered:
+            return 0.0
+        return ordered[round((len(ordered) - 1) * fraction)]
+
+    q1 = percentile(0.25)
+    q3 = percentile(0.75)
+    iqr = q3 - q1
+    lower_fence = q1 - 1.5 * iqr
+    upper_fence = q3 + 1.5 * iqr
+    filtered = [sample for sample in ordered if lower_fence <= sample <= upper_fence]
+    return {
+        "samples": len(ordered),
+        "failures": failures,
+        "total_ms": total_ms,
+        "avg_ms": total_ms / len(ordered) if ordered else 0.0,
+        "min_ms": ordered[0] if ordered else 0.0,
+        "p50_ms": percentile(0.50),
+        "p95_ms": percentile(0.95),
+        "p99_ms": percentile(0.99),
+        "max_ms": ordered[-1] if ordered else 0.0,
+        "ops_per_sec": len(ordered) * 1000.0 / total_ms if total_ms else 0.0,
+        "outlier_method": "Tukey 1.5*IQR",
+        "outlier_count": len(ordered) - len(filtered),
+        "outlier_filtered_avg_ms": sum(filtered) / len(filtered) if filtered else 0.0,
+    }
+
+
+def run_batch_benchmark(client: Client, tags: list[Tag], args: argparse.Namespace) -> int:
+    if not args.allow_writes:
+        print("batch benchmark writes terminal DINT values; rerun with --allow-writes", file=sys.stderr)
+        return 2
+    sizes = [1, 5, 10, 20, 50, 100]
+    pool = [
+        tag for tag in tags
+        if tag.category == "ctrl.DINT_array" and tag.kind == Kind.DINT and tag.mode.is_writeable()
+    ][:100]
+    if len(pool) != 100:
+        raise RuntimeError(f"batch benchmark requires 100 controller DINT array tags, found {len(pool)}")
+    rows = []
+    print(
+        f"Batch benchmark — min {args.batch_min_tag_operations} tag operations and "
+        f"{args.batch_min_seconds:.1f}s per size/direction"
+    )
+    for size in sizes:
+        required_batches = (args.batch_min_tag_operations + size - 1) // size
+        selected = pool[:size]
+        names = [tag.name for tag in selected]
+        writes = [BatchWriteItem(tag.name, 999_999, value_type="DINT") for tag in selected]
+        for _ in range(10):
+            if len(client.read_tags(names)) != size:
+                raise RuntimeError(f"batch read warm-up failed at size {size}")
+            warm_writes = client.write_tags(writes)
+            if any(not result.success for result in warm_writes.values()):
+                raise RuntimeError(f"grouped write warm-up failed at size {size}")
+
+        read_samples: list[float] = []
+        read_failures = 0
+        window = time.perf_counter()
+        while len(read_samples) + read_failures < required_batches or time.perf_counter() - window < args.batch_min_seconds:
+            started = time.perf_counter_ns()
+            try:
+                result = client.read_tags(names)
+                elapsed = (time.perf_counter_ns() - started) / 1_000_000
+                if len(result) == size:
+                    read_samples.append(elapsed)
+                else:
+                    read_failures += 1
+            except Exception:
+                read_failures += 1
+
+        write_samples: list[float] = []
+        write_failures = 0
+        window = time.perf_counter()
+        while len(write_samples) + write_failures < required_batches or time.perf_counter() - window < args.batch_min_seconds:
+            started = time.perf_counter_ns()
+            try:
+                result = client.write_tags(writes)
+                elapsed = (time.perf_counter_ns() - started) / 1_000_000
+                if len(result) == size and all(item.success for item in result.values()):
+                    write_samples.append(elapsed)
+                else:
+                    write_failures += 1
+            except Exception:
+                write_failures += 1
+
+        reads = latency_summary(read_samples, read_failures)
+        write_metrics = latency_summary(write_samples, write_failures)
+        reads["tags_per_sec"] = reads["ops_per_sec"] * size
+        write_metrics["tags_per_sec"] = write_metrics["ops_per_sec"] * size
+        print(
+            f"  size {size:>3}: read avg={reads['avg_ms']:>7.3f}ms "
+            f"filtered={reads['outlier_filtered_avg_ms']:>7.3f}ms; "
+            f"write avg={write_metrics['avg_ms']:>7.3f}ms "
+            f"filtered={write_metrics['outlier_filtered_avg_ms']:>7.3f}ms"
+        )
+        rows.append({"batch_size": size, "reads": reads, "writes": write_metrics})
+
+    failures = sum(row[direction]["failures"] for row in rows for direction in ("reads", "writes"))
+    terminal_verify_failures = sum(1 for tag in pool if client.read_tag(tag.name) != 999_999)
+    result = {
+        "schema_version": 1,
+        "workload": "controller_dint_logical_batch_sizes",
+        "binding": "python",
+        "binding_version": eip_package.LIBRARY_VERSION or "unknown",
+        "plc_address": args.plc_address,
+        "plc_slot": args.plc_slot,
+        "batch_sizes": sizes,
+        "min_tag_operations_per_size_direction": args.batch_min_tag_operations,
+        "min_seconds_per_size_direction": args.batch_min_seconds,
+        "read_api": "native CIP multiple-service batch",
+        "write_api": "public Python grouped-write API (sequential native operations in 1.2.x)",
+        "packet_policy": "default: max 20 operations and 504 bytes per CIP packet",
+        "rows": rows,
+        "terminal_verify": {"ok": len(pool) - terminal_verify_failures, "fail": terminal_verify_failures},
+        "result": "PASS" if failures == 0 and terminal_verify_failures == 0 else "FAIL",
+    }
+    os.makedirs(args.out_dir, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    path = os.path.join(args.out_dir, f"python_batch_benchmark_{stamp}.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(result, fh, indent=2)
+    print(f"wrote {path}")
+    return 0 if failures == 0 and terminal_verify_failures == 0 else 1
+
+
+def run_benchmark(client: Client, tags: list[Tag], args: argparse.Namespace) -> int:
+    if not args.allow_writes:
+        print("benchmark mode writes terminal values; rerun with --allow-writes", file=sys.stderr)
+        return 2
+    writeable = [tag for tag in tags if tag.mode.is_writeable()]
+    read_samples: list[float] = []
+    write_samples: list[float] = []
+    read_failures = write_failures = 0
+    print(f"Benchmark — {args.benchmark_passes} passes, {len(tags)} reads/pass, {len(writeable)} writes/pass")
+    for pass_index in range(args.benchmark_passes):
+        pass_start = time.perf_counter()
+        for tag in tags:
+            started = time.perf_counter_ns()
+            try:
+                read_value(client, tag)
+                read_samples.append((time.perf_counter_ns() - started) / 1_000_000)
+            except Exception:
+                read_failures += 1
+        print(f"  read pass {pass_index + 1}/{args.benchmark_passes}: {time.perf_counter() - pass_start:.1f}s")
+    for pass_index in range(args.benchmark_passes):
+        pass_start = time.perf_counter()
+        for tag in writeable:
+            value = nines(tag.kind)
+            if value is None:
+                continue
+            started = time.perf_counter_ns()
+            try:
+                client.write_tag(tag.name, value, value_type=tag.kind.value)
+                write_samples.append((time.perf_counter_ns() - started) / 1_000_000)
+            except Exception:
+                write_failures += 1
+        print(f"  write pass {pass_index + 1}/{args.benchmark_passes}: {time.perf_counter() - pass_start:.1f}s")
+
+    result = {
+        "schema_version": 1,
+        "workload": "full_coverage_manifest_sequential",
+        "binding": "python",
+        "binding_version": eip_package.LIBRARY_VERSION or "unknown",
+        "plc_address": args.plc_address,
+        "plc_slot": args.plc_slot,
+        "passes": args.benchmark_passes,
+        "tag_count": len(tags),
+        "writeable_tag_count": len(writeable),
+        "warmup": "one full read-only preflight pass",
+        "reads": latency_summary(read_samples, read_failures),
+        "writes": latency_summary(write_samples, write_failures),
+        "result": "PASS" if read_failures == 0 and write_failures == 0 else "FAIL",
+    }
+    os.makedirs(args.out_dir, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    path = os.path.join(args.out_dir, f"python_benchmark_{stamp}.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(result, fh, indent=2)
+    print(json.dumps(result, indent=2))
+    print(f"wrote {path}")
+    return 0 if result["result"] == "PASS" else 1
+
+
 def settle_samples() -> list[tuple[str, Tag, object]]:
     return [
         ("ctrl.BOOL_array", Tag("gTestArray_BOOL[5]", "ctrl.BOOL_array", Kind.BOOL, Mode.WRITEABLE), True),
@@ -166,6 +355,11 @@ def main() -> int:
     parser.add_argument("--out-dir", default="examples/full_coverage_results")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-preflight", action="store_true")
+    parser.add_argument("--benchmark-passes", type=int, default=0)
+    parser.add_argument("--batch-benchmark", action="store_true")
+    parser.add_argument("--batch-min-tag-operations", type=int, default=1_000)
+    parser.add_argument("--batch-min-seconds", type=float, default=30.0)
+    parser.add_argument("--allow-writes", action="store_true")
     args = parser.parse_args()
     address = args.plc_address
     slot = args.plc_slot
@@ -187,6 +381,16 @@ def main() -> int:
     if args.dry_run:
         print(f"would-test binding=python tags={len(tags)} writeable={writeable} blocked={blocked} read_only={readonly}")
         return 0
+    if args.benchmark_passes < 0:
+        parser.error("--benchmark-passes must be zero or greater")
+    if args.benchmark_passes and args.skip_preflight:
+        parser.error("benchmark mode requires the warm-up/preflight pass")
+    if args.batch_benchmark and args.skip_preflight:
+        parser.error("batch benchmark requires the warm-up/preflight pass")
+    if args.batch_benchmark and args.benchmark_passes:
+        parser.error("choose either sequential or batch benchmark mode")
+    if args.batch_min_tag_operations <= 0 or args.batch_min_seconds < 0:
+        parser.error("batch minimum samples must be positive and seconds non-negative")
 
     stats: dict[str, CatStats] = {}
     def S(c: str) -> CatStats:
@@ -210,6 +414,11 @@ def main() -> int:
             print(f"  done in {time.perf_counter()-tp:.1f}s  preflight={preflight_ok}/{preflight_ok + preflight_fail}")
             if preflight_fail:
                 return 2
+
+        if args.benchmark_passes:
+            return run_benchmark(client, tags, args)
+        if args.batch_benchmark:
+            return run_batch_benchmark(client, tags, args)
 
         print("Phase 1 — read every tag")
         t0 = time.perf_counter()

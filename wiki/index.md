@@ -67,6 +67,7 @@ Status values:
 - [investigations/documentation-state-2026-04-20.md](investigations/documentation-state-2026-04-20.md) — Current documentation-health assessment, including active docs that are healthy and older docs that need clearer historical framing. `active`
 - [investigations/test-coverage-strength-2026-05-18.md](investigations/test-coverage-strength-2026-05-18.md) — Current assessment of Rust, C#, and Python test strength, local command results, and prioritized coverage gaps. `active`
 - [investigations/dotnet-testhost-shutdown-2026-05-26.md](investigations/dotnet-testhost-shutdown-2026-05-26.md) — Dump-confirmed Ubuntu .NET testhost crash caused by replacing and reloading the staged shared library. `confirmed`
+- [investigations/array-type-cache-lifecycle.md](investigations/array-type-cache-lifecycle.md) — Cache behavior across route changes, reconnects, and PLC project downloads, plus required self-healing hardening. `active`
 
 ## Planned High-Value Pages
 

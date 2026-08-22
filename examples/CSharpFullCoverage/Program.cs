@@ -24,6 +24,22 @@ internal sealed class CatStats
     public int ReadOk, ReadFail, WriteOk, WriteFail, VerifyOk, VerifyFail, BlockedAsExpected, BlockedUnexpected;
 }
 
+internal sealed record LatencyMetrics(
+    int samples,
+    int failures,
+    double total_ms,
+    double avg_ms,
+    double min_ms,
+    double p50_ms,
+    double p95_ms,
+    double p99_ms,
+    double max_ms,
+    double ops_per_sec,
+    double tags_per_sec,
+    string outlier_method,
+    int outlier_count,
+    double outlier_filtered_avg_ms);
+
 internal static class Program
 {
     private static List<Tag> BuildTags(string manifestPath)
@@ -207,6 +223,192 @@ internal static class Program
         catch { return false; }
     }
 
+    private static LatencyMetrics LatencySummary(List<double> samplesMs, int failures, int tagsPerBatch = 1)
+    {
+        samplesMs.Sort();
+        var totalMs = samplesMs.Sum();
+        double Percentile(double fraction) => samplesMs.Count == 0
+            ? 0.0
+            : samplesMs[(int)Math.Round((samplesMs.Count - 1) * fraction)];
+        var q1 = Percentile(0.25);
+        var q3 = Percentile(0.75);
+        var iqr = q3 - q1;
+        var lowerFence = q1 - 1.5 * iqr;
+        var upperFence = q3 + 1.5 * iqr;
+        var filtered = samplesMs.Where(sample => sample >= lowerFence && sample <= upperFence).ToArray();
+        var operationsPerSecond = totalMs == 0.0 ? 0.0 : samplesMs.Count * 1000.0 / totalMs;
+        return new LatencyMetrics(
+            samplesMs.Count,
+            failures,
+            totalMs,
+            samplesMs.Count == 0 ? 0.0 : totalMs / samplesMs.Count,
+            samplesMs.Count == 0 ? 0.0 : samplesMs[0],
+            Percentile(0.50),
+            Percentile(0.95),
+            Percentile(0.99),
+            samplesMs.Count == 0 ? 0.0 : samplesMs[^1],
+            operationsPerSecond,
+            operationsPerSecond * tagsPerBatch,
+            "Tukey 1.5*IQR",
+            samplesMs.Count - filtered.Length,
+            filtered.Length == 0 ? 0.0 : filtered.Average());
+    }
+
+    private static int RunBatchBenchmark(EtherNetIpClient client, List<Tag> tags,
+        int minSamples, double minSeconds, bool allowWrites, string outDir,
+        string address, byte slot)
+    {
+        if (!allowWrites)
+        {
+            Console.Error.WriteLine("batch benchmark writes terminal DINT values; rerun with --allow-writes");
+            return 2;
+        }
+        int[] sizes = [1, 5, 10, 20, 50, 100];
+        var pool = tags.Where(tag => tag.Category == "ctrl.DINT_array" &&
+            tag.Kind == Kind.Dint && IsWriteable(tag.Mode)).Take(100).ToArray();
+        if (pool.Length != 100)
+            throw new InvalidOperationException($"Batch benchmark requires 100 controller DINT array tags, found {pool.Length}");
+        var rows = new List<object>();
+        int totalFailures = 0;
+        Console.WriteLine($"Batch benchmark — min {minSamples} tag operations and {minSeconds:F1}s per size/direction");
+        foreach (int size in sizes)
+        {
+            int requiredBatches = (minSamples + size - 1) / size;
+            string[] names = pool.Take(size).Select(tag => tag.Name).ToArray();
+            BatchOperation[] readsRequest = names.Select(BatchOperation.Read).ToArray();
+            BatchOperation[] writesRequest = names.Select(name => BatchOperation.Write(name, 999_999)).ToArray();
+            for (int warmup = 0; warmup < 10; warmup++)
+            {
+                if (client.ExecuteBatch(readsRequest).Any(result => !result.Success))
+                    throw new InvalidOperationException($"Batch read warm-up failed at size {size}");
+                if (client.ExecuteBatch(writesRequest).Any(result => !result.Success))
+                    throw new InvalidOperationException($"Batch write warm-up failed at size {size}");
+            }
+
+            var readSamples = new List<double>();
+            int readFailures = 0;
+            var window = Stopwatch.StartNew();
+            while (readSamples.Count + readFailures < requiredBatches || window.Elapsed.TotalSeconds < minSeconds)
+            {
+                long started = Stopwatch.GetTimestamp();
+                var results = client.ExecuteBatch(readsRequest);
+                double elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                if (results.Length == size && results.All(result => result.Success)) readSamples.Add(elapsed);
+                else readFailures++;
+            }
+
+            var writeSamples = new List<double>();
+            int writeFailures = 0;
+            window.Restart();
+            while (writeSamples.Count + writeFailures < requiredBatches || window.Elapsed.TotalSeconds < minSeconds)
+            {
+                long started = Stopwatch.GetTimestamp();
+                var results = client.ExecuteBatch(writesRequest);
+                double elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                if (results.Length == size && results.All(result => result.Success)) writeSamples.Add(elapsed);
+                else writeFailures++;
+            }
+
+            var reads = LatencySummary(readSamples, readFailures, size);
+            var writes = LatencySummary(writeSamples, writeFailures, size);
+            Console.WriteLine($"  size {size,3}: read avg={reads.avg_ms,7:F3}ms filtered={reads.outlier_filtered_avg_ms,7:F3}ms; write avg={writes.avg_ms,7:F3}ms filtered={writes.outlier_filtered_avg_ms,7:F3}ms");
+            rows.Add(new { batch_size = size, reads, writes });
+            totalFailures += readFailures + writeFailures;
+        }
+        int terminalVerifyFailures = pool.Count(tag => client.ReadDint(tag.Name) != 999_999);
+
+        var result = new
+        {
+            schema_version = 1,
+            workload = "controller_dint_logical_batch_sizes",
+            binding = "csharp",
+            binding_version = typeof(EtherNetIpClient).Assembly.GetName().Version?.ToString() ?? "unknown",
+            plc_address = address,
+            plc_slot = slot,
+            batch_sizes = sizes,
+            min_tag_operations_per_size_direction = minSamples,
+            min_seconds_per_size_direction = minSeconds,
+            read_api = "native ExecuteBatch",
+            write_api = "native ExecuteBatch",
+            packet_policy = "default: max 20 operations and 504 bytes per CIP packet",
+            rows,
+            terminal_verify = new { ok = pool.Length - terminalVerifyFailures, fail = terminalVerifyFailures },
+            result = totalFailures == 0 && terminalVerifyFailures == 0 ? "PASS" : "FAIL",
+        };
+        Directory.CreateDirectory(outDir);
+        var path = Path.Combine(outDir, $"csharp_batch_benchmark_{DateTimeOffset.UtcNow:yyyyMMddTHHmmssZ}.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine($"wrote {path}");
+        return totalFailures == 0 && terminalVerifyFailures == 0 ? 0 : 1;
+    }
+
+    private static int RunBenchmark(EtherNetIpClient client, List<Tag> tags, int passes,
+        bool allowWrites, string outDir, string address, byte slot)
+    {
+        if (!allowWrites)
+        {
+            Console.Error.WriteLine("benchmark mode writes terminal values; rerun with --allow-writes");
+            return 2;
+        }
+        var writeable = tags.Where(tag => IsWriteable(tag.Mode)).ToList();
+        var readSamples = new List<double>(tags.Count * passes);
+        var writeSamples = new List<double>(writeable.Count * passes);
+        int readFailures = 0, writeFailures = 0;
+        Console.WriteLine($"Benchmark — {passes} passes, {tags.Count} reads/pass, {writeable.Count} writes/pass");
+        for (var pass = 0; pass < passes; pass++)
+        {
+            var passSw = Stopwatch.StartNew();
+            foreach (var tag in tags)
+            {
+                var started = Stopwatch.GetTimestamp();
+                if (DoRead(client, tag))
+                    readSamples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                else
+                    readFailures++;
+            }
+            Console.WriteLine($"  read pass {pass + 1}/{passes}: {passSw.Elapsed.TotalSeconds:F1}s");
+        }
+        for (var pass = 0; pass < passes; pass++)
+        {
+            var passSw = Stopwatch.StartNew();
+            foreach (var tag in writeable)
+            {
+                var value = Nines(tag.Kind);
+                if (value is null) continue;
+                var started = Stopwatch.GetTimestamp();
+                if (DoWrite(client, tag, value))
+                    writeSamples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                else
+                    writeFailures++;
+            }
+            Console.WriteLine($"  write pass {pass + 1}/{passes}: {passSw.Elapsed.TotalSeconds:F1}s");
+        }
+
+        var result = new
+        {
+            schema_version = 1,
+            workload = "full_coverage_manifest_sequential",
+            binding = "csharp",
+            binding_version = typeof(EtherNetIpClient).Assembly.GetName().Version?.ToString() ?? "unknown",
+            plc_address = address,
+            plc_slot = slot,
+            passes,
+            tag_count = tags.Count,
+            writeable_tag_count = writeable.Count,
+            warmup = "one full read-only preflight pass",
+            reads = LatencySummary(readSamples, readFailures),
+            writes = LatencySummary(writeSamples, writeFailures),
+            result = readFailures == 0 && writeFailures == 0 ? "PASS" : "FAIL",
+        };
+        Directory.CreateDirectory(outDir);
+        var path = Path.Combine(outDir, $"csharp_benchmark_{DateTimeOffset.UtcNow:yyyyMMddTHHmmssZ}.json");
+        var json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(path, json);
+        Console.WriteLine(json);
+        Console.WriteLine($"wrote {path}");
+        return readFailures == 0 && writeFailures == 0 ? 0 : 1;
+    }
+
     private static List<(string Category, Tag Tag, object Expected)> SettleSamples() => new()
     {
         ("ctrl.BOOL_array", new("gTestArray_BOOL[5]", "ctrl.BOOL_array", Kind.Bool, WriteMode.Writeable), true),
@@ -237,6 +439,11 @@ internal static class Program
         var outDir = "examples/full_coverage_results";
         var dryRun = false;
         var skipPreflight = false;
+        var benchmarkPasses = 0;
+        var batchBenchmark = false;
+        var batchMinSamples = 1_000;
+        var batchMinSeconds = 30.0;
+        var allowWrites = false;
         var argv = Environment.GetCommandLineArgs();
         for (int i = 1; i < argv.Length; i++)
         {
@@ -248,6 +455,11 @@ internal static class Program
                 case "--out-dir": outDir = argv[++i]; break;
                 case "--dry-run": dryRun = true; break;
                 case "--skip-preflight": skipPreflight = true; break;
+                case "--benchmark-passes": benchmarkPasses = int.Parse(argv[++i]); break;
+                case "--allow-writes": allowWrites = true; break;
+                case "--batch-benchmark": batchBenchmark = true; break;
+                case "--batch-min-tag-operations": batchMinSamples = int.Parse(argv[++i]); break;
+                case "--batch-min-seconds": batchMinSeconds = double.Parse(argv[++i], System.Globalization.CultureInfo.InvariantCulture); break;
             }
         }
         List<Tag> tags;
@@ -281,6 +493,31 @@ internal static class Program
             Console.WriteLine($"would-test binding=csharp tags={tags.Count} writeable={writeable} blocked={blocked} read_only={readonly_}");
             return 0;
         }
+        if (benchmarkPasses < 0)
+        {
+            Console.Error.WriteLine("--benchmark-passes must be zero or greater");
+            return 2;
+        }
+        if (benchmarkPasses > 0 && skipPreflight)
+        {
+            Console.Error.WriteLine("benchmark mode requires the warm-up/preflight pass");
+            return 2;
+        }
+        if (batchBenchmark && skipPreflight)
+        {
+            Console.Error.WriteLine("batch benchmark requires the warm-up/preflight pass");
+            return 2;
+        }
+        if (batchBenchmark && benchmarkPasses > 0)
+        {
+            Console.Error.WriteLine("choose either sequential or batch benchmark mode");
+            return 2;
+        }
+        if (batchMinSamples <= 0 || batchMinSeconds < 0)
+        {
+            Console.Error.WriteLine("batch minimum samples must be positive and seconds non-negative");
+            return 2;
+        }
 
         using var client = new EtherNetIpClient();
         if (!client.ConnectWithRoute(address, new RoutePath().AddSlot(slot)))
@@ -307,6 +544,11 @@ internal static class Program
             preflightSw.Stop(); Console.WriteLine($"  done in {preflightSw.Elapsed.TotalSeconds:F1}s  preflight={preflightOk}/{preflightOk + preflightFail}");
             if (preflightFail > 0) return 2;
         }
+
+        if (benchmarkPasses > 0)
+            return RunBenchmark(client, tags, benchmarkPasses, allowWrites, outDir, address, slot);
+        if (batchBenchmark)
+            return RunBatchBenchmark(client, tags, batchMinSamples, batchMinSeconds, allowWrites, outDir, address, slot);
 
         Console.WriteLine("Phase 1 — read every tag");
         var sw = Stopwatch.StartNew();

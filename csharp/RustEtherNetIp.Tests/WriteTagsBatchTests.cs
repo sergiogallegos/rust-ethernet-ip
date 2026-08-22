@@ -73,6 +73,29 @@ namespace RustEtherNetIp.Tests
                 call.Value.As<int>() == 500);
         }
 
+        [Theory]
+        [InlineData("Program:TestProgram.gTestArray_DINT[50]", false, "", "")]
+        [InlineData("Program:TestProgram.gTestUDT.Member1_DINT", true, "Program:TestProgram.gTestUDT", "Member1_DINT")]
+        [InlineData("Program:TestProgram.gTestUDT_Array[0].Member1_DINT", true, "Program:TestProgram.gTestUDT_Array[0]", "Member1_DINT")]
+        public void TryParseUdtMemberPath_Distinguishes_ProgramScope_From_MemberPath(
+            string tagName,
+            bool expected,
+            string expectedBase,
+            string expectedMember)
+        {
+            var method = typeof(EtherNetIpClient).GetMethod(
+                "TryParseUdtMemberPath",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+
+            object?[] arguments = { tagName, null, null };
+            bool actual = Assert.IsType<bool>(method!.Invoke(null, arguments));
+
+            Assert.Equal(expected, actual);
+            Assert.Equal(expectedBase, arguments[1]);
+            Assert.Equal(expectedMember, arguments[2]);
+        }
+
         [Fact]
         public void ToRustRawValue_UdtData_Uses_Numeric_Byte_Array()
         {

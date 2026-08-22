@@ -524,6 +524,8 @@ pub struct EipClient {
     tag_manager: Arc<Mutex<TagManager>>,
     /// SHARED ON CLONE: UDT discovery/cache state.
     udt_manager: Arc<Mutex<UdtManager>>,
+    /// SHARED ON CLONE: base array paths already classified as packed BOOL or non-BOOL.
+    array_type_cache: Arc<StdMutex<HashMap<String, bool>>>,
     /// SHARED ON CLONE: route-path mutations must be visible through later registry lookups.
     route_path: Arc<StdMutex<Option<RoutePath>>>,
     /// SHARED ON CLONE: max packet size is cheap scalar state and may be configured through FFI.
@@ -556,6 +558,7 @@ impl std::fmt::Debug for EipClient {
             .field("diagnostic_counters", &"<diagnostic_counters>")
             .field("tag_manager", &"<tag_manager>")
             .field("udt_manager", &"<udt_manager>")
+            .field("array_type_cache", &"<array_type_cache>")
             .field("subscriptions", &"<subscriptions>")
             .field("tag_groups", &"<tag_groups>")
             .finish()
@@ -591,6 +594,7 @@ impl EipClient {
             diagnostic_counters: Arc::new(DiagnosticCounters::default()),
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
+            array_type_cache: Arc::new(StdMutex::new(HashMap::new())),
             route_path: Arc::new(StdMutex::new(None)),
             max_packet_size: Arc::new(AtomicU32::new(4000)),
             last_activity: Arc::new(Mutex::new(Instant::now())),
@@ -630,6 +634,7 @@ impl EipClient {
             diagnostic_counters: Arc::new(DiagnosticCounters::default()),
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
+            array_type_cache: Arc::new(StdMutex::new(HashMap::new())),
             route_path: Arc::new(StdMutex::new(None)),
             max_packet_size: Arc::new(AtomicU32::new(4000)),
             last_activity: Arc::new(Mutex::new(Instant::now())),
@@ -1031,12 +1036,13 @@ impl EipClient {
         self.udt_manager.lock().await.list_tag_attributes()
     }
 
-    /// Clears cached tag metadata and UDT-related caches.
+    /// Clears cached tag metadata, UDT data, and array-type classifications.
     pub async fn clear_caches(&mut self) {
         if let Err(error) = self.tag_manager.lock().await.clear_cache().await {
             tracing::warn!("failed to clear tag metadata cache: {error}");
         }
         self.udt_manager.lock().await.clear_cache();
+        self.clear_array_type_cache();
     }
 
     /// Creates a new client with a specific route path
@@ -1086,6 +1092,7 @@ impl EipClient {
 
     /// Sets the route path for the client
     pub fn set_route_path(&mut self, route: RoutePath) {
+        self.clear_array_type_cache();
         *self
             .route_path
             .lock()
@@ -1099,10 +1106,33 @@ impl EipClient {
 
     /// Removes the route path (uses direct connection)
     pub fn clear_route_path(&mut self) {
+        self.clear_array_type_cache();
         *self
             .route_path
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+
+    fn cached_array_is_packed_bool(&self, array_path: &str) -> Option<bool> {
+        self.array_type_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(array_path)
+            .copied()
+    }
+
+    fn cache_array_is_packed_bool(&self, array_path: &str, is_packed_bool: bool) {
+        self.array_type_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(array_path.to_string(), is_packed_bool);
+    }
+
+    fn clear_array_type_cache(&self) {
+        self.array_type_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
     }
 
     /// Gets metadata for a tag
@@ -1426,6 +1456,10 @@ impl EipClient {
     }
 
     async fn detect_bool_array_path(&mut self, array_path: &str) -> crate::error::Result<bool> {
+        if let Some(is_packed_bool) = self.cached_array_is_packed_bool(array_path) {
+            return Ok(is_packed_bool);
+        }
+
         let test_response = self
             .send_cip_request(&self.build_read_request_with_count(array_path, 1)?)
             .await?;
@@ -1436,7 +1470,9 @@ impl EipClient {
         }
 
         let test_data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
-        Ok(test_data_type == values::BOOL_ARRAY_DWORD)
+        let is_packed_bool = test_data_type == values::BOOL_ARRAY_DWORD;
+        self.cache_array_is_packed_bool(array_path, is_packed_bool);
+        Ok(is_packed_bool)
     }
 
     fn parse_bool_array_dword_response(&self, cip_data: &[u8]) -> crate::error::Result<u32> {
@@ -4371,6 +4407,65 @@ impl EipClient {
         }
 
         path
+    }
+}
+
+#[cfg(test)]
+mod array_type_cache_tests {
+    use super::EipClient;
+    use crate::RoutePath;
+
+    #[test]
+    fn cache_preserves_positive_and_negative_array_classifications() {
+        let client = EipClient::new_unconnected_for_testing();
+
+        client.cache_array_is_packed_bool("BoolArray", true);
+        client.cache_array_is_packed_bool("DintArray", false);
+
+        assert_eq!(client.cached_array_is_packed_bool("BoolArray"), Some(true));
+        assert_eq!(client.cached_array_is_packed_bool("DintArray"), Some(false));
+        assert_eq!(client.cached_array_is_packed_bool("UnknownArray"), None);
+    }
+
+    #[test]
+    fn cache_is_shared_across_client_clones_used_by_ffi() {
+        let client = EipClient::new_unconnected_for_testing();
+        let cloned = client.clone();
+
+        client.cache_array_is_packed_bool("ControllerArray", false);
+        cloned.cache_array_is_packed_bool("Program:Main.BoolArray", true);
+
+        assert_eq!(
+            cloned.cached_array_is_packed_bool("ControllerArray"),
+            Some(false)
+        );
+        assert_eq!(
+            client.cached_array_is_packed_bool("Program:Main.BoolArray"),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn route_changes_clear_array_classifications() {
+        let mut client = EipClient::new_unconnected_for_testing();
+        client.cache_array_is_packed_bool("SharedName", false);
+
+        client.set_route_path(RoutePath::new().add_slot(1));
+        assert_eq!(client.cached_array_is_packed_bool("SharedName"), None);
+
+        client.cache_array_is_packed_bool("SharedName", true);
+        client.clear_route_path();
+        assert_eq!(client.cached_array_is_packed_bool("SharedName"), None);
+    }
+
+    #[tokio::test]
+    async fn public_cache_clear_removes_array_classifications() {
+        let mut client = EipClient::new_unconnected_for_testing();
+        client.cache_array_is_packed_bool("DintArray", false);
+
+        client.clear_caches().await;
+
+        assert_eq!(client.cached_array_is_packed_bool("DintArray"), None);
     }
 }
 

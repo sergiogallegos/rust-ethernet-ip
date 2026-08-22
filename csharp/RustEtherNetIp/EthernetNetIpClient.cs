@@ -1580,6 +1580,12 @@ namespace RustEtherNetIp
             if (dotIndex <= 0 || dotIndex >= tagName.Length - 1)
                 return false;
 
+            // The first dot in Program:<program>.<tag> separates the scope
+            // from the tag; it is not a UDT-member separator.
+            if (tagName.StartsWith("Program:", StringComparison.OrdinalIgnoreCase) &&
+                dotIndex == tagName.IndexOf('.'))
+                return false;
+
             var lastSegment = tagName[(dotIndex + 1)..];
             if (lastSegment.All(char.IsDigit))
                 return false;

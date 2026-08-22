@@ -24,6 +24,12 @@ struct Args {
     out_dir: PathBuf,
     dry_run: bool,
     skip_preflight: bool,
+    preflight_only: bool,
+    benchmark_passes: usize,
+    batch_benchmark: bool,
+    batch_min_tag_operations: usize,
+    batch_min_seconds: f64,
+    allow_writes: bool,
 }
 
 fn parse_args() -> Args {
@@ -36,6 +42,12 @@ fn parse_args() -> Args {
         out_dir: PathBuf::from("examples/full_coverage_results"),
         dry_run: false,
         skip_preflight: false,
+        preflight_only: false,
+        benchmark_passes: 0,
+        batch_benchmark: false,
+        batch_min_tag_operations: 1_000,
+        batch_min_seconds: 30.0,
+        allow_writes: false,
     };
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -57,6 +69,30 @@ fn parse_args() -> Args {
             }
             "--dry-run" => args.dry_run = true,
             "--skip-preflight" => args.skip_preflight = true,
+            "--preflight-only" => args.preflight_only = true,
+            "--benchmark-passes" => {
+                args.benchmark_passes = iter
+                    .next()
+                    .expect("--benchmark-passes requires a value")
+                    .parse()
+                    .expect("--benchmark-passes must be a positive integer")
+            }
+            "--allow-writes" => args.allow_writes = true,
+            "--batch-benchmark" => args.batch_benchmark = true,
+            "--batch-min-tag-operations" => {
+                args.batch_min_tag_operations = iter
+                    .next()
+                    .expect("--batch-min-tag-operations requires a value")
+                    .parse()
+                    .expect("--batch-min-tag-operations must be a positive integer")
+            }
+            "--batch-min-seconds" => {
+                args.batch_min_seconds = iter
+                    .next()
+                    .expect("--batch-min-seconds requires a value")
+                    .parse()
+                    .expect("--batch-min-seconds must be a non-negative number")
+            }
             other => eprintln!("warning: ignoring unknown argument {other}"),
         }
     }
@@ -322,6 +358,293 @@ fn nines(kind: Kind) -> Option<PlcValue> {
     })
 }
 
+fn latency_summary(samples_ms: &[f64], failures: u64) -> serde_json::Value {
+    let mut sorted = samples_ms.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let percentile = |fraction: f64| -> f64 {
+        if sorted.is_empty() {
+            return 0.0;
+        }
+        let index = ((sorted.len() - 1) as f64 * fraction).round() as usize;
+        sorted[index]
+    };
+    let total_ms: f64 = sorted.iter().sum();
+    let q1 = percentile(0.25);
+    let q3 = percentile(0.75);
+    let iqr = q3 - q1;
+    let lower_fence = q1 - (1.5 * iqr);
+    let upper_fence = q3 + (1.5 * iqr);
+    let filtered: Vec<f64> = sorted
+        .iter()
+        .copied()
+        .filter(|sample| *sample >= lower_fence && *sample <= upper_fence)
+        .collect();
+    let filtered_total: f64 = filtered.iter().sum();
+    json!({
+        "samples": sorted.len(),
+        "failures": failures,
+        "total_ms": total_ms,
+        "avg_ms": if sorted.is_empty() { 0.0 } else { total_ms / sorted.len() as f64 },
+        "min_ms": sorted.first().copied().unwrap_or(0.0),
+        "p50_ms": percentile(0.50),
+        "p95_ms": percentile(0.95),
+        "p99_ms": percentile(0.99),
+        "max_ms": sorted.last().copied().unwrap_or(0.0),
+        "ops_per_sec": if total_ms > 0.0 { sorted.len() as f64 * 1000.0 / total_ms } else { 0.0 },
+        "outlier_method": "Tukey 1.5*IQR",
+        "outlier_count": sorted.len().saturating_sub(filtered.len()),
+        "outlier_filtered_avg_ms": if filtered.is_empty() { 0.0 } else { filtered_total / filtered.len() as f64 }
+    })
+}
+
+async fn run_batch_benchmark(
+    client: &mut EipClient,
+    tags: &[Tag],
+    args: &Args,
+) -> Result<(), Box<dyn std::error::Error>> {
+    const SIZES: &[usize] = &[1, 5, 10, 20, 50, 100];
+    if !args.allow_writes {
+        return Err(
+            "batch benchmark writes terminal DINT values; rerun with --allow-writes".into(),
+        );
+    }
+    let pool: Vec<&Tag> = tags
+        .iter()
+        .filter(|tag| {
+            tag.category == "ctrl.DINT_array" && tag.kind == Kind::Dint && tag.write.is_writeable()
+        })
+        .take(100)
+        .collect();
+    if pool.len() != 100 {
+        return Err(format!(
+            "batch benchmark requires 100 controller DINT array tags, found {}",
+            pool.len()
+        )
+        .into());
+    }
+
+    let mut rows = Vec::new();
+    println!(
+        "Batch benchmark — min {} tag operations and {:.1}s per size/direction",
+        args.batch_min_tag_operations, args.batch_min_seconds
+    );
+    for &size in SIZES {
+        let required_batches = args.batch_min_tag_operations.div_ceil(size);
+        let selected = &pool[..size];
+        let refs: Vec<&str> = selected.iter().map(|tag| tag.name.as_str()).collect();
+        let writes: Vec<(&str, PlcValue)> = selected
+            .iter()
+            .map(|tag| (tag.name.as_str(), PlcValue::Dint(999_999)))
+            .collect();
+
+        for _ in 0..10 {
+            let results = client.read_tags_batch(&refs).await?;
+            if results.iter().any(|(_, result)| result.is_err()) {
+                return Err(format!("batch read warm-up failed at size {size}").into());
+            }
+            let results = client.write_tags_batch(&writes).await?;
+            if results.iter().any(|(_, result)| result.is_err()) {
+                return Err(format!("batch write warm-up failed at size {size}").into());
+            }
+        }
+
+        let mut read_samples = Vec::new();
+        let mut read_failures = 0u64;
+        let read_window = Instant::now();
+        while read_samples.len() + (read_failures as usize) < required_batches
+            || read_window.elapsed().as_secs_f64() < args.batch_min_seconds
+        {
+            let started = Instant::now();
+            let result = client.read_tags_batch(&refs).await;
+            let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+            match result {
+                Ok(results)
+                    if results.len() == size && results.iter().all(|(_, value)| value.is_ok()) =>
+                {
+                    read_samples.push(elapsed_ms)
+                }
+                _ => read_failures += 1,
+            }
+        }
+
+        let mut write_samples = Vec::new();
+        let mut write_failures = 0u64;
+        let write_window = Instant::now();
+        while write_samples.len() + (write_failures as usize) < required_batches
+            || write_window.elapsed().as_secs_f64() < args.batch_min_seconds
+        {
+            let started = Instant::now();
+            let result = client.write_tags_batch(&writes).await;
+            let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+            match result {
+                Ok(results)
+                    if results.len() == size && results.iter().all(|(_, value)| value.is_ok()) =>
+                {
+                    write_samples.push(elapsed_ms)
+                }
+                _ => write_failures += 1,
+            }
+        }
+
+        let mut reads = latency_summary(&read_samples, read_failures);
+        let mut writes_json = latency_summary(&write_samples, write_failures);
+        reads["tags_per_sec"] = json!(reads["ops_per_sec"].as_f64().unwrap_or(0.0) * size as f64);
+        writes_json["tags_per_sec"] =
+            json!(writes_json["ops_per_sec"].as_f64().unwrap_or(0.0) * size as f64);
+        println!(
+            "  size {:>3}: read avg={:>7.3}ms filtered={:>7.3}ms; write avg={:>7.3}ms filtered={:>7.3}ms",
+            size,
+            reads["avg_ms"].as_f64().unwrap_or(0.0),
+            reads["outlier_filtered_avg_ms"].as_f64().unwrap_or(0.0),
+            writes_json["avg_ms"].as_f64().unwrap_or(0.0),
+            writes_json["outlier_filtered_avg_ms"]
+                .as_f64()
+                .unwrap_or(0.0)
+        );
+        rows.push(json!({"batch_size": size, "reads": reads, "writes": writes_json}));
+    }
+
+    let failures: u64 = rows
+        .iter()
+        .map(|row| {
+            row["reads"]["failures"].as_u64().unwrap_or(0)
+                + row["writes"]["failures"].as_u64().unwrap_or(0)
+        })
+        .sum();
+    let mut terminal_verify_failures = 0u64;
+    for tag in &pool {
+        match read_value_for_kind(client, &tag.name, tag.kind).await {
+            Ok(PlcValue::Dint(999_999)) => {}
+            _ => terminal_verify_failures += 1,
+        }
+    }
+    let result = json!({
+        "schema_version": 1,
+        "workload": "controller_dint_logical_batch_sizes",
+        "binding": "rust",
+        "binding_version": env!("CARGO_PKG_VERSION"),
+        "plc_address": args.address,
+        "plc_slot": args.slot,
+        "batch_sizes": SIZES,
+        "min_tag_operations_per_size_direction": args.batch_min_tag_operations,
+        "min_seconds_per_size_direction": args.batch_min_seconds,
+        "packet_policy": "default: max 20 operations and 504 bytes per CIP packet",
+        "rows": rows,
+        "terminal_verify": {"ok": pool.len() as u64 - terminal_verify_failures, "fail": terminal_verify_failures},
+        "result": if failures == 0 && terminal_verify_failures == 0 { "PASS" } else { "FAIL" }
+    });
+    fs::create_dir_all(&args.out_dir)?;
+    let ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs();
+    let path = args.out_dir.join(format!("rust_batch_benchmark_{ts}.json"));
+    fs::write(&path, serde_json::to_string_pretty(&result)?)?;
+    println!("wrote {}", path.display());
+    if failures == 0 && terminal_verify_failures == 0 {
+        Ok(())
+    } else {
+        Err("batch benchmark operations failed".into())
+    }
+}
+
+async fn run_benchmark(
+    client: &mut EipClient,
+    tags: &[Tag],
+    args: &Args,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if args.benchmark_passes == 0 {
+        return Ok(());
+    }
+    if !args.allow_writes {
+        return Err("benchmark mode writes terminal values; rerun with --allow-writes".into());
+    }
+
+    let writeable: Vec<&Tag> = tags.iter().filter(|tag| tag.write.is_writeable()).collect();
+    let mut read_samples = Vec::with_capacity(tags.len() * args.benchmark_passes);
+    let mut write_samples = Vec::with_capacity(writeable.len() * args.benchmark_passes);
+    let mut read_failures = 0u64;
+    let mut write_failures = 0u64;
+
+    println!(
+        "Benchmark — {} passes, {} reads/pass, {} writes/pass",
+        args.benchmark_passes,
+        tags.len(),
+        writeable.len()
+    );
+    for pass in 0..args.benchmark_passes {
+        let pass_start = Instant::now();
+        for tag in tags {
+            let started = Instant::now();
+            let result = read_value_for_kind(client, &tag.name, tag.kind).await;
+            let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+            if result.is_ok() {
+                read_samples.push(elapsed_ms);
+            } else {
+                read_failures += 1;
+            }
+        }
+        println!(
+            "  read pass {}/{}: {:.1}s",
+            pass + 1,
+            args.benchmark_passes,
+            pass_start.elapsed().as_secs_f64()
+        );
+    }
+    for pass in 0..args.benchmark_passes {
+        let pass_start = Instant::now();
+        for tag in &writeable {
+            let Some(value) = nines(tag.kind) else {
+                continue;
+            };
+            let started = Instant::now();
+            let result = client.write_tag(&tag.name, value).await;
+            let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+            if result.is_ok() {
+                write_samples.push(elapsed_ms);
+            } else {
+                write_failures += 1;
+            }
+        }
+        println!(
+            "  write pass {}/{}: {:.1}s",
+            pass + 1,
+            args.benchmark_passes,
+            pass_start.elapsed().as_secs_f64()
+        );
+    }
+
+    let reads = latency_summary(&read_samples, read_failures);
+    let writes = latency_summary(&write_samples, write_failures);
+    fs::create_dir_all(&args.out_dir)?;
+    let ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs();
+    let path = args.out_dir.join(format!("rust_benchmark_{ts}.json"));
+    let result = json!({
+        "schema_version": 1,
+        "workload": "full_coverage_manifest_sequential",
+        "binding": "rust",
+        "binding_version": env!("CARGO_PKG_VERSION"),
+        "plc_address": args.address,
+        "plc_slot": args.slot,
+        "passes": args.benchmark_passes,
+        "tag_count": tags.len(),
+        "writeable_tag_count": writeable.len(),
+        "warmup": "one full read-only preflight pass",
+        "reads": reads,
+        "writes": writes,
+        "result": if read_failures == 0 && write_failures == 0 { "PASS" } else { "FAIL" }
+    });
+    fs::write(&path, serde_json::to_string_pretty(&result)?)?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    println!("wrote {}", path.display());
+    if read_failures == 0 && write_failures == 0 {
+        Ok(())
+    } else {
+        Err("benchmark operations failed".into())
+    }
+}
+
 fn values_match(a: &PlcValue, b: &PlcValue) -> bool {
     match (a, b) {
         (PlcValue::Dint(x), PlcValue::Dint(y)) => x == y,
@@ -477,6 +800,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         return Ok(());
     }
+    if args.preflight_only && args.skip_preflight {
+        return Err("--preflight-only cannot be combined with --skip-preflight".into());
+    }
+    if args.benchmark_passes > 0 && args.skip_preflight {
+        return Err("benchmark mode requires the warm-up/preflight pass".into());
+    }
+    if args.batch_benchmark && args.skip_preflight {
+        return Err("batch benchmark requires the warm-up/preflight pass".into());
+    }
+    if args.batch_benchmark && args.benchmark_passes > 0 {
+        return Err("choose either sequential or batch benchmark mode".into());
+    }
 
     let mut client =
         EipClient::with_route_path(&args.address, RoutePath::new().add_slot(args.slot)).await?;
@@ -510,6 +845,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if preflight_fail > 0 {
             std::process::exit(2);
         }
+        if args.preflight_only {
+            println!("PASS: read-only preflight completed; no tags were written");
+            return Ok(());
+        }
+    }
+
+    if args.benchmark_passes > 0 {
+        return run_benchmark(&mut client, &tags, &args).await;
+    }
+    if args.batch_benchmark {
+        return run_batch_benchmark(&mut client, &tags, &args).await;
     }
 
     println!("Phase 1 — read every tag");

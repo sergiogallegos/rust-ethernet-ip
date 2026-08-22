@@ -2,14 +2,18 @@
 
 ## Summary
 
-`active` as of 2026-05-24: the C FFI registry stores `EipClient` values and most FFI functions retrieve cloned clients. CODEX-M Phase B structurally shares post-insert route-path and max-packet-size state so cloned registry lookups observe those mutations.
+`active` as of 2026-08-21: the C FFI registry stores `EipClient` values and most FFI functions retrieve cloned clients. Route, max-packet-size, and array-type-cache state that must survive registry cloning is structurally shared.
 
 ## Current Understanding
 
-- `EipClient` mixes shared clone state (`stream`, managers, `route_path`, `max_packet_size`, `last_activity`, connected sessions, subscriptions, tag groups) with copied scalar state (`session_handle`, `batch_config`).
+- `EipClient` mixes shared clone state (`stream`, managers, `route_path`, `max_packet_size`, `array_type_cache`, `last_activity`, connected sessions, subscriptions, tag groups) with copied scalar state (`session_handle`, `batch_config`).
 - Current FFI route-path mutation may operate on a cloned client; `route_path` is shared on clone, so later registry lookups observe the new route.
 - Current FFI max-packet-size mutation operates on a cloned client; `max_packet_size` is an `Arc<AtomicU32>`, so later registry lookups observe the new value.
 - Current FFI batch execution temporarily modifies the cloned `batch_config` and restores it; this is intentionally per-call and not persistent.
+- Packed-BOOL array classification is shared across clones so repeated wrapper
+  batch reads reuse both positive and negative results. Route mutation clears
+  that shared cache before installing or removing the route, and the public
+  cache-clear operation clears it explicitly.
 - `eip_configure_batch_operations` remains unsupported; persistent batch configuration would need a new audit or an explicitly shared config field.
 - CODEX-M uses Option C: annotate clone behavior and move mutation-bearing scalar fields to shared state.
 

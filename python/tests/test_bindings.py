@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,6 +30,20 @@ class NativeBindingLoaderTests(unittest.TestCase):
         names = bindings._native_file_names()
         self.assertTrue(any("rust_ethernet_ip" in name for name in names))
         self.assertTrue(all(name.endswith((".dll", ".so", ".dylib")) for name in names))
+
+    def test_source_checkout_prefers_release_native_library(self) -> None:
+        with patch.dict(os.environ, {"RUST_ETHERNET_IP_NATIVE_LIB": ""}):
+            candidates = bindings._candidate_paths()
+
+        release_index = next(
+            index for index, path in enumerate(candidates)
+            if path.parent.name == "release" and path.parent.parent.name == "target"
+        )
+        debug_index = next(
+            index for index, path in enumerate(candidates)
+            if path.parent.name == "debug" and path.parent.parent.name == "target"
+        )
+        self.assertLess(release_index, debug_index)
 
 
 if __name__ == "__main__":

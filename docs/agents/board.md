@@ -17,6 +17,7 @@
 | CODEX-BF | Python native batch writes with safe typed fallbacks | codex | open | 2026-08-22 |
 | CODEX-BG | Cross-binding one-hour and 24-hour endurance soak | codex | open | 2026-08-22 |
 | CODEX-BH | Tag-shape and scope performance matrix | codex | open | 2026-08-22 |
+| CODEX-BI | Bump CI actions off deprecated Node.js 20 runtime | codex | open | 2026-08-22 |
 
 > 2026-08-22 **1.2.1 cache-safety plan.** CODEX-BA → BB → BC → BD are
 > release-blocking and should run in that order. CODEX-BE (packet policy), BF
@@ -24,6 +25,13 @@
 > accepted follow-ups rather than silent deferrals; they do not block 1.2.1
 > unless the maintainer explicitly promotes them. Recommended follow-up order:
 > BE after BD; BF after BB/BC; BG after BD; BH after BE.
+>
+> 2026-08-22 **CODEX-BI opened** (non-blocking): CI run
+> [32595551867](https://github.com/sergiogallegos/rust-ethernet-ip/actions/runs/32595551867)
+> flagged every job forcing several `actions/*` steps off their pinned
+> Node.js 20 runtime onto Node 24 via GitHub's compatibility shim. Jobs pass
+> today only because of that shim; bump the affected action major versions
+> before GitHub removes it.
 >
 > 2026-08-22 **CODEX-BA/BB/BC merged → Done** after independent Claude review
 > (offline gate: fmt, clippy -D warnings, full locked workspace tests,

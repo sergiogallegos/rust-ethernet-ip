@@ -48,6 +48,9 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <!-- Complete copy-ready programs live beside the wrapper source for GitHub
+         readers, but are not compiled into the public NuGet assembly. -->
+    <Compile Remove="Examples\GettingStarted\**\*.cs" />
   </ItemGroup>
 
   <Target Name="CopyNativeLibrary" AfterTargets="Build">

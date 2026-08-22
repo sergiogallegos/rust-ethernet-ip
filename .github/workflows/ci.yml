@@ -79,6 +79,14 @@ jobs:
       run: |
         dotnet test csharp/RustEtherNetIp.IntegrationTests/RustEtherNetIp.IntegrationTests.csproj -c Release --blame-crash
 
+    - name: Build C# getting-started examples
+      if: matrix.rust == 'stable'
+      shell: bash
+      run: |
+        for project in csharp/RustEtherNetIp/Examples/GettingStarted/*/*.csproj; do
+          dotnet build "$project" -c Release
+        done
+
     # Preserve --blame-crash evidence for any future native-process failure.
     - name: Upload C# testhost crash dumps
       if: matrix.rust == 'stable' && always()
@@ -144,7 +152,7 @@ jobs:
 
     - name: Compile-check Python sources
       working-directory: python
-      run: python -m compileall -q rust_ethernet_ip tests
+      run: python -m compileall -q rust_ethernet_ip tests examples
 
     - name: Run Python tests
       working-directory: python

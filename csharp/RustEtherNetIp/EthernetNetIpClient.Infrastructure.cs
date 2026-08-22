@@ -9,50 +9,17 @@ namespace RustEtherNetIp
 {
     public partial class EtherNetIpClient
     {
-        private void ThrowDetailedWriteException(string tagName, PlcValue value, string fallbackMessage)
+        private void ThrowDetailedWriteException(string fallbackMessage)
         {
             // The scalar write that just failed must NOT be re-issued to the PLC
             // merely to obtain a richer error message: for side-effecting tags
             // (counters, momentary bits, event triggers) that would double-apply
             // the operation, and on a transiently-writable tag it could even
-            // mask the original failure. The scalar write FFI only returns a
-            // status code, so surface the best heuristic explanation we have.
+            // mask the original failure. Surface the operation-specific fallback
+            // together with the native last-error detail captured by the FFI.
             throw new PlcException(
-                InferKnownWriteLimitation(tagName, value, fallbackMessage),
+                fallbackMessage,
                 TryGetNativeError());
-        }
-
-        private static string InferKnownWriteLimitation(string tagName, PlcValue value, string fallbackMessage)
-        {
-            if (LooksLikeDirectUdtArrayMemberPath(tagName))
-            {
-                return $"Direct writes to UDT array element members are not supported by this PLC/firmware path (commonly surfaced as CIP extended error 0x2107): '{tagName}'. Write the whole UDT element instead.";
-            }
-
-            if (LooksLikeStringMemberPath(tagName))
-            {
-                return $"Direct writes to STRING members inside UDTs are not supported on this PLC/firmware path for '{tagName}'. Write the containing UDT instead.";
-            }
-
-            return fallbackMessage;
-        }
-
-        private static bool LooksLikeDirectUdtArrayMemberPath(string tagName)
-        {
-            if (string.IsNullOrWhiteSpace(tagName))
-                return false;
-
-            int dotIndex = tagName.LastIndexOf('.');
-            int bracketStart = tagName.LastIndexOf('[');
-            int bracketEnd = tagName.LastIndexOf(']');
-            return dotIndex > bracketEnd && bracketStart >= 0 && bracketEnd > bracketStart;
-        }
-
-        private static bool LooksLikeStringMemberPath(string tagName)
-        {
-            return !string.IsNullOrWhiteSpace(tagName) &&
-                   (tagName.Contains("STRING", StringComparison.OrdinalIgnoreCase) ||
-                    tagName.Contains("String", StringComparison.Ordinal));
         }
 
         private void CheckConnection()

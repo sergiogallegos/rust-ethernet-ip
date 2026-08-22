@@ -22,6 +22,14 @@ shared.
   direct connection, DINT/REAL/STRING, and batch calls.
 - `confirmed`: C++ compilation, header parity, and the simulator smoke are
   blocking on Linux, Windows, and macOS in the `1.2.1` preparation line.
+- `confirmed`: C# now has a buildable first-user progression for scalar and
+  STRING I/O, batches, controller discovery/known program paths, ControlLogix
+  routing, diagnostics, and polling. Python has parallel core examples plus
+  analytics/service examples, and C++ has build-checked route/diagnostics and
+  discovery programs in addition to its simulator smoke.
+- `confirmed`: C#, Python, and the C ABI can access known program-scoped paths,
+  but program-scoped enumeration remains Rust-only. Their discovery examples
+  intentionally describe controller discovery rather than implying parity.
 - `needs-care`: Generic C/C++ consumers still lack installable
   CMake/`pkg-config` metadata, standalone SDK archives, and generated reference
   documentation.
@@ -77,6 +85,9 @@ shared.
 - [docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md](../../docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md)
 - [docs/audit/1.2.1_wrapper_and_platform_gap_analysis.md](../../docs/audit/1.2.1_wrapper_and_platform_gap_analysis.md)
 - [docs/CPP_INTEGRATION.md](../../docs/CPP_INTEGRATION.md)
+- [csharp/RustEtherNetIp/Examples/GettingStarted/README.md](../../csharp/RustEtherNetIp/Examples/GettingStarted/README.md)
+- [python/README.md](../../python/README.md)
+- [examples/cpp/README.md](../../examples/cpp/README.md)
 
 ## Open Questions
 

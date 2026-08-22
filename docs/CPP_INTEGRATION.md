@@ -1,44 +1,273 @@
-# C and C++ Integration
+# C and C++ Integration Guide
 
-The checked-in C ABI is the stable boundary for C and C++ consumers. Build the
-native library with:
+The checked-in C ABI is the stable native boundary for C, C++, robotics,
+computer-vision, edge-compute, and Qt applications. It provides direct
+EtherNet/IP access to CompactLogix and ControlLogix tags without requiring an
+OPC client.
 
-```sh
+## Release Status
+
+- Latest published library line: `1.2.0`
+- Repository development line: `1.2.1` (not released yet)
+- C ABI version: `2`
+- Language level used by the examples: C++17
+
+The 1.2.0 real-hardware gate exercised the C ABI alongside Rust, C#, and Python
+on CompactLogix 5069-L330ERM firmware 38. C/C++ completed 2,338 reads and 2,319
+writes plus read-back verification with zero unexpected anomalies.
+
+## Build and Link
+
+Build the dynamic library:
+
+```bash
 cargo build --release --features ffi --locked
 ```
 
-Then include `include/rust_ethernet_ip.h` and link to the generated dynamic
-library:
+Include [`include/rust_ethernet_ip.h`](../include/rust_ethernet_ip.h) and link
+the platform artifact:
 
 - Linux: `target/release/librust_ethernet_ip.so`
 - macOS: `target/release/librust_ethernet_ip.dylib`
-- Windows: `target/release/rust_ethernet_ip.dll` plus
-  `target/release/rust_ethernet_ip.dll.lib` for MSVC linking
+- Windows: `target/release/rust_ethernet_ip.dll` and the MSVC import library
 
-Ship the dynamic library next to the executable or in a directory covered by
-the platform loader path.
+Build every checked-in example:
+
+```bash
+cmake -S examples/cpp -B target/cpp \
+  -DRUST_ETHERNET_IP_NATIVE_LIB="$PWD/target/release/librust_ethernet_ip.so"
+cmake --build target/cpp
+ctest --test-dir target/cpp --output-on-failure
+```
+
+The CMake project copies the native library beside each executable. For your
+application, ship it beside the executable or configure the platform loader
+path explicitly.
 
 ## ABI Handshake
 
-Call `eip_abi_version()` at startup and require
-`RUST_ETHERNET_IP_ABI_VERSION`. `eip_capabilities()` returns a bitmask of
-optional features such as ordered route hops, batch execution, diagnostics JSON,
-tag-group subscription support, and `eip_get_last_error`.
+Fail early when the header and native library do not match:
 
-Every operation returns `0` on success unless documented otherwise. Connect
-functions return a positive client id on success. On failure, call
-`eip_get_last_error(client_id, buffer, len)` for the most recent native error
-message when a client id is available.
+```cpp
+#include "rust_ethernet_ip.h"
 
-## Threading Model
+#include <cstdint>
+#include <stdexcept>
 
-Every FFI call is blocking. Internally, each call uses `block_on` against the
-library's global Tokio runtime. Qt applications must not call the driver from
-the GUI thread.
+void verify_native_runtime()
+{
+    if (eip_abi_version() != RUST_ETHERNET_IP_ABI_VERSION)
+        throw std::runtime_error("rust-ethernet-ip C ABI mismatch");
 
-Use one owning worker object per native client handle and run that worker on a
-dedicated `QThread`. Publish read results back to the UI with signals, and send
-writes to the worker with queued invocations.
+    const std::uint64_t capabilities = eip_capabilities();
+    if ((capabilities & RUST_ETHERNET_IP_CAP_LAST_ERROR) == 0)
+        throw std::runtime_error("native library lacks last-error support");
+}
+```
+
+`eip_library_version()` reports the library version. The returned metadata
+strings have process lifetime and must not be freed.
+
+## Error Pattern
+
+Connect functions return a positive client ID. Other operations return `0` on
+success. Retrieve native detail immediately after a failure:
+
+```cpp
+#include <array>
+#include <string>
+
+std::string last_error(int client_id)
+{
+    std::array<char, 1024> buffer {};
+    int written = eip_get_last_error(
+        client_id, buffer.data(), static_cast<int>(buffer.size()));
+    return written > 0
+        ? std::string(buffer.data(), static_cast<std::size_t>(written))
+        : std::string {};
+}
+```
+
+Use RAII or one cleanup path so every successful client ID reaches
+`eip_disconnect`.
+
+## C++ RAII Quick Start
+
+[`examples/cpp/eip_client.hpp`](../examples/cpp/eip_client.hpp) provides a
+small move-only owner for direct connections, DINT/REAL/STRING access, and
+batches:
+
+```cpp
+#include "eip_client.hpp"
+
+#include <iostream>
+
+using rust_ethernet_ip::EipClient;
+using rust_ethernet_ip::require_ok;
+using rust_ethernet_ip::require_value;
+
+int main()
+{
+    auto connected = EipClient::connect("192.168.0.10:44818");
+    if (!connected) {
+        std::cerr << connected.error.message << "\n";
+        return 1;
+    }
+
+    EipClient plc = std::move(connected.value);
+    std::cout << require_value(plc.read_dint("ProductionCount"), "read") << "\n";
+    require_ok(plc.write_real("TemperatureSetpoint", 72.5), "write");
+    require_ok(plc.write_string("RecipeName", "PRODUCT_A"), "write STRING");
+}
+```
+
+The RAII class disconnects in its destructor and cannot be copied.
+
+## STRINGs and UDT Member Paths in 1.2.0
+
+`eip_write_string` is handle-aware. Supply the complete symbolic path for a
+top-level built-in STRING, a custom STRING member, or a STRING member inside a
+UDT array element:
+
+```cpp
+eip_write_string(client_id, "RecipeName", "PRODUCT_A");
+eip_write_string(client_id, "Mixer.Description", "Primary mixer");
+eip_write_string(client_id, "Motors[0].Description", "Infeed conveyor");
+
+char value[512] {};
+if (eip_read_string(client_id, "Motors[0].Description", value, sizeof(value)) != 0)
+    throw std::runtime_error(last_error(client_id));
+```
+
+This supersedes older notes that treated all direct UDT STRING-member writes
+as firmware-blocked. Real hardware confirms built-in STRING and custom
+`Str82`/`Str400` members on 5069-L330ERM firmware 38. Very large custom strings
+have simulator fragmentation coverage and should be qualified on the intended
+controller/firmware combination.
+
+## Controller and Program Tag Paths
+
+Controller tags use their normal names. Known program tags include the
+`Program:` prefix:
+
+```cpp
+int controller_count = 0;
+int program_count = 0;
+
+eip_read_dint(client_id, "ProductionCount", &controller_count);
+eip_read_dint(
+    client_id,
+    "Program:MainProgram.ProductionCount",
+    &program_count);
+```
+
+The 1.2.0 C ABI exposes controller-scoped discovery but not program-scoped
+enumeration. Known program paths are fully usable for reads, writes, and
+batches.
+
+## Batch Read and Write
+
+The RAII example returns the native JSON result so the application can parse it
+with its preferred JSON library:
+
+```cpp
+auto reads = plc.read_tags_batch({
+    "ProductionCount",
+    "TankTemperature",
+    "Program:MainProgram.MachineRunning",
+});
+
+if (!reads)
+    throw std::runtime_error(reads.error.message);
+
+const std::string writes = R"([
+  {"tag_name":"ProductionSetpoint","value_type":"DINT","value":1250},
+  {"tag_name":"TemperatureSetpoint","value_type":"REAL","value":72.5},
+  {"tag_name":"EnableCommand","value_type":"BOOL","value":true},
+  {"tag_name":"RecipeName","value_type":"STRING","value":"PRODUCT_A"}
+])";
+
+auto result = plc.write_tags_batch(writes, 4);
+if (!result)
+    throw std::runtime_error(result.error.message);
+```
+
+Inspect every per-tag result. Packet-size-aware batching in 1.2.0 splits large
+requests instead of relying only on operation count.
+
+## ControlLogix Backplane Route
+
+Connect to the Ethernet module and supply an ordered backplane hop to the CPU:
+
+```cpp
+const std::uint8_t hop_types[] = { 1 }; // 1 = backplane
+const std::uint8_t ports[] = { 1 };
+const std::uint8_t slots[] = { 0 };
+const char *addresses[] = { nullptr };
+
+int client_id = eip_connect_with_route_hops(
+    "192.168.0.20:44818",
+    hop_types,
+    ports,
+    slots,
+    addresses,
+    1);
+```
+
+For multi-hop networks, append Ethernet hops (`hop_type = 2`, usually port 2,
+with an address) and further backplane hops in traversal order. See the
+build-checked [`route_and_diagnostics.cpp`](../examples/cpp/route_and_diagnostics.cpp).
+
+CompactLogix controllers with built-in Ethernet normally use `eip_connect`
+without a route.
+
+## Controller Tag Discovery
+
+Owned discovery results must be released with the matching free function:
+
+```cpp
+EipTagDiscoveryResult result {};
+if (eip_discover_tags_detailed_by_id(client_id, &result) != 0 || !result.success)
+    throw std::runtime_error(result.error_message != nullptr
+        ? result.error_message
+        : last_error(client_id));
+
+for (int i = 0; i < result.tag_count; ++i) {
+    const EipTagAttributes &tag = result.tags[i];
+    std::cout << tag.name << " " << tag.data_type_name << " " << tag.size << "\n";
+}
+
+eip_free_tag_discovery_result(&result);
+```
+
+The complete program is
+[`examples/cpp/discovery.cpp`](../examples/cpp/discovery.cpp).
+
+## Health and Diagnostics
+
+```cpp
+int healthy = 0;
+if (eip_check_health_detailed(client_id, &healthy) != 0)
+    throw std::runtime_error(last_error(client_id));
+
+char *json = nullptr;
+if (eip_get_diagnostics_json(client_id, 1, &json) != 0 || json == nullptr)
+    throw std::runtime_error(last_error(client_id));
+
+std::cout << json << "\n";
+eip_free_string(json);
+```
+
+Diagnostics JSON contains connection, operation, latency, error-category, and
+verified-health metrics. CPU and memory values are placeholders in 1.2.0.
+
+## Threading and Qt
+
+Every C ABI call is blocking. Do not poll the PLC on a Qt GUI thread or a
+computer-vision capture thread.
+
+Use one owning worker per client ID on a dedicated `QThread`, and communicate
+with the UI through queued signals/slots:
 
 ```cpp
 class PlcWorker : public QObject {
@@ -58,53 +287,47 @@ private:
 };
 ```
 
-Treat a client id as single-owner state. The native registry serializes access
-to the handle table, but it is not a substitute for an application-level owner
-that controls when operations are issued and when disconnect happens.
+Treat the client ID as single-owner state. The native registry protects its
+handle table, but application ownership must prevent operations racing with
+disconnect.
 
-## Example
+## Full C ABI Versus the Convenience Class
 
-`examples/cpp/` contains a dependency-free header-only RAII wrapper and a CMake
-smoke demo. After building the native library:
+[`include/rust_ethernet_ip.h`](../include/rust_ethernet_ip.h) is the complete
+native contract. It covers every scalar type, generic JSON reads, arrays, UDTs,
+controller discovery, metadata, ordered routes, diagnostics, health, and
+batches.
 
-```sh
-cmake -S examples/cpp -B target/cpp \
-  -DRUST_ETHERNET_IP_NATIVE_LIB="$PWD/target/release/librust_ethernet_ip.so"
-cmake --build target/cpp
-ctest --test-dir target/cpp --output-on-failure
-```
+`eip_client.hpp` is intentionally smaller. Missing methods in that sample class
+do not mean the C ABI lacks the feature. Applications may extend the RAII class
+or call the C functions directly.
 
-The smoke starts the checked-in simulator, connects through the C ABI,
-round-trips DINT, REAL, and STRING tags, then runs batch read/write calls.
+## Checked-In Examples
 
-## C ABI Versus the C++ Convenience Class
+- [`demo.cpp`](../examples/cpp/demo.cpp): RAII scalar/STRING/batch smoke
+- [`route_and_diagnostics.cpp`](../examples/cpp/route_and_diagnostics.cpp): routed ControlLogix and diagnostics
+- [`discovery.cpp`](../examples/cpp/discovery.cpp): controller discovery and cleanup
+- [`full_coverage.cpp`](../examples/cpp/full_coverage.cpp): maintainer hardware matrix runner
+- [`examples/cpp/README.md`](../examples/cpp/README.md): build and run index
 
-`include/rust_ethernet_ip.h` is the complete supported native interface. It
-includes typed scalar access, generic JSON values, arrays, UDTs, discovery,
-ordered route hops, diagnostics, health, and batch operations.
+The header/link check and all example targets compile on Ubuntu, Windows, and
+macOS in the 1.2.1 preparation line. The simulator smoke runs in CI; route and
+discovery examples require real hardware and are compile/link checked only.
 
-`examples/cpp/eip_client.hpp` is a deliberately small example wrapper. It adds
-move-only RAII ownership, structured errors, direct connection, DINT/REAL/STRING
-access, and batch calls. Features not represented by that class remain usable
-by calling the C ABI directly; their absence from the example class is not an
-absence from the library.
+## Current Boundaries
 
-Current C/C++ integration gaps for contributors:
+- Program-scoped enumeration is not exposed in the C ABI; use known full paths.
+- Whole UDT-array-element writes are not supported; write members individually.
+- Offset-based UDT member calls remain compatibility exports, but maintained
+  high-level APIs and examples use symbolic member paths instead.
+- Installable CMake package metadata, `pkg-config` files, standalone native SDK
+  archives, and generated C reference pages remain future packaging work.
+- The protocol scope is EtherNet/IP Logix tag access for CompactLogix and
+  ControlLogix, not Modbus TCP.
 
-- expand the RAII convenience class to cover routed connections, every scalar
-  type, discovery, UDTs, diagnostics, and health;
-- provide installable CMake package metadata and `pkg-config` metadata instead
-  of requiring consumers to define an imported library manually;
-- publish standalone native SDK archives containing the header, library,
-  import library where applicable, license, and examples;
-- generate a browsable C/C++ API reference from the checked-in header;
-- add a sanitizer-enabled native consumer job and broader compiler coverage.
+See the [hardware compatibility matrix](HARDWARE_COMPATIBILITY.md),
+[integration/deployment guide](INTEGRATION_AND_DEPLOYMENT.md), and
+[1.2.0 hardware gate](validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md).
 
-The blocking C++ header/example matrix covers Ubuntu, Windows, and macOS as of
-the `1.2.1` preparation line.
-
-These are distribution and ergonomics improvements. They do not expand the
-project's protocol scope beyond EtherNet/IP access to CompactLogix and
-ControlLogix controllers. See the
-[wrapper/platform gap analysis](audit/1.2.1_wrapper_and_platform_gap_analysis.md)
-for the comparison and priorities.
+The project is MIT licensed. Contributions that add controller/firmware
+evidence or extend the native ergonomics are welcome.

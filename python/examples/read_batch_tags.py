@@ -1,9 +1,12 @@
+import os
+
 from rust_ethernet_ip import BatchReadError, Client
 
 
 def main() -> None:
-    tags = ["Tag1", "Tag2", "Program:Main.Tag3"]
-    with Client("192.168.0.10:44818") as plc:
+    address = os.getenv("RUST_ETHERNET_IP_PLC_ADDRESS", "192.168.0.10:44818")
+    tags = ["ProductionCount", "TankTemperature", "Program:MainProgram.MachineRunning"]
+    with Client(address) as plc:
         try:
             values = plc.read_tags(tags)
         except BatchReadError as exc:

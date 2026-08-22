@@ -40,6 +40,7 @@ Sources used:
 Sources used:
 
 - `csharp/RustEtherNetIp/README.md`
+- `csharp/RustEtherNetIp/UDT_README.md`
 - `csharp/RustEtherNetIp/IEtherNetIpClient.cs`
 - `csharp/RustEtherNetIp.Tests/BatchConfigContractTests.cs`
 - `csharp/RustEtherNetIp.Tests/TagGroupApiTests.cs`
@@ -1320,6 +1321,29 @@ Sources used:
 - `docs/HARDWARE_COMPATIBILITY.md`
 - `docs/audit/1.2.0_markdown_release_audit.md`
 - `docs/release/1.2.1_RELEASE_NOTES_DRAFT.md`
+
+## [2026-08-21] reframe | rebuild wrapper onboarding around 1.2.0 behavior
+
+- Updated `wiki/wrapper-parity/rust-vs-csharp.md`.
+- Corrected C# Markdown, IntelliSense, and fallback error text that still
+  described handle-aware UDT STRING-member writes as firmware-blocked.
+- Added a buildable six-step C# learning path, expanded Python core examples
+  alongside its analytics/service focus, and added build-checked C++ routing,
+  diagnostics, and controller-discovery programs.
+- Made the wrapper discovery boundary explicit: known program paths work in all
+  bindings, while program-scoped enumeration is currently Rust-only.
+
+Sources used:
+
+- `csharp/RustEtherNetIp/README.md`
+- `csharp/RustEtherNetIp/EthernetNetIpClient.cs`
+- `csharp/RustEtherNetIp/Examples/`
+- `python/README.md`
+- `python/examples/`
+- `docs/CPP_INTEGRATION.md`
+- `examples/cpp/`
+- `docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md`
+- `wiki/limitations/string-and-udt-write-behavior.md`
 - `CHANGELOG.md`
 
 ## [2026-08-21] ingest | compare validation tiers and native-wrapper adoption gaps

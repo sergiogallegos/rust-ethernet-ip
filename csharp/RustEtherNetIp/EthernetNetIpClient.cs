@@ -18,39 +18,29 @@ namespace RustEtherNetIp
     /// all Allen-Bradley native data types. The underlying Rust library handles the EtherNet/IP protocol
     /// implementation, CIP messaging, advanced tag addressing, and network communications.
     ///
-    /// Performance: 1,500+ reads/sec, 800+ writes/sec
-    /// Supported PLCs: CompactLogix L1x-L5x, ControlLogix L6x-L8x series
+    /// Supported PLC focus: CompactLogix and ControlLogix
     /// Supported Data Types: BOOL, SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL, STRING, UDT
     /// Advanced Features: Program-scoped tags, array addressing, bit operations, UDT member access
     ///
-    /// <para><strong>⚠️ Known Limitations and Controller-Specific Behavior:</strong></para>
-    /// <para>
-    /// The following operations depend on exact Logix wire encoding and controller firmware behavior.
-    /// </para>
+    /// <para><strong>STRING and structure behavior in 1.2.0:</strong></para>
     /// <list type="bullet">
-    /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs
-    /// (e.g., "gTestUDT.Member5_String"). Must read the entire UDT structure, modify the STRING member in memory, then write the entire UDT back.</description></item>
-    /// <item><description><strong>UDT Array Element STRING Members:</strong> STRING members inside UDT array elements reject with 0x2107 under the current member encoding.
-    /// Must read the entire UDT array element, modify the STRING member in memory, then write the entire element back.</description></item>
+    /// <item><description><see cref="WriteString(string, string)"/> supports top-level built-in STRING tags and built-in/custom STRING members when addressed by their full tag path.</description></item>
+    /// <item><description>Built-in STRING, custom Str82/Str400 members, and scalar UDT-array-element members were written and verified on CompactLogix 5069-L330ERM firmware 38.</description></item>
+    /// <item><description>Whole UDT array-element writes remain a separate limitation; write the element members directly.</description></item>
     /// </list>
     ///
     /// <para><strong>✅ What Works:</strong></para>
     /// <list type="bullet">
     /// <item><description>Reading all tag types including STRING tags and UDT members</description></item>
     /// <item><description>Writing DINT, REAL, BOOL, INT, and other numeric types</description></item>
-    /// <item><description>Writing UDT members (non-STRING) for non-array UDTs (e.g., "gTestUDT.Member1_DINT")</description></item>
+    /// <item><description>Writing scalar and STRING UDT members by full path (e.g., "gTestUDT.Member1_DINT" and "gTestUDT.Member5_String")</description></item>
     /// <item><description>Writing scalar UDT array element members on validated firmware (e.g., "gTestUDT_Array[0].Member1_DINT")</description></item>
-    /// <item><description>Writing entire UDT array elements (e.g., "gTestUDT_Array[0]")</description></item>
+    /// <item><description>Writing STRING members of UDT array elements through <see cref="WriteString(string, string)"/></description></item>
     /// <item><description>Writing simple array elements (e.g., "gArray[5]")</description></item>
     /// <item><description>Reading UDT array element members (e.g., "gTestUDT_Array[0].Member1_DINT")</description></item>
     /// </list>
     ///
-    /// <para><strong>💡 Workarounds:</strong></para>
-    /// <list type="bullet">
-    /// <item><description><strong>UDT Array Element STRING Members:</strong> Read the entire UDT array element, modify the STRING member in memory, then write the entire UDT array element back.</description></item>
-    /// <item><description><strong>STRING Members in UDTs:</strong> Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
-    /// <item><description><strong>Standalone STRING Tags:</strong> Direct writes use the validated standard Logix STRING structure encoding.</description></item>
-    /// </list>
+    /// <para>Use the exact member path and the typed write method that matches the Logix type. A CIP 0x2107 response means the requested type/structure handle did not match the target; it is not a universal firmware ban.</para>
     /// </remarks>
     /// <example>
     /// Basic usage:
@@ -203,7 +193,7 @@ namespace RustEtherNetIp
                     {
                         int result = eip_write_bool(_clientId, tagPtr, value ? 1 : 0);
                         if (result != 0)
-                            ThrowDetailedWriteException(tagName, PlcValue.Bool(value), $"Failed to write BOOL tag '{tagName}'. Check tag exists and is writable.");
+                            ThrowDetailedWriteException($"Failed to write BOOL tag '{tagName}'. Check tag exists and is writable.");
                         _statistics.IncrementWrite();
                     }
                     finally
@@ -343,7 +333,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_int(_clientId, tagPtr, value);
                     if (result != 0)
-                        ThrowDetailedWriteException(tagName, PlcValue.Int(value), $"Failed to write INT tag '{tagName}'. Check tag exists and is writable.");
+                        ThrowDetailedWriteException($"Failed to write INT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -393,7 +383,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_dint(_clientId, tagPtr, value);
                     if (result != 0)
-                        ThrowDetailedWriteException(tagName, PlcValue.Dint(value), $"Failed to write DINT tag '{tagName}'. Check tag exists and is writable.");
+                        ThrowDetailedWriteException($"Failed to write DINT tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -701,7 +691,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_real(_clientId, tagPtr, value);
                     if (result != 0)
-                        ThrowDetailedWriteException(tagName, PlcValue.Real(value), $"Failed to write REAL tag '{tagName}'. Check tag exists and is writable.");
+                        ThrowDetailedWriteException($"Failed to write REAL tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -836,9 +826,10 @@ namespace RustEtherNetIp
         /// <param name="value">String value to write.</param>
         /// <exception cref="Exception">Thrown if the write operation fails.</exception>
         /// <remarks>
-        /// <para>Writes standard top-level Logix STRING tags using the structure encoding
-        /// validated against real hardware. STRING members inside UDTs remain a separate
-        /// restricted path and should be updated by writing the containing UDT.</para>
+        /// <para>Writes built-in and custom Logix STRING types using handle-aware structure
+        /// encoding. The full tag path may identify a top-level tag, a UDT member, or a
+        /// UDT-array-element member. CompactLogix 5069-L330ERM firmware 38 validation covers
+        /// built-in STRING plus custom Str82 and Str400 members.</para>
         /// </remarks>
         public void WriteString(string tagName, string value)
         {
@@ -851,7 +842,7 @@ namespace RustEtherNetIp
                 {
                     int result = eip_write_string(_clientId, tagPtr, valuePtr);
                     if (result != 0)
-                        ThrowDetailedWriteException(tagName, PlcValue.String(value), $"Failed to write STRING tag '{tagName}'. Check tag exists and is writable.");
+                        ThrowDetailedWriteException($"Failed to write STRING tag '{tagName}'. Check tag exists and is writable.");
                 }
                 finally
                 {
@@ -1169,17 +1160,12 @@ namespace RustEtherNetIp
         /// <param name="tagName">Name of the UDT tag.</param>
         /// <param name="memberPath">Dot-separated path to the nested member (e.g., "Status.Running").</param>
         /// <param name="value">Value to set.</param>
-        /// <exception cref="Exception">Thrown if the operation fails. Note: STRING members in UDTs and UDT array elements can fail with CIP Error 0x2107 under the current member encoding.</exception>
+        /// <exception cref="Exception">Thrown if the UDT cannot be read, modified, or written.</exception>
         /// <remarks>
-        /// <para><strong>⚠️ PLC Limitations:</strong></para>
-        /// <list type="bullet">
-        /// <item><description><strong>STRING Members in UDTs:</strong> Cannot write directly to STRING members within UDTs
-        /// (e.g., "gTestUDT.Member5_String"). The PLC returns CIP Error 0x2107.
-        /// Workaround: Read the entire UDT, modify the STRING member in memory, then write the entire UDT back.</description></item>
-        /// <item><description><strong>STRING Members in UDT Array Elements:</strong> Current member encoding is rejected with CIP Error 0x2107.
-        /// Workaround: Read the entire UDT array element, modify the STRING member in memory, then write the entire element back.</description></item>
-        /// </list>
-        /// <para><strong>✅ What Works:</strong> Writing to non-STRING members of non-array UDTs and scalar UDT array element members on validated firmware.</para>
+        /// <para>This helper performs a whole-UDT read/modify/write. For scalar or STRING
+        /// members, prefer the matching typed method with the full member path, such as
+        /// <c>WriteDint("Motor.Command", 1)</c> or
+        /// <c>WriteString("Motor.Description", "Mixer")</c>.</para>
         /// </remarks>
         public virtual void SetUdtMember(string tagName, string memberPath, PlcValue value)
         {

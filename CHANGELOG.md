@@ -52,6 +52,10 @@ Target release: `1.2.1`.
   and firmware evidence.
 - Extended the blocking C++ header/export/CMake/simulator job to macOS, matching
   the three operating systems already used by the Rust and managed wrappers.
+- Rebuilt the C#, Python, and C/C++ onboarding guides around their primary
+  industrial use cases; corrected superseded 1.2.0 STRING-write guidance and
+  added buildable examples for scalar I/O, batches, program paths, controller
+  discovery, ControlLogix routing, diagnostics, and polling.
 
 ### Changed
 
@@ -72,6 +76,9 @@ Target release: `1.2.1`.
 - Fixed development-line package validation so the unpublished `1.2.1` root
   crate is checked through the dependency-order-aware readiness gate instead
   of requiring its same-version sibling crates to already exist on crates.io.
+- Removed stale C# fallback errors and IntelliSense guidance that described
+  validated handle-aware STRING and UDT-array-member writes as universally
+  unsupported firmware paths.
 - Program-scoped tag discovery aborted on CIP 0x06 "partial transfer" instead of
   paging, so a program whose symbol table spans more than one response yielded no
   tags at all.

@@ -1,569 +1,334 @@
-# Rust EtherNet/IP C# Wrapper
+# Rust EtherNet/IP for C#
 
-`RustEtherNetIp` is the C# wrapper and NuGet package for the `rust-ethernet-ip` native core.
+`RustEtherNetIp` is the .NET wrapper for direct EtherNet/IP communication with
+Allen-Bradley CompactLogix and ControlLogix controllers. It is designed for
+industrial desktop applications, MES services, test stations, machine tools,
+and data-collection services that need Logix tag access without an OPC layer.
 
-It is intended for `.NET` applications that need direct communication with Allen-Bradley CompactLogix and ControlLogix controllers without OPC or RSLinx.
+## Release Status
 
-Validated scope today:
+- current published package: `1.2.0` on NuGet
+- Repository development line: `1.2.1` (not published yet)
+- Target framework: `.NET 10`
+- Packaged native runtimes: `win-x64`, `linux-x64`, `osx-arm64`
+- Native C ABI used by 1.2.0: version `2`
 
-- individual reads and writes
-- route-path access for ControlLogix
-- batch read, batch write, and mixed execute
-- subscriptions and tag-group polling
-- UDT access
-- health checks and diagnostics
+The 1.2.0 hardware gate exercised Rust, C#, Python, and C/C++ against a
+CompactLogix 5069-L330ERM firmware 38. Each binding completed 2,338 reads and
+2,319 writes plus read-back verification with zero unexpected anomalies.
 
-## Package Status
-
-- current published package: `1.2.0`
-- previous published package: `1.1.0`
-- current published package target: `.NET 10`
-- current packaged native runtimes: `win-x64`, `linux-x64`, `osx-arm64`
-
-If you are evaluating deployment, read:
-
-- [root integration and deployment guide](../../docs/INTEGRATION_AND_DEPLOYMENT.md)
-- [programmer manual](../../docs/programmer_manual.md)
-
-## Installation
-
-### NuGet
+## Install
 
 ```bash
 dotnet add package RustEtherNetIp --version 1.2.0
 ```
 
-Or:
+Or add the package reference directly:
 
 ```xml
 <PackageReference Include="RustEtherNetIp" Version="1.2.0" />
 ```
 
-### Source-based builds
+The NuGet package contains the managed assembly and its native Rust library.
+When building from this repository, build the native library first:
 
-If you are building from this repository instead of consuming the published package:
+```bash
+cargo build --release --features ffi --locked
+dotnet build csharp/RustEtherNetIp/RustEtherNetIp.csproj -c Release
+```
 
-1. build the native Rust library with `cargo build --release --features ffi`
-2. build your `.NET` project
-3. ensure the native library is copied beside your app output
+## Start Here
 
-Expected native library names:
-
-- Windows: `rust_ethernet_ip.dll`
-- macOS: `librust_ethernet_ip.dylib`
-- Linux: `librust_ethernet_ip.so`
-
-## Why Use It
-
-- full Allen-Bradley primitive type coverage plus `STRING` and `UDT`
-- program-scoped tags, arrays, bit access, and UDT member paths
-- route-path support for routed ControlLogix targets
-- native batch read/write/mixed execution paths
-- tag-group polling and subscriptions
-- health and diagnostics surfaces
-- real-PLC validation evidence for both CompactLogix and ControlLogix targets
-
-## Supported PLC Focus
-
-- CompactLogix
-- ControlLogix
-
-Current real-hardware validation references:
-
-- [CompactLogix Rust/C# validation](../../docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md)
-- [ControlLogix C# validation](../../docs/validation/2026-04-16_csharp_wrapper_real_plc_1756-L81ES_via_1756-EN3TR_slot0.md)
-
-## Quick Start
-
-### Basic Usage
+Replace the example address and tag names with tags that exist in your Logix
+project. Include port `44818` explicitly.
 
 ```csharp
 using RustEtherNetIp;
 
-// Connect to PLC
-using var client = new EtherNetIpClient();
-if (client.Connect("192.168.0.1:44818"))
-{
-    // Individual operations
-    bool startButton = client.ReadBool("StartButton");
-    int counter = client.ReadDint("ProductionCount");
-    float temperature = client.ReadReal("BoilerTemp");
-    
-    client.WriteBool("EnableFlag", true);
-    client.WriteDint("SetPoint", 1500);
-    client.WriteReal("TargetTemp", 75.5f);
-}
+using var plc = new EtherNetIpClient();
+if (!plc.Connect("192.168.0.10:44818"))
+    throw new InvalidOperationException(plc.LastConnectError);
+
+int count = plc.ReadDint("ProductionCount");
+float temperature = plc.ReadReal("TankTemperature");
+bool running = plc.ReadBool("MachineRunning");
+string recipe = plc.ReadString("RecipeName");
+
+plc.WriteDint("ProductionSetpoint", 1250);
+plc.WriteReal("TemperatureSetpoint", 72.5f);
+plc.WriteBool("EnableCommand", true);
+plc.WriteString("RecipeName", "PRODUCT_A");
 ```
 
-## 🚀 Batch Operations
+`using` disposes the client and unregisters the EtherNet/IP session. Check the
+result of `Connect`; read and write failures throw `PlcException` when native
+error detail is available.
 
-### Batch Read Operations
+## Learning Examples
 
-Read multiple tags in a single optimized operation:
+Copy-ready console programs live in
+[`Examples/GettingStarted`](Examples/GettingStarted/README.md):
+
+1. connection, scalar values, and STRINGs;
+2. batch reads, writes, and mixed operations;
+3. controller discovery and program-scoped tag paths;
+4. routed ControlLogix connections;
+5. health and diagnostics;
+6. subscriptions and tag-group polling.
+
+Each example reads configuration from environment variables so addresses and
+tag names are not hard-coded into a production project.
+
+For structure-specific guidance, see the maintained
+[UDT and structure guide](UDT_README.md).
+
+## Scalar Types
+
+Use a typed method that matches the controller tag type.
+
+| Logix type | Read | Write | C# type |
+|---|---|---|---|
+| `BOOL` | `ReadBool` | `WriteBool` | `bool` |
+| `SINT` | `ReadSint` | `WriteSint` | `sbyte` |
+| `INT` | `ReadInt` | `WriteInt` | `short` |
+| `DINT` | `ReadDint` | `WriteDint` | `int` |
+| `LINT` | `ReadLint` | `WriteLint` | `long` |
+| `USINT` | `ReadUsint` | `WriteUsint` | `byte` |
+| `UINT` | `ReadUint` | `WriteUint` | `ushort` |
+| `UDINT` | `ReadUdint` | `WriteUdint` | `uint` |
+| `ULINT` | `ReadUlint` | `WriteUlint` | `ulong` |
+| `REAL` | `ReadReal` | `WriteReal` | `float` |
+| `LREAL` | `ReadLreal` | `WriteLreal` | `double` |
+| `STRING` or custom string structure | `ReadString` | `WriteString` | `string` |
+
+A type mismatch normally appears as a `PlcException` containing the native CIP
+reason. Do not catch a failure and retry with unrelated types in production;
+know the Logix type or obtain its attributes first.
+
+## STRING Support in 1.2.0
+
+The 1.2.0 `WriteString` path discovers and uses the target structure handle.
+This supersedes older documentation that described UDT STRING members as
+firmware-blocked.
 
 ```csharp
-string[] tags = {
+// Built-in top-level STRING
+plc.WriteString("RecipeName", "PRODUCT_A");
+
+// Built-in or custom STRING member inside a UDT
+plc.WriteString("Mixer.Description", "Primary mixer");
+
+// STRING member inside an element of a UDT array
+plc.WriteString("Motors[0].Description", "Infeed conveyor");
+
+Console.WriteLine(plc.ReadString("Motors[0].Description"));
+```
+
+Real hardware confirms built-in `STRING`, custom `Str82`, and custom `Str400`
+members on 5069-L330ERM firmware 38. Fragmented custom-string operation beyond
+one CIP packet has simulator coverage with a 600-byte value; repeat real-hardware
+validation before treating very large custom strings as qualified for a specific
+controller/firmware combination.
+
+## Tag Paths
+
+Pass Logix symbolic paths directly:
+
+```csharp
+int controllerTag = plc.ReadDint("ProductionCount");
+int programTag = plc.ReadDint("Program:MainProgram.ProductionCount");
+int arrayElement = plc.ReadDint("RecipeSteps[5]");
+bool statusBit = plc.ReadBool("StatusWord.15");
+float udtMember = plc.ReadReal("Mixer.Process.Temperature");
+string arrayMember = plc.ReadString("Motors[2].Description");
+```
+
+The `Program:<program-name>.TagName` prefix is part of the tag path. Both
+controller- and program-scoped paths work for typed reads, writes, and batches.
+
+## Batch Operations
+
+Use batches for a scan containing several tags. Always inspect each result;
+partial failures do not make successful items invalid.
+
+```csharp
+var reads = plc.ReadTagsBatch(new[]
+{
     "ProductionCount",
-    "Temperature_1", 
-    "Temperature_2",
-    "Pressure_1",
-    "FlowRate"
-};
+    "TankTemperature",
+    "Program:MainProgram.MachineRunning"
+});
 
-var results = client.ReadTagsBatch(tags);
-
-foreach (var result in results)
+foreach (var (tag, result) in reads)
 {
-    if (result.Value.Success)
-        Console.WriteLine($"{result.Key}: {result.Value.Value}");
-    else
-        Console.WriteLine($"{result.Key}: Error - {result.Value.ErrorMessage}");
-}
-```
-
-### Batch Write Operations
-
-Write multiple tags efficiently:
-
-```csharp
-var tagValues = new Dictionary<string, object>
-{
-    { "SetPoint_1", 1500 },
-    { "SetPoint_2", 1750 },
-    { "TargetTemp", 75.5f },
-    { "EnableFlag", true },
-    { "RecipeNumber", 42 }
-};
-
-var results = client.WriteTagsBatch(tagValues);
-
-foreach (var result in results)
-{
-    if (result.Value.Success)
-        Console.WriteLine($"{result.Key}: Write successful");
-    else
-        Console.WriteLine($"{result.Key}: Error - {result.Value.ErrorMessage}");
-}
-```
-
-### Mixed Batch Operations
-
-Execute reads and writes together for coordinated control:
-
-```csharp
-var operations = new[]
-{
-    BatchOperation.Read("CurrentTemp"),
-    BatchOperation.Read("CurrentPressure"),
-    BatchOperation.Write("TempSetpoint", 78.5f),
-    BatchOperation.Write("PressureSetpoint", 15.2f),
-    BatchOperation.Write("AutoModeEnabled", true)
-};
-
-var results = client.ExecuteBatch(operations);
-
-foreach (var result in results)
-{
-    string operation = result.IsWrite ? "Write" : "Read";
     if (result.Success)
-    {
-        string valueInfo = result.IsWrite ? "" : $" = {result.Value}";
-        Console.WriteLine($"✅ {operation} {result.TagName}{valueInfo} ({result.ExecutionTimeMs:F1}ms)");
-    }
+        Console.WriteLine($"{tag} = {result.Value}");
     else
-    {
-        Console.WriteLine($"❌ {operation} {result.TagName}: {result.ErrorMessage}");
-    }
+        Console.Error.WriteLine($"{tag}: {result.ErrorMessage}");
 }
-```
 
-## Performance Configuration
-
-Batch configuration APIs are currently **unsupported** in this release line.
-The following methods intentionally throw `NotSupportedException`:
-
-- `ConfigureBatchOperations(BatchConfig config)`
-- `GetBatchConfig()`
-
-Default native batch behavior is still available through:
-
-- `ReadTagsBatch(...)`
-- `WriteTagsBatch(...)`
-- `ExecuteBatch(...)`
-
-Ordering note:
-- `ReadTagsBatch(...)` and `WriteTagsBatch(...)` preserve per-tag association in their dictionary results.
-- `ExecuteBatch(...)` returns per-operation results, but mixed operations may be regrouped natively for packet optimization, so callers should match on `TagName` and operation type rather than assuming strict mixed-input ordering.
-
-## Performance Comparison
-
-Illustrative only: actual timings depend on hardware, network, route path, and workload shape.
-
-| Operation Type | Individual | Batch | Improvement |
-|----------------|------------|-------|-------------|
-| 5 tag reads | 15ms | 3ms | **5x faster** |
-| 10 tag writes | 25ms | 5ms | **5x faster** |
-| 20 mixed ops | 50ms | 8ms | **6.25x faster** |
-| Network packets | 20 packets | 1 packet | **20x reduction** |
-
-## Tag Group Polling Events
-
-Use TagGroup polling when you need periodic multi-tag updates with explicit quality classification.
-
-```csharp
-client.UpsertTagGroup("cell_1", new[] { "DINT_TAG", "PressureTag" }, updateRateMs: 250);
-var group = client.SubscribeToTagGroup("cell_1");
-
-group.PollingEvent += (_, evt) =>
+var writes = plc.WriteTagsBatch(new Dictionary<string, object>
 {
-    switch (evt.Kind)
-    {
-        case TagGroupEventKind.Data:
-            // All reads succeeded in this cycle
-            break;
-        case TagGroupEventKind.PartialError:
-            // Some tags failed; check evt.Errors
-            Console.WriteLine($"PartialError: {evt.Errors.Count} tag(s)");
-            break;
-        case TagGroupEventKind.ReadFailure:
-            // Full scan failed; check evt.ErrorMessage + evt.Failure
-            Console.WriteLine($"ReadFailure: {evt.ErrorMessage}");
-            break;
-    }
-};
+    ["ProductionSetpoint"] = 1250,
+    ["TemperatureSetpoint"] = 72.5f,
+    ["EnableCommand"] = true,
+    ["RecipeName"] = "PRODUCT_A"
+});
 ```
 
-Event model:
-- `Data`: all configured tags read successfully.
-- `PartialError`: mixed cycle; some reads succeeded and some failed.
-- `ReadFailure`: cycle-level failure (for example disconnect/transport/session issue).
-
-Compatibility note:
-- `DataChanged` remains available and is still useful for direct UI value binding.
-- `PollingEvent` adds explicit diagnostic semantics for robust industrial workflows.
-
-## Advanced Tag Addressing
-
-The wrapper supports all advanced Allen-Bradley tag addressing features:
+Mixed execution is available with `ExecuteBatch`:
 
 ```csharp
-// Program-scoped tags
-var motorStatus = client.ReadBool("Program:MainProgram.Motor.Status");
-
-// Array element access
-var arrayElement = client.ReadDint("MyArray[5]");
-var multiDimArray = client.ReadDint("Matrix[2,3,1]");
-
-// Bit-level operations
-var statusBit = client.ReadBool("StatusWord.15");
-
-// UDT member access
-var udtMember = client.ReadReal("MyUDT.Temperature.Value");
-
-// String operations
-var stringLength = client.ReadDint("MyString.LEN");
-var stringData = client.ReadString("MyString.DATA");
+var results = plc.ExecuteBatch(new[]
+{
+    BatchOperation.Read("ProductionCount"),
+    BatchOperation.Write("ProductionSetpoint", 1300),
+    BatchOperation.Read("Program:MainProgram.MachineRunning")
+});
 ```
+
+Mixed operations may be regrouped for packet efficiency. Match returned items
+by `TagName` and `IsWrite`, not only by array position. The legacy
+`ConfigureBatchOperations` and `GetBatchConfig` methods intentionally throw
+`NotSupportedException`; normal batch APIs use native packet-size-aware defaults.
+
+## Discovery and Metadata
+
+`DiscoverTagsDetailed` lists controller-scoped tags and their Logix type
+information:
+
+```csharp
+foreach (var tag in plc.DiscoverTagsDetailed())
+    Console.WriteLine($"{tag.Name,-40} {tag.DataTypeName,-10} {tag.Size,6} bytes");
+
+TagAttributes attributes = plc.GetTagAttributes("ProductionCount");
+Console.WriteLine(attributes);
+```
+
+The C# 1.2.0 surface does not expose program-scoped enumeration as a separate
+method. Program tags are fully accessible when their known path is supplied,
+for example `Program:MainProgram.ProductionCount`. Program-scoped discovery is
+currently a Rust-core API gap for the wrappers, not a reason to invent tag
+names or imply that controller discovery returns program tags.
+
+## ControlLogix Routing
+
+For a ControlLogix CPU reached through an Ethernet module, connect to the
+module and add the CPU backplane slot:
+
+```csharp
+var route = new RoutePath().AddSlot(0);
+
+using var plc = new EtherNetIpClient();
+if (!plc.ConnectWithRoute("192.168.0.20:44818", route))
+    throw new InvalidOperationException(plc.LastConnectError);
+```
+
+Ordered multi-hop paths are also supported:
+
+```csharp
+var route = new RoutePath()
+    .AddBackplane(port: 1, slot: 3)
+    .AddEthernet(port: 2, address: "192.168.10.20")
+    .AddBackplane(port: 1, slot: 0);
+```
+
+The hop order is significant. CompactLogix controllers with a built-in
+Ethernet port normally use `Connect` without a route.
+
+## Health and Diagnostics
+
+```csharp
+if (!plc.CheckHealth())
+    Console.Error.WriteLine("PLC health check failed");
+
+DiagnosticsSnapshot snapshot = plc.GetDiagnosticsSnapshotDetailed();
+Console.WriteLine($"Reads: {snapshot.Operations.TotalReads}");
+Console.WriteLine($"Failed reads: {snapshot.Operations.FailedReads}");
+Console.WriteLine($"Average read latency: {snapshot.Performance.AvgReadLatencyMs:F2} ms");
+Console.WriteLine($"Last error: {snapshot.Errors.LastErrorMessage}");
+```
+
+Process CPU and memory fields are placeholders in this release. Operation,
+connection, error, latency, and verified-health fields are the meaningful
+driver metrics.
+
+## Polling and Subscriptions
+
+Subscriptions are polling-based. Choose a rate appropriate for the PLC,
+network, and number of tags.
+
+```csharp
+var subscription = plc.SubscribeToTag(
+    "ProductionCount",
+    new SubscriptionOptions(pollIntervalMs: 250));
+
+subscription.ValueChanged += (_, change) =>
+    Console.WriteLine($"{change.TagName}: {change.OldValue} -> {change.NewValue}");
+
+// Later:
+plc.UnsubscribeFromTag("ProductionCount");
+```
+
+For periodic multi-tag acquisition, register a tag group and use
+`ReadTagGroupOnce` or `SubscribeToTagGroup`. Tag-group polling events distinguish
+complete data, partial errors, and scan-level read failures.
+
+## Async Methods and UI Applications
+
+The async methods (`ReadDintAsync`, `WriteStringAsync`, batch async methods,
+and others) wrap blocking native calls with `Task.Run`. They keep WPF/WinForms
+UI threads responsive, but each in-flight call still occupies a thread-pool
+thread. A client serializes native operations; avoid disposing it while other
+operations are active and use a clear owner per controller connection.
 
 ## Error Handling
-
-The wrapper provides comprehensive error handling:
 
 ```csharp
 try
 {
-    var value = client.ReadDint("NonExistentTag");
+    plc.WriteDint("ReadOnlyTag", 42);
 }
-catch (Exception ex)
+catch (PlcException ex)
 {
-    Console.WriteLine($"Error: {ex.Message}");
-    
-    // Specific error types available:
-    // - TagNotFoundException
-    // - DataTypeMismatchException  
-    // - NetworkException
-    // - CipProtocolException
+    Console.Error.WriteLine(ex.Message);
+    Console.Error.WriteLine(ex.NativeError);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
 }
 ```
 
-## Known Limitations
-
-The following operations are **not supported** due to PLC firmware restrictions. These limitations are inherent to the Allen-Bradley PLC firmware and cannot be bypassed at the library level.
-
-### STRING Writing
-
-Top-level standard Logix `STRING` tags can be written directly with the structure encoding used by the Rust core.
-
-Direct writes to `STRING` members inside UDTs remain a restricted hardware path until separately validated.
-
-**What Works:**
-- ✅ Reading STRING tags: `gTest_STRING` (read successfully)
-- ✅ Writing top-level STRING tags: `gTest_STRING` (write successfully)
-- ✅ Reading STRING members in UDTs: `gTestUDT.Member5_String` (read successfully)
-
-**What Doesn't Work:**
-- ❌ Writing STRING members in UDTs directly: `gTestUDT.Member5_String` (write fails)
-
-**Workaround for STRING Members in UDTs:**
-```csharp
-// Read entire UDT
-var udt = client.ReadUdt("gTestUDT");
-
-// Modify STRING member in memory (if UDT structure is known)
-// ... modify UDT structure ...
-
-// Write entire UDT back
-client.WriteUdt("gTestUDT", udt);
-```
-
-### UDT Array Element Member Writing
-
-**Scalar members of UDT array elements are writeable on validated firmware** (e.g., `gTestUDT_Array[0].Member1_DINT`).
-
-**Current evidence:** CODEX-AV validated DINT, REAL, BOOL, and INT UDT-array-element-member writes on 5069-L330ERM fw38. STRING members still reject with CIP `0x2107` under the current member encoding.
-
-**What Works:**
-- ✅ Reading UDT array element members: `gTestUDT_Array[0].Member1_DINT` (read successfully)
-- ✅ Writing scalar UDT array element members: `gTestUDT_Array[0].Member1_DINT` (write successfully on validated firmware)
-- ✅ Writing entire UDT array elements: `gTestUDT_Array[0]` (write full UDT structure)
-- ✅ Writing UDT members (non-array): `gTestUDT.Member1_DINT` (write individual members)
-- ✅ Writing simple array elements: `gArray[5]` (write elements of simple arrays)
-
-**What Doesn't Work:**
-- ❌ Writing UDT array element STRING members: `gTestUDT_Array[0].Member5_String` (current member encoding is rejected)
-
-**Workaround for STRING members:**
-```csharp
-// Read entire UDT array element
-var element = client.ReadUdt("gTestUDT_Array[0]");
-
-// Modify member in memory (if UDT structure is known)
-// ... modify UDT structure ...
-
-// Write entire UDT array element back
-client.WriteUdt("gTestUDT_Array[0]", element);
-```
-
-### Summary
-
-**Important Notes:**
-- These limitations are **PLC firmware restrictions**, not library bugs
-- The library correctly implements the EtherNet/IP and CIP protocols
-- All read operations work correctly for all tag types
-- Workarounds are available for UDT array element members and STRING members in UDTs
-- Standalone standard STRING tag writes are supported through the direct `WriteString` API
-- Real-hardware validation on `5069-L320ERMS3` firmware `35` is recorded in:
-  - `docs/validation/2026-04-07_csharp_wrapper_real_plc_5069-L320ERMS3_fw35.md`
-
-## Use Cases
-
-### Data Acquisition
-
-Perfect for reading multiple sensor values:
-
-```csharp
-string[] sensors = {
-    "Temperature_Zone1", "Temperature_Zone2", "Temperature_Zone3",
-    "Pressure_Tank1", "Pressure_Tank2", 
-    "FlowRate_Line1", "FlowRate_Line2"
-};
-
-var sensorData = client.ReadTagsBatch(sensors);
-```
-
-### Recipe Management
-
-Efficiently update multiple setpoints:
-
-```csharp
-var recipe = new Dictionary<string, object>
-{
-    { "Temp_Setpoint_1", 180.5f },
-    { "Temp_Setpoint_2", 165.0f },
-    { "Pressure_Setpoint", 25.7f },
-    { "Speed_Setpoint", 1200 },
-    { "Recipe_Active", true }
-};
-
-client.WriteTagsBatch(recipe);
-```
-
-### Coordinated Control
-
-Atomic read-then-write operations:
-
-```csharp
-var operations = new[]
-{
-    // Read current states
-    BatchOperation.Read("Current_Position"),
-    BatchOperation.Read("Current_Speed"),
-    BatchOperation.Read("System_Ready"),
-    
-    // Update control outputs based on logic
-    BatchOperation.Write("Target_Position", newPosition),
-    BatchOperation.Write("Speed_Command", calculatedSpeed),
-    BatchOperation.Write("Start_Command", true)
-};
-
-var results = client.ExecuteBatch(operations);
-```
-
-## System Requirements
-
-- **.NET 6.0 or later**
-- **Windows 10/11, Linux, or macOS**
-- **Network access to Allen-Bradley PLC**
-- **rust_ethernet_ip.dll** (included)
-
-## Architecture
-
-```
-┌─────────────────────────────────────────┐
-│           C# Application                │
-│  ┌─────────────────────────────────────┐│
-│  │     Your Business Logic             ││
-│  └─────────────────────────────────────┘│
-└─────────────┬───────────────────────────┘
-              │
-┌─────────────┴───────────────────────────┐
-│        C# Wrapper (This Library)       │
-│  • Type-safe API                       │
-│  • Batch Operations                    │
-│  • Error Handling                      │
-│  • Memory Management                   │
-└─────────────┬───────────────────────────┘
-              │ P/Invoke
-┌─────────────┴───────────────────────────┐
-│         Rust Core Library              │
-│  • EtherNet/IP Protocol                │
-│  • CIP Implementation                  │
-│  • Network Communication               │
-│  • Performance Optimization            │
-└─────────────┬───────────────────────────┘
-              │ TCP/IP
-┌─────────────┴───────────────────────────┐
-│        Allen-Bradley PLC               │
-│  • CompactLogix / ControlLogix         │
-│  • EtherNet/IP Port 44818              │
-└─────────────────────────────────────────┘
-```
-
-## Thread Safety
-
-The `EtherNetIpClient` is **NOT** thread-safe. For multi-threaded applications:
-
-- Use one client per thread, OR
-- Implement external synchronization, OR  
-- Use a connection pool pattern
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Connection Failed**
-   - Verify PLC IP address and port (44818)
-   - Check network connectivity
-   - Ensure PLC EtherNet/IP is enabled
-
-2. **Tag Not Found**
-   - Verify tag name spelling and case
-   - Check tag scope (global vs program-scoped)
-   - Ensure tag exists in PLC program
-
-3. **Data Type Mismatch**
-   - Use correct read method for tag data type
-   - Check PLC tag definition
-
-4. **Performance Issues**
-   - Use batch operations for multiple tags
-   - Batch configuration APIs are currently unsupported in this release line
-   - Monitor network packet size limits
-
-## API Reference
-
-### Core Classes
-
-- **`EtherNetIpClient`**: Main client class
-- **`TagGroup`**: Periodic multi-tag polling helper
-- **`TagGroupPollingEventArgs`**: Classified tag-group cycle result payload
-- **`TagGroupFailureDiagnostic`**: Structured failure diagnostics for read-failure cycles
-- **`BatchOperation`**: Represents a batch operation
-- **`BatchConfig`**: Batch configuration model (currently not applied via API in this release line)
-- **`TagReadResult`**: Result of a tag read operation
-- **`TagWriteResult`**: Result of a tag write operation
-- **`BatchOperationResult`**: Result of a batch operation
-
-### Extension Methods
-
-- **`EtherNetIpExtensions.ConnectToPlc()`**: One-line connection
-- **`EtherNetIpExtensions.TryConnectToPlc()`**: Connection with retry logic
-
-## Contributing
-
-This wrapper is part of the larger rust-ethernet-ip project. Contributions are welcome!
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
-
-## Support
-
-For issues and questions:
-
-- check the troubleshooting and limitation sections above
-- review the example projects in `examples/`
-- use [GitHub Issues](https://github.com/sergiogallegos/rust-ethernet-ip/issues) for reproducible bugs
-- use [GitHub Discussions](https://github.com/sergiogallegos/rust-ethernet-ip/discussions) for integration questions
-
-The project is also open to:
-
-- priority issue handling
-- priority feature sponsorship
-- integration support for real deployments
-- OEM or system-integrator deployment feedback
-- companies willing to provide specific hardware for validation
-
-## Version History
-
-### v1.2.0 (Current Stable)
-- ✅ Custom Logix string types — `WriteString`/`ReadString` now work for built-in `STRING` **and** user-defined string types (own name/length, e.g. `Str82`/`Str400`); the native layer discovers the target's real structure handle. Strings larger than one CIP packet use CIP fragmentation.
-- ✅ Packet-size-aware batch grouping — large batch reads no longer fail with EtherNet/IP `0x65` (Invalid Length); batches split by both operation count and packet size.
-- ✅ Native transport/session hardening, tag-addressing correctness, and diagnostics honesty (from the CODEX-AJ…AZ remediation set).
-- ✅ Real 5069-L330ERM fw38 validation across Rust/C#/Python/C++: 2304/2304 reads, 2285/2285 writes, 2285/2285 verify, 0 anomalies (STRING members now written+verified).
-- ⚠️ C FFI ABI is now **v2** (removes three unusable `*mut EipClient` native exports; `eip_abi_version()` bumped). The C# package is unaffected — it imports only the `_by_id` exports and ships in lockstep with the native library.
-
-### v1.1.0
-- ✅ New async API — `ReadDintAsync` / `WriteBoolAsync` / `ReadStringAsync` / batch / `CheckHealthAsync`. **Note:** these are `Task.Run` wrappers over the blocking native calls — they let you `await` and keep UI threads responsive, but they do **not** make the underlying socket I/O non-blocking (one thread-pool thread is occupied per in-flight call). True non-blocking FFI is future work.
-- ✅ Richer errors — operations now throw `PlcException` carrying the native CIP failure reason via `eip_get_last_error` (capability `CAP_LAST_ERROR`), e.g. "CIP Error 0x04: Path segment error"
-- ✅ Fixed: typed UDT writes (`WriteUdt`/`WriteUdtData`) serialize correctly; a failed scalar write is no longer re-issued to the PLC; added a finalizer + thread-safe `Dispose`; `RoutePath.AddPort` before an address no longer drops the port
-- ✅ Multi-RID NuGet package: native runtimes for `win-x64`, `linux-x64`, `osx-arm64`
-- ✅ Real CompactLogix 5069-L330ERM fw38 validation: 2299/2299 reads, 2206/2206 writes, 2206/2206 verify, 0 anomalies
-- No breaking changes to the public API or the C ABI (ABI version still `1`)
-
-### v1.0.0
-- ✅ SemVer-major release-window bundle (`#[non_exhaustive]` on public enums, `RoutePath` private storage, typed `try_init_tracing`, etc.)
-- ✅ Native FFI ABI version + capability handshake — wrapper rejects mismatched native libraries at load time via `BadImageFormatException`
-- ✅ BOOL-array DWORD-offset fix: `gTestArray_BOOL[i]` for `i >= 32` now addresses the correct DWORD instead of aliasing to DWORD[0]
-- ✅ Nested BOOL-in-UDT-array-element path: `gTestUDT_Array[i].Array_BOOL[j]` now returns `Bool` (was returning the whole DWORD as `Udint` or failing with CIP `0x05`)
-- ✅ Ordered route-hop FFI exports (`eip_connect_with_route_hops`, `eip_set_route_path_hops`); legacy grouped exports kept as compat shims
-- ✅ Real ControlLogix 1756-L75 fw33 validation: 2299/2299 reads, 2206/2206 writes, 2206/2206 verify, 0 anomalies
-
-### v0.7.0
-- ✅ Rust/C# parity improvements for batch, subscriptions, and tag-group polling
-- ✅ Real CompactLogix and ControlLogix validation evidence on file
-- ✅ Improved native batch-read behavior and clearer PLC firmware-limit diagnostics
-
-### v0.6.3
-- ✅ Reliability-focused protocol and wrapper fixes
-- ✅ Batch read/write/execute paths available for production usage
-- ✅ Explicit unsupported gating for batch configuration APIs (`ConfigureBatchOperations`, `GetBatchConfig`)
-
-### v0.2.0
-- Individual tag operations
-- Basic error handling
-- Core data types
-
-### v0.1.0
-- Initial release
-- Basic connectivity 
+There are no `TagNotFoundException` or `DataTypeMismatchException` classes in
+the current wrapper. Native protocol detail is carried by `PlcException`.
+
+## Current Boundaries
+
+- Whole UDT-array-element reads work, including fragmented large structures.
+- Whole UDT-array-element writes are not supported because the required
+  structure symbol lookup for an indexed path is unavailable; write members
+  individually instead.
+- Offset-based UDT member APIs are obsolete in 1.2.0 and planned for removal in
+  2.0. Use full symbolic member paths.
+- Controller discovery is exposed; program-scoped enumeration is not yet
+  exposed through C#, Python, or the C ABI.
+- This project targets CompactLogix and ControlLogix EtherNet/IP tag access,
+  not Modbus TCP or a general OPC server.
+
+## Deployment and Evidence
+
+- [Integration and deployment guide](../../docs/INTEGRATION_AND_DEPLOYMENT.md)
+- [Programmer manual](../../docs/programmer_manual.md)
+- [Hardware compatibility matrix](../../docs/HARDWARE_COMPATIBILITY.md)
+- [1.2.0 cross-binding hardware gate](../../docs/validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md)
+
+## Support and License
+
+Use [GitHub Issues](https://github.com/sergiogallegos/rust-ethernet-ip/issues)
+for reproducible defects and
+[GitHub Discussions](https://github.com/sergiogallegos/rust-ethernet-ip/discussions)
+for integration questions. Contributions and additional real-controller
+firmware results are welcome.
+
+The wrapper is distributed under the repository's MIT license.

@@ -1647,3 +1647,41 @@ Sources used:
 - `docs/agents/tasks/CODEX-BG-cross-binding-endurance-soak.md`
 - `docs/agents/tasks/CODEX-BH-tag-shape-performance-matrix.md`
 - `docs/agents/board.md`
+
+## [2026-08-22] query | classify the library's EtherNet/IP role
+
+- Added `wiki/protocol/device-role-classification.md` and updated the wiki
+  index.
+- Confirmed that the active implementation is a CIP explicit-messaging
+  client/originator using TCP, `SendRRData`, and primarily Unconnected Send.
+- Distinguished an explicit-message originator from an I/O Scanner/connection
+  originator and confirmed that the project implements neither I/O Scanner nor
+  I/O Adapter behavior.
+
+Sources used:
+
+- `src/client.rs`
+- `src/client/string.rs`
+- `docs/agents/notes/unconnected-send.md`
+- ODVA EtherNet/IP Technology Overview
+- ODVA Common Industrial Protocol and the Family of CIP Networks
+
+## [2026-08-22] reframe | align public driver-role wording
+
+- Updated the main README and website metadata, hero, architecture flow, scope
+  note, and footer wording.
+- Public copy now identifies the project as an EtherNet/IP/CIP
+  explicit-messaging client driver and says that it is not a cyclic implicit-I/O
+  Scanner or Adapter.
+- Documented that a registered TCP encapsulation session is not, by itself, a
+  connected CIP Class 3 connection.
+- Updated the website maintenance note and protocol-role wiki evidence.
+
+Sources used:
+
+- `README.md`
+- `website/index.html`
+- `website/privacy.html`
+- `website/license.html`
+- `website/README.md`
+- `wiki/protocol/device-role-classification.md`

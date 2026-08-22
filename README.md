@@ -12,7 +12,15 @@
 [![Documentation](https://docs.rs/rust-ethernet-ip/badge.svg)](https://docs.rs/rust-ethernet-ip)
 [![Website](https://img.shields.io/badge/website-rustethernetip.com-cf6636.svg)](https://rustethernetip.com/)
 
-Production-focused EtherNet/IP library for **Allen-Bradley CompactLogix and ControlLogix PLCs**.
+Production-focused **EtherNet/IP/CIP explicit-messaging client driver** for
+**Allen-Bradley CompactLogix and ControlLogix PLCs**.
+
+> **Driver scope:** The library originates request/response CIP explicit
+> messages for Logix tag reads, writes, batches, discovery, and routing. It is
+> not a cyclic Class 1 implicit-I/O Scanner or Adapter. Registering an
+> EtherNet/IP TCP session on port 44818 also does not mean that the library has
+> opened a connected CIP Class 3 connection; the active tag-access path uses
+> primarily Unconnected Send messaging.
 
 ## Why this project exists
 

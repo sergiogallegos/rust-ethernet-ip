@@ -30,6 +30,7 @@ Status values:
 
 ## Protocol
 
+- [protocol/device-role-classification.md](protocol/device-role-classification.md) — Why the library is an explicit-messaging client/originator, not an I/O Scanner or Adapter. `confirmed`
 - [protocol/route-path-behavior.md](protocol/route-path-behavior.md) — Current route-path behavior, validation status, and implementation guidance. `active`
 - [protocol/abi-contract.md](protocol/abi-contract.md) — FFI ABI version, capability bitmap, and wrapper load-time compatibility policy. `active`
 - [protocol/cip-path-validation.md](protocol/cip-path-validation.md) — CIP request path-size validation rules and current empty-path policy. `confirmed`

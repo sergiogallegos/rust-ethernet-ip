@@ -20,9 +20,12 @@ every viewport size; the footer uses the full mascot logo at
 `images/brand/logo-light.png`.
 
 The “Where the library fits” flow distinguishes user interfaces and application
-code from the driver, EtherNet/IP/CIP transport, and Logix controller. Keep the
-web note intact: browser code should call a backend or edge service that owns
-the PLC connection.
+code from the driver, EtherNet/IP/CIP transport, and Logix controller. Public
+copy identifies the project specifically as an explicit-messaging
+client/originator and distinguishes it from cyclic implicit-I/O Scanner and
+Adapter roles. Keep both protocol and web notes intact: registering a TCP
+session is not a connected CIP Class 3 connection, and browser code should call
+a backend or edge service that owns the PLC connection.
 
 ## Deployment
 

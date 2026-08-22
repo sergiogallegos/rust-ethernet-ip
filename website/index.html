@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Open-source EtherNet/IP library and PLC driver for Allen-Bradley CompactLogix and ControlLogix, with Rust, C#, Python, C, and C++ APIs.">
+  <meta name="description" content="Open-source EtherNet/IP/CIP explicit-messaging client driver for Allen-Bradley CompactLogix and ControlLogix, with Rust, C#, Python, C, and C++ APIs.">
   <meta name="theme-color" content="#f8f5ef">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="rust-ethernet-ip">
-  <meta property="og:title" content="rust-ethernet-ip — EtherNet/IP Library and PLC Driver">
-  <meta property="og:description" content="Open-source EtherNet/IP library and PLC driver for CompactLogix and ControlLogix, with Rust, C#, Python, C, and C++ APIs.">
+  <meta property="og:title" content="rust-ethernet-ip — EtherNet/IP Explicit-Messaging Library and PLC Driver">
+  <meta property="og:description" content="Open-source EtherNet/IP/CIP explicit-messaging client driver for CompactLogix and ControlLogix, with Rust, C#, Python, C, and C++ APIs.">
   <meta property="og:url" content="https://rustethernetip.com/">
   <meta property="og:image" content="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/package-preview.png">
   <meta property="og:image:alt" content="rust-ethernet-ip project preview">
   <meta name="twitter:card" content="summary_large_image">
-  <title>EtherNet/IP Library &amp; PLC Driver — rust-ethernet-ip</title>
+  <title>EtherNet/IP Explicit-Messaging Library &amp; PLC Driver — rust-ethernet-ip</title>
   <link rel="canonical" href="https://rustethernetip.com/">
   <link rel="icon" href="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/favicon/icon-32.png">
   <link rel="stylesheet" href="styles.css">
@@ -41,8 +41,8 @@
       <div class="hero-copy">
         <p class="eyebrow"><span></span> Open source · CompactLogix · ControlLogix</p>
         <h1>EtherNet/IP library.<br><em>Read &amp; write</em><br>Logix PLC data.</h1>
-        <p class="hero-lede">A cross-platform PLC communication library for direct CompactLogix and ControlLogix tag access, with first-class Rust, .NET, Python, C, and C++ APIs.</p>
-        <p class="hero-explainer"><strong>What it does:</strong> EtherNet/IP is the industrial Ethernet protocol Logix controllers use to exchange tag data. This driver lets your application read and write those tags without adding an OPC server.</p>
+        <p class="hero-lede">A cross-platform EtherNet/IP/CIP explicit-messaging client driver for direct CompactLogix and ControlLogix tag access, with first-class Rust, .NET, Python, C, and C++ APIs.</p>
+        <p class="hero-explainer"><strong>What that means:</strong> the driver originates request/response messages to read, write, batch, and discover Logix tags without an OPC server. It is not a cyclic implicit-I/O Scanner or Adapter.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="#quick-start">Start building <span>→</span></a>
           <a class="button button-secondary" href="https://github.com/sergiogallegos/rust-ethernet-ip">View source</a>
@@ -111,14 +111,14 @@
           <span class="flow-number">03</span>
           <div class="flow-icon">EIP</div>
           <h3>rust-ethernet-ip</h3>
-          <p>Thin language bindings over one memory-safe Rust protocol core.</p>
+          <p>An explicit-messaging client driver with thin language bindings over one memory-safe Rust protocol core.</p>
           <strong>The layer this project provides</strong>
         </li>
         <li>
           <span class="flow-number">04</span>
           <div class="flow-icon">CIP</div>
-          <h3>EtherNet/IP + CIP</h3>
-          <p>Sessions, symbolic paths, chassis routing, batching, fragmentation, and errors.</p>
+          <h3>Explicit EtherNet/IP + CIP</h3>
+          <p>TCP sessions and request/response tag messaging, with symbolic paths, chassis routing, batching, fragmentation, and errors.</p>
         </li>
         <li>
           <span class="flow-number">05</span>
@@ -131,6 +131,7 @@
         <strong>Direct application-to-controller path</strong>
         <span>No OPC server</span><span>No RSLinx dependency</span><span>No proprietary runtime key</span>
       </div>
+      <p class="browser-note"><strong>Protocol scope:</strong> this project is an explicit-message client/originator for Logix data access. It does not implement cyclic Class 1 implicit I/O, an I/O Scanner, or an I/O Adapter. A TCP EtherNet/IP session is also distinct from a connected CIP Class 3 connection.</p>
       <p class="browser-note"><strong>Web application note:</strong> the PLC connection belongs in your backend or edge service; browser JavaScript should call that service rather than opening an industrial protocol connection directly.</p>
     </section>
 
@@ -281,7 +282,7 @@ plc.write_dint(<span class="str">"Program:Main.Setpoint"</span>, <span class="nu
   </main>
 
   <footer>
-    <div class="footer-brand"><img src="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/logo-light.png" alt="rust-ethernet-ip mascot logo"><p>Production-focused EtherNet/IP for modern software stacks.</p></div>
+    <div class="footer-brand"><img src="https://raw.githubusercontent.com/sergiogallegos/rust-ethernet-ip/main/images/brand/logo-light.png" alt="rust-ethernet-ip mascot logo"><p>EtherNet/IP/CIP explicit messaging for modern software stacks.</p></div>
     <div><strong>Documentation</strong><a href="https://docs.rs/rust-ethernet-ip/1.2.0/rust_ethernet_ip/">Rust API</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/tree/main/csharp/RustEtherNetIp">C#</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/tree/main/python">Python</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/docs/CPP_INTEGRATION.md">C / C++</a></div>
     <div><strong>Packages</strong><a href="https://crates.io/crates/rust-ethernet-ip">crates.io</a><a href="https://www.nuget.org/packages/RustEtherNetIp/1.2.0">NuGet</a><a href="https://pypi.org/project/rust-ethernet-ip/1.2.0/">PyPI</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/releases">Releases</a></div>
     <div><strong>Community</strong><a href="https://github.com/sergiogallegos/rust-ethernet-ip/issues">Issues</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/discussions">Discussions</a><a href="https://github.com/sponsors/sergiogallegos">Sponsor development</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/CONTRIBUTING.md">Contributing</a><a href="https://github.com/sergiogallegos/rust-ethernet-ip/security">Security</a></div>

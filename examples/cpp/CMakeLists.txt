@@ -93,13 +93,19 @@ add_executable(cpp_hardware_feature_gate hardware_feature_gate.cpp)
 target_include_directories(cpp_hardware_feature_gate PRIVATE "${REPO_ROOT}/include")
 target_link_libraries(cpp_hardware_feature_gate PRIVATE rust_ethernet_ip_native cpp_warnings)
 
+# Live companion for docs/validation/SCHEMA_CHANGE_GATE.md. Live mode needs a
+# PLC and a maintainer at Studio 5000; CI only invokes its --dry-run path.
+add_executable(cpp_schema_gate_live schema_change_gate_live.cpp)
+target_include_directories(cpp_schema_gate_live PRIVATE "${REPO_ROOT}/include")
+target_link_libraries(cpp_schema_gate_live PRIVATE rust_ethernet_ip_native cpp_warnings)
+
 if(UNIX AND NOT APPLE)
-    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage cpp_hardware_feature_gate PROPERTIES BUILD_RPATH "$ORIGIN")
+    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage cpp_hardware_feature_gate cpp_schema_gate_live PROPERTIES BUILD_RPATH "$ORIGIN")
 elseif(APPLE)
-    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage cpp_hardware_feature_gate PROPERTIES BUILD_RPATH "@loader_path")
+    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage cpp_hardware_feature_gate cpp_schema_gate_live PROPERTIES BUILD_RPATH "@loader_path")
 endif()
 
-foreach(target ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage cpp_hardware_feature_gate)
+foreach(target ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage cpp_hardware_feature_gate cpp_schema_gate_live)
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${RUST_ETHERNET_IP_NATIVE_LIB}"
@@ -123,3 +129,4 @@ add_test(
 set_tests_properties(cpp_smoke_demo PROPERTIES
     ENVIRONMENT "RUST_ETHERNET_IP_REPO_ROOT=${REPO_ROOT}")
 add_test(NAME cpp_hardware_feature_gate_dry_run COMMAND cpp_hardware_feature_gate --dry-run)
+add_test(NAME cpp_schema_gate_live_dry_run COMMAND cpp_schema_gate_live --dry-run)

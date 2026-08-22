@@ -1,21 +1,21 @@
 # 1756-L75 Firmware 33 Schema-Change Gate
 
-Status: **offline gate passed; live Studio 5000 execution pending**
+Status: **live session in progress — array schema-swap section PASS across all four bindings (Rust both directions; C#/Python/C++ one direction each); UDT section and post-schema full-coverage/batch regression still pending**
 
-This record is deliberately not a hardware PASS yet. It prepares the exact,
-maintainer-controlled validation required before the 1.2.1 release and will be
-completed during the live session.
+This record moves from offline-only to a partial hardware PASS during the
+live session. Rows not yet exercised remain `pending` until captured with the
+same rigor as the completed ones.
 
 ## Target
 
-- Processor: ControlLogix `1756-L75`
-- Processor firmware: major revision 33 (full revision to capture live)
-- Chassis: four slots; CPU in slot 0, `1756-EN2T` bridge in slot 1
+- Processor: ControlLogix `1756-L75`, backplane slot 0, chassis slot 0
+- Processor firmware: major revision 33 (full minor revision not read from
+  Studio 5000/module properties during this session)
+- Chassis: `1756-EN2T` bridge in slot 1
 - Route: bridge TCP endpoint to backplane slot 0
-- Bridge firmware: pending live capture
-- Host: Apple MacBook Pro, Apple M2; macOS version pending live capture
-- Library: `1.2.1` development line, C ABI v3
-- Commit/build identity: pending final live run
+- Bridge firmware: not read from module properties during this session
+- Host: MacBook Pro (`Mac14,9`), Apple M2 Pro, 16 GB RAM, macOS 26.5.2 (`25F84`), arm64
+- Library: `1.2.1` development line, C ABI v3, commit `958e9f3`
 - PLC address: intentionally omitted
 
 ## Offline Result — 2026-08-22
@@ -47,12 +47,198 @@ write count, and restoration result.
 
 | Scenario | Rust | C# | Python | C/C++ | Session survived? | Restored? |
 |---|---|---|---|---|---|---|
-| Controller DINT[64] -> BOOL[64], indices 5/40 | pending | pending | pending | pending | pending | pending |
-| Controller BOOL[64] -> DINT[64], indices 5/40 | pending | pending | pending | pending | pending | pending |
-| Program DINT[64] -> BOOL[64], indices 5/40 | pending | pending | pending | pending | pending | pending |
-| Program BOOL[64] -> DINT[64], indices 5/40 | pending | pending | pending | pending | pending | pending |
+| Controller DINT[64] -> BOOL[64], indices 5/40 | **PASS** | n/a¹ | **PASS** | n/a¹ | yes | yes |
+| Controller BOOL[64] -> DINT[64], indices 5/40 | **PASS** | **PASS** | n/a¹ | **PASS** | yes | yes |
+| Program DINT[64] -> BOOL[64], indices 5/40 | **PASS** | n/a¹ | **PASS** | n/a¹ | yes | yes |
+| Program BOOL[64] -> DINT[64], indices 5/40 | **PASS** | **PASS** | n/a¹ | **PASS** | yes | yes |
 | UDT layout edit + download + rediscovery | pending | pending | pending | pending | pending | pending |
 | Post-schema full coverage and batch baseline | pending | pending | pending | pending | n/a | pending |
+
+¹ Coverage decision (2026-08-22, maintainer direction): Rust already proved
+both directions end to end, so C#, Python, and C++ each exercise **one**
+direction only (whichever the live tag state made available at the time) to
+confirm each wrapper's refresh/diagnostics glue against a real controller
+edit, rather than repeating the full direction matrix per binding. `n/a`
+marks the direction a given binding did not exercise, not a failure.
+
+## Rust — Controller/Program DINT[64] -> BOOL[64] detail (2026-08-22)
+
+Run via `examples/schema_change_gate_live.rs --allow-writes` against
+`TestProgram`, tag `gSchemaSwap`, indices 5 and 40. The maintainer performed
+the online replacement (delete original `DINT[64]`, rename the
+`BOOL[64]` `gSchemaSwapReplacement` onto `gSchemaSwap`) without an offline
+program download, in both controller and program scope.
+
+- Baseline reads (pre-edit): `Dint(0)` at all four points (controller/program
+  x index 5/40).
+- Restore-safe pre-edit write smoke check: exercised and restored to
+  `Dint(0)` at all four points.
+- Post-edit reads, **before** calling `refresh_schema()`: all four points
+  returned the correct `Bool(false)` automatically. 2 datatype contradictions
+  detected (one per array path, not per index), 2/2 read recoveries
+  succeeded, 0 failed, 0 automatic generation change (as designed — automatic
+  recovery evicts/retries without bumping the shared generation).
+- `refresh_schema()`: generation 2 -> 3, refresh count 0 -> 1 (exactly one).
+- Rediscovery: controller discovery returned 282 tags including `gSchemaSwap`;
+  program discovery returned 6 tags including `gSchemaSwap`.
+- Post-refresh reads: `Bool(false)` at all four points, consistent with the
+  post-edit reads.
+- Restore-safe post-refresh write/verify: exercised the new packed-BOOL
+  addressing shape and restored to `Bool(false)` at all four points
+  (indices 5 and 40, i.e. both below and above the packed-BOOL DWORD
+  boundary).
+- Session: a single connection was held for the entire run (never
+  reconnected) and reported healthy throughout — this is the evidence for
+  "session survived" on this binding, since the raw encapsulation handle is
+  not part of the public API.
+- Final cumulative counters (baseline -> end of run): generation 2 -> 3,
+  refreshes 0 -> 1, array classification hits/misses/evictions 0/0/0 ->
+  28/6/4, datatype contradictions 0 -> 2, read recoveries succeeded/failed
+  0/0 -> 2/0.
+
+## Rust — Controller/Program BOOL[64] -> DINT[64] detail (2026-08-22)
+
+Immediate reverse-direction run, same session/process pattern. The
+maintainer performed the online replacement (delete the `BOOL[64]`, rename
+the pre-staged `gSchemaSwapReplacementDint`/`Program:TestProgram.gSchemaSwapReplacementDint`
+`DINT[64]` tags onto `gSchemaSwap`) online, no offline download, in both
+controller and program scope.
+
+- Baseline reads (pre-edit, i.e. the `BOOL[64]` state from the prior
+  direction): `Bool(false)` at all four points; restore-safe write smoke
+  check exercised and restored to `Bool(false)` cleanly at all four points.
+- Post-edit reads, before `refresh_schema()`: all four points returned the
+  correct `Dint(0)` automatically. 2 datatype contradictions (one per array
+  path), 2/2 read recoveries succeeded, 0 failed.
+- `refresh_schema()`: generation 2 -> 3, refresh count 0 -> 1.
+- Rediscovery: controller 282 tags / program 6 tags, `gSchemaSwap` found in
+  both.
+- Post-refresh reads: `Dint(0)` at all four points.
+- Restore-safe post-refresh write/verify: exercised the new ordinary-array
+  (non-packed) addressing shape and restored to `Dint(0)` at all four points.
+- Session: single connection held for the entire run, healthy throughout.
+- Final cumulative counters: generation 2 -> 3, refreshes 0 -> 1, array
+  classification hits/misses/evictions 0/0/0 -> 28/6/4, datatype
+  contradictions 0 -> 2, read recoveries succeeded/failed 0/0 -> 2/0.
+
+Both directions are now proven end to end for the Rust binding at both
+scopes and both DWORD-boundary indices. `gSchemaSwap` is currently
+`DINT[64]` (controller and program) — the same shape it started this
+session in.
+
+## C# — Controller/Program BOOL[64] -> DINT[64] detail (2026-08-22)
+
+Run via `examples/CSharpSchemaGateLive/Program.cs --allow-writes`, a new C#
+companion mirroring the Rust tool's phases (built following this session's
+one-direction-per-binding coverage decision). First attempt captured a
+`BOOL[64]` baseline where the maintainer had already performed the swap
+before the process's pre-edit reads ran, so that run was aborted without
+being recorded — it would not have exercised a real drift/recovery event.
+Rerun below is the recorded result.
+
+- Baseline reads (pre-edit, true `BOOL[64]` state): `Bool(False)` at all four
+  points (controller/program x index 5/40). Restore-safe pre-edit write
+  smoke check exercised and restored to `Bool(False)` cleanly.
+- Maintainer performed the online replacement (delete `BOOL[64]`, rename the
+  pre-staged `gSchemaSwapReplacementDint` / `Program:TestProgram.gSchemaSwapReplacementDint`
+  `DINT[64]` tags onto `gSchemaSwap`) online, no offline download, both
+  scopes.
+- Post-edit reads, before `RefreshSchema()`: all four points returned the
+  correct `Dint(0)` automatically. 2 datatype contradictions (one per array
+  path), 2/2 read recoveries succeeded, 0 failed — same shape as the Rust
+  result.
+- `RefreshSchema()`: generation 2 -> 3, refresh count 0 -> 1 (exactly one).
+- Rediscovery: controller discovery returned 282 tags including
+  `gSchemaSwap`. Program-scoped discovery is not exposed by the C# 1.2.x
+  wrapper (documented gap, not a defect of this gate).
+- Post-refresh reads: `Dint(0)` at all four points.
+- Restore-safe post-refresh write/verify: exercised the new ordinary-array
+  addressing shape and restored to `Dint(0)` at all four points.
+- Session: single connection (`EtherNetIpClient`, disposed at process exit)
+  held for the entire run, `CheckHealth()` true throughout.
+- Final cumulative counters: generation 2 -> 3, refreshes 0 -> 1, array
+  classification hits/misses/evictions 0/0/0 -> 28/6/4, datatype
+  contradictions 0 -> 2, read recoveries succeeded/failed 0/0 -> 2/0 —
+  byte-for-byte identical counter deltas to the Rust run, as expected since
+  both share the same native core.
+
+`gSchemaSwap` is currently `DINT[64]` (controller and program) going into
+the next binding's pass.
+
+## Python — Controller/Program DINT[64] -> BOOL[64] detail (2026-08-22)
+
+Run via `python/examples/schema_change_gate_live.py --allow-writes`, a new
+Python companion mirroring the Rust/C# tools' phases; program-tag/attribute
+discovery is not exposed by the Python 1.2.x wrapper (documented gap,
+matching `hardware_feature_gate.py`'s existing N/A convention), so Phase 6
+is reported N/A rather than executed.
+
+- Baseline reads (pre-edit, true `DINT[64]` state): `Dint(0)` at all four
+  points. Restore-safe pre-edit write smoke check exercised and restored to
+  `Dint(0)` cleanly.
+- Maintainer performed the online replacement (delete `DINT[64]`, rename the
+  pre-staged `gSchemaSwapReplacement` / `Program:TestProgram.gSchemaSwapReplacement`
+  `BOOL[64]` tags onto `gSchemaSwap`) online, no offline download, both
+  scopes.
+- Post-edit reads, before `refresh_schema()`: all four points returned the
+  correct `Bool(False)` automatically. 2 datatype contradictions (one per
+  array path), 2/2 read recoveries succeeded, 0 failed.
+- `refresh_schema()`: generation 2 -> 3, refresh count 0 -> 1.
+- Rediscovery: N/A (Python wrapper does not expose tag/attribute discovery
+  in 1.2.x).
+- Post-refresh reads: `Bool(False)` at all four points.
+- Restore-safe post-refresh write/verify: exercised the new packed-BOOL
+  addressing shape and restored to `Bool(False)` at all four points.
+- Session: single `Client` context manager held for the entire run,
+  `check_health()` true throughout.
+- Final cumulative counters: generation 2 -> 3, refreshes 0 -> 1, array
+  classification hits/misses/evictions 0/0/0 -> 28/6/4, datatype
+  contradictions 0 -> 2, read recoveries succeeded/failed 0/0 -> 2/0 —
+  identical counter deltas to the Rust and C# runs, as expected (shared
+  native core).
+
+`gSchemaSwap` is currently `BOOL[64]` (controller and program) going into
+the C++ pass.
+
+## C/C++ — Controller/Program BOOL[64] -> DINT[64] detail (2026-08-22)
+
+Run via `examples/cpp/schema_change_gate_live.cpp` (`cpp_schema_gate_live`,
+new CMake target), built and CTest-registered (`cpp_schema_gate_live_dry_run`)
+alongside the existing C/C++ example suite; built against the raw C ABI
+(like `hardware_feature_gate.cpp`) rather than the `eip_client.hpp` RAII
+wrapper, since that wrapper does not expose bool reads/writes or routed
+connect. Program-tag/attribute discovery is not exposed by the C ABI in
+1.2.x (documented gap, matching the existing companion gate's convention),
+so Phase 6 program discovery is reported N/A.
+
+- Baseline reads (pre-edit, true `BOOL[64]` state): `Bool(false)` at all
+  four points. Restore-safe pre-edit write smoke check exercised and
+  restored to `Bool(false)` cleanly.
+- Maintainer performed the online replacement (delete `BOOL[64]`, rename the
+  pre-staged `gSchemaSwapReplacementDint` / `Program:TestProgram.gSchemaSwapReplacementDint`
+  `DINT[64]` tags onto `gSchemaSwap`) online, no offline download, both
+  scopes.
+- Post-edit reads, before `eip_refresh_schema()`: all four points returned
+  the correct `Dint(0)` automatically. 2 datatype contradictions (one per
+  array path), 2/2 read recoveries succeeded, 0 failed.
+- `eip_refresh_schema()`: generation 2 -> 3, refresh count 0 -> 1.
+- Rediscovery: controller discovery returned 282 tags including
+  `gSchemaSwap`; program discovery N/A (C ABI gap).
+- Post-refresh reads: `Dint(0)` at all four points.
+- Restore-safe post-refresh write/verify: exercised the new ordinary-array
+  addressing shape and restored to `Dint(0)` at all four points.
+- Session: single client handle held for the entire run (`eip_check_health`
+  true throughout), disconnected cleanly at exit.
+- Final cumulative counters: generation 2 -> 3, refreshes 0 -> 1, array
+  classification hits/misses/evictions 0/0/0 -> 28/6/4, datatype
+  contradictions 0 -> 2, read recoveries succeeded/failed 0/0 -> 2/0 —
+  identical counter deltas to the Rust, C#, and Python runs (shared native
+  core).
+
+All four bindings have now exercised this gate against the live 1756-L75:
+Rust proved both directions; C#, Python, and C++ each proved one direction
+per the maintainer's coverage decision above. `gSchemaSwap` is currently
+`DINT[64]` (controller and program).
 
 ## Final Controller State
 

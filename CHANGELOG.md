@@ -11,6 +11,19 @@ Target release: `1.2.1`.
 
 ### Added
 
+- Added a clone-shared controller-schema generation and comprehensive Rust
+  `refresh_schema()` operation. Refreshes and route changes invalidate packed
+  BOOL classification, tag metadata, TagManager UDT definitions, and UDT
+  templates/attributes; generation guards prevent older in-flight operations
+  from repopulating refreshed cache state.
+- Added bounded schema-drift recovery for array-element reads. Contradictory
+  packed-BOOL/ordinary-array responses and symbolic-path failures evict the
+  affected classification and retry the read once; writes are never replayed
+  after they have been sent. Batch recovery preserves per-tag result order.
+- Added `eip_refresh_schema` and matching C#, Python, and C++ convenience APIs.
+  Schema diagnostics now report generation, refreshes, array classification
+  hits/misses/evictions, datatype contradictions, and read-recovery outcomes.
+  The coordinated additive C ABI is v3 with `CAP_SCHEMA_REFRESH`.
 - Added complete public Rust API documentation across the main crate and all
   four published support crates. The workspace now denies undocumented public
   items, and rustdoc is verified with warnings treated as errors.

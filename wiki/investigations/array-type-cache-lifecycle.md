@@ -2,9 +2,11 @@
 
 ## Summary
 
-`active` as of 2026-08-22: cached packed-BOOL classifications materially
-improve repeated batch reads, but a controller project download is not itself
-an observable invalidation event in the current client.
+`active` as of 2026-08-22: CODEX-BA added a clone-shared schema generation and
+comprehensive Rust refresh operation. CODEX-BB added response-validated,
+one-time read recovery for packed-BOOL classification drift. A controller
+project download is not directly observable, so an explicit refresh remains
+the deterministic application hook for known project changes.
 
 ## Current Understanding
 
@@ -15,10 +17,17 @@ an observable invalidation event in the current client.
 - Rust callers that discard the old client and call `EipClient::connect()` also
   start empty. `RetryClient` retries operations on the same actor/client and is
   not an automatic transport reconnection mechanism.
-- Route changes and Rust `clear_caches()` explicitly clear the array cache.
-- `confirmed`: the current Rust `clear_caches()` clears tag metadata, the
-  `UdtManager`, and array classification, but does not call `TagManager`'s
-  separate `clear_udt_cache()`. It is not yet a complete schema refresh.
+- `EipClient::refresh_schema()` advances a clone-shared monotonic generation
+  and clears array classification, TagManager metadata, TagManager's separate
+  UDT-definition map, and all UdtManager definitions/templates/tag attributes.
+- `clear_caches()` remains source-compatible as an alias of
+  `refresh_schema()`.
+- Route changes advance the same generation. TagManager/UdtManager contents
+  become immediately ineligible for cache hits and are cleared eagerly by an
+  explicit refresh or before the next valid generation-owned insertion.
+- Array classifications carry their generation, and post-I/O insertion checks
+  reject a captured generation that became stale while the request was in
+  flight. Tag and UDT cache fills use the same before-insert generation check.
 - `unclear`: Studio 5000 downloads may interrupt a given connection, but the
   library cannot rely on every download doing so. If the session survives, the
   cache currently remains populated.
@@ -33,27 +42,26 @@ an observable invalidation event in the current client.
 - Ordinary-to-ordinary changes such as DINT array to REAL array retain the
   same non-BOOL classification. Transitions to or from packed BOOL are the
   safety-relevant stale-cache case because addressing semantics change.
+- Single and native-batch array reads validate returned datatypes against the
+  generation-stamped classification. A contradiction or symbolic-path failure
+  evicts only that array path, rebuilds it, and retries the logical read once.
+- Batch recovery replaces only the failed read result at its original input
+  position. Unrelated results are not reordered or replayed.
+- Packed-BOOL writes may reclassify during the pre-write DWORD read. Once a
+  write request has been sent, the library does not replay it after an error or
+  ambiguous transport outcome.
+- Confirmed by the dynamic simulator for controller/program scope, indices on
+  both sides of the 32-bit DWORD boundary, DINT[]/BOOL[] transitions,
+  DINT[]/REAL[] compatibility, temporary deletion/recreation, batch result
+  correlation, and fail-closed writes.
 
-## Recommended Hardening
+## Remaining Hardening
 
 - Add an explicit native cache-clear export and thin C#, Python, and C/C++
   wrapper methods so applications can react to a known controller download.
-- Make batch reads self-healing: carry the prepared array classification into
-  response parsing, detect a response-type contradiction, evict the affected
-  entry, rebuild, and retry the read batch once.
-- Evict affected schema entries on Symbol Not Found/path errors so an online
-  delete-and-recreate sequence is reclassified after the tag reappears.
-- Prefer a cross-language `clear_caches`/schema-refresh operation that clears
-  array, tag metadata, STRING-handle, and UDT-definition state together after
-  a known online schema edit or project download.
-- Protect invalidation with a shared schema generation. Without an epoch, an
-  in-flight request through a cloned client could repopulate an old
-  classification immediately after another caller clears the cache.
-- Treat write retry separately. Do not automatically replay an ambiguous write
-  after a transport failure; packed-BOOL read-modify-write can reclassify before
-  sending the write.
-- Add simulator tests for BOOL-to-DINT and DINT-to-BOOL transitions without
-  reconnecting, plus a real-controller download/reconnect validation.
+- Expose the native schema refresh and cache diagnostics consistently across
+  C, C#, Python, and C++ (CODEX-BC).
+- Add the real-controller online-replacement and download validation record.
 - A TTL may limit stale duration but is not sufficient as the primary safety
   mechanism because an incorrect operation can occur before expiry.
 
@@ -62,6 +70,12 @@ an observable invalidation event in the current client.
 - [`src/client.rs`](../../src/client.rs) owns cache lookup and invalidation.
 - [`src/client/batch_exec.rs`](../../src/client/batch_exec.rs) selects packed-
   BOOL addressing during request preparation and decodes response types.
+- [`tests/schema_drift_recovery_tests.rs`](../../tests/schema_drift_recovery_tests.rs)
+  exercises dynamic same-name mutations and bounded recovery.
+- [`docs/validation/SCHEMA_CHANGE_GATE.md`](../../docs/validation/SCHEMA_CHANGE_GATE.md)
+  defines the maintainer-controlled live edit/download and restoration gate.
+- [`docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md`](../../docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md)
+  records the offline PASS and clearly marks live execution pending.
 - [`src/ffi.rs`](../../src/ffi.rs) creates and removes native client registry
   entries; no cache-clear export currently exists.
 - [`csharp/RustEtherNetIp/EthernetNetIpClient.Connection.cs`](../../csharp/RustEtherNetIp/EthernetNetIpClient.Connection.cs)

@@ -8,6 +8,14 @@ use tokio::time::Instant;
 struct PreparedBatchOperation {
     operation: BatchOperation,
     service_request: Vec<u8>,
+    array_classification: Option<PreparedArrayClassification>,
+}
+
+#[derive(Clone)]
+struct PreparedArrayClassification {
+    array_path: String,
+    is_packed_bool: bool,
+    generation: u64,
 }
 
 impl EipClient {
@@ -381,9 +389,12 @@ impl EipClient {
     ) -> crate::error::Result<Vec<Vec<PreparedBatchOperation>>> {
         let mut prepared = Vec::with_capacity(operations.len());
         for operation in operations {
+            let (service_request, array_classification) =
+                self.build_batch_service_request(operation).await?;
             prepared.push(PreparedBatchOperation {
                 operation: operation.clone(),
-                service_request: self.build_batch_service_request(operation).await?,
+                service_request,
+                array_classification,
             });
         }
 
@@ -471,12 +482,7 @@ impl EipClient {
         let response = self.send_cip_request(&cip_request).await?;
 
         // Parse response and create results
-        let original_operations: Vec<BatchOperation> = operations
-            .iter()
-            .map(|operation| operation.operation.clone())
-            .collect();
-        let parsed_results =
-            self.parse_multiple_service_response(&response, &original_operations)?;
+        let parsed_results = self.parse_multiple_service_response(&response, operations)?;
 
         let execution_time = start_time.elapsed();
 
@@ -484,7 +490,7 @@ impl EipClient {
         for (i, operation) in operations.iter().enumerate() {
             let op_execution_time = execution_time.as_micros() as u64 / operations.len() as u64;
 
-            let result = if i < parsed_results.len() {
+            let mut result = if i < parsed_results.len() {
                 match &parsed_results[i] {
                     Ok(value) => Ok(value.clone()),
                     Err(e) => Err(e.clone()),
@@ -494,6 +500,32 @@ impl EipClient {
                     "Missing result from response".to_string(),
                 ))
             };
+
+            if matches!(operation.operation, BatchOperation::Read { .. })
+                && self.prepared_read_needs_schema_recovery(operation, &result)
+                && let BatchOperation::Read { tag_name } = &operation.operation
+            {
+                if let Some(classification) = &operation.array_classification {
+                    self.evict_array_type_cache_entry(&classification.array_path);
+                }
+                self.diagnostic_counters
+                    .schema_type_contradictions
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                result = match self.read_tag_once(tag_name).await {
+                    Ok(value) => {
+                        self.diagnostic_counters
+                            .schema_read_recoveries_succeeded
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        Ok(Some(value))
+                    }
+                    Err(error) => {
+                        self.diagnostic_counters
+                            .schema_read_recoveries_failed
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        Err(BatchError::Other(error.to_string()))
+                    }
+                };
+            }
 
             results.push(BatchResult {
                 operation: operation.operation.clone(),
@@ -556,22 +588,44 @@ impl EipClient {
     async fn build_batch_service_request(
         &mut self,
         operation: &BatchOperation,
-    ) -> crate::error::Result<Vec<u8>> {
+    ) -> crate::error::Result<(Vec<u8>, Option<PreparedArrayClassification>)> {
         match operation {
             BatchOperation::Read { tag_name } => {
-                if let Some((base_name, index)) = self.parse_array_element_access(tag_name)
-                    && self.detect_bool_array_path(&base_name).await?
-                {
-                    return Ok(self.build_read_array_request(&base_name, index / 32, 1));
+                if let Some((base_name, index)) = self.parse_array_element_access(tag_name) {
+                    let generation = self.schema_generation();
+                    let is_packed_bool = self.detect_bool_array_path(&base_name).await?;
+                    let classification = PreparedArrayClassification {
+                        array_path: base_name.clone(),
+                        is_packed_bool,
+                        generation,
+                    };
+                    let request = if is_packed_bool {
+                        self.build_read_array_request(&base_name, index / 32, 1)
+                    } else {
+                        self.build_read_request(tag_name)?
+                    };
+                    return Ok((request, Some(classification)));
                 }
 
-                self.build_read_request(tag_name)
+                Ok((self.build_read_request(tag_name)?, None))
             }
             BatchOperation::Write { tag_name, value } => {
                 if let PlcValue::Bool(bit_value) = value
                     && let Some((base_name, index)) = self.parse_array_element_access(tag_name)
-                    && self.detect_bool_array_path(&base_name).await?
                 {
+                    let generation = self.schema_generation();
+                    let is_packed_bool = self.detect_bool_array_path(&base_name).await?;
+                    let mut classification = PreparedArrayClassification {
+                        array_path: base_name.clone(),
+                        is_packed_bool,
+                        generation,
+                    };
+                    if !is_packed_bool {
+                        return Ok((
+                            self.build_write_request(tag_name, value)?,
+                            Some(classification),
+                        ));
+                    }
                     let dword_index = index / 32;
                     let bit_index = index % 32;
                     let response = self
@@ -582,23 +636,55 @@ impl EipClient {
                         ))
                         .await?;
                     let cip_data = self.extract_cip_from_response(&response)?;
-                    let mut dword = self.parse_bool_array_dword_response(&cip_data)?;
+                    let mut dword = match self.parse_bool_array_dword_response(&cip_data) {
+                        Ok(dword) => dword,
+                        Err(error) if Self::is_schema_drift_read_error(&error) => {
+                            self.evict_array_type_cache_entry(&base_name);
+                            self.diagnostic_counters
+                                .schema_type_contradictions
+                                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            let generation = self.schema_generation();
+                            let is_packed_bool = self.detect_bool_array_path(&base_name).await?;
+                            classification = PreparedArrayClassification {
+                                array_path: base_name.clone(),
+                                is_packed_bool,
+                                generation,
+                            };
+                            if !is_packed_bool {
+                                return Ok((
+                                    self.build_write_request(tag_name, value)?,
+                                    Some(classification),
+                                ));
+                            }
+                            let retry_response = self
+                                .send_cip_request(&self.build_read_array_request(
+                                    &base_name,
+                                    dword_index,
+                                    1,
+                                ))
+                                .await?;
+                            let retry_cip = self.extract_cip_from_response(&retry_response)?;
+                            self.parse_bool_array_dword_response(&retry_cip)?
+                        }
+                        Err(error) => return Err(error),
+                    };
                     if *bit_value {
                         dword |= 1u32 << bit_index;
                     } else {
                         dword &= !(1u32 << bit_index);
                     }
 
-                    return self.build_write_array_request_with_index(
+                    let request = self.build_write_array_request_with_index(
                         &base_name,
                         dword_index,
                         1,
                         values::BOOL_ARRAY_DWORD,
                         &dword.to_le_bytes(),
-                    );
+                    )?;
+                    return Ok((request, Some(classification)));
                 }
 
-                self.build_write_request(tag_name, value)
+                Ok((self.build_write_request(tag_name, value)?, None))
             }
         }
     }
@@ -607,7 +693,7 @@ impl EipClient {
     fn parse_multiple_service_response(
         &self,
         response: &[u8],
-        operations: &[BatchOperation],
+        operations: &[PreparedBatchOperation],
     ) -> crate::error::Result<Vec<std::result::Result<Option<PlcValue>, BatchError>>> {
         if response.len() < 6 {
             return Err(crate::error::EtherNetIpError::Protocol(
@@ -664,7 +750,13 @@ impl EipClient {
 
         if general_status != 0x00 {
             return Err(crate::error::EtherNetIpError::Protocol(
-                self.describe_multiple_service_error(general_status, operations),
+                self.describe_multiple_service_error(
+                    general_status,
+                    &operations
+                        .iter()
+                        .map(|prepared| prepared.operation.clone())
+                        .collect::<Vec<_>>(),
+                ),
             ));
         }
 
@@ -750,7 +842,7 @@ impl EipClient {
     fn parse_individual_reply(
         &self,
         reply_data: &[u8],
-        operation: &BatchOperation,
+        prepared: &PreparedBatchOperation,
     ) -> std::result::Result<Option<PlcValue>, BatchError> {
         if reply_data.len() < 4 {
             return Err(BatchError::SerializationError(
@@ -788,7 +880,7 @@ impl EipClient {
             });
         }
 
-        match operation {
+        match &prepared.operation {
             BatchOperation::Write { .. } => {
                 // Write operations return no data on success
                 Ok(None)
@@ -815,6 +907,22 @@ impl EipClient {
                 let data_type = u16::from_le_bytes([data[0], data[1]]);
                 let value_data = &data[2..];
 
+                if let Some(classification) = &prepared.array_classification {
+                    let returned_is_packed_bool = data_type == values::BOOL_ARRAY_DWORD;
+                    if classification.generation != self.schema_generation()
+                        || returned_is_packed_bool != classification.is_packed_bool
+                    {
+                        return Err(BatchError::DataTypeMismatch {
+                            expected: if classification.is_packed_bool {
+                                "packed BOOL array DWORD".to_string()
+                            } else {
+                                "ordinary array element".to_string()
+                            },
+                            actual: format!("CIP type 0x{data_type:04X}"),
+                        });
+                    }
+                }
+
                 tracing::trace!(
                     "Data type: 0x{:04X}, Value data ({} bytes): {:02X?}",
                     data_type,
@@ -836,7 +944,7 @@ impl EipClient {
                         value_data[3],
                     ]);
 
-                    if let BatchOperation::Read { tag_name } = operation
+                    if let BatchOperation::Read { tag_name } = &prepared.operation
                         && let Some((_base_name, index)) = self.parse_array_element_access(tag_name)
                     {
                         let bit_index = index % 32;
@@ -858,12 +966,36 @@ impl EipClient {
             }
         }
     }
+
+    fn prepared_read_needs_schema_recovery(
+        &self,
+        prepared: &PreparedBatchOperation,
+        result: &std::result::Result<Option<PlcValue>, BatchError>,
+    ) -> bool {
+        if !matches!(prepared.operation, BatchOperation::Read { .. }) {
+            return false;
+        }
+        let Some(classification) = &prepared.array_classification else {
+            return false;
+        };
+        if classification.generation != self.schema_generation() {
+            return true;
+        }
+        match result {
+            Err(BatchError::DataTypeMismatch { .. }) => true,
+            Err(BatchError::CipError { status, .. }) => {
+                matches!(*status, 0x04 | 0x05 | 0x16 | 0xFF)
+            }
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{EipClient, PreparedBatchOperation};
-    use crate::batch::{BatchConfig, BatchOperation};
+    use super::{EipClient, PreparedArrayClassification, PreparedBatchOperation};
+    use crate::batch::{BatchConfig, BatchError, BatchOperation};
+    use crate::types::PlcValue;
 
     fn prepared_read(name: &str, service_len: usize) -> PreparedBatchOperation {
         PreparedBatchOperation {
@@ -871,6 +1003,29 @@ mod tests {
                 tag_name: name.to_string(),
             },
             service_request: vec![0x4C; service_len],
+            array_classification: None,
+        }
+    }
+
+    fn classified_read(
+        client: &EipClient,
+        tag_name: &str,
+        is_packed_bool: bool,
+    ) -> PreparedBatchOperation {
+        let array_path = client
+            .parse_array_element_access(tag_name)
+            .expect("test tag should be an array element")
+            .0;
+        PreparedBatchOperation {
+            operation: BatchOperation::Read {
+                tag_name: tag_name.to_string(),
+            },
+            service_request: Vec::new(),
+            array_classification: Some(PreparedArrayClassification {
+                array_path,
+                is_packed_bool,
+                generation: client.schema_generation(),
+            }),
         }
     }
 
@@ -931,5 +1086,68 @@ mod tests {
             client.group_wire_len(&groups[1]) <= 32,
             "small trailing operations should share a packet"
         );
+    }
+
+    #[test]
+    fn batch_reply_detects_both_packed_bool_transition_directions() {
+        let client = EipClient::new_unconnected_for_testing();
+        let ordinary = classified_read(&client, "ControllerArray[40]", false);
+        let packed = classified_read(&client, "Program:Main.BoolArray[63]", true);
+
+        let packed_reply = [0xCC, 0, 0, 0, 0xD3, 0, 0, 0, 0, 0];
+        let ordinary_reply = [0xCC, 0, 0, 0, 0xC4, 0, 42, 0, 0, 0];
+
+        assert!(matches!(
+            client.parse_individual_reply(&packed_reply, &ordinary),
+            Err(BatchError::DataTypeMismatch { .. })
+        ));
+        assert!(matches!(
+            client.parse_individual_reply(&ordinary_reply, &packed),
+            Err(BatchError::DataTypeMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn ordinary_array_type_change_dint_to_real_stays_addressing_compatible() {
+        let client = EipClient::new_unconnected_for_testing();
+        let ordinary = classified_read(&client, "Program:Main.Values[5]", false);
+        let real_reply = [0xCC, 0, 0, 0, 0xCA, 0, 0, 0, 0x80, 0x3F];
+
+        assert!(matches!(
+            client.parse_individual_reply(&real_reply, &ordinary),
+            Ok(Some(PlcValue::Real(value))) if value == 1.0
+        ));
+    }
+
+    #[tokio::test]
+    async fn generation_change_and_symbol_errors_are_recoverable_for_reads_only() {
+        let client = EipClient::new_unconnected_for_testing();
+        let read = classified_read(&client, "ControllerArray[33]", true);
+        let write = PreparedBatchOperation {
+            operation: BatchOperation::Write {
+                tag_name: "ControllerArray[33]".to_string(),
+                value: PlcValue::Bool(true),
+            },
+            service_request: Vec::new(),
+            array_classification: read.array_classification.clone(),
+        };
+
+        client.refresh_schema().await;
+
+        assert!(client.prepared_read_needs_schema_recovery(&read, &Ok(None)));
+        assert!(client.prepared_read_needs_schema_recovery(
+            &read,
+            &Err(BatchError::CipError {
+                status: 0x05,
+                message: "Path destination unknown".to_string(),
+            })
+        ));
+        assert!(!client.prepared_read_needs_schema_recovery(
+            &write,
+            &Err(BatchError::CipError {
+                status: 0x05,
+                message: "Path destination unknown".to_string(),
+            })
+        ));
     }
 }

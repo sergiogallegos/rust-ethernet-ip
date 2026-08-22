@@ -95,6 +95,19 @@ struct DiagnosticCounters {
     last_failed_write_time: AtomicU64,
     last_error_time: AtomicU64,
     last_error_category: AtomicU8,
+    schema_refreshes: AtomicU64,
+    array_cache_hits: AtomicU64,
+    array_cache_misses: AtomicU64,
+    array_cache_evictions: AtomicU64,
+    schema_type_contradictions: AtomicU64,
+    schema_read_recoveries_succeeded: AtomicU64,
+    schema_read_recoveries_failed: AtomicU64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ArrayTypeCacheEntry {
+    generation: u64,
+    is_packed_bool: bool,
 }
 
 impl DiagnosticCounters {
@@ -524,8 +537,14 @@ pub struct EipClient {
     tag_manager: Arc<Mutex<TagManager>>,
     /// SHARED ON CLONE: UDT discovery/cache state.
     udt_manager: Arc<Mutex<UdtManager>>,
-    /// SHARED ON CLONE: base array paths already classified as packed BOOL or non-BOOL.
-    array_type_cache: Arc<StdMutex<HashMap<String, bool>>>,
+    /// SHARED ON CLONE: monotonic controller-schema generation.
+    schema_generation: Arc<AtomicU64>,
+    /// SHARED ON CLONE: generation owning TagManager's current contents.
+    tag_manager_generation: Arc<AtomicU64>,
+    /// SHARED ON CLONE: generation owning UdtManager's current contents.
+    udt_manager_generation: Arc<AtomicU64>,
+    /// SHARED ON CLONE: generation-scoped packed-BOOL/non-BOOL classifications.
+    array_type_cache: Arc<StdMutex<HashMap<String, ArrayTypeCacheEntry>>>,
     /// SHARED ON CLONE: route-path mutations must be visible through later registry lookups.
     route_path: Arc<StdMutex<Option<RoutePath>>>,
     /// SHARED ON CLONE: max packet size is cheap scalar state and may be configured through FFI.
@@ -558,6 +577,7 @@ impl std::fmt::Debug for EipClient {
             .field("diagnostic_counters", &"<diagnostic_counters>")
             .field("tag_manager", &"<tag_manager>")
             .field("udt_manager", &"<udt_manager>")
+            .field("schema_generation", &self.schema_generation())
             .field("array_type_cache", &"<array_type_cache>")
             .field("subscriptions", &"<subscriptions>")
             .field("tag_groups", &"<tag_groups>")
@@ -594,6 +614,9 @@ impl EipClient {
             diagnostic_counters: Arc::new(DiagnosticCounters::default()),
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
+            schema_generation: Arc::new(AtomicU64::new(1)),
+            tag_manager_generation: Arc::new(AtomicU64::new(1)),
+            udt_manager_generation: Arc::new(AtomicU64::new(1)),
             array_type_cache: Arc::new(StdMutex::new(HashMap::new())),
             route_path: Arc::new(StdMutex::new(None)),
             max_packet_size: Arc::new(AtomicU32::new(4000)),
@@ -634,6 +657,9 @@ impl EipClient {
             diagnostic_counters: Arc::new(DiagnosticCounters::default()),
             tag_manager: Arc::new(Mutex::new(TagManager::new())),
             udt_manager: Arc::new(Mutex::new(UdtManager::new())),
+            schema_generation: Arc::new(AtomicU64::new(1)),
+            tag_manager_generation: Arc::new(AtomicU64::new(1)),
+            udt_manager_generation: Arc::new(AtomicU64::new(1)),
             array_type_cache: Arc::new(StdMutex::new(HashMap::new())),
             route_path: Arc::new(StdMutex::new(None)),
             max_packet_size: Arc::new(AtomicU32::new(4000)),
@@ -794,6 +820,7 @@ impl EipClient {
 
     /// Discovers all tags in the PLC (including hierarchical UDT members)
     pub async fn discover_tags(&mut self) -> crate::error::Result<()> {
+        let generation = self.schema_generation();
         let response = self
             .send_cip_request(&self.build_list_tags_request())
             .await?;
@@ -831,10 +858,22 @@ impl EipClient {
 
         {
             let tag_manager = self.tag_manager.lock().await;
+            if self.schema_generation() != generation {
+                tracing::debug!(
+                    "discarding tag discovery cache fill from schema generation {generation}"
+                );
+                return Ok(());
+            }
+            if self.tag_manager_generation.load(Ordering::Acquire) != generation {
+                tag_manager.clear_cache().await?;
+                tag_manager.clear_udt_cache();
+            }
             let mut cache = tag_manager.cache.write()?;
             for (name, metadata) in hierarchical_tags {
                 cache.insert(name, metadata);
             }
+            self.tag_manager_generation
+                .store(generation, Ordering::Release);
         }
         Ok(())
     }
@@ -844,13 +883,22 @@ impl EipClient {
         &mut self,
         udt_name: &str,
     ) -> crate::error::Result<Vec<(String, TagMetadata)>> {
+        let generation = self.schema_generation();
         let definition = self.get_udt_definition(udt_name).await?;
 
         // Cache the definition
         {
             let tag_manager = self.tag_manager.lock().await;
-            let mut definitions = tag_manager.udt_definitions.write()?;
-            definitions.insert(udt_name.to_string(), definition.clone());
+            if self.schema_generation() == generation {
+                if self.tag_manager_generation.load(Ordering::Acquire) != generation {
+                    tag_manager.clear_cache().await?;
+                    tag_manager.clear_udt_cache();
+                }
+                let mut definitions = tag_manager.udt_definitions.write()?;
+                definitions.insert(udt_name.to_string(), definition.clone());
+                self.tag_manager_generation
+                    .store(generation, Ordering::Release);
+            }
         }
 
         // Create member metadata
@@ -882,12 +930,18 @@ impl EipClient {
 
     /// Gets cached UDT definition
     pub async fn get_udt_definition_cached(&self, udt_name: &str) -> Option<UdtDefinition> {
+        if self.tag_manager_generation.load(Ordering::Acquire) != self.schema_generation() {
+            return None;
+        }
         let tag_manager = self.tag_manager.lock().await;
         tag_manager.get_udt_definition_cached(udt_name)
     }
 
     /// Lists all cached UDT definitions
     pub async fn list_udt_definitions(&self) -> Vec<String> {
+        if self.tag_manager_generation.load(Ordering::Acquire) != self.schema_generation() {
+            return Vec::new();
+        }
         let tag_manager = self.tag_manager.lock().await;
         tag_manager.list_udt_definitions()
     }
@@ -1033,16 +1087,59 @@ impl EipClient {
 
     /// Lists all cached tag attributes
     pub async fn list_cached_tag_attributes(&self) -> Vec<String> {
+        if self.udt_manager_generation.load(Ordering::Acquire) != self.schema_generation() {
+            return Vec::new();
+        }
         self.udt_manager.lock().await.list_tag_attributes()
     }
 
-    /// Clears cached tag metadata, UDT data, and array-type classifications.
-    pub async fn clear_caches(&mut self) {
-        if let Err(error) = self.tag_manager.lock().await.clear_cache().await {
-            tracing::warn!("failed to clear tag metadata cache: {error}");
-        }
-        self.udt_manager.lock().await.clear_cache();
+    /// Returns the shared controller-schema generation observed by all clones.
+    pub fn schema_generation(&self) -> u64 {
+        self.schema_generation.load(Ordering::Acquire)
+    }
+
+    fn advance_schema_generation(&self) -> u64 {
+        let generation = self.schema_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        self.tag_manager_generation.store(0, Ordering::Release);
+        self.udt_manager_generation.store(0, Ordering::Release);
         self.clear_array_type_cache();
+        generation
+    }
+
+    /// Advances the shared schema generation and clears every schema-derived cache.
+    ///
+    /// Call this after an online tag replacement or controller project download,
+    /// before rediscovery and before writes resume. Cloned clients observe the same
+    /// generation. Results from operations that began in an older generation are
+    /// not allowed to repopulate the refreshed caches.
+    pub async fn refresh_schema(&self) -> u64 {
+        let generation = self.advance_schema_generation();
+        self.diagnostic_counters
+            .schema_refreshes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        {
+            let tag_manager = self.tag_manager.lock().await;
+            if let Err(error) = tag_manager.clear_cache().await {
+                tracing::warn!("failed to clear tag metadata cache: {error}");
+            }
+            tag_manager.clear_udt_cache();
+            self.tag_manager_generation
+                .store(generation, Ordering::Release);
+        }
+
+        {
+            self.udt_manager.lock().await.clear_cache();
+            self.udt_manager_generation
+                .store(generation, Ordering::Release);
+        }
+
+        generation
+    }
+
+    /// Backward-compatible alias for [`Self::refresh_schema`].
+    pub async fn clear_caches(&mut self) {
+        self.refresh_schema().await;
     }
 
     /// Creates a new client with a specific route path
@@ -1092,7 +1189,7 @@ impl EipClient {
 
     /// Sets the route path for the client
     pub fn set_route_path(&mut self, route: RoutePath) {
-        self.clear_array_type_cache();
+        self.advance_schema_generation();
         *self
             .route_path
             .lock()
@@ -1106,7 +1203,7 @@ impl EipClient {
 
     /// Removes the route path (uses direct connection)
     pub fn clear_route_path(&mut self) {
-        self.clear_array_type_cache();
+        self.advance_schema_generation();
         *self
             .route_path
             .lock()
@@ -1114,29 +1211,123 @@ impl EipClient {
     }
 
     fn cached_array_is_packed_bool(&self, array_path: &str) -> Option<bool> {
-        self.array_type_cache
+        let generation = self.schema_generation();
+        let mut cache = self
+            .array_type_cache
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(array_path)
-            .copied()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match cache.get(array_path).copied() {
+            Some(entry) if entry.generation == generation => {
+                self.diagnostic_counters
+                    .array_cache_hits
+                    .fetch_add(1, Ordering::Relaxed);
+                Some(entry.is_packed_bool)
+            }
+            Some(_) => {
+                cache.remove(array_path);
+                self.diagnostic_counters
+                    .array_cache_evictions
+                    .fetch_add(1, Ordering::Relaxed);
+                self.diagnostic_counters
+                    .array_cache_misses
+                    .fetch_add(1, Ordering::Relaxed);
+                None
+            }
+            None => {
+                self.diagnostic_counters
+                    .array_cache_misses
+                    .fetch_add(1, Ordering::Relaxed);
+                None
+            }
+        }
     }
 
+    #[cfg(test)]
     fn cache_array_is_packed_bool(&self, array_path: &str, is_packed_bool: bool) {
-        self.array_type_cache
+        let generation = self.schema_generation();
+        self.cache_array_is_packed_bool_at_generation(array_path, is_packed_bool, generation);
+    }
+
+    fn cache_array_is_packed_bool_at_generation(
+        &self,
+        array_path: &str,
+        is_packed_bool: bool,
+        generation: u64,
+    ) -> bool {
+        let mut cache = self
+            .array_type_cache
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(array_path.to_string(), is_packed_bool);
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if self.schema_generation() != generation {
+            return false;
+        }
+        cache.insert(
+            array_path.to_string(),
+            ArrayTypeCacheEntry {
+                generation,
+                is_packed_bool,
+            },
+        );
+        true
     }
 
     fn clear_array_type_cache(&self) {
-        self.array_type_cache
+        let mut cache = self
+            .array_type_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let evicted = cache.len() as u64;
+        cache.clear();
+        self.diagnostic_counters
+            .array_cache_evictions
+            .fetch_add(evicted, Ordering::Relaxed);
+    }
+
+    fn evict_array_type_cache_entry(&self, array_path: &str) -> bool {
+        let removed = self
+            .array_type_cache
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clear();
+            .remove(array_path)
+            .is_some();
+        if removed {
+            self.diagnostic_counters
+                .array_cache_evictions
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        removed
+    }
+
+    fn array_path_for_schema_recovery(&self, tag_name: &str) -> Option<String> {
+        self.parse_array_element_access(tag_name)
+            .map(|(base, _)| base)
+            .or_else(|| {
+                self.parse_final_array_element_access(tag_name)
+                    .map(|(base, _)| base)
+            })
+    }
+
+    fn is_schema_drift_read_error(error: &EtherNetIpError) -> bool {
+        if matches!(error, EtherNetIpError::DataTypeMismatch { .. }) {
+            return true;
+        }
+        let message = error.to_string().to_ascii_lowercase();
+        [
+            "cip error 0x04",
+            "cip error 0x05",
+            "cip error 0x16",
+            "0x2107",
+            "expected bool array dword",
+        ]
+        .iter()
+        .any(|marker| message.contains(marker))
     }
 
     /// Gets metadata for a tag
     pub async fn get_tag_metadata(&self, tag_name: &str) -> Option<TagMetadata> {
+        if self.tag_manager_generation.load(Ordering::Acquire) != self.schema_generation() {
+            return None;
+        }
         let tag_manager = self.tag_manager.lock().await;
         match tag_manager.cache.read() {
             Ok(cache) => cache.get(tag_name).cloned(),
@@ -1215,6 +1406,42 @@ impl EipClient {
     pub async fn read_tag(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         self.validate_session().await?;
 
+        let result = self.read_tag_once(tag_name).await;
+        let Err(error) = result else {
+            return result;
+        };
+        let Some(array_path) = self.array_path_for_schema_recovery(tag_name) else {
+            return Err(error);
+        };
+        if !Self::is_schema_drift_read_error(&error) {
+            return Err(error);
+        }
+
+        self.evict_array_type_cache_entry(&array_path);
+        self.diagnostic_counters
+            .schema_type_contradictions
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        tracing::warn!(
+            "schema drift suspected for '{tag_name}'; evicted '{array_path}' classification and retrying read once"
+        );
+
+        match self.read_tag_once(tag_name).await {
+            Ok(value) => {
+                self.diagnostic_counters
+                    .schema_read_recoveries_succeeded
+                    .fetch_add(1, Ordering::Relaxed);
+                Ok(value)
+            }
+            Err(retry_error) => {
+                self.diagnostic_counters
+                    .schema_read_recoveries_failed
+                    .fetch_add(1, Ordering::Relaxed);
+                Err(retry_error)
+            }
+        }
+    }
+
+    async fn read_tag_once(&mut self, tag_name: &str) -> crate::error::Result<PlcValue> {
         if let Some((base_path, bit_index)) = self.parse_bit_access(tag_name) {
             return self
                 .read_bit_base_direct(&base_path, bit_index)
@@ -1280,6 +1507,18 @@ impl EipClient {
         let cip_data = self.extract_cip_from_response(&response)?;
         if cip_data.get(2).copied() == Some(CIP_STATUS_PARTIAL_TRANSFER) {
             return self.read_tag_fragmented(tag_name).await;
+        }
+        if let Some((array_path, _)) = self.parse_final_array_element_access(tag_name)
+            && self.cached_array_is_packed_bool(&array_path) == Some(false)
+            && cip_data.len() >= 6
+        {
+            let returned_type = u16::from_le_bytes([cip_data[4], cip_data[5]]);
+            if returned_type == values::BOOL_ARRAY_DWORD {
+                return Err(EtherNetIpError::DataTypeMismatch {
+                    expected: "ordinary array element".to_string(),
+                    actual: "packed BOOL array DWORD".to_string(),
+                });
+            }
         }
         self.parse_cip_response(&cip_data)
     }
@@ -1460,18 +1699,30 @@ impl EipClient {
             return Ok(is_packed_bool);
         }
 
+        let generation = self.schema_generation();
+
         let test_response = self
             .send_cip_request(&self.build_read_request_with_count(array_path, 1)?)
             .await?;
         let test_cip_data = self.extract_cip_from_response(&test_response)?;
 
-        if self.check_cip_error(&test_cip_data).is_err() || test_cip_data.len() < 6 {
+        // A large structure can legitimately report Partial Transfer during the
+        // one-element probe; it is not a packed BOOL array. Other CIP failures
+        // (including Symbol Not Found) must remain visible to the caller so a
+        // recovery attempt does not issue a second, misleading element read.
+        if test_cip_data.get(2).copied() == Some(CIP_STATUS_PARTIAL_TRANSFER) {
             return Ok(false);
+        }
+        self.check_cip_error(&test_cip_data)?;
+        if test_cip_data.len() < 6 {
+            return Err(EtherNetIpError::Protocol(format!(
+                "array type probe for '{array_path}' returned fewer than 6 CIP bytes"
+            )));
         }
 
         let test_data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
         let is_packed_bool = test_data_type == values::BOOL_ARRAY_DWORD;
-        self.cache_array_is_packed_bool(array_path, is_packed_bool);
+        self.cache_array_is_packed_bool_at_generation(array_path, is_packed_bool, generation);
         Ok(is_packed_bool)
     }
 
@@ -1546,29 +1797,12 @@ impl EipClient {
             index
         );
 
-        // First, detect if it's a BOOL array by reading with count=1 to check data type
-        let test_response = self
-            .send_cip_request(&self.build_read_request_with_count(base_array_name, 1)?)
-            .await?;
-        let test_cip_data = self.extract_cip_from_response(&test_response)?;
-
-        // A Partial Transfer here means the element is a structure larger than one CIP packet
-        // (e.g. a big UDT) — it cannot be a BOOL array, so skip BOOL detection and let the
-        // element read below fall back to the fragmented path.
-        if test_cip_data.get(2).copied() != Some(CIP_STATUS_PARTIAL_TRANSFER) {
-            // Check for errors in test read
-            self.check_cip_error(&test_cip_data)?;
-
-            // Check if it's a BOOL array (data type 0x00D3 = DWORD)
-            if test_cip_data.len() >= 6 {
-                let test_data_type = u16::from_le_bytes([test_cip_data[4], test_cip_data[5]]);
-                if test_data_type == 0x00D3 {
-                    // BOOL array - use special workaround to extract the bit
-                    return self
-                        .read_bool_array_element_workaround(base_array_name, index)
-                        .await;
-                }
-            }
+        // Classification is generation-stamped. Reuse it on steady-state reads,
+        // then let a contradictory response trigger the caller's one-time recovery.
+        if self.detect_bool_array_path(base_array_name).await? {
+            return self
+                .read_bool_array_element_workaround(base_array_name, index)
+                .await;
         }
 
         // Use element addressing to read directly from the specified index
@@ -1589,6 +1823,15 @@ impl EipClient {
 
         // Check for errors (including extended errors)
         self.check_cip_error(&cip_data)?;
+
+        if cip_data.len() >= 6
+            && u16::from_le_bytes([cip_data[4], cip_data[5]]) == values::BOOL_ARRAY_DWORD
+        {
+            return Err(EtherNetIpError::DataTypeMismatch {
+                expected: "ordinary array element".to_string(),
+                actual: "packed BOOL array DWORD".to_string(),
+            });
+        }
 
         // Parse response - should be consistent format now
         // Reference: 1756-PM020, Page 828-837 (Response format)
@@ -2001,15 +2244,6 @@ impl EipClient {
             index
         );
 
-        let dword_index = index / 32;
-
-        // Read the DWORD
-        let response = self
-            .send_cip_request(&self.build_read_array_request(base_array_name, dword_index, 1))
-            .await?;
-        let cip_data = self.extract_cip_from_response(&response)?;
-
-        // Get the boolean value
         let bool_value = match value {
             PlcValue::Bool(b) => b,
             _ => {
@@ -2018,9 +2252,40 @@ impl EipClient {
                 ));
             }
         };
+        let dword_index = index / 32;
+
+        // Read the DWORD
+        let response = self
+            .send_cip_request(&self.build_read_array_request(base_array_name, dword_index, 1))
+            .await?;
+        let cip_data = self.extract_cip_from_response(&response)?;
 
         // Modify the DWORD
-        let original_dword_value = self.parse_bool_array_dword_response(&cip_data)?;
+        let original_dword_value = match self.parse_bool_array_dword_response(&cip_data) {
+            Ok(value) => value,
+            Err(error) if Self::is_schema_drift_read_error(&error) => {
+                self.evict_array_type_cache_entry(base_array_name);
+                self.diagnostic_counters
+                    .schema_type_contradictions
+                    .fetch_add(1, Ordering::Relaxed);
+                if !self.detect_bool_array_path(base_array_name).await? {
+                    let tag_name = format!("{base_array_name}[{index}]");
+                    return self
+                        .write_tag_direct(&tag_name, &PlcValue::Bool(bool_value))
+                        .await;
+                }
+                let retry_response = self
+                    .send_cip_request(&self.build_read_array_request(
+                        base_array_name,
+                        dword_index,
+                        1,
+                    ))
+                    .await?;
+                let retry_cip_data = self.extract_cip_from_response(&retry_response)?;
+                self.parse_bool_array_dword_response(&retry_cip_data)?
+            }
+            Err(error) => return Err(error),
+        };
         let mut dword_value = original_dword_value;
 
         let bit_index = (index % 32) as u8;
@@ -2266,7 +2531,9 @@ impl EipClient {
         udt_name: &str,
     ) -> crate::error::Result<UdtDefinition> {
         // Check cache first
-        if let Some(cached) = self.udt_manager.lock().await.get_definition(udt_name) {
+        if self.udt_manager_generation.load(Ordering::Acquire) == self.schema_generation()
+            && let Some(cached) = self.udt_manager.lock().await.get_definition(udt_name)
+        {
             return Ok(cached.clone());
         }
 
@@ -2300,7 +2567,9 @@ impl EipClient {
         template_id: u32,
         udt_name: &str,
     ) -> crate::error::Result<(UdtDefinition, u32)> {
-        if let Some(cached) = self.udt_manager.lock().await.get_definition(udt_name) {
+        if self.udt_manager_generation.load(Ordering::Acquire) == self.schema_generation()
+            && let Some(cached) = self.udt_manager.lock().await.get_definition(udt_name)
+        {
             return Ok((cached.clone(), 0));
         }
 
@@ -2313,6 +2582,7 @@ impl EipClient {
         template_id: u32,
         udt_name: &str,
     ) -> crate::error::Result<(UdtDefinition, u32)> {
+        let generation = self.schema_generation();
         let (template_attributes, template_data) = self.read_udt_template(template_id).await?;
         let template = self.udt_manager.lock().await.parse_udt_template(
             template_id,
@@ -2326,10 +2596,17 @@ impl EipClient {
             members: template.members,
         };
 
-        self.udt_manager
-            .lock()
-            .await
-            .add_definition(definition.clone());
+        {
+            let mut udt_manager = self.udt_manager.lock().await;
+            if self.schema_generation() == generation {
+                if self.udt_manager_generation.load(Ordering::Acquire) != generation {
+                    udt_manager.clear_cache();
+                }
+                udt_manager.add_definition(definition.clone());
+                self.udt_manager_generation
+                    .store(generation, Ordering::Release);
+            }
+        }
 
         Ok((definition, template_attributes.structure_size_bytes))
     }
@@ -2355,9 +2632,13 @@ impl EipClient {
         tag_name: &str,
     ) -> crate::error::Result<TagAttributes> {
         // Check cache first
-        if let Some(cached) = self.udt_manager.lock().await.get_tag_attributes(tag_name) {
+        if self.udt_manager_generation.load(Ordering::Acquire) == self.schema_generation()
+            && let Some(cached) = self.udt_manager.lock().await.get_tag_attributes(tag_name)
+        {
             return Ok(cached.clone());
         }
+
+        let generation = self.schema_generation();
 
         // Build CIP request for Get Attribute List (Service 0x03)
         let request = self.build_get_attributes_request(tag_name)?;
@@ -2370,10 +2651,17 @@ impl EipClient {
         let attributes = self.parse_attributes_response(tag_name, &cip_data)?;
 
         // Cache the attributes
-        self.udt_manager
-            .lock()
-            .await
-            .add_tag_attributes(attributes.clone());
+        {
+            let mut udt_manager = self.udt_manager.lock().await;
+            if self.schema_generation() == generation {
+                if self.udt_manager_generation.load(Ordering::Acquire) != generation {
+                    udt_manager.clear_cache();
+                }
+                udt_manager.add_tag_attributes(attributes.clone());
+                self.udt_manager_generation
+                    .store(generation, Ordering::Release);
+            }
+        }
 
         Ok(attributes)
     }
@@ -4414,6 +4702,12 @@ impl EipClient {
 mod array_type_cache_tests {
     use super::EipClient;
     use crate::RoutePath;
+    use crate::tag_manager::{TagMetadata, TagPermissions, TagScope};
+    use crate::udt::{
+        TagAttributes, TagPermissions as UdtTagPermissions, TagScope as UdtTagScope, UdtDefinition,
+    };
+    use std::sync::atomic::Ordering;
+    use std::time::Instant;
 
     #[test]
     fn cache_preserves_positive_and_negative_array_classifications() {
@@ -4466,6 +4760,115 @@ mod array_type_cache_tests {
         client.clear_caches().await;
 
         assert_eq!(client.cached_array_is_packed_bool("DintArray"), None);
+    }
+
+    #[tokio::test]
+    async fn refresh_schema_clears_every_schema_cache_and_is_clone_visible() {
+        let client = EipClient::new_unconnected_for_testing();
+        let cloned = client.clone();
+        client.cache_array_is_packed_bool("BoolArray", true);
+
+        {
+            let tag_manager = client.tag_manager.lock().await;
+            tag_manager
+                .cache
+                .write()
+                .expect("tag metadata cache lock")
+                .insert(
+                    "CachedTag".to_string(),
+                    TagMetadata {
+                        data_type: 0x00C4,
+                        size: 4,
+                        is_array: false,
+                        dimensions: Vec::new(),
+                        permissions: TagPermissions {
+                            readable: true,
+                            writable: true,
+                        },
+                        scope: TagScope::Controller,
+                        last_access: Instant::now(),
+                        array_info: None,
+                        last_updated: Instant::now(),
+                    },
+                );
+            tag_manager
+                .udt_definitions
+                .write()
+                .expect("tag UDT cache lock")
+                .insert(
+                    "CachedUdt".to_string(),
+                    UdtDefinition {
+                        name: "CachedUdt".to_string(),
+                        members: Vec::new(),
+                    },
+                );
+        }
+        {
+            let mut udt_manager = client.udt_manager.lock().await;
+            udt_manager.add_definition(UdtDefinition {
+                name: "ManagerUdt".to_string(),
+                members: Vec::new(),
+            });
+            udt_manager.add_tag_attributes(TagAttributes {
+                name: "ManagerTag".to_string(),
+                data_type: 0x00C4,
+                data_type_name: "DINT".to_string(),
+                dimensions: Vec::new(),
+                permissions: UdtTagPermissions::ReadWrite,
+                scope: UdtTagScope::Controller,
+                template_instance_id: None,
+                size: 4,
+            });
+        }
+
+        let before = client.schema_generation();
+        let after = cloned.refresh_schema().await;
+
+        assert_eq!(after, before + 1);
+        assert_eq!(client.schema_generation(), after);
+        assert_eq!(client.cached_array_is_packed_bool("BoolArray"), None);
+        assert!(client.get_tag_metadata("CachedTag").await.is_none());
+        assert!(client.list_udt_definitions().await.is_empty());
+        let udt_manager = client.udt_manager.lock().await;
+        assert!(udt_manager.list_definitions().is_empty());
+        assert!(udt_manager.list_templates().is_empty());
+        assert!(udt_manager.list_tag_attributes().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stale_generation_cannot_repopulate_array_classification() {
+        let client = EipClient::new_unconnected_for_testing();
+        let stale_generation = client.schema_generation();
+
+        client.refresh_schema().await;
+
+        assert!(!client.cache_array_is_packed_bool_at_generation(
+            "ReplacedArray",
+            true,
+            stale_generation,
+        ));
+        assert_eq!(client.cached_array_is_packed_bool("ReplacedArray"), None);
+    }
+
+    #[test]
+    fn route_changes_advance_the_shared_schema_generation() {
+        let mut client = EipClient::new_unconnected_for_testing();
+        let cloned = client.clone();
+        let initial = client.schema_generation();
+
+        client.set_route_path(RoutePath::new().add_slot(1));
+        assert_eq!(cloned.schema_generation(), initial + 1);
+
+        client.clear_route_path();
+        assert_eq!(cloned.schema_generation(), initial + 2);
+        assert_eq!(
+            client
+                .diagnostic_counters
+                .schema_refreshes
+                .load(Ordering::Relaxed),
+            0,
+            "route invalidation advances generation but is not an explicit refresh"
+        );
     }
 }
 
@@ -4933,8 +5336,28 @@ mod transport_tests {
         client
             .diagnostic_counters
             .record_cip_failure(Some(DiagnosticOperation::Batch));
+        assert_eq!(client.cached_array_is_packed_bool("MISSING_ARRAY"), None);
+        client.cache_array_is_packed_bool("DIAG_ARRAY", false);
+        assert_eq!(
+            client.cached_array_is_packed_bool("DIAG_ARRAY"),
+            Some(false)
+        );
+        client
+            .diagnostic_counters
+            .schema_type_contradictions
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        client
+            .diagnostic_counters
+            .schema_read_recoveries_succeeded
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        client
+            .diagnostic_counters
+            .schema_read_recoveries_failed
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let generation = client.refresh_schema().await;
 
         let snapshot = client.get_diagnostics_snapshot().await;
+        let schema_cache = client.schema_cache_metrics();
 
         assert_eq!(snapshot.operations.total_reads, 1);
         assert_eq!(snapshot.operations.successful_reads, 1);
@@ -4949,6 +5372,14 @@ mod transport_tests {
         assert!(snapshot.operations.last_successful_read_time.is_some());
         assert!(snapshot.operations.last_failed_write_time.is_some());
         assert!(snapshot.errors.last_error_time.is_some());
+        assert_eq!(schema_cache.generation, generation);
+        assert_eq!(schema_cache.refreshes, 1);
+        assert_eq!(schema_cache.array_classification_hits, 1);
+        assert_eq!(schema_cache.array_classification_misses, 1);
+        assert_eq!(schema_cache.array_classification_evictions, 1);
+        assert_eq!(schema_cache.datatype_contradictions, 1);
+        assert_eq!(schema_cache.successful_read_recoveries, 1);
+        assert_eq!(schema_cache.failed_read_recoveries, 1);
         assert!(snapshot.system_metrics_are_placeholders);
     }
 }

@@ -99,12 +99,35 @@ remain in the hardware matrix until promoted into a release gate.
 - C# wrapper for .NET integration
 - Python wrapper and service/data-pipeline examples
 
+### Which access pattern should I use?
+
+| Application need | Recommended pattern |
+|---|---|
+| One measurement, command, or occasional setpoint | Typed single-tag read/write |
+| Several independent values in one scan | Batch read/write; inspect every per-tag result |
+| One known UDT field | Read or write its full symbolic member path |
+| One logical snapshot of an entire UDT | Whole-UDT read; fragmented reads handle large structures |
+| Change a UDT | Prefer member-level writes; whole writes require the exact template-compatible representation |
+| Controller tag | Use `TagName` |
+| Program tag | Use `Program:<program-name>.TagName` with the same read/write API |
+
+Batches reduce network round trips but are not atomic PLC transactions. Whole
+UDT-array-element reads work; whole-element writes are not supported in 1.2.0,
+so write paths such as `Motors[0].CommandSpeed` individually. The language
+guides contain complete examples: [C#](csharp/RustEtherNetIp/README.md),
+[Python](python/README.md), and [C/C++](docs/CPP_INTEGRATION.md).
+
 ## Known PLC/Firmware Limitations
 
 Some write behaviors depend on exact Logix wire encoding and controller firmware:
 
 - Direct writes to scalar UDT array element members (for example `MyUdtArray[0].Speed`) are confirmed writeable on 5069-L330ERM fw38 when the full member path is preserved.
 - `STRING` members inside UDTs — built-in `STRING` **and** custom string types (own name/length, e.g. `Str82`/`Str400`) — write and read through the normal string APIs as of `1.2.0`: the library discovers the target's real structure handle instead of assuming the built-in `0x0FCE`. Strings larger than one CIP packet use CIP fragmentation. See [`docs/STRING_HANDLING.md`](docs/STRING_HANDLING.md).
+- The built-in Logix `STRING` stores text in `SINT DATA[82]`, so its capacity is
+  82 bytes. Custom string types use their declared `DATA[N]` capacity. The
+  approximately 494-byte measured single-request ceiling includes CIP service
+  and path overhead; it is not a universal text limit, and 1.2.0 fragments
+  larger transfers.
 
 Real-hardware note from the `0.7.0` release validation:
 - Validated on `5069-L320ERMS3`, firmware `35`, at `192.168.0.1:44818`

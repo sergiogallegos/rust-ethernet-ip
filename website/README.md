@@ -11,7 +11,8 @@ python3 -m http.server 8080
 Then open `http://127.0.0.1:8080/website/`.
 
 The site includes dedicated `privacy.html` and `license.html` pages. It ships
-without analytics, cookies, forms, or third-party font requests. The logo and
+without analytics, cookies, forms, or third-party font requests. It stores one
+local quick-start language preference and does not transmit it. The logo and
 favicon currently load from the public GitHub repository.
 
 Navigation uses a CSS-rendered text wordmark so it stays crisp and compact at

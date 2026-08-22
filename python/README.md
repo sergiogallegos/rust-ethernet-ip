@@ -67,6 +67,22 @@ plc.write_tag("UnsignedCount", 4_000_000_000, value_type="UDINT")
 plc.write_tag("PrecisionValue", 1.23456789, value_type="LREAL")
 ```
 
+## Choose Single, Batch, or Structure Access
+
+| Need | Best starting API | Why |
+|---|---|---|
+| One measurement, command, or occasional setpoint | `read_tag` / `write_tag` | Smallest and clearest unit of work |
+| Several independent values for one analytics sample | `read_tags` | Uses native packet-size-aware batch reads and returns values by tag name |
+| Several writes with accurate per-tag status | `write_tags` | Returns one `WriteResult` per tag; 1.2.0 submits writes sequentially for reliable attribution |
+| One known UDT member | `read_tag` / `write_tag` with the full member path | Avoids transferring or reconstructing the entire UDT |
+| Inspect a whole UDT | `read_tag("Mixer")` | Returns decoded members when available, otherwise its raw `symbol_id` and bytes |
+| Change an entire UDT | Usually do not; write known members individually | Whole writes require the exact template-compatible raw representation |
+
+Batching is useful for collector, dataframe, historian, and model-feature
+samples that read many independent tags together. It is not an atomic PLC
+transaction. For one value, use the single-tag API; for normal UDT commands,
+use full member paths.
+
 ## STRING Support in 1.2.0
 
 STRING writes are handle-aware. The same `write_tag` call supports top-level
@@ -81,10 +97,18 @@ with Client("192.168.0.10:44818") as plc:
     print(plc.read_string("Motors[0].Description"))
 ```
 
+The Studio 5000 built-in `STRING` is a structure with a 4-byte `LEN` and
+`SINT DATA[82]`, plus alignment, so its text capacity is **82 bytes**. Python
+strings are encoded as UTF-8; a non-ASCII character may use multiple bytes.
+Custom Logix string types use their declared `DATA[N]` capacity and a distinct
+structure handle, which the library discovers automatically.
+
 Real hardware confirms built-in `STRING`, custom `Str82`, and custom `Str400`
-members on 5069-L330ERM firmware 38. A 600-byte custom string has simulator
-fragmentation coverage; qualify very large custom strings on the exact target
-controller and firmware before production use.
+members on 5069-L330ERM firmware 38. The measured single unconnected request
+ceiling on that target is about 494 total bytes, including the tag path and CIP
+overhead—not 494 text bytes. Version 1.2.0 switches to fragmented CIP services
+when needed. A 600-byte custom string is simulator-confirmed; qualify very
+large custom strings on the exact controller and firmware before production.
 
 ## Controller and Program-Scoped Tags
 
@@ -101,6 +125,34 @@ The Python 1.2.0 wrapper does not expose tag discovery or metadata APIs. It can
 read and write known controller/program paths, arrays, bits, and UDT members.
 Do not assume that program enumeration is available merely because direct
 program paths work.
+
+Controller scope means the tag belongs to the controller and its path is just
+`TagName`. Program scope means it belongs to one Logix program and its path is
+`Program:<program-name>.TagName`. The value API is otherwise the same.
+
+## UDT Reads and Member Writes
+
+```python
+with Client("192.168.0.10:44818") as plc:
+    # A whole structure snapshot. Depending on metadata, this is decoded
+    # members or a dictionary containing symbol_id and raw data bytes.
+    mixer = plc.read_tag("Mixer")
+    print(mixer)
+
+    # Prefer complete member paths for normal application logic.
+    speed = plc.read_tag("Mixer.SpeedFeedback")
+    plc.write_tag("Mixer.SpeedSetpoint", 60.0)
+    plc.write_tag("Mixer.Enabled", True)
+    plc.write_tag("Mixer.Description", "Primary mixer")
+
+    # Whole array-element reads work; write its members individually.
+    motor = plc.read_tag("Motors[0]")
+    plc.write_tag("Motors[0].CommandSpeed", 1250)
+```
+
+Do not construct an arbitrary Python dictionary and treat it as a whole UDT
+write. A safe whole-structure write needs the exact controller template handle
+and binary layout. Whole UDT-array-element writes are not supported in 1.2.0.
 
 ## Batch Reads and Writes
 
@@ -215,6 +267,7 @@ Core wrapper examples:
 - [`read_batch_tags.py`](examples/read_batch_tags.py)
 - [`write_batch_tags.py`](examples/write_batch_tags.py)
 - [`program_scoped_tags.py`](examples/program_scoped_tags.py)
+- [`udt_and_string.py`](examples/udt_and_string.py)
 - [`control_logix_route.py`](examples/control_logix_route.py)
 - [`diagnostics_snapshot.py`](examples/diagnostics_snapshot.py)
 

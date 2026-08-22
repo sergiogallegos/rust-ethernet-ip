@@ -26,6 +26,7 @@
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button>
     <nav id="site-nav" class="site-nav" aria-label="Primary navigation">
       <a href="#languages">Languages</a>
+      <a href="#capabilities">Features</a>
       <a href="#architecture">How it fits</a>
       <a href="#hardware">Hardware</a>
       <a href="#why">Why this library</a>
@@ -133,6 +134,25 @@
       <p class="browser-note"><strong>Web application note:</strong> the PLC connection belongs in your backend or edge service; browser JavaScript should call that service rather than opening an industrial protocol connection directly.</p>
     </section>
 
+    <section id="capabilities" class="capabilities-section section-shell section-block">
+      <div class="section-heading">
+        <p class="eyebrow"><span></span> Rust core capabilities</p>
+        <h2>What can the library do?</h2>
+        <p>One protocol core handles the controller work. Choose a language wrapper for your application without reimplementing EtherNet/IP.</p>
+      </div>
+      <div class="capability-grid">
+        <article><span>01</span><h3>Single-tag I/O</h3><p>Typed reads and writes for BOOL, integer, floating-point, STRING, arrays, and symbolic bit paths.</p></article>
+        <article><span>02</span><h3>Batch operations</h3><p>Read or write many independent tags with packet-size-aware grouping and per-tag results.</p></article>
+        <article><span>03</span><h3>Controller + program scope</h3><p>Use <code>TagName</code> or <code>Program:Main.TagName</code> with the same read/write APIs.</p></article>
+        <article><span>04</span><h3>Tag discovery</h3><p>Enumerate controller tags and inspect type metadata; Rust also exposes program-scoped enumeration.</p></article>
+        <article><span>05</span><h3>UDTs and nested members</h3><p>Read whole structures, access nested symbolic paths, and write known members without rebuilding a UDT.</p></article>
+        <article><span>06</span><h3>Built-in + custom STRINGs</h3><p>Handle-aware text access for standard STRING and custom DATA sizes, including fragmented large transfers.</p></article>
+        <article><span>07</span><h3>ControlLogix routing</h3><p>Route through a 1756 Ethernet module and backplane slot, including ordered multi-hop paths.</p></article>
+        <article><span>08</span><h3>Monitoring + diagnostics</h3><p>Subscriptions, tag-group polling, health checks, operation metrics, latency, and native error detail.</p></article>
+      </div>
+      <p class="capability-note">Wrapper surfaces intentionally differ today. Use the <a href="#languages">language guides below</a> to confirm exact API availability for each stack.</p>
+    </section>
+
     <section id="languages" class="section-shell section-block">
       <div class="section-heading">
         <p class="eyebrow"><span></span> Choose your stack</p>
@@ -173,6 +193,7 @@
           <button type="button" class="code-tab active" role="tab" aria-selected="true" data-lang="rust">Rust</button>
           <button type="button" class="code-tab" role="tab" aria-selected="false" data-lang="csharp">C#</button>
           <button type="button" class="code-tab" role="tab" aria-selected="false" data-lang="python">Python</button>
+          <button type="button" class="code-tab" role="tab" aria-selected="false" data-lang="cpp">C++</button>
         </div>
         <pre data-code="rust"><code><span class="kw">use</span> rust_ethernet_ip::{EipClient, PlcValue};
 
@@ -189,6 +210,12 @@ plc.WriteDint(<span class="str">"Program:Main.Setpoint"</span>, <span class="num
 <span class="kw">with</span> EtherNetIpClient(<span class="str">"192.168.1.10:44818"</span>) <span class="kw">as</span> plc:
     speed = plc.read_tag(<span class="str">"Program:Main.Speed"</span>)
     plc.write_tag(<span class="str">"Program:Main.Setpoint"</span>, <span class="num">1500</span>)</code></pre>
+        <pre data-code="cpp" hidden><code><span class="kw">auto</span> result = EipClient::connect(<span class="str">"192.168.1.10:44818"</span>);
+<span class="kw">if</span> (!result) <span class="kw">return</span> <span class="num">1</span>;
+EipClient plc = std::move(result.value);
+
+<span class="kw">auto</span> speed = plc.read_dint(<span class="str">"Program:Main.Speed"</span>);
+plc.write_dint(<span class="str">"Program:Main.Setpoint"</span>, <span class="num">1500</span>);</code></pre>
       </div>
       <div class="quick-copy">
         <p class="eyebrow"><span></span> Start in minutes</p>
@@ -221,16 +248,27 @@ plc.WriteDint(<span class="str">"Program:Main.Setpoint"</span>, <span class="num
     <section id="why" class="section-shell section-block why-section">
       <div class="section-heading"><p class="eyebrow"><span></span> Built for industrial software</p><h2>Protocol depth without protocol duplication.</h2></div>
       <div class="feature-grid">
-        <article><span>01</span><h3>Memory-safe core</h3><p>Rust owns wire parsing, session state, routing, fragmentation, and controller-specific behavior.</p></article>
-        <article><span>02</span><h3>Thin wrappers</h3><p>C#, Python, and C/C++ share one native implementation and one compatibility contract.</p></article>
+        <article><span>01</span><h3>Why the core is Rust</h3><p>Rust combines native performance with memory and thread safety for byte-level packet parsing, asynchronous network I/O, sessions, and long-running industrial services.</p></article>
+        <article><span>02</span><h3>Why wrappers exist</h3><p>Industrial teams can keep familiar C#, Python, C, or C++ application code while one tested Rust core owns the protocol behavior and fixes.</p></article>
         <article><span>03</span><h3>Logix-aware</h3><p>Program tags, arrays, packed BOOLs, built-in and custom strings, nested UDTs, and routed chassis access.</p></article>
         <article><span>04</span><h3>Inspectable evidence</h3><p>Simulator tests, cross-language contracts, release gates, and real-hardware records live beside the code.</p></article>
       </div>
       <div class="platform-band">
         <div><span>Direct connectivity</span><strong>No OPC server, RSLinx, or proprietary runtime key required.</strong></div>
-        <div><span>Packaged runtimes</span><strong>Windows x64 · Linux x64 · macOS arm64</strong></div>
+        <div><span>Cross-platform</span><strong>Run the application on Windows x64, Linux x64, or Apple-silicon macOS by shipping the matching native runtime.</strong></div>
         <div><span>Examples included</span><strong>Rust · C# desktop/web · Python data services · CMake C++</strong></div>
         <div><span>Support path</span><strong>GitHub Issues for defects · Discussions for integration help</strong></div>
+      </div>
+    </section>
+
+    <section class="sponsor-card section-shell" aria-labelledby="sponsor-title">
+      <div>
+        <p class="eyebrow"><span></span> Support open industrial software</p>
+        <h2 id="sponsor-title">Help test more PLCs, firmware, and platforms.</h2>
+      </div>
+      <div class="sponsor-copy">
+        <p>Sponsorship helps fund real-hardware validation, controller access, cross-platform packaging, and the time required to keep every language binding documented and tested.</p>
+        <a class="button button-primary" href="https://github.com/sponsors/sergiogallegos">Sponsor on GitHub <span>♡</span></a>
       </div>
     </section>
 
@@ -238,7 +276,7 @@ plc.WriteDint(<span class="str">"Program:Main.Setpoint"</span>, <span class="num
       <p class="eyebrow"><span></span> Open source · MIT</p>
       <h2>Connect modern software<br>to the factory floor.</h2>
       <p>Read the docs, inspect the protocol core, or bring another processor and firmware into the compatibility matrix.</p>
-      <div class="hero-actions"><a class="button button-primary" href="https://github.com/sergiogallegos/rust-ethernet-ip">Explore on GitHub <span>→</span></a><a class="button button-secondary" href="https://docs.rs/rust-ethernet-ip/1.2.0/rust_ethernet_ip/">Read Rust API docs</a><a class="button button-secondary" href="https://github.com/sponsors/sergiogallegos">Sponsor development ♡</a></div>
+      <div class="hero-actions"><a class="button button-primary" href="https://github.com/sergiogallegos/rust-ethernet-ip">Explore on GitHub <span>→</span></a><a class="button button-secondary" href="https://docs.rs/rust-ethernet-ip/1.2.0/rust_ethernet_ip/">Read Rust API docs</a></div>
     </section>
   </main>
 

@@ -16,7 +16,8 @@ These behaviors affect all EtherNet/IP communication libraries. Some are control
 
 The STRING data type in Logix 5000 controllers is a **Predefined Structure**, not an atomic type. It consists of:
 - `LEN` (DINT) - The length of the string
-- `DATA[82]` (SINT array) - The character data (default 82 characters)
+- `DATA[82]` (SINT array) - The text bytes (default capacity: 82 bytes; UTF-8
+  characters may use more than one byte)
 
 **Key Limitation from Rockwell Documentation (1756-PM020):**
 

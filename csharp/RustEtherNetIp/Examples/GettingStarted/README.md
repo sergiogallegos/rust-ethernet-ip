@@ -11,6 +11,7 @@ These are copy-ready `.NET 10` console programs for the published
 | [`04_ControlLogixRouting`](04_ControlLogixRouting/Program.cs) | Route through an Ethernet module to a ControlLogix CPU slot |
 | [`05_Diagnostics`](05_Diagnostics/Program.cs) | Health, operation counts, latency, and last-error metrics |
 | [`06_Subscriptions`](06_Subscriptions/Program.cs) | Polling subscription and one-shot tag-group acquisition |
+| [`07_UdtAndString`](07_UdtAndString/Program.cs) | Whole-UDT reads, member-level writes, and built-in/custom string capacity |
 
 Create a project, add the stable package, and replace its `Program.cs` with one
 of the examples:

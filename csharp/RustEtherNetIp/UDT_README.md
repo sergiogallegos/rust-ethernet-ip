@@ -32,6 +32,11 @@ plc.WriteString("Mixer.Description", "Primary mixer");
 Typed member writes avoid reconstructing an entire controller-defined binary
 layout in application code.
 
+Use a whole-UDT read when the values must come from one structure snapshot or
+when inspecting unknown/raw structure data. Use direct member reads for a few
+known fields; they transfer less data. For a periodic scan of several known
+members, batch their full symbolic paths.
+
 ## Nested and Array-Element Paths
 
 Dot notation and array indices are part of the tag path:
@@ -49,6 +54,12 @@ The 1.2.0 handle-aware string path supports built-in and custom STRING members.
 Real hardware confirms built-in `STRING`, custom `Str82`, and custom `Str400`
 members inside UDTs and UDT array elements on CompactLogix 5069-L330ERM
 firmware 38.
+
+The built-in `STRING` stores text in `SINT DATA[82]`, so its capacity is 82
+bytes (UTF-8 characters can use multiple bytes). Custom string UDTs use their
+declared `DATA[N]` size and a type-specific structure handle. When the request
+or reply outgrows one CIP packet, 1.2.0 uses fragmented services; see the
+[STRING guide](../../docs/STRING_HANDLING.md) for the byte-level explanation.
 
 ## Whole-Structure Reads
 

@@ -58,6 +58,10 @@ add_executable(cpp_discovery discovery.cpp)
 target_include_directories(cpp_discovery PRIVATE "${REPO_ROOT}/include")
 target_link_libraries(cpp_discovery PRIVATE rust_ethernet_ip_native cpp_warnings)
 
+add_executable(cpp_udt_and_scope udt_and_scope.cpp)
+target_include_directories(cpp_udt_and_scope PRIVATE "${REPO_ROOT}/include")
+target_link_libraries(cpp_udt_and_scope PRIVATE rust_ethernet_ip_native cpp_warnings)
+
 # Full-coverage exerciser (parity with the Rust/C#/Python runners). Needs a live PLC,
 # so it is a build target but not a ctest.
 add_executable(cpp_full_coverage full_coverage.cpp)
@@ -65,12 +69,12 @@ target_include_directories(cpp_full_coverage PRIVATE "${REPO_ROOT}/include")
 target_link_libraries(cpp_full_coverage PRIVATE rust_ethernet_ip_native cpp_warnings)
 
 if(UNIX AND NOT APPLE)
-    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_full_coverage PROPERTIES BUILD_RPATH "$ORIGIN")
+    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage PROPERTIES BUILD_RPATH "$ORIGIN")
 elseif(APPLE)
-    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_full_coverage PROPERTIES BUILD_RPATH "@loader_path")
+    set_target_properties(ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage PROPERTIES BUILD_RPATH "@loader_path")
 endif()
 
-foreach(target ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_full_coverage)
+foreach(target ffi_header_link_check cpp_smoke_demo cpp_route_and_diagnostics cpp_discovery cpp_udt_and_scope cpp_full_coverage)
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${RUST_ETHERNET_IP_NATIVE_LIB}"

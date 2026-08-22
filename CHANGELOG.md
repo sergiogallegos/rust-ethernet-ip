@@ -56,6 +56,16 @@ Target release: `1.2.1`.
   industrial use cases; corrected superseded 1.2.0 STRING-write guidance and
   added buildable examples for scalar I/O, batches, program paths, controller
   discovery, ControlLogix routing, diagnostics, and polling.
+- Added cross-language decision guidance and runnable UDT examples covering
+  single versus batch access, whole-structure reads versus member writes,
+  controller/program scope, built-in/custom STRING byte capacity, and CIP
+  fragmentation boundaries.
+- Expanded the website with a Rust-core capability catalog, a stable-size C++
+  quick-start tab, keyboard and remembered-language behavior, Rust-core/wrapper
+  architecture rationale, and a plain-language cross-platform explanation.
+- Added a responsive, site-native GitHub Sponsors card without weakening the
+  no-third-party-frame Content Security Policy, and documented the local-only
+  quick-start language preference in the privacy policy.
 
 ### Changed
 

@@ -105,6 +105,22 @@ A type mismatch normally appears as a `PlcException` containing the native CIP
 reason. Do not catch a failure and retry with unrelated types in production;
 know the Logix type or obtain its attributes first.
 
+## Choose Single, Batch, or Whole-Structure Access
+
+| Need | Best starting API | Why |
+|---|---|---|
+| One value on demand, a command, or an occasional setpoint | `ReadDint`, `ReadReal`, `WriteBool`, and the other typed methods | Clearest code and one result to handle |
+| Several independent tags in the same scan | `ReadTagsBatch` / `WriteTagsBatch` | Reduces network round trips and reports a result for each tag |
+| A mixed read/write transaction list | `ExecuteBatch` | Sends packet-size-aware groups; correlate results by tag and operation |
+| One known UDT member | A typed method with the full member path | Avoids transferring or rebuilding the rest of the structure |
+| A consistent snapshot of an entire UDT | `ReadUdt` or `ReadUdtChunked` | Returns the structure data in one logical operation; large replies are fragmented |
+| Change an entire UDT | Usually do not; write known members individually | A whole write requires the exact controller template handle and binary layout |
+
+A batch is not an atomic PLC transaction and can contain a mixture of successes
+and failures. For one tag, the typed single-tag API is simpler. For a polling
+screen, historian sample, or MES scan containing several independent values, a
+batch normally provides the better network shape.
+
 ## STRING Support in 1.2.0
 
 The 1.2.0 `WriteString` path discovers and uses the target structure handle.
@@ -124,11 +140,20 @@ plc.WriteString("Motors[0].Description", "Infeed conveyor");
 Console.WriteLine(plc.ReadString("Motors[0].Description"));
 ```
 
+The Studio 5000 built-in `STRING` is a structure containing a 4-byte `LEN` and
+an 82-byte `SINT DATA[82]` array (88 bytes total after alignment). Its text
+capacity is therefore **82 bytes**, not an unlimited .NET string; non-ASCII
+UTF-8 characters may consume more than one byte. A custom Logix string type,
+for example `Str400` with `DATA[400]`, has the capacity declared by that data
+array and its own structure handle.
+
 Real hardware confirms built-in `STRING`, custom `Str82`, and custom `Str400`
-members on 5069-L330ERM firmware 38. Fragmented custom-string operation beyond
-one CIP packet has simulator coverage with a 600-byte value; repeat real-hardware
-validation before treating very large custom strings as qualified for a specific
-controller/firmware combination.
+members on 5069-L330ERM firmware 38. A measured unconnected CIP request on that
+target fits about 494 bytes total, including service and symbolic-path overhead,
+so there is no single universal “maximum text length” for one packet. Version
+1.2.0 uses CIP Read/Write Tag Fragmented when a string or structure will not fit.
+A 600-byte custom string is simulator-confirmed; qualify very large custom
+strings on the exact controller and firmware before production use.
 
 ## Tag Paths
 
@@ -145,6 +170,9 @@ string arrayMember = plc.ReadString("Motors[2].Description");
 
 The `Program:<program-name>.TagName` prefix is part of the tag path. Both
 controller- and program-scoped paths work for typed reads, writes, and batches.
+Scope changes only the symbolic path: a controller tag is visible to the whole
+controller, while a program tag belongs to one Logix program. It does not
+change which typed read/write method you call.
 
 ## Batch Operations
 

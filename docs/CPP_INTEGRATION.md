@@ -123,6 +123,21 @@ int main()
 
 The RAII class disconnects in its destructor and cannot be copied.
 
+## Choose Single, Batch, or Structure Access
+
+| Need | Best starting API | Why |
+|---|---|---|
+| One value, command, or occasional setpoint | Typed `eip_read_*` / `eip_write_*` call | Direct return code and no JSON parsing |
+| Several independent tags in one scan | `eip_read_tags_batch` / `eip_write_tags_batch` | Packet-size-aware grouping and per-tag JSON results |
+| One known UDT member | Typed call using its complete symbolic path | Avoids transferring or rebuilding the whole structure |
+| Inspect a whole UDT | `eip_read_udt_chunked` | Caller-owned JSON buffer; supports fragmented large replies |
+| Change an entire UDT | Usually do not; write members individually | `eip_write_udt` requires the exact template-compatible symbol ID and raw bytes |
+
+A batch reduces protocol round trips but is not an atomic controller
+transaction; parse every per-tag result. Use a typed single call for one tag.
+Use whole-UDT reads for snapshots or inspection and member paths for ordinary
+control, configuration, and recipe changes.
+
 ## STRINGs and UDT Member Paths in 1.2.0
 
 `eip_write_string` is handle-aware. Supply the complete symbolic path for a
@@ -139,11 +154,20 @@ if (eip_read_string(client_id, "Motors[0].Description", value, sizeof(value)) !=
     throw std::runtime_error(last_error(client_id));
 ```
 
+The built-in Studio 5000 `STRING` contains a 4-byte `LEN` and
+`SINT DATA[82]`, plus alignment, so its text capacity is **82 bytes**. The ABI
+accepts UTF-8, where a non-ASCII character may occupy multiple bytes. A custom
+string type uses its declared `DATA[N]` capacity and a different structure
+handle; the library discovers that handle.
+
 This supersedes older notes that treated all direct UDT STRING-member writes
 as firmware-blocked. Real hardware confirms built-in STRING and custom
-`Str82`/`Str400` members on 5069-L330ERM firmware 38. Very large custom strings
-have simulator fragmentation coverage and should be qualified on the intended
-controller/firmware combination.
+`Str82`/`Str400` members on 5069-L330ERM firmware 38. A measured unconnected
+CIP write on that target fits about 494 bytes total, including service and tag
+path overhead, so this is not a 494-character limit. Version 1.2.0 uses CIP
+fragmented services when the value will not fit one packet. A 600-byte custom
+string is simulator-confirmed; qualify very large types on the intended target.
+Size caller-owned read buffers for the largest expected text plus a null byte.
 
 ## Controller and Program Tag Paths
 
@@ -164,6 +188,32 @@ eip_read_dint(
 The 1.2.0 C ABI exposes controller-scoped discovery but not program-scoped
 enumeration. Known program paths are fully usable for reads, writes, and
 batches.
+
+Controller-scoped paths are simply `TagName`. A program-scoped tag belongs to
+one Logix program and uses `Program:<program-name>.TagName`; the same typed C
+function is used for either scope.
+
+## Whole UDT Reads and Member Writes
+
+```cpp
+std::array<char, 8192> udt_json {};
+if (eip_read_udt_chunked(client_id, "Mixer", udt_json.data(), udt_json.size()) != 0)
+    throw std::runtime_error(last_error(client_id));
+
+double speed = 0.0;
+eip_read_real(client_id, "Mixer.SpeedFeedback", &speed);
+eip_write_real(client_id, "Mixer.SpeedSetpoint", 60.0);
+eip_write_bool(client_id, "Mixer.Enabled", 1);
+eip_write_string(client_id, "Mixer.Description", "Primary mixer");
+
+// Reading a whole array element works; write its members individually.
+eip_read_udt_chunked(client_id, "Motors[0]", udt_json.data(), udt_json.size());
+eip_write_dint(client_id, "Motors[0].CommandSpeed", 1250);
+```
+
+The returned whole-UDT JSON is either decoded member data or the raw structure
+representation needed by the ABI. Do not invent raw bytes or a member map for
+a whole write. Whole UDT-array-element writes are not supported in 1.2.0.
 
 ## Batch Read and Write
 
@@ -307,6 +357,7 @@ or call the C functions directly.
 - [`demo.cpp`](../examples/cpp/demo.cpp): RAII scalar/STRING/batch smoke
 - [`route_and_diagnostics.cpp`](../examples/cpp/route_and_diagnostics.cpp): routed ControlLogix and diagnostics
 - [`discovery.cpp`](../examples/cpp/discovery.cpp): controller discovery and cleanup
+- [`udt_and_scope.cpp`](../examples/cpp/udt_and_scope.cpp): controller/program paths, whole-UDT reads, member writes, and STRINGs
 - [`full_coverage.cpp`](../examples/cpp/full_coverage.cpp): maintainer hardware matrix runner
 - [`examples/cpp/README.md`](../examples/cpp/README.md): build and run index
 

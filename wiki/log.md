@@ -1400,3 +1400,42 @@ Sources used:
 - `scripts/check-release-readiness`
 - `tests/release_readiness_tests.sh`
 - `docs/release/1.2.1_RELEASE_NOTES_DRAFT.md`
+
+## [2026-08-21] reframe | clarify wrapper operation choices and STRING byte limits
+
+- Updated `wiki/wrapper-parity/rust-vs-csharp.md`.
+- Added language-specific decision tables and runnable examples for single
+  tags, batches, whole-UDT reads, member writes, and controller/program paths.
+- Clarified that built-in Logix `STRING` has an 82-byte `DATA` capacity and
+  that the measured 494-byte single-request ceiling includes CIP/path overhead.
+- Added a website Rust-core capability catalog, C++ quick start, architecture
+  rationale, and explicit Windows/Linux/macOS explanation.
+
+Sources used:
+
+- `README.md`
+- `docs/STRING_HANDLING.md`
+- `csharp/RustEtherNetIp/README.md`
+- `csharp/RustEtherNetIp/UDT_README.md`
+- `csharp/RustEtherNetIp/Examples/GettingStarted/`
+- `python/README.md`
+- `python/examples/`
+- `docs/CPP_INTEGRATION.md`
+- `examples/cpp/`
+- `src/client.rs`
+- `docs/validation/2026-07-02_string_write_probe_5069-L330ERM_fw38.md`
+- `wiki/limitations/string-and-udt-write-behavior.md`
+
+## [2026-08-21] reframe | keep website sponsorship native and privacy-preserving
+
+- Chose a responsive site-native sponsorship card linking to GitHub Sponsors
+  instead of a third-party iframe.
+- Preserved the restrictive frame policy and disclosed the local-only
+  quick-start language preference accurately.
+
+Sources used:
+
+- `website/index.html`
+- `website/launch.css`
+- `website/_headers`
+- `website/privacy.html`

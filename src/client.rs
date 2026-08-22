@@ -3175,7 +3175,7 @@ impl EipClient {
         // structure handle, and the built-in handle is rejected with CIP 0x2107. Try the standard
         // encoding first — it is the fast path and is all the simulator models — and on a type
         // mismatch discover the target's real handle + structure size and retry. A value longer
-        // than the built-in 82-char capacity can only be a custom type, so skip straight to the
+        // than the built-in 82-byte capacity can only be a custom type, so skip straight to the
         // handle-aware path. See docs/agents/notes/ab-firmware-quirks.md (STRING Members).
         if let PlcValue::String(text) = value {
             if text.len() <= values::STANDARD_STRING_DATA_LEN {
@@ -3193,14 +3193,14 @@ impl EipClient {
     }
 
     /// Single-request write ceiling for unconnected messaging. A request above this is rejected
-    /// by the controller with encapsulation status 0x03; CIP fragmentation (not yet implemented)
-    /// would be required. Measured on CompactLogix 5069-L330ERM fw38 (494 bytes OK, 498 rejected).
+    /// by the controller with encapsulation status 0x03, so the string path uses CIP
+    /// fragmentation. Measured on CompactLogix 5069-L330ERM fw38 (494 bytes OK, 498 rejected).
     const SINGLE_PACKET_WRITE_LIMIT: usize = 494;
 
     /// Writes a Logix STRING using the target tag's real structure handle and structure size,
     /// discovered by reading the tag first. Handles built-in `STRING` and custom string types
-    /// (own name/length) uniformly. Returns a clear error when the structure is larger than one
-    /// CIP packet (fragmentation would be required).
+    /// (own name/length) uniformly. Structures larger than one CIP packet use Write Tag
+    /// Fragmented.
     async fn write_string_handle_aware(
         &mut self,
         tag_name: &str,

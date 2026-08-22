@@ -6,7 +6,7 @@ for each case. Validated on CompactLogix 5069-L330ERM firmware 38.
 
 ## TL;DR
 
-- **Built-in `STRING`** (82-char) works everywhere, standalone and as a UDT member.
+- **Built-in `STRING`** (82-byte text capacity) works everywhere, standalone and as a UDT member.
 - **Custom string types** (e.g. `Str82`, `Str400` — your own name/length) also work, because the
   library discovers the tag's real *structure handle* at write time. Use the same
   `write_tag` / `WriteString` / `write_tag` API as for built-in strings.
@@ -29,6 +29,11 @@ request does not match the target tag's data type").
 
 The handle is a fingerprint of the **type definition** (its name and members), **not** the byte
 layout. The built-in `STRING` has handle **`0x0FCE`**.
+
+The built-in capacity is measured in `SINT` bytes, not Unicode characters.
+All wrappers accept UTF-8 text, so non-ASCII characters may consume more than
+one byte. The full built-in structure is 88 bytes after alignment
+(`LEN` 4 + `DATA` 82 + 2 pad bytes).
 
 ## Default STRING vs. custom string types
 

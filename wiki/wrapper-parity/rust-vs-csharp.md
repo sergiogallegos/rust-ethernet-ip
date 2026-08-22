@@ -24,9 +24,14 @@ shared.
   blocking on Linux, Windows, and macOS in the `1.2.1` preparation line.
 - `confirmed`: C# now has a buildable first-user progression for scalar and
   STRING I/O, batches, controller discovery/known program paths, ControlLogix
-  routing, diagnostics, and polling. Python has parallel core examples plus
-  analytics/service examples, and C++ has build-checked route/diagnostics and
-  discovery programs in addition to its simulator smoke.
+  routing, diagnostics, polling, and UDT/member access. Python has parallel
+  core examples plus analytics/service examples, and C++ has build-checked
+  route/diagnostics, discovery, and UDT/scope programs in addition to its
+  simulator smoke.
+- `confirmed`: Each wrapper guide distinguishes single-tag calls, batches,
+  whole-UDT reads, member-level writes, and controller/program symbolic paths.
+  All describe built-in `STRING` as 82-byte `DATA`, not an unlimited host
+  string or a guaranteed 82 Unicode characters.
 - `confirmed`: C#, Python, and the C ABI can access known program-scoped paths,
   but program-scoped enumeration remains Rust-only. Their discovery examples
   intentionally describe controller discovery rather than implying parity.

@@ -1365,6 +1365,7 @@ Sources used:
 - `.github/workflows/release.yml`
 - `include/rust_ethernet_ip.h`
 - `examples/cpp/eip_client.hpp`
+
 - `examples/cpp/CMakeLists.txt`
 - `docs/audit/1.2.1_wrapper_and_platform_gap_analysis.md`
 - Public native-library platform, packaging, C API, and contributor-testing
@@ -1639,6 +1640,7 @@ Sources used:
 Sources used:
 
 - `docs/agents/tasks/CODEX-BA-schema-cache-generation.md`
+
 - `docs/agents/tasks/CODEX-BB-schema-drift-self-healing.md`
 - `docs/agents/tasks/CODEX-BC-cross-binding-schema-refresh-diagnostics.md`
 - `docs/agents/tasks/CODEX-BD-schema-change-validation-gate.md`
@@ -1685,3 +1687,94 @@ Sources used:
 - `website/license.html`
 - `website/README.md`
 - `wiki/protocol/device-role-classification.md`
+
+## [2026-08-22] ingest | add schema generation and comprehensive refresh
+
+- Updated `wiki/investigations/array-type-cache-lifecycle.md` after CODEX-BA.
+- Recorded the clone-shared monotonic schema generation, comprehensive Rust
+  refresh operation, route-change invalidation, and stale-insertion guards.
+- Kept response-driven recovery and cross-binding exposure as explicit CODEX-BB
+  and CODEX-BC follow-up work.
+
+Sources used:
+
+- `src/client.rs`
+- `docs/agents/tasks/CODEX-BA-schema-cache-generation.md`
+- `CHANGELOG.md`
+- `docs/release/1.2.1_RELEASE_NOTES_DRAFT.md`
+
+## [2026-08-22] ingest | add bounded schema-drift recovery
+
+- Updated `wiki/investigations/array-type-cache-lifecycle.md` after CODEX-BB.
+- Confirmed path-local eviction and exactly one logical read retry for stale
+  packed-BOOL classification; sent writes remain fail-closed and are not
+  replayed.
+- Added dynamic simulator evidence for controller/program paths, both sides of
+  the 32-bit BOOL boundary, batch correlation, and delete/recreate behavior.
+
+Sources used:
+
+- `src/client.rs`
+- `src/client/batch_exec.rs`
+- `tests/plc_sim.rs`
+- `tests/schema_drift_recovery_tests.rs`
+
+## [2026-08-22] ingest | expose schema maintenance across bindings
+
+- Updated `wiki/protocol/abi-contract.md` for coordinated additive ABI v3 and
+  the schema-refresh capability bit.
+- Exposed comprehensive schema refresh through C, C#, Python, and C++, and
+  added backward-compatible schema/cache/recovery diagnostic fields.
+- Documented the safe maintenance sequence: pause writes, edit/download,
+  refresh, optionally rediscover and verify, then resume writes.
+
+Sources used:
+
+- `src/version.rs`
+- `src/ffi.rs`
+- `include/rust_ethernet_ip.h`
+- `csharp/RustEtherNetIp/`
+- `python/rust_ethernet_ip/`
+- `examples/cpp/eip_client.hpp`
+
+## [2026-08-22] ingest | prepare schema-change hardware gate
+
+- Added the reusable controller schema-change procedure and the dated
+  1756-L75 firmware-33 record.
+- Recorded an offline cross-binding PASS from one release artifact for dynamic
+  schema mutation, explicit refresh, diagnostics generation, and header parity.
+- Kept the live Studio 5000 portion explicitly pending; it is not hardware
+  compatibility evidence until the edit/download, session, write-count, UDT
+  rediscovery, full-coverage, and restoration rows are completed.
+
+Sources used:
+
+- `scripts/schema-change-gate`
+- `tests/schema_drift_recovery_tests.rs`
+- `docs/validation/SCHEMA_CHANGE_GATE.md`
+- `docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md`
+
+## [2026-08-22] ingest | add live schema-change gate companion
+
+- Independently reran the offline gate (`scripts/schema-change-gate`) plus the
+  full workspace matrix — `cargo fmt`, all-feature clippy with warnings
+  denied, `SKIP_PLC_TESTS=1 cargo test --workspace --locked`, and
+  `plc_sim_tests` — all green on the CODEX-BA/BB/BC/BD tree.
+- Added `examples/schema_change_gate_live.rs`, a Rust companion that
+  automates the non-editing steps of the live procedure against a real
+  controller: baseline capture, warm reads at indices 5/40 in controller and
+  program scope, an optional restore-safe pre-edit write smoke check, a
+  stdin pause for the maintainer's Studio 5000 action, post-edit reads with
+  automatic-recovery counters, explicit `refresh_schema()`, rediscovery,
+  post-refresh reads, and an optional restore-safe post-refresh write/verify.
+  It never sends a schema edit and prints a result block for the dated
+  record. The UDT layout/download section and the C#/Python/C++ companions
+  remain manual.
+- `SCHEMA_CHANGE_GATE.md` documents the new tool alongside the manual
+  per-binding steps it does not yet cover.
+
+Sources used:
+
+- `examples/schema_change_gate_live.rs`
+- `docs/validation/SCHEMA_CHANGE_GATE.md`
+- `docs/agents/tasks/CODEX-BD-schema-change-validation-gate.md`

@@ -118,6 +118,28 @@ fn ffi_registry_mutations_survive_repeated_clone_lookups() {
 }
 
 #[test]
+fn ffi_schema_refresh_is_clone_visible_and_invalid_handles_report_last_error() {
+    let sim = SimHarness::start();
+    let client = connect_ffi_client(&sim.address);
+    let before = ffi::client_schema_generation_for_testing(client.id).expect("generation");
+
+    assert_eq!(ffi::eip_refresh_schema(client.id), 0);
+    assert_eq!(
+        ffi::client_schema_generation_for_testing(client.id),
+        Some(before + 1)
+    );
+
+    let invalid_id = c_int::MAX;
+    assert_eq!(ffi::eip_refresh_schema(invalid_id), -1);
+    let mut error = [0_i8; 128];
+    let written =
+        unsafe { ffi::eip_get_last_error(invalid_id, error.as_mut_ptr(), error.len() as c_int) };
+    assert!(written > 0);
+    let message = unsafe { std::ffi::CStr::from_ptr(error.as_ptr()) }.to_string_lossy();
+    assert!(message.contains("invalid client handle"));
+}
+
+#[test]
 fn ffi_detailed_health_cannot_resurrect_disconnected_client() {
     let sim = SimHarness::start();
     let addr_c = CString::new(sim.address.as_str()).expect("address CString");

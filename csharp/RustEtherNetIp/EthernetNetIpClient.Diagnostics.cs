@@ -16,6 +16,25 @@ namespace RustEtherNetIp
             return GetDiagnosticsSnapshotInternal(detailed: true);
         }
 
+        /// <summary>
+        /// Invalidates all controller-schema-derived caches without reconnecting.
+        /// Pause writes before an edit or download, call this after it completes,
+        /// optionally rediscover and verify critical tags, then resume writes.
+        /// </summary>
+        public void RefreshSchema()
+        {
+            if (_clientId < 0)
+                throw new InvalidOperationException("Not connected to a PLC");
+
+            ExecuteWithLock(() =>
+            {
+                int rc = eip_refresh_schema(_clientId);
+                if (rc != 0)
+                    throw OperationFailure($"Failed to refresh controller schema (native code {rc})");
+                return true;
+            });
+        }
+
         private DiagnosticsSnapshot GetDiagnosticsSnapshotInternal(bool detailed)
         {
             if (_clientId < 0)

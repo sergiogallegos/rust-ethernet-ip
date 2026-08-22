@@ -228,10 +228,16 @@ with Client("192.168.0.10:44818") as plc:
     print("failed reads:", snapshot.operations.failed_reads)
     print("average latency:", snapshot.performance.avg_read_latency_ms)
     print("last error:", snapshot.errors.last_error_message)
+    print("schema generation:", snapshot.schema_cache.generation)
 ```
 
 CPU and memory values are placeholders in this release. Connection,
 operation, error, latency, and verified-health metrics are the useful fields.
+
+For an online tag replacement or controller download, pause application
+writes, complete the PLC change, call `plc.refresh_schema()`, optionally
+rediscover and verify critical reads, and then resume writes. This clears all
+schema-derived native caches without reconnecting.
 
 ## Error Handling
 

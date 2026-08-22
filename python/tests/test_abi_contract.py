@@ -22,10 +22,10 @@ class FakeFunction:
 
 
 class FakeNativeLibrary:
-    def __init__(self, *, abi_version: int = 2) -> None:
+    def __init__(self, *, abi_version: int = 3) -> None:
         self.eip_abi_version = FakeFunction(abi_version)
         self.eip_library_version = FakeFunction(b"1.2.1")
-        self.eip_capabilities = FakeFunction(0x0F)
+        self.eip_capabilities = FakeFunction(0x3F)
 
     def __getattr__(self, name: str) -> FakeFunction:
         function = FakeFunction(0)
@@ -45,12 +45,12 @@ class AbiContractTests(unittest.TestCase):
                     loaded = bindings.load_native_library()
 
         self.assertIs(loaded, fake_lib)
-        self.assertEqual(bindings.ABI_VERSION, 2)
+        self.assertEqual(bindings.ABI_VERSION, 3)
         self.assertEqual(bindings.LIBRARY_VERSION, "1.2.1")
-        self.assertEqual(bindings.CAPABILITIES, 0x0F)
-        self.assertEqual(rust_ethernet_ip.ABI_VERSION, 2)
+        self.assertEqual(bindings.CAPABILITIES, 0x3F)
+        self.assertEqual(rust_ethernet_ip.ABI_VERSION, 3)
         self.assertEqual(rust_ethernet_ip.LIBRARY_VERSION, "1.2.1")
-        self.assertEqual(rust_ethernet_ip.CAPABILITIES, 0x0F)
+        self.assertEqual(rust_ethernet_ip.CAPABILITIES, 0x3F)
 
     def test_load_native_library_rejects_abi_mismatch(self) -> None:
         fake_lib = FakeNativeLibrary(abi_version=1)
@@ -63,11 +63,11 @@ class AbiContractTests(unittest.TestCase):
                     with self.assertRaises(NativeLibraryLoadError) as ctx:
                         bindings.load_native_library()
 
-        self.assertIn("native library ABI version 1, wrapper expects 2", str(ctx.exception))
+        self.assertIn("native library ABI version 1, wrapper expects 3", str(ctx.exception))
 
     def test_load_native_library_continues_after_abi_mismatch(self) -> None:
         stale_lib = FakeNativeLibrary(abi_version=1)
-        current_lib = FakeNativeLibrary(abi_version=2)
+        current_lib = FakeNativeLibrary(abi_version=3)
         with tempfile.TemporaryDirectory() as tmp:
             stale = Path(tmp) / "stale_librust_ethernet_ip.so"
             current = Path(tmp) / "librust_ethernet_ip.so"
@@ -79,7 +79,7 @@ class AbiContractTests(unittest.TestCase):
                     loaded = bindings.load_native_library()
 
         self.assertIs(loaded, current_lib)
-        self.assertEqual(bindings.ABI_VERSION, 2)
+        self.assertEqual(bindings.ABI_VERSION, 3)
 
 
 if __name__ == "__main__":

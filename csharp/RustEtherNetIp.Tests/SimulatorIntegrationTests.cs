@@ -148,6 +148,12 @@ namespace RustEtherNetIp.Tests
                 DiagnosticsHealthMode.Passive,
                 DiagnosticsHealthMode.Verified
             });
+
+            var generation = snapshot.SchemaCache.Generation;
+            client.RefreshSchema();
+            var refreshed = client.GetDiagnosticsSnapshot();
+            Assert.Equal(generation + 1, refreshed.SchemaCache.Generation);
+            Assert.Equal(snapshot.SchemaCache.Refreshes + 1, refreshed.SchemaCache.Refreshes);
         }
 
         [Fact]

@@ -10,12 +10,13 @@ from .exceptions import NativeLibraryLoadError
 
 RESULT_BUFFER_SIZE = 131072
 READ_BUFFER_SIZE = 65536
-EXPECTED_ABI_VERSION = 2
+EXPECTED_ABI_VERSION = 3
 CAP_ROUTE_PATH_ORDERED_HOPS = 0x0000_0000_0000_0001
 CAP_BATCH_EXECUTE_V1 = 0x0000_0000_0000_0002
 CAP_DIAGNOSTICS_JSON = 0x0000_0000_0000_0004
 CAP_TAG_GROUP_SUBSCRIPTIONS = 0x0000_0000_0000_0008
 CAP_LAST_ERROR = 0x0000_0000_0000_0010
+CAP_SCHEMA_REFRESH = 0x0000_0000_0000_0020
 
 ABI_VERSION: int | None = None
 LIBRARY_VERSION: str | None = None
@@ -175,6 +176,8 @@ def _configure_function_signatures(lib: ctypes.CDLL) -> ctypes.CDLL:
         ctypes.POINTER(ctypes.c_void_p),
     ]
     lib.eip_get_diagnostics_json.restype = ctypes.c_int
+    lib.eip_refresh_schema.argtypes = [ctypes.c_int]
+    lib.eip_refresh_schema.restype = ctypes.c_int
 
     lib.eip_free_string.argtypes = [ctypes.c_void_p]
     lib.eip_free_string.restype = None

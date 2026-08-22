@@ -128,5 +128,6 @@ namespace RustEtherNetIp
         bool CheckHealth();
         DiagnosticsSnapshot GetDiagnosticsSnapshot();
         DiagnosticsSnapshot GetDiagnosticsSnapshotDetailed();
+        void RefreshSchema();
     }
 } 

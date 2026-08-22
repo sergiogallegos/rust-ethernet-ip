@@ -193,6 +193,9 @@ namespace RustEtherNetIp
         private static extern int eip_get_diagnostics_json(int client_id, int detailed, out IntPtr result_ptr);
 
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int eip_refresh_schema(int client_id);
+
+        [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]
         private static extern void eip_free_string(IntPtr ptr);
 
         [DllImport("rust_ethernet_ip", CallingConvention = CallingConvention.Cdecl)]

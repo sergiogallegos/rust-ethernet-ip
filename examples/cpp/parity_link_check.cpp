@@ -62,6 +62,7 @@ int main()
     use_symbol(&eip_check_health);
     use_symbol(&eip_check_health_detailed);
     use_symbol(&eip_get_diagnostics_json);
+    use_symbol(&eip_refresh_schema);
     use_symbol(&eip_read_tags_batch);
     use_symbol(&eip_write_tags_batch);
     use_symbol(&eip_execute_batch);

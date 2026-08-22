@@ -232,6 +232,27 @@ pub struct DiagnosticsSnapshot {
     pub system_metrics_are_placeholders: bool,
 }
 
+/// Diagnostics for controller-schema caching and bounded drift recovery.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SchemaCacheMetrics {
+    /// Current clone-shared schema generation.
+    pub generation: u64,
+    /// Number of explicit comprehensive schema refreshes.
+    pub refreshes: u64,
+    /// Array-classification cache hits.
+    pub array_classification_hits: u64,
+    /// Array-classification cache misses.
+    pub array_classification_misses: u64,
+    /// Array-classification entries evicted by refresh or contradiction.
+    pub array_classification_evictions: u64,
+    /// Responses that contradicted cached schema assumptions.
+    pub datatype_contradictions: u64,
+    /// One-time read recoveries that succeeded.
+    pub successful_read_recoveries: u64,
+    /// One-time read recoveries that still failed.
+    pub failed_read_recoveries: u64,
+}
+
 /// Production monitoring system for EtherNet/IP operations
 #[deprecated(
     since = "1.2.0",

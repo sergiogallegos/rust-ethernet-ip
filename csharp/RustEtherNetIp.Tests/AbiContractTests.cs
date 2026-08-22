@@ -8,7 +8,7 @@ namespace RustEtherNetIp.Tests
         [Fact]
         public void NativeRuntimeReportsExpectedAbiVersion()
         {
-            Assert.Equal(2u, NativeRuntime.AbiVersion);
+            Assert.Equal(3u, NativeRuntime.AbiVersion);
             Assert.Equal(NativeRuntime.ExpectedAbiVersion, (int)NativeRuntime.AbiVersion);
         }
 
@@ -25,12 +25,14 @@ namespace RustEtherNetIp.Tests
             Assert.True((NativeRuntime.Capabilities & 0x0000_0000_0000_0002UL) != 0);
             Assert.True((NativeRuntime.Capabilities & 0x0000_0000_0000_0004UL) != 0);
             Assert.True((NativeRuntime.Capabilities & 0x0000_0000_0000_0008UL) != 0);
+            Assert.True((NativeRuntime.Capabilities & 0x0000_0000_0000_0010UL) != 0);
+            Assert.True((NativeRuntime.Capabilities & 0x0000_0000_0000_0020UL) != 0);
         }
 
         [Fact]
         public void AbiMismatchPathIsDocumentedByExpectedVersionConstant()
         {
-            Assert.Equal(2, NativeRuntime.ExpectedAbiVersion);
+            Assert.Equal(3, NativeRuntime.ExpectedAbiVersion);
             Assert.IsAssignableFrom<Exception>(new BadImageFormatException());
         }
     }

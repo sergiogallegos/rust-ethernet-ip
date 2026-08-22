@@ -23,7 +23,7 @@ Current packaging state:
 - Rust crate: `1.2.0` published on crates.io
 - C# NuGet package: `RustEtherNetIp 1.2.0` published with native runtime assets
 - Python package: `rust-ethernet-ip 1.2.0` published on PyPI with native wheels
-- C/C++: stable ABI v2 header and CMake example ship in the source repository
+- C/C++: ABI v3 header and CMake example ship on the 1.2.1 development line
 
 ## Rust Integration
 

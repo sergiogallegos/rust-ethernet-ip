@@ -20,6 +20,7 @@ namespace RustEtherNetIp.Tests
             Assert.Contains("Not connected", batchResult["DINT_TAG"].ErrorMessage, StringComparison.OrdinalIgnoreCase);
             Assert.Throws<InvalidOperationException>(() => client.GetDiagnosticsSnapshot());
             Assert.Throws<InvalidOperationException>(() => client.GetDiagnosticsSnapshotDetailed());
+            Assert.Throws<InvalidOperationException>(() => client.RefreshSchema());
         }
 
         [Fact]

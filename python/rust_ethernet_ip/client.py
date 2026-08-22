@@ -30,6 +30,7 @@ from .types import (
     DiagnosticsOperationMetrics,
     DiagnosticsPerformanceMetrics,
     DiagnosticsSnapshot,
+    DiagnosticsSchemaCacheMetrics,
     RoutePath,
     WriteResult,
 )
@@ -181,6 +182,7 @@ def _parse_diagnostics_snapshot(payload: dict[str, object]) -> DiagnosticsSnapsh
         performance=DiagnosticsPerformanceMetrics(**payload["performance"]),
         errors=DiagnosticsErrorMetrics(**payload["errors"]),
         health=DiagnosticsHealthMetrics(**payload["health"]),
+        schema_cache=DiagnosticsSchemaCacheMetrics(**payload.get("schema_cache", {})),
     )
 
 
@@ -543,3 +545,14 @@ class Client:
             self._lib.eip_free_string(result_ptr)
 
         return _parse_diagnostics_snapshot(payload)
+
+    def refresh_schema(self) -> None:
+        """Invalidate controller-schema caches without reconnecting.
+
+        Pause writes before an edit/download, call this after it completes,
+        optionally rediscover and verify critical tags, then resume writes.
+        """
+        client_id = self._require_client_id()
+        rc = self._lib.eip_refresh_schema(client_id)
+        if rc != 0:
+            raise PlcOperationError("Failed to refresh controller schema")

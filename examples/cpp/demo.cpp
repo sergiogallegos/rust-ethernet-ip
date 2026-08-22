@@ -8,6 +8,14 @@ using rust_ethernet_ip::require;
 using rust_ethernet_ip::require_ok;
 using rust_ethernet_ip::require_value;
 
+std::uint64_t schema_generation(const std::string &json)
+{
+    const std::string marker = "\"generation\":";
+    const auto start = json.find(marker);
+    require(start != std::string::npos, "diagnostics missing schema generation");
+    return std::stoull(json.substr(start + marker.size()));
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -21,6 +29,13 @@ int main(int argc, char **argv)
         return 1;
     }
     EipClient client = std::move(client_result.value);
+
+    const auto schema_before = schema_generation(
+        require_value(client.diagnosticsJson(), "diagnostics before schema refresh"));
+    require_ok(client.refreshSchema(), "refresh controller schema");
+    const auto schema_after = schema_generation(
+        require_value(client.diagnosticsJson(), "diagnostics after schema refresh"));
+    require(schema_after == schema_before + 1, "schema generation did not advance");
 
     require_ok(client.write_dint("DINT_TAG", 4242), "write DINT_TAG");
     require(require_value(client.read_dint("DINT_TAG"), "read DINT_TAG") == 4242, "DINT round trip mismatch");

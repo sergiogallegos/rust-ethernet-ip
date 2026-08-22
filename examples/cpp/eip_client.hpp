@@ -165,6 +165,23 @@ public:
 
     std::string last_error() const { return read_last_error(client_id_); }
 
+    Result<void> refreshSchema()
+    {
+        return check(eip_refresh_schema(client_id_));
+    }
+
+    Result<std::string> diagnosticsJson(bool detailed = false)
+    {
+        char *json = nullptr;
+        const int rc = eip_get_diagnostics_json(client_id_, detailed ? 1 : 0, &json);
+        if (rc != 0 || json == nullptr) {
+            return failure<std::string>(rc, last_error());
+        }
+        const std::string value(json);
+        eip_free_string(json);
+        return success(value);
+    }
+
 private:
     int client_id_ = 0;
 

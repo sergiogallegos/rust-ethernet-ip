@@ -70,6 +70,16 @@ class DiagnosticsMappingTests(unittest.TestCase):
                 "last_success_time_unix_ms": 1713550000000,
                 "last_failure_time_unix_ms": None,
             },
+            "schema_cache": {
+                "generation": 7,
+                "refreshes": 2,
+                "array_classification_hits": 10,
+                "array_classification_misses": 3,
+                "array_classification_evictions": 2,
+                "datatype_contradictions": 1,
+                "successful_read_recoveries": 1,
+                "failed_read_recoveries": 0,
+            },
         }
 
         snapshot = _parse_diagnostics_snapshot(payload)
@@ -77,3 +87,19 @@ class DiagnosticsMappingTests(unittest.TestCase):
         self.assertEqual(snapshot.health.overall_health, "Healthy")
         self.assertEqual(snapshot.health.health_mode, "Passive")
         self.assertTrue(snapshot.system_metrics_are_placeholders)
+        self.assertEqual(snapshot.schema_cache.generation, 7)
+        self.assertEqual(snapshot.schema_cache.successful_read_recoveries, 1)
+
+    def test_missing_schema_cache_remains_backward_compatible(self) -> None:
+        payload = {
+            "captured_at_unix_ms": None,
+            "system_metrics_are_placeholders": True,
+            "connections": {"active_connections": 0, "total_connections": 0, "failed_connections": 0, "connection_uptime_avg_seconds": 0.0, "last_connection_time_unix_ms": None},
+            "operations": {"total_reads": 0, "total_writes": 0, "successful_reads": 0, "successful_writes": 0, "failed_reads": 0, "failed_writes": 0, "batch_operations": 0, "subscription_updates": 0, "partial_batch_failures": 0, "last_successful_read_time_unix_ms": None, "last_failed_read_time_unix_ms": None, "last_successful_write_time_unix_ms": None, "last_failed_write_time_unix_ms": None},
+            "performance": {"avg_read_latency_ms": 0.0, "avg_write_latency_ms": 0.0, "max_read_latency_ms": 0.0, "max_write_latency_ms": 0.0, "reads_per_second": 0.0, "writes_per_second": 0.0, "memory_usage_mb": 0.0, "cpu_usage_percent": 0.0},
+            "errors": {"network_errors": 0, "protocol_errors": 0, "timeout_errors": 0, "tag_not_found_errors": 0, "data_type_errors": 0, "session_errors": 0, "route_path_errors": 0, "embedded_service_errors": 0, "known_controller_limitation_errors": 0, "retriable_errors": 0, "non_retriable_errors": 0, "last_error_time_unix_ms": None, "last_error_message": None, "last_error_category": None, "last_retriable_error_time_unix_ms": None},
+            "health": {"overall_health": "Unknown", "health_mode": "Passive", "last_health_check_unix_ms": None, "last_verified_health_check_unix_ms": None, "consecutive_failures": 0, "recovery_attempts": 0, "system_uptime_seconds": 0.0, "last_success_time_unix_ms": None, "last_failure_time_unix_ms": None},
+        }
+
+        snapshot = _parse_diagnostics_snapshot(payload)
+        self.assertEqual(snapshot.schema_cache.generation, 0)

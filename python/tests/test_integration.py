@@ -115,6 +115,11 @@ class SimulatorIntegrationTests(unittest.TestCase):
                 self.assertGreaterEqual(snapshot.connections.active_connections, 1)
                 self.assertIn(snapshot.health.overall_health, {"Healthy", "Warning", "Critical", "Unknown"})
                 self.assertIn(snapshot.health.health_mode, {"Passive", "Verified"})
+                generation = snapshot.schema_cache.generation
+                plc.refresh_schema()
+                refreshed = plc.get_diagnostics_snapshot()
+                self.assertEqual(refreshed.schema_cache.generation, generation + 1)
+                self.assertEqual(refreshed.schema_cache.refreshes, snapshot.schema_cache.refreshes + 1)
 
 
 if __name__ == "__main__":

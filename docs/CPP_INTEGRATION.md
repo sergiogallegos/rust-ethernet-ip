@@ -62,6 +62,8 @@ void verify_native_runtime()
     const std::uint64_t capabilities = eip_capabilities();
     if ((capabilities & RUST_ETHERNET_IP_CAP_LAST_ERROR) == 0)
         throw std::runtime_error("native library lacks last-error support");
+    if ((capabilities & RUST_ETHERNET_IP_CAP_SCHEMA_REFRESH) == 0)
+        throw std::runtime_error("native library lacks schema-refresh support");
 }
 ```
 
@@ -308,8 +310,15 @@ std::cout << json << "\n";
 eip_free_string(json);
 ```
 
-Diagnostics JSON contains connection, operation, latency, error-category, and
-verified-health metrics. CPU and memory values are placeholders in 1.2.0.
+Diagnostics JSON contains connection, operation, latency, error-category,
+verified-health, schema-generation, cache-hit/miss/eviction, contradiction,
+and bounded-recovery metrics. CPU and memory values are placeholders.
+
+For an online tag replacement or controller download, pause application
+writes, complete the controller change, call `eip_refresh_schema(client_id)`
+(or `client.refreshSchema()` through the C++ convenience layer), optionally
+rediscover and verify critical reads, and only then resume writes. The call
+invalidates schema-derived caches without reconnecting.
 
 ## Threading and Qt
 

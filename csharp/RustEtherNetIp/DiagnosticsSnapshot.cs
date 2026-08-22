@@ -55,6 +55,36 @@ namespace RustEtherNetIp
 
         [JsonPropertyName("health")]
         public DiagnosticsHealthMetrics Health { get; set; } = new();
+
+        [JsonPropertyName("schema_cache")]
+        public DiagnosticsSchemaCacheMetrics SchemaCache { get; set; } = new();
+    }
+
+    public sealed class DiagnosticsSchemaCacheMetrics
+    {
+        [JsonPropertyName("generation")]
+        public ulong Generation { get; set; }
+
+        [JsonPropertyName("refreshes")]
+        public ulong Refreshes { get; set; }
+
+        [JsonPropertyName("array_classification_hits")]
+        public ulong ArrayClassificationHits { get; set; }
+
+        [JsonPropertyName("array_classification_misses")]
+        public ulong ArrayClassificationMisses { get; set; }
+
+        [JsonPropertyName("array_classification_evictions")]
+        public ulong ArrayClassificationEvictions { get; set; }
+
+        [JsonPropertyName("datatype_contradictions")]
+        public ulong DatatypeContradictions { get; set; }
+
+        [JsonPropertyName("successful_read_recoveries")]
+        public ulong SuccessfulReadRecoveries { get; set; }
+
+        [JsonPropertyName("failed_read_recoveries")]
+        public ulong FailedReadRecoveries { get; set; }
     }
 
     public sealed class DiagnosticsConnectionMetrics

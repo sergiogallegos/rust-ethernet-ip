@@ -29,6 +29,7 @@ class FakeNativeLibrary:
         self.health_result = 1
         self.read_tag_rc = 0
         self.last_error = b""
+        self.refresh_schema_calls: list[int] = []
 
     def eip_connect(self, address: bytes) -> int:
         self.connected_addresses.append(address.decode("utf-8"))
@@ -152,6 +153,10 @@ class FakeNativeLibrary:
 
     def eip_check_health(self, client_id: int, is_healthy) -> int:
         is_healthy._obj.value = self.health_result
+        return 0
+
+    def eip_refresh_schema(self, client_id: int) -> int:
+        self.refresh_schema_calls.append(client_id)
         return 0
 
     def eip_get_diagnostics_json(self, client_id: int, detailed: int, result_ptr) -> int:
@@ -365,10 +370,12 @@ class ClientContractTests(unittest.TestCase):
             plc = Client("127.0.0.1:44818")
             self.assertTrue(plc.check_health())
             snapshot = plc.get_diagnostics_snapshot(detailed=True)
+            plc.refresh_schema()
 
         self.assertEqual(snapshot.connections.active_connections, 1)
         self.assertEqual(snapshot.operations.total_reads, 1)
         self.assertEqual(snapshot.health.health_mode, "Verified")
+        self.assertEqual(lib.refresh_schema_calls, [7])
 
     def test_operations_require_connected_client(self) -> None:
         lib = FakeNativeLibrary()
@@ -380,6 +387,8 @@ class ClientContractTests(unittest.TestCase):
                 plc.write_tag("DINT_TAG", 1)
             with self.assertRaises(PlcConnectionError):
                 plc.check_health()
+            with self.assertRaises(PlcConnectionError):
+                plc.refresh_schema()
 
 
 class ClientHelperContractTests(unittest.TestCase):

@@ -275,11 +275,18 @@ Console.WriteLine($"Reads: {snapshot.Operations.TotalReads}");
 Console.WriteLine($"Failed reads: {snapshot.Operations.FailedReads}");
 Console.WriteLine($"Average read latency: {snapshot.Performance.AvgReadLatencyMs:F2} ms");
 Console.WriteLine($"Last error: {snapshot.Errors.LastErrorMessage}");
+Console.WriteLine($"Schema generation: {snapshot.SchemaCache.Generation}");
 ```
 
 Process CPU and memory fields are placeholders in this release. Operation,
 connection, error, latency, and verified-health fields are the meaningful
 driver metrics.
+
+After an online tag replacement or Studio 5000 download, use this maintenance
+sequence: pause application writes, complete the controller change, call
+`plc.RefreshSchema()`, optionally rediscover tags and verify critical reads,
+then resume writes. Refresh invalidates packed-BOOL classification, tag
+metadata, STRING handles, and UDT definitions/templates without reconnecting.
 
 ## Polling and Subscriptions
 

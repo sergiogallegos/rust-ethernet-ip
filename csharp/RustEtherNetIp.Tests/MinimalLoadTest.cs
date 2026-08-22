@@ -24,7 +24,7 @@ namespace RustEtherNetIp.Tests
 
             // Exercise the library through the same CLR-managed P/Invoke path
             // used by consumers, then verify staging is a read-only operation.
-            Assert.Equal(2u, NativeRuntime.AbiVersion);
+            Assert.Equal(3u, NativeRuntime.AbiVersion);
             Assert.Equal(nativeLibPath, SimulatorTestHarness.StageNativeLibrary());
 
             var after = new FileInfo(nativeLibPath);

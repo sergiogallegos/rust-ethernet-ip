@@ -170,6 +170,7 @@ pub use monitoring::ProductionMonitor;
 pub use monitoring::{
     ConnectionMetrics, DiagnosticsSnapshot, ErrorCategory, ErrorMetrics, HealthCheckMode,
     HealthMetrics, HealthStatus, MonitoringMetrics, OperationMetrics, PerformanceMetrics,
+    SchemaCacheMetrics,
 };
 #[expect(
     deprecated,

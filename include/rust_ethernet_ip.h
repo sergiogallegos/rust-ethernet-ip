@@ -14,12 +14,13 @@
 extern "C" {
 #endif
 
-#define RUST_ETHERNET_IP_ABI_VERSION 2u
+#define RUST_ETHERNET_IP_ABI_VERSION 3u
 #define RUST_ETHERNET_IP_CAP_ROUTE_PATH_ORDERED_HOPS 0x0000000000000001ull
 #define RUST_ETHERNET_IP_CAP_BATCH_EXECUTE_V1 0x0000000000000002ull
 #define RUST_ETHERNET_IP_CAP_DIAGNOSTICS_JSON 0x0000000000000004ull
 #define RUST_ETHERNET_IP_CAP_TAG_GROUP_SUBSCRIPTIONS 0x0000000000000008ull
 #define RUST_ETHERNET_IP_CAP_LAST_ERROR 0x0000000000000010ull
+#define RUST_ETHERNET_IP_CAP_SCHEMA_REFRESH 0x0000000000000020ull
 
 typedef struct EipUdtMember {
     char *name;
@@ -184,6 +185,8 @@ EIP_API int eip_set_max_packet_size(int client_id, int size);
 EIP_API int eip_check_health(int client_id, int *is_healthy);
 EIP_API int eip_check_health_detailed(int client_id, int *is_healthy);
 EIP_API int eip_get_diagnostics_json(int client_id, int detailed, char **result_ptr);
+/* Pause writes before a controller edit/download; refresh before resuming. */
+EIP_API int eip_refresh_schema(int client_id);
 EIP_API int eip_read_tags_batch(
     int client_id,
     const char **tag_names,

@@ -52,6 +52,41 @@ impl EipClient {
             .await)
     }
 
+    /// Returns controller-schema cache and bounded-recovery counters.
+    pub fn schema_cache_metrics(&self) -> crate::SchemaCacheMetrics {
+        crate::SchemaCacheMetrics {
+            generation: self.schema_generation(),
+            refreshes: self
+                .diagnostic_counters
+                .schema_refreshes
+                .load(std::sync::atomic::Ordering::Relaxed),
+            array_classification_hits: self
+                .diagnostic_counters
+                .array_cache_hits
+                .load(std::sync::atomic::Ordering::Relaxed),
+            array_classification_misses: self
+                .diagnostic_counters
+                .array_cache_misses
+                .load(std::sync::atomic::Ordering::Relaxed),
+            array_classification_evictions: self
+                .diagnostic_counters
+                .array_cache_evictions
+                .load(std::sync::atomic::Ordering::Relaxed),
+            datatype_contradictions: self
+                .diagnostic_counters
+                .schema_type_contradictions
+                .load(std::sync::atomic::Ordering::Relaxed),
+            successful_read_recoveries: self
+                .diagnostic_counters
+                .schema_read_recoveries_succeeded
+                .load(std::sync::atomic::Ordering::Relaxed),
+            failed_read_recoveries: self
+                .diagnostic_counters
+                .schema_read_recoveries_failed
+                .load(std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+
     async fn build_diagnostics_snapshot(
         &self,
         health_mode: crate::HealthCheckMode,

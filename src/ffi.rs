@@ -73,7 +73,7 @@ fn runtime() -> Result<&'static tokio::runtime::Runtime, c_int> {
 
 /// Awaits a future on the FFI Tokio runtime, early-returning
 /// `EIP_ERROR_RUNTIME_INIT` if the runtime is unavailable. Only call
-/// from inside an `unsafe extern "C" fn ... -> c_int` body.
+/// from inside an `extern "C" fn ... -> c_int` body.
 macro_rules! ffi_block_on {
     ($client_id:expr, $future:expr) => {{
         let runtime = match runtime() {
@@ -156,6 +156,13 @@ pub fn client_max_packet_size_for_testing(client_id: c_int) -> Option<u32> {
     get_client(client_id)
         .ok()
         .map(|client| client.max_packet_size())
+}
+
+#[doc(hidden)]
+pub fn client_schema_generation_for_testing(client_id: c_int) -> Option<u64> {
+    get_client(client_id)
+        .ok()
+        .map(|client| client.schema_generation())
 }
 
 /// Records the last error message for a client so wrappers can surface a
@@ -483,7 +490,10 @@ fn duration_to_seconds(value: std::time::Duration) -> f64 {
     value.as_secs_f64()
 }
 
-fn diagnostics_snapshot_json(snapshot: &crate::DiagnosticsSnapshot) -> Result<String, ()> {
+fn diagnostics_snapshot_json(
+    snapshot: &crate::DiagnosticsSnapshot,
+    schema_cache: &crate::SchemaCacheMetrics,
+) -> Result<String, ()> {
     let payload = serde_json::json!({
         "captured_at_unix_ms": system_time_to_unix_millis(Some(snapshot.captured_at)),
         "system_metrics_are_placeholders": snapshot.system_metrics_are_placeholders,
@@ -546,6 +556,16 @@ fn diagnostics_snapshot_json(snapshot: &crate::DiagnosticsSnapshot) -> Result<St
             "system_uptime_seconds": duration_to_seconds(snapshot.health.system_uptime),
             "last_success_time_unix_ms": system_time_to_unix_millis(snapshot.health.last_success_time),
             "last_failure_time_unix_ms": system_time_to_unix_millis(snapshot.health.last_failure_time),
+        },
+        "schema_cache": {
+            "generation": schema_cache.generation,
+            "refreshes": schema_cache.refreshes,
+            "array_classification_hits": schema_cache.array_classification_hits,
+            "array_classification_misses": schema_cache.array_classification_misses,
+            "array_classification_evictions": schema_cache.array_classification_evictions,
+            "datatype_contradictions": schema_cache.datatype_contradictions,
+            "successful_read_recoveries": schema_cache.successful_read_recoveries,
+            "failed_read_recoveries": schema_cache.failed_read_recoveries,
         }
     });
 
@@ -1559,7 +1579,8 @@ pub unsafe extern "C" fn eip_get_diagnostics_json(
         ffi_block_on!(client_id, client.get_diagnostics_snapshot())
     };
 
-    let json = match diagnostics_snapshot_json(&snapshot) {
+    let schema_cache = client.schema_cache_metrics();
+    let json = match diagnostics_snapshot_json(&snapshot, &schema_cache) {
         Ok(json) => json,
         Err(_) => return -1,
     };
@@ -1572,6 +1593,24 @@ pub unsafe extern "C" fn eip_get_diagnostics_json(
     unsafe {
         *result_ptr = owned;
     }
+    0
+}
+
+/// Invalidates all controller-schema-derived caches for a client.
+///
+/// Applications should pause writes, complete the controller edit/download,
+/// call this function, optionally rediscover and verify critical tags, and
+/// only then resume writes. Returns `0` on success and `-1` for an invalid
+/// client handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn eip_refresh_schema(client_id: c_int) -> c_int {
+    let client = match get_client(client_id) {
+        Ok(client) => client,
+        Err(_) => return fail_with_last_error(client_id, "invalid client handle"),
+    };
+
+    let _generation = ffi_block_on!(client_id, client.refresh_schema());
+    clear_last_error(client_id);
     0
 }
 

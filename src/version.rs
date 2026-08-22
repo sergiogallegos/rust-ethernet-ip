@@ -6,7 +6,7 @@ pub const NAME: &str = env!("CARGO_PKG_NAME");
 pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
 /// C FFI ABI version expected by downstream wrappers.
-pub const ABI_VERSION: u32 = 2;
+pub const ABI_VERSION: u32 = 3;
 
 /// FFI supports ordered route-hop construction.
 pub const CAP_ROUTE_PATH_ORDERED_HOPS: u64 = 0x0000_0000_0000_0001;
@@ -23,12 +23,16 @@ pub const CAP_TAG_GROUP_SUBSCRIPTIONS: u64 = 0x0000_0000_0000_0008;
 /// FFI exposes per-client last-error message retrieval (`eip_get_last_error`).
 pub const CAP_LAST_ERROR: u64 = 0x0000_0000_0000_0010;
 
-/// Capability bitmap for ABI v2.
+/// FFI exposes comprehensive schema refresh for live controller edits/downloads.
+pub const CAP_SCHEMA_REFRESH: u64 = 0x0000_0000_0000_0020;
+
+/// Capability bitmap for ABI v3.
 pub const CAPABILITIES: u64 = CAP_ROUTE_PATH_ORDERED_HOPS
     | CAP_BATCH_EXECUTE_V1
     | CAP_DIAGNOSTICS_JSON
     | CAP_TAG_GROUP_SUBSCRIPTIONS
-    | CAP_LAST_ERROR;
+    | CAP_LAST_ERROR
+    | CAP_SCHEMA_REFRESH;
 
 /// Major version number
 pub const MAJOR_VERSION: u32 = 1;

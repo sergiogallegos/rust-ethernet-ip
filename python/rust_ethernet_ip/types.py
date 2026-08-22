@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 
@@ -125,6 +125,18 @@ class DiagnosticsHealthMetrics:
 
 
 @dataclass(slots=True)
+class DiagnosticsSchemaCacheMetrics:
+    generation: int = 0
+    refreshes: int = 0
+    array_classification_hits: int = 0
+    array_classification_misses: int = 0
+    array_classification_evictions: int = 0
+    datatype_contradictions: int = 0
+    successful_read_recoveries: int = 0
+    failed_read_recoveries: int = 0
+
+
+@dataclass(slots=True)
 class DiagnosticsSnapshot:
     captured_at_unix_ms: int | None
     system_metrics_are_placeholders: bool
@@ -133,3 +145,4 @@ class DiagnosticsSnapshot:
     performance: DiagnosticsPerformanceMetrics
     errors: DiagnosticsErrorMetrics
     health: DiagnosticsHealthMetrics
+    schema_cache: DiagnosticsSchemaCacheMetrics = field(default_factory=DiagnosticsSchemaCacheMetrics)

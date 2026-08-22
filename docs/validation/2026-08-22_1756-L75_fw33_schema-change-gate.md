@@ -1,6 +1,6 @@
 # 1756-L75 Firmware 33 Schema-Change Gate
 
-Status: **live session in progress — array schema-swap section PASS across all four bindings (Rust both directions; C#/Python/C++ one direction each); UDT section and post-schema full-coverage/batch regression still pending**
+Status: **live session in progress — array schema-swap section PASS across all four bindings; UDT section PASS on Rust (C#/Python/C++ spot check pending); post-schema full-coverage/batch regression still pending**
 
 This record moves from offline-only to a partial hardware PASS during the
 live session. Rows not yet exercised remain `pending` until captured with the
@@ -51,7 +51,7 @@ write count, and restoration result.
 | Controller BOOL[64] -> DINT[64], indices 5/40 | **PASS** | **PASS** | n/a¹ | **PASS** | yes | yes |
 | Program DINT[64] -> BOOL[64], indices 5/40 | **PASS** | n/a¹ | **PASS** | n/a¹ | yes | yes |
 | Program BOOL[64] -> DINT[64], indices 5/40 | **PASS** | **PASS** | n/a¹ | **PASS** | yes | yes |
-| UDT layout edit + download + rediscovery | pending | pending | pending | pending | pending | pending |
+| UDT layout edit + download + rediscovery | **PASS** | pending² | pending² | pending² | yes | yes |
 | Post-schema full coverage and batch baseline | pending | pending | pending | pending | n/a | pending |
 
 ¹ Coverage decision (2026-08-22, maintainer direction): Rust already proved
@@ -60,6 +60,12 @@ direction only (whichever the live tag state made available at the time) to
 confirm each wrapper's refresh/diagnostics glue against a real controller
 edit, rather than repeating the full direction matrix per binding. `n/a`
 marks the direction a given binding did not exercise, not a failure.
+
+² Coverage decision (2026-08-22, maintainer direction): the UDT section
+proves a different mechanism than the array section (offline
+download/session-survival, not online rename), so it's exercised on Rust
+only via a dedicated tool; C#, Python, and C++ get a lighter manual
+whole-UDT-read spot check instead of three more dedicated companions.
 
 ## Rust — Controller/Program DINT[64] -> BOOL[64] detail (2026-08-22)
 
@@ -239,6 +245,54 @@ All four bindings have now exercised this gate against the live 1756-L75:
 Rust proved both directions; C#, Python, and C++ each proved one direction
 per the maintainer's coverage decision above. `gSchemaSwap` is currently
 `DINT[64]` (controller and program).
+
+## Rust — UDT layout edit + download + rediscovery detail (2026-08-22)
+
+Run via `examples/schema_udt_gate_live.rs --allow-writes` against the
+controller-scope `gSchemaUdt` (instance of `SchemaGateUdt`: `Marker` DINT +
+`Flags` BOOL[64]).
+
+**Finding, recorded before this run started:** `get_udt_definition()` /
+`get_tag_attributes()` failed against `gSchemaUdt` with `Protocol error: Get
+Attribute List for 'gSchemaUdt' failed: Path segment error`, even though
+plain `read_tag("gSchemaUdt")` and `discover_tags_detailed()` both succeeded
+immediately (the latter already reporting `template_instance_id: Some(2970)`
+for the same tag). Isolated with a throwaway probe before building the live
+tool; not investigated further here — see CODEX-BJ. The live tool below was
+rewritten to use `read_tag()` (whole-UDT payload length) and
+`discover_tags_detailed()` (`template_instance_id`) as its layout-change
+signal instead of the broken path, so this finding did not block validating
+the actual schema-recovery mechanism this section exists to test.
+
+- Baseline (before any edit): `payload_bytes=14`,
+  `template_instance_id=Some(2970)` (out of 282 discovered controller tags).
+- Maintainer went offline in Studio 5000, added a dedicated non-I/O `DINT`
+  member (`Marker2`) to `SchemaGateUdt`, and downloaded.
+- Post-edit, before `refresh_schema()`: read succeeded on the **first**
+  attempt — **the encapsulation session survived the offline download
+  without a reconnect** (`session survived without reconnect: true`).
+  `payload_bytes=18` (already reflecting the new layout at this point).
+- `refresh_schema()`: generation 2 -> 3. Post-refresh snapshot unchanged
+  from the post-edit read (`payload_bytes=18`,
+  `template_instance_id=Some(2970)` — the controller reused the same
+  template instance id rather than issuing a new one for the edited
+  layout).
+- Maintainer went offline again, removed `Marker2`, and downloaded to
+  restore the original layout.
+- Post-restore, before the second `refresh_schema()`: again succeeded on
+  the first read — **session survived this download too**
+  (`session survived without reconnect: true`).
+- Second `refresh_schema()`: generation 3 -> 4. Post-restore-refresh
+  snapshot: `payload_bytes=14`, `template_instance_id=Some(2970)` —
+  matches the original baseline exactly (`matches original baseline:
+  true`).
+- Cumulative: generation 2 -> 4, refreshes 0 -> 2 (one per edit event, as
+  expected).
+- Final controller state: `gSchemaUdt` restored to its original
+  `Marker`/`Flags` layout.
+
+C#, Python, and C++ manual spot check (per the coverage decision above):
+pending.
 
 ## Final Controller State
 

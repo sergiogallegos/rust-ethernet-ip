@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+case "$(uname -s)" in
+  Darwin) native_lib="$repo_root/target/release/librust_ethernet_ip.dylib" ;;
+  Linux) native_lib="$repo_root/target/release/librust_ethernet_ip.so" ;;
+  MINGW*|MSYS*|CYGWIN*) native_lib="$repo_root/target/release/rust_ethernet_ip.dll" ;;
+  *) echo "unsupported platform: $(uname -s)" >&2; exit 2 ;;
+esac
+
+echo "[1/7] Build the one release native artifact used by every wrapper"
+cargo build --release --features ffi --locked
+
+echo "[2/7] Rust dynamic same-name schema mutation and recovery"
+cargo test --features ffi --test schema_drift_recovery_tests --locked
+
+echo "[3/7] C ABI generation visibility, invalid handle, and last-error"
+cargo test --features ffi --test ffi_state_consistency ffi_schema_refresh_is_clone_visible_and_invalid_handles_report_last_error --locked
+
+echo "[4/7] C# refresh and diagnostics through the release native artifact"
+dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -c Release --no-restore \
+  --filter 'FullyQualifiedName~RouteConnectAndDiagnostics_WorkThroughNativeWrapper_WithSimulator'
+
+echo "[5/7] Python refresh and diagnostics through the release native artifact"
+PYTHONPATH=python RUST_ETHERNET_IP_START_SIM=1 \
+  python3 -m unittest python.tests.test_integration.SimulatorIntegrationTests.test_diagnostics_snapshot_maps_native_payload
+
+echo "[6/7] C header/export parity and C++ refresh-generation smoke"
+python3 scripts/check-ffi-header-parity.py --library "$native_lib"
+cmake -S examples/cpp -B target/cpp -DCMAKE_BUILD_TYPE=Release \
+  -DRUST_ETHERNET_IP_NATIVE_LIB="$native_lib"
+cmake --build target/cpp --parallel
+ctest --test-dir target/cpp --output-on-failure -R 'ffi_header_link_check|cpp_smoke_demo'
+
+echo "[7/7] Gate complete: Rust, C ABI, C#, Python, and C++ schema refresh passed"

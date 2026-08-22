@@ -39,6 +39,10 @@ page records the maintainer interpretation behind it.
   The controlled rerun reached approximately 3,305 size-100 DINT reads/s in all
   four bindings. Build-identical Rust/C#/C++ comparisons improved 10.9–11.6x
   while native write throughput remained stable.
+- `confirmed` offline: the schema-change gate passes dynamic same-name mutation
+  and explicit refresh across Rust, C ABI, C#, Python, and C++ using one release
+  artifact. The corresponding 1756-L75 firmware-33 Studio 5000 run is
+  `needs-review/pending` and must not be counted as hardware evidence yet.
 
 ## Evidence
 
@@ -48,6 +52,8 @@ page records the maintainer interpretation behind it.
 - [1756-L75 fw33 performance baseline](../../docs/validation/2026-08-21_1756-L75_fw33_cross-binding-performance.md)
 - [1756-L75 fw33 batch performance](../../docs/validation/2026-08-21_1756-L75_fw33_cross-binding-batch-performance.md)
 - [1756-L75 fw33 array-cache before/after](../../docs/validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md)
+- [Schema-change gate procedure](../../docs/validation/SCHEMA_CHANGE_GATE.md)
+- [1756-L75 fw33 schema-change record (live pending)](../../docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md)
 - [1.2.0 validation synthesis](../releases/1.2.0-validation-synthesis.md)
 
 ## Open Questions

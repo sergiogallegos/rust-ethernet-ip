@@ -99,6 +99,7 @@ struct SimRuntimeBehavior {
     config: SimBehavior,
     send_rr_count: AtomicUsize,
     read_counts: Mutex<HashMap<String, usize>>,
+    write_counts: Mutex<HashMap<String, usize>>,
 }
 
 impl SimRuntimeBehavior {
@@ -107,6 +108,7 @@ impl SimRuntimeBehavior {
             config,
             send_rr_count: AtomicUsize::new(0),
             read_counts: Mutex::new(HashMap::new()),
+            write_counts: Mutex::new(HashMap::new()),
         }
     }
 
@@ -122,6 +124,22 @@ impl SimRuntimeBehavior {
         self.read_counts
             .lock()
             .expect("read-count lock")
+            .get(tag_name)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn record_write(&self, tag_name: &str) -> usize {
+        let mut write_counts = self.write_counts.lock().expect("write-count lock");
+        let count = write_counts.entry(tag_name.to_string()).or_insert(0);
+        *count += 1;
+        *count
+    }
+
+    fn write_count(&self, tag_name: &str) -> usize {
+        self.write_counts
+            .lock()
+            .expect("write-count lock")
             .get(tag_name)
             .copied()
             .unwrap_or(0)
@@ -174,6 +192,7 @@ pub struct SimulatedPlc {
     shutdown: Option<oneshot::Sender<()>>,
     #[allow(dead_code)]
     behavior: Arc<SimRuntimeBehavior>,
+    tags: Arc<Mutex<HashMap<String, TagValue>>>,
 }
 
 impl SimulatedPlc {
@@ -246,7 +265,7 @@ impl SimulatedPlc {
 
         tokio::spawn(run_server(
             listener,
-            tags,
+            Arc::clone(&tags),
             Arc::clone(&behavior),
             shutdown_rx,
         ));
@@ -255,12 +274,51 @@ impl SimulatedPlc {
             address,
             shutdown: Some(shutdown_tx),
             behavior,
+            tags,
         }
     }
 
     #[allow(dead_code)]
     pub fn read_count(&self, tag_name: &str) -> usize {
         self.behavior.read_count(tag_name)
+    }
+
+    #[allow(dead_code)]
+    pub fn write_count(&self, tag_name: &str) -> usize {
+        self.behavior.write_count(tag_name)
+    }
+
+    /// Replaces a tag with a DINT array while the simulator remains online.
+    #[allow(dead_code)]
+    pub fn replace_with_dint_array(&self, tag_name: &str, values: impl IntoIterator<Item = i32>) {
+        self.tags.lock().expect("tag lock").insert(
+            tag_name.to_string(),
+            TagValue::Array(values.into_iter().map(TagValue::Dint).collect()),
+        );
+    }
+
+    /// Replaces a tag with a packed BOOL array while the simulator remains online.
+    #[allow(dead_code)]
+    pub fn replace_with_bool_array(&self, tag_name: &str, values: impl IntoIterator<Item = bool>) {
+        self.tags.lock().expect("tag lock").insert(
+            tag_name.to_string(),
+            TagValue::Array(values.into_iter().map(TagValue::Bool).collect()),
+        );
+    }
+
+    /// Replaces a tag with a REAL array while the simulator remains online.
+    #[allow(dead_code)]
+    pub fn replace_with_real_array(&self, tag_name: &str, values: impl IntoIterator<Item = f32>) {
+        self.tags.lock().expect("tag lock").insert(
+            tag_name.to_string(),
+            TagValue::Array(values.into_iter().map(TagValue::Real).collect()),
+        );
+    }
+
+    /// Removes a tag so tests can model the temporary Symbol Not Found window.
+    #[allow(dead_code)]
+    pub fn remove_tag(&self, tag_name: &str) {
+        self.tags.lock().expect("tag lock").remove(tag_name);
     }
 }
 
@@ -575,6 +633,8 @@ fn handle_write_cip_request(
         Some(value) => value,
         None => return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR),
     };
+
+    behavior.record_write(&tag_name);
 
     if behavior.should_fail_write(&tag_name) {
         return build_cip_error_reply(CIP_REPLY_WRITE, CIP_STATUS_PATH_SEGMENT_ERROR);
@@ -920,6 +980,8 @@ fn handle_write_fragmented(
             );
         }
     };
+
+    behavior.record_write(&tag_name);
 
     if behavior.should_fail_write(&tag_name) {
         return build_cip_error_reply(
@@ -1478,6 +1540,7 @@ mod tests {
             config: SimBehavior::default(),
             send_rr_count: AtomicUsize::new(0),
             read_counts: Mutex::new(HashMap::new()),
+            write_counts: Mutex::new(HashMap::new()),
         });
         let request = atomic_string_write_request("STRING_TAG", "OldShape");
 

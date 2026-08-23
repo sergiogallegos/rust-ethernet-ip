@@ -12,8 +12,10 @@
 [![Documentation](https://docs.rs/rust-ethernet-ip/badge.svg)](https://docs.rs/rust-ethernet-ip)
 [![Website](https://img.shields.io/badge/website-rustethernetip.com-cf6636.svg)](https://rustethernetip.com/)
 
-Production-focused **EtherNet/IP/CIP explicit-messaging client driver** for
-**Allen-Bradley CompactLogix and ControlLogix PLCs**.
+A modern, cross-platform **EtherNet/IP/CIP explicit-messaging SDK** for direct
+**CompactLogix and ControlLogix** tag access, built in Rust for native
+performance, memory safety, and asynchronous I/O, with first-class APIs for
+Rust, .NET/C#, Python, C, and C++.
 
 > **Driver scope:** The library originates request/response CIP explicit
 > messages for Logix tag reads, writes, batches, discovery, and routing. It is

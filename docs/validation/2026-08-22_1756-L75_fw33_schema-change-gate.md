@@ -1,10 +1,15 @@
 # 1756-L75 Firmware 33 Schema-Change Gate
 
-Status: **live session in progress — array schema-swap and UDT sections both fully PASS across all four bindings; post-schema full-coverage/batch regression still pending**
+Status: **live session complete — hardware PASS**
 
-This record moves from offline-only to a partial hardware PASS during the
-live session. Rows not yet exercised remain `pending` until captured with the
-same rigor as the completed ones.
+Every row of the live checklist is PASS: array schema-swap (both
+directions, both scopes, all four bindings), UDT layout-edit/download
+(Rust live, C#/Python/C++ spot check), and the post-schema
+full-coverage/batch regression (all four bindings, zero anomalies). This
+record is now citable as hardware compatibility evidence for the CODEX-BA
+through CODEX-BD schema-safety work, scoped exactly to the controller,
+firmware, and topology below — see the coverage-decision footnotes for
+what was and wasn't exercised per binding/direction.
 
 ## Target
 
@@ -52,7 +57,7 @@ write count, and restoration result.
 | Program DINT[64] -> BOOL[64], indices 5/40 | **PASS** | n/a¹ | **PASS** | n/a¹ | yes | yes |
 | Program BOOL[64] -> DINT[64], indices 5/40 | **PASS** | **PASS** | n/a¹ | **PASS** | yes | yes |
 | UDT layout edit + download + rediscovery | **PASS** | **PASS**² | **PASS**² | **PASS**² | yes | yes |
-| Post-schema full coverage and batch baseline | pending | pending | pending | pending | n/a | pending |
+| Post-schema full coverage and batch baseline | **PASS** | **PASS** | **PASS** | **PASS** | n/a | yes |
 
 ¹ Coverage decision (2026-08-22, maintainer direction): Rust already proved
 both directions end to end, so C#, Python, and C++ each exercise **one**
@@ -308,10 +313,72 @@ independent of the `get_tag_attributes` finding above (none of these three
 spot checks touch that code path; they use each binding's plain tag-read
 surface).
 
+## Post-schema full coverage and batch regression detail (2026-08-22)
+
+Re-ran the existing (pre-1.2.1) full-coverage and batch/whole-UDT/discovery
+companion gates against this same controller, on the current tree/build
+(commit `2028748`, C ABI v3), after all of the schema-generation refresh
+activity above, to confirm ordinary operation is unaffected.
+
+**Full-coverage** (`test_plc_full_coverage` / `CSharpFullCoverage` /
+`python/examples/test_plc_full_coverage.py` / `cpp_full_coverage`), all
+four bindings against the shared 2304-tag manifest:
+
+| Binding | Reads | Writes | Verify | Blocked | Anomalies | Result |
+|---|---|---|---|---|---|---|
+| Rust | 2304/2304 | 2285/2285 | 2285/2285 | 0 | 0 | PASS |
+| C# | 2304/2304 | 2285/2285 | 2285/2285 | 0 | 0 | PASS |
+| Python | 2304/2304 | 2285/2285 | 2285/2285 | 0 | 0 | PASS |
+| C/C++ | 2304/2304 | 2285/2285 | 2285/2285 | 0 | 0 | PASS |
+
+All four settled every writeable tag to its terminal value
+(`999999`/`9999`/`99.99`/`true`/`SETTLED`-family) with `settle_ok=2285`,
+`settle_fail=0`, and 18/18 sample settle-verify reads, byte-identical
+across bindings.
+
+**Batch/whole-UDT/discovery companion gate** (`hardware_feature_gate`, all
+four bindings), restore-safe against the separate `gTestArray_*`/`gTestUDT`
+fixtures:
+
+| Binding | Controller discovery | Program discovery | Whole UDT reads | Batch read | Batch write (restore-safe) | Result |
+|---|---|---|---|---|---|---|
+| Rust | PASS (282 tags) | PASS (6 tags) | 4/4 | 10/10 | 4/4 restored | PASS |
+| C# | PASS (282 tags) | N/A (not exposed) | 4/4 | 10/10 (batch + native) | 4/4 restored | PASS |
+| Python | N/A (not exposed) | N/A (not exposed) | 4/4 | 10/10 | 4/4 restored | PASS |
+| C/C++ | PASS (282 tags) | N/A (not exposed) | 4/4 | 10/10 | 4/4 restored | PASS |
+
+Rust's program-scope discovery output listed `gSchemaSwap (DINT)` among the
+6 program tags — an independent confirmation that the array-swap section's
+final state (`DINT[64]`, restored) is exactly what discovery reports too.
+
+Both gates are unchanged from their pre-1.2.1 shape (same manifests, same
+fixtures); nothing about the schema-refresh/drift-recovery work changed
+their pass criteria. Zero anomalies across all 8 runs.
+
 ## Final Controller State
 
-Pending live execution. The live session must record either successful restore
-to the backed-up fixture or an explicitly accepted final test-only schema and
-its values. Until then, this file must not be cited as hardware compatibility
-evidence for schema-change recovery.
+All test fixtures were restored to their pre-session state or an explicit
+terminal value:
+
+- `gSchemaSwap` (controller and program): `DINT[64]`, matching the state
+  before this session started. Values at indices 5/40 restored to their
+  original pre-edit values after every write-verification pass.
+- `gSchemaUdt` (controller): `SchemaGateUdt` restored to its original
+  two-member layout (`Marker` DINT + `Flags` BOOL[64]); values unchanged
+  (`Marker=0`, `Flags` all false).
+- `gSchemaSwapReplacement`/`gSchemaSwapReplacementDint` (and their
+  program-scoped equivalents): consumed by the online renames during the
+  array-swap section; none remain as separate tags.
+- The pre-existing `gTestArray_*`/`gTestUDT`/`gTest_STRING` full-coverage
+  fixtures were left in their documented terminal settled state
+  (`999999`/`9999`/`99.99`/`true`/`SETTLED`) by the post-schema
+  full-coverage re-run above, consistent with every prior full-coverage
+  gate run against this controller.
+
+This file is now a complete hardware-validation record for the CODEX-BA
+through CODEX-BD schema-safety work on the live 1756-L75 (fw33): array
+schema-swap (both directions, both scopes, all four bindings), UDT
+layout-edit/download/session-survival (Rust live, C#/Python/C++ spot
+check), and the post-schema full-coverage/batch regression, all PASS with
+zero anomalies.
 

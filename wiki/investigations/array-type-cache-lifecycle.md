@@ -75,7 +75,10 @@ the deterministic application hook for known project changes.
 - [`docs/validation/SCHEMA_CHANGE_GATE.md`](../../docs/validation/SCHEMA_CHANGE_GATE.md)
   defines the maintainer-controlled live edit/download and restoration gate.
 - [`docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md`](../../docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md)
-  records the offline PASS and clearly marks live execution pending.
+  records both the offline PASS and the completed live 1756-L75 firmware-33
+  hardware PASS (array schema-swap both directions/scopes on all four
+  bindings, UDT layout-edit/download with session-survival confirmed, and
+  the post-schema full-coverage/batch regression).
 - [`src/ffi.rs`](../../src/ffi.rs) creates and removes native client registry
   entries; no cache-clear export currently exists.
 - [`csharp/RustEtherNetIp/EthernetNetIpClient.Connection.cs`](../../csharp/RustEtherNetIp/EthernetNetIpClient.Connection.cs)
@@ -91,8 +94,13 @@ the deterministic application hook for known project changes.
 
 - Which controller status or identity attribute, if any, can reliably expose a
   downloaded project revision without adding material polling overhead?
-- Does a 1756-L75 firmware 33 download always break the current encapsulation
-  session through the tested 1756-EN2T route?
+- ~~Does a 1756-L75 firmware 33 download always break the current
+  encapsulation session through the tested 1756-EN2T route?~~ Answered for
+  this controller/route/session shape (2026-08-22): no. The live UDT-gate
+  session's Rust connection survived two consecutive offline
+  member-add-then-restore downloads without a reconnect. "Always" is not
+  proven — this is one session's evidence, not exhaustive — but it is
+  direct data, not speculation.
 - Which existing cache owners can be consolidated without changing public API,
   and which must remain separate but participate in one schema epoch?
 

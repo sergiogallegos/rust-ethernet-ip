@@ -7,26 +7,32 @@ and data-collection services that need Logix tag access without an OPC layer.
 
 ## Release Status
 
-- current published package: `1.2.0` on NuGet
-- Repository development line: `1.2.1` (not published yet)
+- current published package: `1.2.1` on NuGet
+- Previous published package: `1.2.0`
 - Target framework: `.NET 10`
 - Packaged native runtimes: `win-x64`, `linux-x64`, `osx-arm64`
-- Native C ABI used by 1.2.0: version `2`
+- Native C ABI used by 1.2.1: version `3` (additive over `1.2.0`'s v2 — the
+  new `eip_refresh_schema` export and `CAP_SCHEMA_REFRESH` capability bit;
+  no existing export changed shape)
 
-The 1.2.0 hardware gate exercised Rust, C#, Python, and C/C++ against a
-CompactLogix 5069-L330ERM firmware 38. Each binding completed 2,338 reads and
+The 1.2.1 hardware gate exercised Rust, C#, Python, and C/C++ against a
+ControlLogix 1756-L75 firmware 33: the schema-change gate (online array-shape
+swap and offline UDT layout-edit), a four-binding full-coverage rerun
+(2,304/2,304 reads, 2,285/2,285 writes, 0 anomalies), and a cross-binding
+performance rerun, all zero-failure. The prior 1.2.0 gate exercised a
+CompactLogix 5069-L330ERM firmware 38: each binding completed 2,338 reads and
 2,319 writes plus read-back verification with zero unexpected anomalies.
 
 ## Install
 
 ```bash
-dotnet add package RustEtherNetIp --version 1.2.0
+dotnet add package RustEtherNetIp --version 1.2.1
 ```
 
 Or add the package reference directly:
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="1.2.0" />
+<PackageReference Include="RustEtherNetIp" Version="1.2.1" />
 ```
 
 The NuGet package contains the managed assembly and its native Rust library.
@@ -233,7 +239,7 @@ TagAttributes attributes = plc.GetTagAttributes("ProductionCount");
 Console.WriteLine(attributes);
 ```
 
-The C# 1.2.0 surface does not expose program-scoped enumeration as a separate
+The C# wrapper does not currently expose program-scoped enumeration as a separate
 method. Program tags are fully accessible when their known path is supplied,
 for example `Program:MainProgram.ProductionCount`. Program-scoped discovery is
 currently a Rust-core API gap for the wrappers, not a reason to invent tag

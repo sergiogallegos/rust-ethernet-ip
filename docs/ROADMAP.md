@@ -1,20 +1,26 @@
 # Roadmap — future work
 
-> Status as of 2026-08-21: **1.2.0 is shipped** to crates.io (×5), NuGet, and
-> PyPI. `1.2.1` is in preparation with post-1.2.0 program-tag discovery fixes,
-> complete public API docs, a real-hardware test program, and the project
-> website. Historical `1.2.0` planning below is retained for traceability.
+> Status as of 2026-08-22: **1.2.1 is shipped** to crates.io (×5), NuGet, and
+> PyPI. It carries the schema-cache safety sequence (CODEX-BA–BD), Python
+> native batch writes (CODEX-BF), the `get_tag_attributes`/`get_udt_definition`
+> real-hardware fix (CODEX-BJ), and a CI action-version bump (CODEX-BI), all
+> hardware-validated live on a ControlLogix 1756-L75. Accepted, non-blocking
+> follow-ups (CODEX-BE packet-policy characterization, CODEX-BG endurance
+> soak, CODEX-BH tag-shape performance matrix) remain queued without a
+> target version. Historical `1.2.0`/`1.2.1` planning below is retained for
+> traceability.
 
-## 1.2.1 — patch in preparation
+## 1.2.1 — shipped patch (historical plan)
 
-- Finish the full Markdown/link audit and API documentation gate.
-- Ship the static project website and deployment instructions.
-- Publish the exact hardware matrix, contributor result template, endurance
+- Finished the full Markdown/link audit and API documentation gate.
+- Shipped the static project website and deployment instructions.
+- Published the exact hardware matrix, contributor result template, endurance
   profiles, and performance characterization protocol.
-- Re-run the cross-binding hardware gate for program discovery paging/scope
-  propagation before publishing when the maintained controller is available.
-- Complete the local/package checks in
-  [release/1.2.1_RELEASE_NOTES_DRAFT.md](release/1.2.1_RELEASE_NOTES_DRAFT.md).
+- Re-ran the cross-binding hardware gate for program discovery paging/scope
+  propagation, plus the full schema-cache safety sequence, on a live
+  ControlLogix 1756-L75.
+- Final release notes:
+  [release/1.2.1_RELEASE_NOTES.md](release/1.2.1_RELEASE_NOTES.md).
 
 ## 1.2.0 — shipped minor (historical plan)
 

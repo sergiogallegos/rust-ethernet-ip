@@ -2,8 +2,8 @@
 
 ## Summary
 
-The native C FFI surface is pinned at ABI version `3` on the `1.2.1`
-development line. ABI v3 is a coordinated additive bump for
+The native C FFI surface is pinned at ABI version `3`, shipped in `1.2.1`.
+ABI v3 is a coordinated additive bump for
 `eip_refresh_schema`; wrappers check `eip_abi_version()` at load time and fail
 fast when the loaded native library does not match.
 

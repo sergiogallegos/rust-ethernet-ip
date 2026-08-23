@@ -7,14 +7,21 @@ OPC client.
 
 ## Release Status
 
-- Latest published library line: `1.2.0`
-- Repository development line: `1.2.1` (not released yet)
-- C ABI version: `2`
+- Latest published library line: `1.2.1`
+- Previous published line: `1.2.0`
+- C ABI version: `3` (additive over `1.2.0`'s v2 — the new `eip_refresh_schema`
+  export and `CAP_SCHEMA_REFRESH` capability bit; no existing export changed
+  shape)
 - Language level used by the examples: C++17
 
-The 1.2.0 real-hardware gate exercised the C ABI alongside Rust, C#, and Python
-on CompactLogix 5069-L330ERM firmware 38. C/C++ completed 2,338 reads and 2,319
-writes plus read-back verification with zero unexpected anomalies.
+The 1.2.1 real-hardware gate exercised the C ABI alongside Rust, C#, and
+Python on ControlLogix 1756-L75 firmware 33: the schema-change gate (online
+array-shape swap and offline UDT layout-edit), a four-binding full-coverage
+rerun (2,304/2,304 reads, 2,285/2,285 writes, 0 anomalies), and a
+cross-binding performance rerun, all zero-failure. The prior 1.2.0 gate
+exercised the C ABI on CompactLogix 5069-L330ERM firmware 38: C/C++ completed
+2,338 reads and 2,319 writes plus read-back verification with zero
+unexpected anomalies.
 
 ## Build and Link
 
@@ -187,7 +194,7 @@ eip_read_dint(
     &program_count);
 ```
 
-The 1.2.0 C ABI exposes controller-scoped discovery but not program-scoped
+The C ABI currently exposes controller-scoped discovery but not program-scoped
 enumeration. Known program paths are fully usable for reads, writes, and
 batches.
 
@@ -371,7 +378,7 @@ or call the C functions directly.
 - [`examples/cpp/README.md`](../examples/cpp/README.md): build and run index
 
 The header/link check and all example targets compile on Ubuntu, Windows, and
-macOS in the 1.2.1 preparation line. The simulator smoke runs in CI; route and
+macOS as of `1.2.1`. The simulator smoke runs in CI; route and
 discovery examples require real hardware and are compile/link checked only.
 
 ## Current Boundaries

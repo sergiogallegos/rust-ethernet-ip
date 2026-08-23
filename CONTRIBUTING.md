@@ -4,7 +4,7 @@ Thanks for contributing. This project targets production-grade EtherNet/IP commu
 
 ## Scope and Release Line
 
-- `1.2.0` is the current published stable line across crates.io, NuGet, and PyPI.
+- `1.2.1` is the current published stable line across crates.io, NuGet, and PyPI.
 - Current work on `main` must preserve the public Rust 1.x API and coordinate
   changes against the C ABI v3 contract.
 - Do not bump crate/package version unless explicitly requested during release cut.

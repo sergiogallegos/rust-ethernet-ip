@@ -53,17 +53,17 @@ This project exists to fill that gap with a single, MIT-licensed protocol implem
 
 ## Version Status
 
-- Current stable release: `1.2.0` (crates.io + NuGet + PyPI)
-- Next patch in preparation: `1.2.1` (post-1.2.0 fixes, API documentation, hardware test program, and project website; not yet published)
-- Previous stable release: `1.1.0` (tagged 2026-06-19)
-- Earlier stable releases: `1.0.0`, `0.7.0`
+- Current stable release: `1.2.1` (crates.io + NuGet + PyPI)
+- Previous stable release: `1.2.0` (tagged 2026-07-10)
+- Earlier stable releases: `1.1.0`, `1.0.0`, `0.7.0`
 - Real-hardware validation evidence is included for the release
 
 Release snapshot:
-- `1.2.0` is a minor (non-breaking) release: behavioral fixes, deprecations, and additive surface with no Rust-API signature breaks. Highlights: **handle-aware STRING writes** so custom Logix string types (own name/length, e.g. `Str82`/`Str400`) read and write through the normal string APIs; **CIP fragmentation** (Read/Write Tag Fragmented) for strings/structures larger than one packet; **packet-size-aware batch grouping** (fixes large batch reads); first-class **C/C++ consumer support** (`include/rust_ethernet_ip.h` + CMake example); transport/session hardening, tag-addressing correctness, and diagnostics honesty. The C FFI ABI is now **v2** (removes three unusable `*mut EipClient` exports; `eip_abi_version()` bumped) — the Rust API and the C#/Python packages are unaffected. See [`CHANGELOG.md`](CHANGELOG.md).
-- Full-coverage hardware exercisers pass on CompactLogix 5069-L330ERM fw38 across Rust/C#/Python/C++: 2304/2304 reads, 2285/2285 writes, 2285/2285 verify, 0 unexpected anomalies (STRING members now written+verified via the handle-aware path). See [`docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md`](docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md).
+- `1.2.1` is a backwards-compatible patch release. A clone-shared controller-schema generation backs a comprehensive `refresh_schema()` operation; array reads validate cached packed-BOOL addressing against controller responses and bound schema-drift recovery to one evict-and-retry, with writes never replayed after an ambiguous outcome. Rust, C, C#, Python, and C++ share the same explicit schema-refresh workflow and diagnostics (C FFI ABI is now **v3**, additive, `CAP_SCHEMA_REFRESH`). Python `write_tags()` now native-batches safe atomic scalar/array writes through the real Multiple Service Packet endpoint, matching Rust/C#/C++ throughput. Fixed `get_tag_attributes`/`get_udt_definition` failing outright on controllers that reject the per-tag Get Attribute List request. See [`CHANGELOG.md`](CHANGELOG.md).
+- Hardware-validated live on ControlLogix `1756-L75` firmware `33` through a `1756-EN2T` bridge: the schema-change gate (online array-shape swap and offline UDT layout-edit, both directions, all four bindings), a post-merge four-binding full-coverage rerun (2304/2304 reads, 2285/2285 writes, 0 anomalies), and a cross-binding performance rerun (zero failures; all four bindings converge within ~0.08 ms at batch size 100) all pass. See [`docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md`](docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md).
+- `1.2.0` was a minor (non-breaking) release: behavioral fixes, deprecations, and additive surface with no Rust-API signature breaks. Highlights: handle-aware STRING writes, CIP fragmentation for large strings/structures, packet-size-aware batch grouping, and first-class C/C++ consumer support. The C FFI ABI was **v2** at that time. Full-coverage hardware exercisers passed on CompactLogix 5069-L330ERM fw38 across Rust/C#/Python/C++: 2304/2304 reads, 2285/2285 writes, 2285/2285 verify, 0 unexpected anomalies. See [`docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md`](docs/validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md).
 - The [real-hardware compatibility matrix and contributor test program](docs/HARDWARE_COMPATIBILITY.md) tracks exact processor/firmware/binding evidence and defines 24-hour endurance and performance characterization profiles.
-- crates.io ships five workspace artifacts at `1.2.0`: `rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, and the top-level `rust-ethernet-ip`. NuGet ships `RustEtherNetIp 1.2.0` and PyPI ships `rust-ethernet-ip 1.2.0` from the GitHub release workflow on tag push.
+- crates.io ships five workspace artifacts at `1.2.1`: `rust-ethernet-ip-types`, `rust-ethernet-ip-tag-path`, `rust-ethernet-ip-protocol`, `rust-ethernet-ip-udt`, and the top-level `rust-ethernet-ip`. NuGet ships `RustEtherNetIp 1.2.1` and PyPI ships `rust-ethernet-ip 1.2.1` from the GitHub release workflow on tag push.
 
 ## Release Validation Tiers
 
@@ -81,7 +81,7 @@ Exact controller and firmware evidence is tracked separately in the
 | Python wrapper | Ubuntu, Windows, macOS; Python 3.10–3.12 | Import, source compilation, unit and simulator-backed integration tests | Yes |
 | C/C++ ABI and example | Ubuntu, Windows, and macOS; C++17/CMake | Header/export parity, link test, RAII smoke example, full-coverage runner build | Yes |
 | Package assembly | Linux x64, Windows x64, macOS arm64 | Cargo package, NuGet pack, Python wheel build/install/import | Yes |
-| Real PLC release gate | 5069-L330ERM firmware 38 | Full read/write/read-back manifest in Rust, C#, Python, and C/C++ | Yes, for `1.2.0` |
+| Real PLC release gate | 1756-L75 firmware 33 | Full read/write/read-back manifest plus schema-change gate in Rust, C#, Python, and C/C++ | Yes, for `1.2.1` |
 
 “Yes” records the required target and scope, not the latest GitHub Actions run.
 Before relying on a commit, confirm its checks are green. New platforms become
@@ -160,31 +160,31 @@ Detailed technical background and examples:
 
 ```toml
 [dependencies]
-rust-ethernet-ip = "1.2.0"
+rust-ethernet-ip = "1.2.1"
 tokio = { version = "1", features = ["full"] }
 ```
 
 ### C#
 
 ```xml
-<PackageReference Include="RustEtherNetIp" Version="1.2.0" />
+<PackageReference Include="RustEtherNetIp" Version="1.2.1" />
 ```
 
 Or from the CLI:
 
 ```bash
-dotnet add package RustEtherNetIp --version 1.2.0
+dotnet add package RustEtherNetIp --version 1.2.1
 ```
 
 Current NuGet packaging note:
-- `RustEtherNetIp` `1.2.0` is published on NuGet
+- `RustEtherNetIp` `1.2.1` is published on NuGet
 - the package bundles native runtimes for `win-x64`, `linux-x64`, and `osx-arm64`
 - the managed package currently targets `.NET 10`
 
 ### Python
 
 ```bash
-pip install rust-ethernet-ip==1.2.0
+pip install rust-ethernet-ip==1.2.1
 ```
 
 The wheel bundles the native library, so a plain `pip install` works with no separate build. (The Rust and C# wrappers ship alongside it from the same release.)

@@ -9,9 +9,9 @@ page records the maintainer interpretation behind it.
 ## Current Understanding
 
 - `confirmed`: Five exact processor/firmware combinations have physical
-  evidence. The 5069-L330ERM fw38 is the `1.2.0` release gate, and the
-  1756-L75 fw33 now has a four-binding functional and sequential-performance
-  baseline on the `1.2.1` development line.
+  evidence. The 5069-L330ERM fw38 was the `1.2.0` release gate, and the
+  1756-L75 fw33 is the `1.2.1` release gate (shipped 2026-08-22): schema-change,
+  full-coverage, and performance reruns all pass across all four bindings.
 - A `Done` cell means an authoritative validation file exists for that exact
   binding and target; blank cells are invitations, not implied failures.
 - Functional, endurance, and performance claims are separate. Passing one

@@ -1,7 +1,6 @@
 # Project Website
 
-Static, dependency-free website for the stable `1.2.0` release line and the
-`1.2.1` development preview. Open
+Static, dependency-free website for the stable `1.2.1` release line. Open
 `website/index.html` directly or serve the repository root for local review:
 
 ```bash

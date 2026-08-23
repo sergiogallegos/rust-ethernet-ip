@@ -3,11 +3,11 @@
 This folder contains project documentation for `rust-ethernet-ip`.
 
 Current release state:
-- Current stable line: `1.2.0` (crates.io + NuGet + PyPI)
-- Next patch in preparation: `1.2.1` (not yet published)
-- Previous stable line: `1.1.0` (tagged 2026-06-19)
-- Earlier stable lines: `1.0.0`, `0.7.0`, `0.6.3`
-- `1.2.0` carries the CODEX-AJ…AZ remediation set, hardware-validated cross-binding (Rust/C#/Python/C++) on CompactLogix 5069-L330ERM fw38
+- Current stable line: `1.2.1` (crates.io + NuGet + PyPI)
+- Previous stable line: `1.2.0` (tagged 2026-07-10)
+- Earlier stable lines: `1.1.0`, `1.0.0`, `0.7.0`, `0.6.3`
+- `1.2.1` carries the CODEX-BA…BD schema-cache safety sequence, CODEX-BF Python native batch writes, and the CODEX-BJ `get_tag_attributes`/`get_udt_definition` fix, hardware-validated cross-binding (Rust/C#/Python/C++) on ControlLogix 1756-L75 fw33
+- `1.2.0` carried the CODEX-AJ…AZ remediation set, hardware-validated cross-binding (Rust/C#/Python/C++) on CompactLogix 5069-L330ERM fw38
 
 ## Start Here
 
@@ -35,10 +35,10 @@ Current release state:
 
 ## Release and Quality Gates
 
-- [../CHANGELOG.md](../CHANGELOG.md): `1.2.0` release notes and historical release history
-- [agents/board.md](agents/board.md): current `1.2.0` release gates and staged publish order
+- [../CHANGELOG.md](../CHANGELOG.md): release notes and historical release history
+- [agents/board.md](agents/board.md): current release gates and staged publish order
+- [release/1.2.1_RELEASE_NOTES.md](release/1.2.1_RELEASE_NOTES.md)
 - [release/1.2.0_RELEASE_NOTES.md](release/1.2.0_RELEASE_NOTES.md)
-- [release/1.2.1_RELEASE_NOTES_DRAFT.md](release/1.2.1_RELEASE_NOTES_DRAFT.md)
 - [release/1.1.0_RELEASE_NOTES.md](release/1.1.0_RELEASE_NOTES.md)
 - [release/0.8.0_RELEASE_NOTES_DRAFT.md](release/0.8.0_RELEASE_NOTES_DRAFT.md) (historical draft absorbed into `1.0.0`)
 - [0.7.0_HARDENING_GATE.md](0.7.0_HARDENING_GATE.md)

@@ -7,28 +7,35 @@ feeds, and lightweight API services that need direct Logix tag access.
 
 ## Release Status
 
-- Latest published PyPI package: `1.2.0`
-- Repository development line: `1.2.1` (not published yet)
+- Latest published PyPI package: `1.2.1`
+- Previous published package: `1.2.0`
 - Supported Python versions: 3.10–3.12
-- Native ABI used by 1.2.0: version `2`
+- Native ABI used by 1.2.1: version `3` (additive over `1.2.0`'s v2 — adds
+  `eip_refresh_schema`/`CAP_SCHEMA_REFRESH`; no existing export changed shape)
 
-The wheel contains the native Rust library. The 1.2.0 real-hardware gate
-validated the Python wrapper alongside Rust, C#, and C/C++ on a CompactLogix
-5069-L330ERM firmware 38, including controller/program paths, batches, scalar
-types, built-in/custom STRING members, arrays, and nested UDT-member paths.
+The wheel contains the native Rust library. The 1.2.1 real-hardware gate
+validated the Python wrapper alongside Rust, C#, and C/C++ on a ControlLogix
+1756-L75 firmware 33: the schema-change gate (online array-shape swap and
+offline UDT layout-edit), a four-binding full-coverage rerun (2,304/2,304
+reads, 2,285/2,285 writes, 0 anomalies), and a cross-binding performance
+rerun, all zero-failure — plus native batch writes reaching parity with the
+other three bindings. The prior 1.2.0 gate validated the Python wrapper on a
+CompactLogix 5069-L330ERM firmware 38, including controller/program paths,
+batches, scalar types, built-in/custom STRING members, arrays, and nested
+UDT-member paths.
 
 ## Install
 
 ```bash
-python -m pip install rust-ethernet-ip==1.2.0
+python -m pip install rust-ethernet-ip==1.2.1
 ```
 
 Optional example dependencies:
 
 ```bash
-python -m pip install 'rust-ethernet-ip[analytics]==1.2.0'  # pandas
-python -m pip install 'rust-ethernet-ip[api]==1.2.0'        # FastAPI
-python -m pip install 'rust-ethernet-ip[mqtt]==1.2.0'       # MQTT
+python -m pip install 'rust-ethernet-ip[analytics]==1.2.1'  # pandas
+python -m pip install 'rust-ethernet-ip[api]==1.2.1'        # FastAPI
+python -m pip install 'rust-ethernet-ip[mqtt]==1.2.1'       # MQTT
 ```
 
 ## Start Here
@@ -121,7 +128,7 @@ with Client("192.168.0.10:44818") as plc:
     plc.write_tag("Program:MainProgram.ProductionSetpoint", 1250)
 ```
 
-The Python 1.2.0 wrapper does not expose tag discovery or metadata APIs. It can
+The Python wrapper does not currently expose tag discovery or metadata APIs. It can
 read and write known controller/program paths, arrays, bits, and UDT members.
 Do not assume that program enumeration is available merely because direct
 program paths work.

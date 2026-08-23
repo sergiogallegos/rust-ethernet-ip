@@ -1833,3 +1833,18 @@ Sources used:
 - `examples/full_coverage_tags.json`
 - `examples/full_coverage_results/2026-08-22_post-bi-bf-rerun/*.json`
 - `docs/validation/2026-08-22_1756-L75_fw33_post-BF-BI-cross-binding-full-coverage.md`
+
+## [2026-08-22] ingest | Measure post-BF/BI cross-binding performance
+
+- Updated `wiki/controllers/hardware-validation-program.md` with a new
+  four-binding sequential and native-batch performance characterization.
+- Recorded zero failures across 27,648 sequential reads and 27,420 sequential
+  writes, plus batch sizes 1, 5, 10, 20, 50, and 100 in all four bindings.
+- At size 100, Rust, C#, Python, and C/C++ converged at 3,261–3,269 read tags/s
+  and 2,793–2,796 write tags/s.
+
+Sources used:
+
+- `examples/full_coverage_results/2026-08-22_post-bi-bf-performance/*.json`
+- `examples/full_coverage_results/2026-08-22_post-bi-bf-batch/*.json`
+- `docs/validation/2026-08-22_1756-L75_fw33_post-BF-BI-cross-binding-performance.md`

@@ -1,6 +1,6 @@
 # 1756-L75 Firmware 33 Schema-Change Gate
 
-Status: **live session in progress — array schema-swap section PASS across all four bindings; UDT section PASS on Rust (C#/Python/C++ spot check pending); post-schema full-coverage/batch regression still pending**
+Status: **live session in progress — array schema-swap and UDT sections both fully PASS across all four bindings; post-schema full-coverage/batch regression still pending**
 
 This record moves from offline-only to a partial hardware PASS during the
 live session. Rows not yet exercised remain `pending` until captured with the
@@ -51,7 +51,7 @@ write count, and restoration result.
 | Controller BOOL[64] -> DINT[64], indices 5/40 | **PASS** | **PASS** | n/a¹ | **PASS** | yes | yes |
 | Program DINT[64] -> BOOL[64], indices 5/40 | **PASS** | n/a¹ | **PASS** | n/a¹ | yes | yes |
 | Program BOOL[64] -> DINT[64], indices 5/40 | **PASS** | **PASS** | n/a¹ | **PASS** | yes | yes |
-| UDT layout edit + download + rediscovery | **PASS** | pending² | pending² | pending² | yes | yes |
+| UDT layout edit + download + rediscovery | **PASS** | **PASS**² | **PASS**² | **PASS**² | yes | yes |
 | Post-schema full coverage and batch baseline | pending | pending | pending | pending | n/a | pending |
 
 ¹ Coverage decision (2026-08-22, maintainer direction): Rust already proved
@@ -292,7 +292,21 @@ the actual schema-recovery mechanism this section exists to test.
   `Marker`/`Flags` layout.
 
 C#, Python, and C++ manual spot check (per the coverage decision above):
-pending.
+all three read `gSchemaUdt` and its members against the restored (original)
+layout, via throwaway ad hoc probes (not committed — each confirmed working
+API usage, not new reusable tooling):
+
+| Binding | `gSchemaUdt` payload | `Marker` | `Flags[0]` | Result |
+|---|---|---|---|---|
+| Python | `{'symbol_id': 0, 'data': [80, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}` (14 bytes) | `0` | `False` | PASS |
+| C# | `ReadTagWithDetails` success, `UdtData.Data.Length == 14` | `0` | `false` | PASS |
+| C/C++ | `eip_read_tag` rc=0, `{"Udt":{"symbol_id":0,"data":[80,8,0,0,0,0,0,0,0,0,0,0,0,0]}}` (14 bytes) | `0` | `0` (false) | PASS |
+
+All three bindings observed the identical 14-byte payload the Rust tool's
+post-restore baseline reported — good cross-binding consistency evidence,
+independent of the `get_tag_attributes` finding above (none of these three
+spot checks touch that code path; they use each binding's plain tag-read
+surface).
 
 ## Final Controller State
 

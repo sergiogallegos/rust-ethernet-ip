@@ -11,8 +11,8 @@ language surface. It does **not** replace the full-tag read/write gate.
 | Capability | Rust | C# | Python | C/C++ |
 |---|---:|---:|---:|---:|
 | Mixed controller/program batch read | Yes | Yes | Yes | Yes |
-| Native batch write | Yes | Yes | No | Yes |
-| Grouped write API | Yes | Yes | Yes, sequential per tag | Yes |
+| Native batch write | Yes | Yes | Yes, safe atomic subset | Yes |
+| Grouped write API | Yes | Yes | Yes, native + typed fallback | Yes |
 | Whole controller/program UDT reads | Yes | Yes | Yes | Yes |
 | Whole UDT-array-element reads | Yes | Yes | Yes | Yes |
 | Controller tag discovery | Yes | Yes | N/A | Yes |
@@ -26,6 +26,11 @@ readable in every binding.
 The C# runner calls both `ReadTagsBatch` and a read-only `ExecuteBatch`. This
 prevents the consumer-friendly sequential fallback in `ReadTagsBatch` from
 masking a failure in the native multi-service path.
+
+Python `write_tags()` native-batches unique atomic scalar and numeric-array
+writes. STRING/UDT, member/bit, packed-BOOL-array, and duplicate-name writes
+retain typed sequential behavior; see the
+[1756-L75 native-write validation](2026-08-22_1756-L75_fw33_python-native-batch-writes.md).
 
 ## Dedicated Write Targets
 

@@ -229,7 +229,17 @@ def run_batch_benchmark(client: Client, tags: list[Tag], args: argparse.Namespac
             f"write avg={write_metrics['avg_ms']:>7.3f}ms "
             f"filtered={write_metrics['outlier_filtered_avg_ms']:>7.3f}ms"
         )
-        rows.append({"batch_size": size, "reads": reads, "writes": write_metrics})
+        rows.append(
+            {
+                "batch_size": size,
+                "reads": reads,
+                "writes": write_metrics,
+                "write_dispatch_per_call": {
+                    "native_batched": size,
+                    "sequential_fallback": 0,
+                },
+            }
+        )
 
     failures = sum(row[direction]["failures"] for row in rows for direction in ("reads", "writes"))
     terminal_verify_failures = sum(1 for tag in pool if client.read_tag(tag.name) != 999_999)
@@ -244,7 +254,11 @@ def run_batch_benchmark(client: Client, tags: list[Tag], args: argparse.Namespac
         "min_tag_operations_per_size_direction": args.batch_min_tag_operations,
         "min_seconds_per_size_direction": args.batch_min_seconds,
         "read_api": "native CIP multiple-service batch",
-        "write_api": "public Python grouped-write API (sequential native operations in 1.2.x)",
+        "write_api": "public Python grouped-write API (native MSP for this DINT-only workload)",
+        "write_dispatch": {
+            "native_batched_types": "atomic scalars and numeric array elements",
+            "sequential_fallback_types": "STRING, UDT, member/bit paths, packed BOOL elements, duplicate names",
+        },
         "packet_policy": "default: max 20 operations and 504 bytes per CIP packet",
         "rows": rows,
         "terminal_verify": {"ok": len(pool) - terminal_verify_failures, "fail": terminal_verify_failures},

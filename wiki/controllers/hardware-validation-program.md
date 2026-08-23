@@ -35,8 +35,11 @@ page records the maintainer interpretation behind it.
   C/C++. This is a cross-day observation, not isolated causal proof.
 - `confirmed`: The same target has native batch distributions at logical sizes
   1, 5, 10, 20, 50, and 100. Native DINT writes reached about 2,830 tags/s at
-  size 100 across Rust, C#, and C/C++; Python grouped writes remain sequential
-  and are explicitly not treated as native batch-write evidence.
+  size 100 across Rust, C#, and C/C++. Python subsequently moved its safe
+  atomic subset to the same native engine and reached 2,773 tags/s at size 100,
+  up 10.21x from its controlled sequential baseline. STRING/UDT, member/bit,
+  packed-BOOL-array, and duplicate-name writes remain typed fallbacks and are
+  excluded from that throughput claim.
 - `confirmed`: Positive/negative packed-BOOL array classification is now cached
   per connection, shared across FFI clones, and invalidated on route changes or
   explicit cache clearing.
@@ -59,6 +62,7 @@ page records the maintainer interpretation behind it.
 - [1756-L75 fw33 performance baseline](../../docs/validation/2026-08-21_1756-L75_fw33_cross-binding-performance.md)
 - [1756-L75 fw33 batch performance](../../docs/validation/2026-08-21_1756-L75_fw33_cross-binding-batch-performance.md)
 - [1756-L75 fw33 array-cache before/after](../../docs/validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md)
+- [1756-L75 fw33 Python native batch writes](../../docs/validation/2026-08-22_1756-L75_fw33_python-native-batch-writes.md)
 - [Schema-change gate procedure](../../docs/validation/SCHEMA_CHANGE_GATE.md)
 - [1756-L75 fw33 schema-change record (live PASS)](../../docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md)
 - [1.2.0 validation synthesis](../releases/1.2.0-validation-synthesis.md)
@@ -71,9 +75,6 @@ page records the maintainer interpretation behind it.
   operation limits while recording rejections, latency, and controller impact.
 - Characterize cold-cache versus warm-cache reads, different tag shapes and
   scopes, and client/controller CPU and memory impact on the 1756-L75 target.
-- Evaluate a true native Python batch-write path for safely supported values.
-  The current grouped API deliberately issues singleton native batches and
-  therefore does not share the Rust/C#/C++ Multiple Service Packet throughput.
 - Add the first 24-hour result with latency percentiles, data-gap detection,
   RSS/CPU trend, and reconnect accounting.
 

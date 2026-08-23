@@ -73,7 +73,7 @@ plc.write_tag("PrecisionValue", 1.23456789, value_type="LREAL")
 |---|---|---|
 | One measurement, command, or occasional setpoint | `read_tag` / `write_tag` | Smallest and clearest unit of work |
 | Several independent values for one analytics sample | `read_tags` | Uses native packet-size-aware batch reads and returns values by tag name |
-| Several writes with accurate per-tag status | `write_tags` | Returns one `WriteResult` per tag; 1.2.0 submits writes sequentially for reliable attribution |
+| Several writes with accurate per-tag status | `write_tags` | Native-batches safe atomic writes and retains typed sequential fallbacks for special cases |
 | One known UDT member | `read_tag` / `write_tag` with the full member path | Avoids transferring or reconstructing the entire UDT |
 | Inspect a whole UDT | `read_tag("Mixer")` | Returns decoded members when available, otherwise its raw `symbol_id` and bytes |
 | Change an entire UDT | Usually do not; write known members individually | Whole writes require the exact template-compatible raw representation |
@@ -183,9 +183,13 @@ with Client("192.168.0.10:44818") as plc:
         print(tag, "ok" if result.success else result.error)
 ```
 
-`read_tags` uses the native batch-read path. On validated ControlLogix
-hardware, `write_tags` intentionally submits writes sequentially so each tag
-retains accurate success/error reporting.
+`read_tags` uses the native batch-read path. `write_tags` combines contiguous
+atomic scalar and numeric array-element writes into native Multiple Service
+Packets. STRING/custom STRING, whole UDT, member/bit, packed BOOL array-element,
+and duplicate-name writes retain the typed sequential path. Mixed inputs execute
+in input order, although one native-safe run may contain several operations.
+The return value remains keyed by tag name; when a name is repeated, every
+write executes sequentially and the final result for that name is retained.
 
 ## ControlLogix Routing
 

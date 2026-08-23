@@ -1,4 +1,3 @@
-import os
 import unittest
 
 from rust_ethernet_ip import BatchWriteItem, Client, RoutePath
@@ -53,6 +52,38 @@ class SimulatorIntegrationTests(unittest.TestCase):
                 self.assertIs(updated["BOOL_TAG"], False)
                 self.assertEqual(updated["STRING_TAG"], "Batch Updated")
 
+    def test_native_batch_partial_failure_and_array_result_correlation(self) -> None:
+        with SimulatorHarness() as address:
+            with Client(address) as plc:
+                int_before = plc.read_tag("INT_TAG")
+                results = plc.write_tags(
+                    [
+                        BatchWriteItem("DINT_TAG", 1357),
+                        BatchWriteItem("INT_TAG", 99_999, value_type="INT"),
+                        BatchWriteItem("DINT_ARRAY[1]", 2468),
+                    ]
+                )
+
+                self.assertTrue(results["DINT_TAG"].success)
+                self.assertFalse(results["INT_TAG"].success)
+                self.assertTrue(results["DINT_ARRAY[1]"].success)
+                self.assertEqual(plc.read_tag("DINT_TAG"), 1357)
+                self.assertEqual(plc.read_tag("INT_TAG"), int_before)
+                self.assertEqual(plc.read_tag("DINT_ARRAY[1]"), 2468)
+
+    def test_duplicate_batch_names_execute_sequentially(self) -> None:
+        with SimulatorHarness() as address:
+            with Client(address) as plc:
+                results = plc.write_tags(
+                    [
+                        BatchWriteItem("DINT_TAG", 1111),
+                        BatchWriteItem("DINT_TAG", 2222),
+                    ]
+                )
+
+                self.assertTrue(results["DINT_TAG"].success)
+                self.assertEqual(plc.read_tag("DINT_TAG"), 2222)
+
     def test_bool_array_element_write_uses_typed_path(self) -> None:
         with SimulatorHarness() as address:
             with Client(address) as plc:
@@ -61,6 +92,27 @@ class SimulatorIntegrationTests(unittest.TestCase):
 
                 plc.write_tag("BOOL_ARRAY[5]", False)
                 self.assertIs(plc.read_tag("BOOL_ARRAY[5]"), False)
+
+    def test_grouped_bool_array_writes_use_safe_fallback_above_dword_zero(self) -> None:
+        with SimulatorHarness() as address:
+            with Client(address) as plc:
+                results = plc.write_tags(
+                    [
+                        BatchWriteItem("BOOL_ARRAY[5]", True),
+                        BatchWriteItem("BOOL_ARRAY[40]", True),
+                    ]
+                )
+                self.assertTrue(all(result.success for result in results.values()))
+                self.assertIs(plc.read_tag("BOOL_ARRAY[5]"), True)
+                self.assertIs(plc.read_tag("BOOL_ARRAY[40]"), True)
+
+                restore = plc.write_tags(
+                    [
+                        BatchWriteItem("BOOL_ARRAY[5]", False),
+                        BatchWriteItem("BOOL_ARRAY[40]", False),
+                    ]
+                )
+                self.assertTrue(all(result.success for result in restore.values()))
 
     def test_typed_write_roundtrip_all_numeric_types(self) -> None:
         cases = [

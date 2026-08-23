@@ -77,6 +77,21 @@ _INTEGER_CTYPES = {
 }
 
 
+_NATIVE_BATCH_VALUE_TYPES = {
+    "BOOL",
+    "SINT",
+    "INT",
+    "DINT",
+    "LINT",
+    "USINT",
+    "UINT",
+    "UDINT",
+    "ULINT",
+    "REAL",
+    "LREAL",
+}
+
+
 def _decode_logix_string_payload(payload: object) -> str | None:
     if not isinstance(payload, dict):
         return None
@@ -201,6 +216,33 @@ def _normalize_write_request(item: BatchWriteItem | dict[str, object]) -> dict[s
         "value": value,
         "value_type": value_type or _infer_value_type(value),
     }
+
+
+def _tag_body_without_program_scope(tag_name: str) -> str:
+    if not tag_name.startswith("Program:"):
+        return tag_name
+    _, separator, body = tag_name.partition(".")
+    return body if separator else ""
+
+
+def _is_native_batch_safe(
+    item: dict[str, object],
+    duplicate_tag_names: set[str],
+) -> bool:
+    tag_name = str(item["tag_name"])
+    kind = str(item["value_type"]).upper()
+    if tag_name in duplicate_tag_names or kind not in _NATIVE_BATCH_VALUE_TYPES:
+        return False
+
+    tag_body = _tag_body_without_program_scope(tag_name)
+    if not tag_body or "." in tag_body:
+        # Members and bit-address paths need the single-write service layer.
+        return False
+    if kind == "BOOL" and "[" in tag_body:
+        # Packed BOOL elements are read-modify-write operations. Batching two
+        # elements from one DWORD could otherwise overwrite the first update.
+        return False
+    return True
 
 
 def _validate_integer_value(kind: str, value: object) -> int:
@@ -473,25 +515,96 @@ class Client:
         return values
 
     def write_tags(self, items: list[BatchWriteItem | dict[str, object]]) -> dict[str, WriteResult]:
+        """Write tags in input order, batching only operations with safe MSP semantics.
+
+        Atomic scalar writes and numeric array elements are grouped into native
+        Multiple Service Packets. STRINGs, UDTs, members/bits, packed BOOL array
+        elements, and duplicate tag names use the typed single-write path. Mixed
+        inputs retain execution order; the returned mapping retains the existing
+        one-result-per-tag shape, so the last duplicate result wins.
+        """
         if not items:
             return {}
 
         normalized = [_normalize_write_request(item) for item in items]
-        return self._execute_write_operations(normalized, sequential=True)
+        tag_counts: dict[str, int] = {}
+        for item in normalized:
+            tag_name = str(item["tag_name"])
+            tag_counts[tag_name] = tag_counts.get(tag_name, 0) + 1
+        duplicate_tag_names = {name for name, count in tag_counts.items() if count > 1}
+
+        results: dict[str, WriteResult] = {}
+        native_run: list[dict[str, object]] = []
+
+        def flush_native_run() -> None:
+            if native_run:
+                results.update(self._execute_native_write_operations(native_run))
+                native_run.clear()
+
+        for item in normalized:
+            if _is_native_batch_safe(item, duplicate_tag_names):
+                native_run.append(item)
+                continue
+
+            flush_native_run()
+            result = self._execute_sequential_write(item)
+            results[result.tag_name] = result
+
+        flush_native_run()
+        return results
+
+    def _execute_native_write_operations(
+        self,
+        normalized: list[dict[str, object]],
+    ) -> dict[str, WriteResult]:
+        client_id = self._require_client_id()
+        payload = json.dumps(normalized).encode("utf-8")
+        buffer = create_string_buffer(RESULT_BUFFER_SIZE)
+        rc = self._lib.eip_write_tags_batch(
+            client_id,
+            payload,
+            len(normalized),
+            buffer,
+            RESULT_BUFFER_SIZE,
+        )
+        if rc != 0 and not buffer.value:
+            raise self._operation_error("Native batch write call failed", client_id)
+
+        try:
+            result_items = json.loads(buffer.value.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise PlcOperationError("Invalid JSON returned for native batch write") from exc
+
+        parsed = _parse_write_results(result_items)
+        for item in normalized:
+            tag_name = str(item["tag_name"])
+            parsed.setdefault(
+                tag_name,
+                WriteResult(
+                    tag_name=tag_name,
+                    success=False,
+                    error="Missing result for native batch write operation",
+                ),
+            )
+        return parsed
+
+    def _execute_sequential_write(self, item: dict[str, object]) -> WriteResult:
+        tag_name = str(item["tag_name"])
+        try:
+            self.write_tag(
+                tag_name,
+                item["value"],
+                value_type=str(item["value_type"]),
+            )
+        except (PlcOperationError, ValueError) as exc:
+            return WriteResult(tag_name=tag_name, success=False, error=str(exc))
+        return WriteResult(tag_name=tag_name, success=True)
 
     def _execute_write_operations(
         self,
         normalized: list[dict[str, object]],
-        *,
-        sequential: bool = False,
     ) -> dict[str, WriteResult]:
         client_id = self._require_client_id()
-        if sequential:
-            results: dict[str, WriteResult] = {}
-            for item in normalized:
-                results.update(self._execute_write_operations([item], sequential=False))
-            return results
-
         operations = [
             {
                 "tag_name": item["tag_name"],

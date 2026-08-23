@@ -18,12 +18,15 @@ class FakeNativeLibrary:
         self.disconnected_ids: list[int] = []
         self.read_calls: list[str] = []
         self.executed_batches: list[list[dict[str, object]]] = []
+        self.native_write_batches: list[list[dict[str, object]]] = []
         self._diagnostics_buffer: ctypes.Array[ctypes.c_char] | None = None
         self.connect_result = 7
         self.disconnect_result = 0
         self.read_tag_result = {"Dint": 1234}
         self.batch_read_payload: list[dict[str, object]] = []
         self.execute_batch_payload: list[dict[str, object]] | None = None
+        self.native_write_payload: list[dict[str, object]] | None = None
+        self.native_write_rc = 0
         self.typed_write_calls: list[tuple[str, str, object]] = []
         self.typed_write_result = 0
         self.health_result = 1
@@ -110,6 +113,32 @@ class FakeNativeLibrary:
             return -1
         buffer.value = encoded
         return 0
+
+    def eip_write_tags_batch(
+        self,
+        client_id: int,
+        payload: bytes,
+        operation_count: int,
+        buffer,
+        capacity: int,
+    ) -> int:
+        operations = json.loads(payload.decode("utf-8"))
+        self.native_write_batches.append(operations)
+        result_payload = self.native_write_payload
+        if result_payload is None:
+            result_payload = [
+                {
+                    "tag_name": item["tag_name"],
+                    "success": True,
+                    "error": None,
+                }
+                for item in operations
+            ]
+        encoded = json.dumps(result_payload).encode("utf-8")
+        if len(encoded) + 1 > capacity:
+            return -1
+        buffer.value = encoded
+        return self.native_write_rc
 
     def _record_typed_write(self, function_name: str, tag_name: bytes, value: object) -> int:
         self.typed_write_calls.append((function_name, tag_name.decode("utf-8"), value))
@@ -347,22 +376,114 @@ class ClientContractTests(unittest.TestCase):
         self.assertEqual(lib.typed_write_calls[0][0], "eip_write_dint")
         self.assertEqual(lib.executed_batches, [])
 
-    def test_write_tags_executes_sequentially_to_preserve_per_tag_status(self) -> None:
+    def test_write_tags_batches_native_safe_operations(self) -> None:
         lib = FakeNativeLibrary()
         with patch.object(client_module, "load_native_library", return_value=lib):
             plc = Client("127.0.0.1:44818")
             results = plc.write_tags(
                 [
                     BatchWriteItem("DINT_TAG", 1),
-                    {"tag_name": "REAL_TAG", "value": 2.5},
+                    {"tag_name": "Program:MainProgram.REAL_TAG", "value": 2.5},
+                    BatchWriteItem("DINT_ARRAY[7]", 8),
+                    BatchWriteItem("BOOL_TAG", False),
                 ]
             )
 
-        self.assertEqual(set(results), {"DINT_TAG", "REAL_TAG"})
+        self.assertEqual(
+            set(results),
+            {"DINT_TAG", "Program:MainProgram.REAL_TAG", "DINT_ARRAY[7]", "BOOL_TAG"},
+        )
         self.assertTrue(all(result.success for result in results.values()))
-        self.assertEqual(len(lib.executed_batches), 2)
-        self.assertEqual(lib.executed_batches[0][0]["value_type"], "DINT")
-        self.assertEqual(lib.executed_batches[1][0]["value_type"], "REAL")
+        self.assertEqual(len(lib.native_write_batches), 1)
+        self.assertEqual(
+            [item["value_type"] for item in lib.native_write_batches[0]],
+            ["DINT", "REAL", "DINT", "BOOL"],
+        )
+        self.assertEqual(lib.executed_batches, [])
+        self.assertEqual(lib.typed_write_calls, [])
+
+    def test_write_tags_uses_safe_fallbacks_for_special_paths_and_values(self) -> None:
+        lib = FakeNativeLibrary()
+        with patch.object(client_module, "load_native_library", return_value=lib):
+            plc = Client("127.0.0.1:44818")
+            results = plc.write_tags(
+                [
+                    BatchWriteItem("STRING_TAG", "hello"),
+                    BatchWriteItem("BOOL_ARRAY[40]", True),
+                    BatchWriteItem("Mixer.Speed", 2.5),
+                    BatchWriteItem("Counter.3", True),
+                    BatchWriteItem("UDT_TAG", {"symbol_id": 1, "data": [1, 2, 3]}),
+                ]
+            )
+
+        self.assertTrue(all(result.success for result in results.values()))
+        self.assertEqual(lib.native_write_batches, [])
+        self.assertEqual(
+            [call[:2] for call in lib.typed_write_calls],
+            [
+                ("eip_write_string", "STRING_TAG"),
+                ("eip_write_bool", "BOOL_ARRAY[40]"),
+                ("eip_write_real", "Mixer.Speed"),
+                ("eip_write_bool", "Counter.3"),
+            ],
+        )
+        self.assertEqual(len(lib.executed_batches), 1)
+        self.assertEqual(lib.executed_batches[0][0]["tag_name"], "UDT_TAG")
+
+    def test_write_tags_preserves_mixed_execution_order_with_contiguous_native_runs(self) -> None:
+        lib = FakeNativeLibrary()
+        with patch.object(client_module, "load_native_library", return_value=lib):
+            plc = Client("127.0.0.1:44818")
+            results = plc.write_tags(
+                [
+                    BatchWriteItem("DINT_A", 1),
+                    BatchWriteItem("DINT_B", 2),
+                    BatchWriteItem("STRING_TAG", "middle"),
+                    BatchWriteItem("REAL_A", 3.5),
+                ]
+            )
+
+        self.assertEqual(list(results), ["DINT_A", "DINT_B", "STRING_TAG", "REAL_A"])
+        self.assertEqual(
+            [[item["tag_name"] for item in batch] for batch in lib.native_write_batches],
+            [["DINT_A", "DINT_B"], ["REAL_A"]],
+        )
+        self.assertEqual(lib.typed_write_calls[0][:2], ("eip_write_string", "STRING_TAG"))
+
+    def test_write_tags_keeps_duplicates_sequential_and_last_result_wins(self) -> None:
+        lib = FakeNativeLibrary()
+        with patch.object(client_module, "load_native_library", return_value=lib):
+            plc = Client("127.0.0.1:44818")
+            results = plc.write_tags(
+                [
+                    BatchWriteItem("DINT_TAG", 1),
+                    BatchWriteItem("DINT_TAG", 2),
+                ]
+            )
+
+        self.assertEqual(lib.native_write_batches, [])
+        self.assertEqual(
+            [(name, value.value) for _, name, value in lib.typed_write_calls],
+            [("DINT_TAG", 1), ("DINT_TAG", 2)],
+        )
+        self.assertEqual(list(results), ["DINT_TAG"])
+        self.assertTrue(results["DINT_TAG"].success)
+
+    def test_write_tags_preserves_native_partial_failures(self) -> None:
+        lib = FakeNativeLibrary()
+        lib.native_write_payload = [
+            {"tag_name": "DINT_TAG", "success": True, "error": None},
+            {"tag_name": "REAL_TAG", "success": False, "error": "type mismatch"},
+        ]
+        with patch.object(client_module, "load_native_library", return_value=lib):
+            plc = Client("127.0.0.1:44818")
+            results = plc.write_tags(
+                [BatchWriteItem("DINT_TAG", 1), BatchWriteItem("REAL_TAG", 2.5)]
+            )
+
+        self.assertTrue(results["DINT_TAG"].success)
+        self.assertFalse(results["REAL_TAG"].success)
+        self.assertEqual(results["REAL_TAG"].error, "type mismatch")
 
     def test_check_health_and_diagnostics_use_native_outputs(self) -> None:
         lib = FakeNativeLibrary()

@@ -12,7 +12,6 @@
 
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
-| CODEX-BD | Schema-change simulator and real-hardware validation gate | codex | in-progress | 2026-08-22 |
 | CODEX-BE | Batch packet-policy characterization and safe tuning | codex | open | 2026-08-22 |
 | CODEX-BF | Python native batch writes with safe typed fallbacks | codex | open | 2026-08-22 |
 | CODEX-BG | Cross-binding one-hour and 24-hour endurance soak | codex | open | 2026-08-22 |
@@ -59,6 +58,18 @@
 > — the live Studio 5000 sequence on the maintainer's 1756-L75 is the only
 > remaining release-blocking work; `examples/schema_change_gate_live.rs`
 > (committed earlier at `2bb0e04`) automates its non-editing steps.
+>
+> 2026-08-22 **CODEX-BD merged → Done.** Live 1756-L75 (fw33) session
+> completed with the maintainer performing every Studio 5000 action,
+> walked through interactively: array schema-swap PASS both directions on
+> Rust and one direction each on C#/Python/C++ (`95fc581`); UDT
+> layout-edit/download PASS with session survival confirmed across two
+> consecutive offline downloads, Rust live + three bindings spot-checked
+> (`bbc8834`, `2028748`); post-schema full-coverage and batch regression
+> PASS on all four bindings, zero anomalies (`7b20dc3`). One non-blocking
+> finding spun out as **CODEX-BJ**. **The full CODEX-BA…BD 1.2.1
+> cache-safety sequence is now merged and hardware-validated on the live
+> 1756-L75; next step is maintainer 1.2.1 release-readiness review.**
 
 > 2026-07-08 update: **CODEX-AO closed → Done.** Phase 1 merged (`7cb07a4`); Phase 2
 > (whole-UDT wire-format) deferred indefinitely per maintainer direction — not
@@ -200,6 +211,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-BD | Schema-change simulator and real-hardware validation gate — live 1756-L75 fw33 full PASS | claude | `7b20dc3` |
 | CODEX-BC | Cross-binding schema refresh API (ABI v3, `CAP_SCHEMA_REFRESH`) and cache diagnostics across C#/Python/C++ | codex | `dc23ad2` |
 | CODEX-BB | Schema-drift eviction and bounded read self-healing, fail-closed writes | codex | `dce5a89` |
 | CODEX-BA | Clone-shared schema generation and comprehensive `refresh_schema()` | codex | `dce5a89` |
@@ -260,7 +272,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 - **Current released version:** `v1.2.0` (tagged 2026-07-10, `fcadd7a`; crates.io ×5 published; NuGet/PyPI via the tag-triggered Release workflow).
 - **Previous released version:** `v1.1.0` (tagged 2026-06-19; published to crates.io ×5, NuGet multi-RID, PyPI incl. the CODEX-AI manylinux wheel).
-- **Active development line:** `1.2.1` preparation with five active tasks on the board. CODEX-BA, BB, and BC (the ordered schema-safety sequence) are merged; CODEX-BD (same sequence, offline-complete, live Studio 5000 hardware pass pending) is the sole remaining release blocker. CODEX-BE through CODEX-BH are accepted follow-up performance and endurance work.
+- **Active development line:** `1.2.1` preparation. CODEX-BA through CODEX-BD (the ordered schema-safety sequence) are all merged and hardware-validated on a live 1756-L75 (fw33) — no remaining release blockers on the board. CODEX-BE through CODEX-BI are accepted follow-up performance/endurance/maintenance work; CODEX-BJ is a non-blocking investigation flagged for maintainer triage. Next step is maintainer 1.2.1 release-readiness review.
 - **Current development focus:** the .NET stack — C# wrappers and examples (per `CLAUDE.md` Project Overview).
 - **Hardware validation gate:** integration tests against real CompactLogix / ControlLogix PLCs are the maintainer's responsibility; CI runs `SKIP_PLC_TESTS=1` plus simulator-backed `plc_sim_tests`.
 

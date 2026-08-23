@@ -17,7 +17,6 @@
 | CODEX-BG | Cross-binding one-hour and 24-hour endurance soak | codex | open | 2026-08-22 |
 | CODEX-BH | Tag-shape and scope performance matrix | codex | open | 2026-08-22 |
 | CODEX-BI | Bump CI actions off deprecated Node.js 20 runtime | codex | open | 2026-08-22 |
-| CODEX-BJ | Investigate get_tag_attributes/get_udt_definition path-segment error on a live controller-scope UDT tag | codex | open | 2026-08-22 |
 
 > 2026-08-22 **1.2.1 cache-safety plan.** CODEX-BA → BB → BC → BD are
 > release-blocking and should run in that order. CODEX-BE (packet policy), BF
@@ -42,6 +41,19 @@
 > the live gate tool routes around it using `read_tag()` +
 > `discover_tags_detailed()`. Full repro and comparison table in the task
 > file.
+>
+> 2026-08-22 **CODEX-BJ merged → Done.** Root-caused live: the per-tag Get
+> Attribute List request (CIP service `0x03`) is rejected by the 1756-L75
+> for every tag shape (bare, array-element, program-scoped, UDT and
+> non-UDT alike) — 100% failure, and proven unrelated to path encoding
+> (the identical path succeeds for reads). `get_tag_attributes` now falls
+> back to the already-working bulk discovery sweep when the direct
+> request fails, fixing `get_udt_definition` and `write_tag`'s
+> zero-`symbol_id` UDT-write fallback. Live-hardware-verified for every
+> previously-failing case (`af3ceb0`). True wire-level root cause (why
+> real hardware rejects the symbolic-path request) stays open as
+> documented residual risk in `docs/agents/notes/ab-firmware-quirks.md`,
+> not a blocker.
 >
 > 2026-08-22 **CODEX-BA/BB/BC merged → Done** after independent Claude review
 > (offline gate: fmt, clippy -D warnings, full locked workspace tests,
@@ -211,6 +223,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-BJ | Fixed get_tag_attributes/get_udt_definition path-segment error on real hardware (discovery fallback) | claude | `af3ceb0` |
 | CODEX-BD | Schema-change simulator and real-hardware validation gate — live 1756-L75 fw33 full PASS | claude | `7b20dc3` |
 | CODEX-BC | Cross-binding schema refresh API (ABI v3, `CAP_SCHEMA_REFRESH`) and cache diagnostics across C#/Python/C++ | codex | `dc23ad2` |
 | CODEX-BB | Schema-drift eviction and bounded read self-healing, fail-closed writes | codex | `dce5a89` |
@@ -272,7 +285,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 - **Current released version:** `v1.2.0` (tagged 2026-07-10, `fcadd7a`; crates.io ×5 published; NuGet/PyPI via the tag-triggered Release workflow).
 - **Previous released version:** `v1.1.0` (tagged 2026-06-19; published to crates.io ×5, NuGet multi-RID, PyPI incl. the CODEX-AI manylinux wheel).
-- **Active development line:** `1.2.1` preparation. CODEX-BA through CODEX-BD (the ordered schema-safety sequence) are all merged and hardware-validated on a live 1756-L75 (fw33) — no remaining release blockers on the board. CODEX-BE through CODEX-BI are accepted follow-up performance/endurance/maintenance work; CODEX-BJ is a non-blocking investigation flagged for maintainer triage. Next step is maintainer 1.2.1 release-readiness review.
+- **Active development line:** `1.2.1` preparation. CODEX-BA through CODEX-BD (the ordered schema-safety sequence) and CODEX-BJ (get_tag_attributes/get_udt_definition real-hardware fix) are all merged — no remaining release blockers on the board. CODEX-BE through CODEX-BI are accepted follow-up performance/endurance/maintenance work. Next step is maintainer 1.2.1 release-readiness review.
 - **Current development focus:** the .NET stack — C# wrappers and examples (per `CLAUDE.md` Project Overview).
 - **Hardware validation gate:** integration tests against real CompactLogix / ControlLogix PLCs are the maintainer's responsibility; CI runs `SKIP_PLC_TESTS=1` plus simulator-backed `plc_sim_tests`.
 

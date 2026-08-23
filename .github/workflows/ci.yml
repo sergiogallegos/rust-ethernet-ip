@@ -27,7 +27,7 @@ jobs:
             coverage: true
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@master
@@ -63,7 +63,7 @@ jobs:
 
     - name: Setup .NET
       if: matrix.rust == 'stable'
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: '10.0.x'
 
@@ -90,7 +90,7 @@ jobs:
     # Preserve --blame-crash evidence for any future native-process failure.
     - name: Upload C# testhost crash dumps
       if: matrix.rust == 'stable' && always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: csharp-testhost-dumps-${{ matrix.os }}-${{ github.run_id }}
         path: |
@@ -127,7 +127,7 @@ jobs:
         python: ['3.10', '3.11', '3.12']
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -140,7 +140,7 @@ jobs:
       run: cargo build --release --features ffi --locked
 
     - name: Setup Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
 
@@ -164,7 +164,7 @@ jobs:
     name: MSRV
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Read MSRV from workspace manifest
       id: msrv
       shell: bash
@@ -186,7 +186,7 @@ jobs:
     name: cargo audit
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
     - uses: taiki-e/install-action@v2
       with:
@@ -198,7 +198,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: ${{ github.event_name == 'pull_request' }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
       with:
@@ -218,12 +218,12 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
       with:
         shared-key: cpp
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v6
       with:
         python-version: '3.12'
     - name: Build native library (release, with ffi)
@@ -255,8 +255,8 @@ jobs:
     name: Version consistency
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v6
       with:
         python-version: '3.12'
     - name: Verify version consistency across manifests
@@ -266,7 +266,7 @@ jobs:
     name: validate-agent-files
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Validate agent task files
       run: scripts/validate-agent-files
     - name: Run validator smoke tests
@@ -277,7 +277,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: ${{ github.event_name == 'pull_request' }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
     - name: Check release readiness for current version
       run: |
@@ -290,7 +290,7 @@ jobs:
     name: agent-commit-tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Run agent commit wrapper tests
       run: tests/agent_commit_tests.sh
 
@@ -298,13 +298,13 @@ jobs:
     name: Full coverage manifest
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
-    - uses: actions/setup-dotnet@v4
+    - uses: actions/setup-dotnet@v5
       with:
         dotnet-version: '10.0.x'
         dotnet-quality: 'preview'
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v6
       with:
         python-version: '3.12'
     - name: Build native library (release, with ffi)
@@ -332,7 +332,7 @@ jobs:
     needs: [test, python, release-readiness]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - uses: dtolnay/rust-toolchain@stable
 
@@ -341,12 +341,12 @@ jobs:
         shared-key: package
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: '10.0.x'
 
     - name: Setup Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
 
@@ -373,7 +373,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -387,7 +387,7 @@ jobs:
 
     - name: Setup .NET
       if: matrix.os == 'ubuntu-latest'
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: '10.0.x'
 
@@ -396,7 +396,7 @@ jobs:
       run: dotnet build csharp/RustEtherNetIp/RustEtherNetIp.csproj -c Release
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.os }}-build
         path: |

@@ -37,7 +37,7 @@ jobs:
     # Mac consumers can build from source. Re-add a macos-13 entry here if a
     # reliable Intel runner becomes available.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build cdylib
@@ -48,7 +48,7 @@ jobs:
           mkdir -p "staging/${{ matrix.rid }}"
           cp "target/release/${{ matrix.lib }}" "staging/${{ matrix.rid }}/${{ matrix.lib }}"
       - name: Upload native artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.rid }}
           path: staging/${{ matrix.rid }}/*
@@ -63,12 +63,12 @@ jobs:
     env:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
       - name: Download native artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: native-*
           path: runtimes
@@ -88,7 +88,7 @@ jobs:
           Copy-Item runtimes/linux-x64/librust_ethernet_ip.so target/release/librust_ethernet_ip.so -Force
           ./scripts/pack-nuget.ps1 -OutputDir ./artifacts/nuget -RuntimesDir ./runtimes
       - name: Upload NuGet artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nuget-package
           path: artifacts/nuget/*.nupkg
@@ -111,7 +111,7 @@ jobs:
     env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - name: Publish crates in dependency order
         if: env.CARGO_REGISTRY_TOKEN != ''
@@ -165,12 +165,12 @@ jobs:
           - os: macos-14
             rid: osx-arm64
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Download native for this RID
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: native-${{ matrix.rid }}
           path: native
@@ -184,7 +184,7 @@ jobs:
           cd python
           python -m build --wheel
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.rid }}
           path: python/dist/*.whl
@@ -197,7 +197,7 @@ jobs:
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_28_x86_64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
@@ -219,7 +219,7 @@ jobs:
           done
           ls -l python/wheelhouse
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheel-linux-x64
           path: python/wheelhouse/*.whl
@@ -232,7 +232,7 @@ jobs:
     runs-on: ubuntu-latest
     container: python:3.12-slim
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: wheel-linux-x64
           path: dist
@@ -256,8 +256,8 @@ jobs:
     env:
       PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Build sdist
@@ -266,7 +266,7 @@ jobs:
           cd python
           python -m build --sdist
       - name: Download wheels
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: wheel-*
           path: dist-wheels

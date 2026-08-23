@@ -2640,15 +2640,32 @@ impl EipClient {
 
         let generation = self.schema_generation();
 
-        // Build CIP request for Get Attribute List (Service 0x03)
-        let request = self.build_get_attributes_request(tag_name)?;
-
-        // Send request and get response
-        let response = self.send_cip_request(&request).await?;
-        let cip_data = self.extract_cip_from_response(&response)?;
-
-        // Parse response
-        let attributes = self.parse_attributes_response(tag_name, &cip_data)?;
+        let attributes = match self.get_tag_attributes_direct(tag_name).await {
+            Ok(attributes) => attributes,
+            Err(direct_error) => {
+                // Some controllers reject the per-tag symbolic Get Attribute
+                // List request outright with CIP 0x04 (Path segment error),
+                // for every tag shape (bare, array element, program-scoped,
+                // UDT and non-UDT alike) — observed on a real ControlLogix
+                // 1756-L75 through a 1756-EN2T route; see CODEX-BJ. Fall
+                // back to the bulk Symbol-Object discovery sweep, which uses
+                // a different CIP service and is proven to work there.
+                // Known gap: the discovery-sourced `TagAttributes.size` is
+                // always 0 (discovery doesn't report it), so callers that
+                // need an accurate byte size should not rely on this
+                // fallback path for that field.
+                tracing::warn!(
+                    "get_tag_attributes('{tag_name}') direct request failed ({direct_error}); falling back to discovery"
+                );
+                self.get_tag_attributes_via_discovery(tag_name)
+                    .await
+                    .map_err(|discovery_error| {
+                        crate::error::EtherNetIpError::Protocol(format!(
+                            "{direct_error}; discovery fallback also failed: {discovery_error}"
+                        ))
+                    })?
+            }
+        };
 
         // Cache the attributes
         {
@@ -2664,6 +2681,49 @@ impl EipClient {
         }
 
         Ok(attributes)
+    }
+
+    /// Sends the per-tag Get Attribute List (Service 0x03) request and
+    /// parses the reply, with no fallback. Split out of
+    /// [`get_tag_attributes`](Self::get_tag_attributes) so the fallback
+    /// path can retry through a different CIP mechanism on failure.
+    async fn get_tag_attributes_direct(
+        &mut self,
+        tag_name: &str,
+    ) -> crate::error::Result<TagAttributes> {
+        let request = self.build_get_attributes_request(tag_name)?;
+        let response = self.send_cip_request(&request).await?;
+        let cip_data = self.extract_cip_from_response(&response)?;
+        self.parse_attributes_response(tag_name, &cip_data)
+    }
+
+    /// Recovers tag attributes via the bulk Symbol-Object discovery sweep
+    /// instead of the per-tag Get Attribute List request. Used as a
+    /// fallback when the direct request fails outright (see
+    /// [`get_tag_attributes`](Self::get_tag_attributes)).
+    async fn get_tag_attributes_via_discovery(
+        &mut self,
+        tag_name: &str,
+    ) -> crate::error::Result<TagAttributes> {
+        let path = TagPath::parse(tag_name).map_err(|error| {
+            crate::error::EtherNetIpError::Protocol(error.message().to_string())
+        })?;
+        let base_name = path.base_tag_name();
+
+        let candidates = if let Some(program) = path.program_name() {
+            self.discover_program_tags(&program).await?
+        } else {
+            self.discover_tags_detailed().await?
+        };
+
+        candidates
+            .into_iter()
+            .find(|candidate| candidate.name == base_name)
+            .ok_or_else(|| {
+                crate::error::EtherNetIpError::Protocol(format!(
+                    "'{base_name}' not found via discovery"
+                ))
+            })
     }
 
     /// Reads UDT template data from the PLC

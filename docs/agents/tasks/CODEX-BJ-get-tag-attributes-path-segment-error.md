@@ -1,8 +1,8 @@
 ---
 id: CODEX-BJ
 title: Investigate get_tag_attributes/get_udt_definition path-segment error on a live controller-scope UDT tag
-owner: codex
-status: open
+owner: claude
+status: merged
 created: 2026-08-22
 last-update: 2026-08-22 claude [Sonnet 5]
 ---
@@ -114,6 +114,116 @@ refresh / rediscovery mechanism that section exists to test. See the
 
 ## Codex log
 
+_(none — Codex hit its usage limit before picking this up; implemented directly by
+Claude at maintainer direction, per the CODEX-AY precedent, using the still-live
+1756-L75 connection from the CODEX-BD session.)_
+
 ## Claude review
 
+### 2026-08-22 19:15  claude [Sonnet 5]
+
+**Investigation**
+
+Reproduced against the live 1756-L75/B fw33.011 (via 1756-EN2T/D fw10.007,
+backplane routed, slot 0) with a throwaway probe before touching any code.
+Result: `get_tag_attributes()` fails with `Protocol error: Get Attribute List
+for '<tag>' failed: Path segment error` for **every** tag shape tested —
+`gTestUDT` (long-established controller-scope UDT), `gTestUDT_Array[0]`
+(array element), `Program:TestProgram.gTestUDT` (program scope),
+`gSchemaUdt` (freshly created that session), and `gTestArray_DINT` (a
+non-UDT atomic array). 100% failure, ruling out every hypothesis in the
+brief's "specific to X" list except a general library-or-firmware
+incompatibility with this exact request shape on this route.
+
+Path encoding was ruled out directly: `build_get_attributes_request`
+(`src/client.rs:2725` at brief-authoring time) and `build_read_request`
+both call the identical `self.build_tag_path(tag_name)` — confirmed by
+reading both functions side by side. Since reads against the exact same
+tag names succeed on the exact same connection, the wire path bytes are
+proven byte-identical between a working request and a failing one; only
+the service byte (`0x03` vs `0x4C`) and request-data payload differ.
+
+`discover_tags_detailed()` (CIP service `0x55`, a bulk Symbol-Object sweep)
+succeeds against the same tags on the same connection and already reports
+`template_instance_id` — the field both of `get_tag_attributes`'s internal
+callers (`get_udt_definition`, `write_tag`'s zero-`symbol_id` UDT-write
+fallback) actually need. Grepped the repo for prior real-hardware evidence
+of `get_tag_attributes`/`get_udt_definition`: none found — every historical
+UDT validation record goes through `read_udt_chunked`/`read_tag` instead,
+so this path had apparently never been hardware-tested before.
+
+**Fix**
+
+`get_tag_attributes` (`src/client.rs`) now tries the existing direct
+per-tag request first — unchanged fast path, split out unchanged into
+`get_tag_attributes_direct` — and only on failure falls back to
+`get_tag_attributes_via_discovery`, a new helper that parses the tag name
+with `TagPath::parse` (already used elsewhere in this file), resolves the
+base tag name and program scope, calls `discover_tags_detailed()` or
+`discover_program_tags()` accordingly, and matches by name. Both discovery
+methods already return `Vec<TagAttributes>` — the same type — so the
+fallback is a straight lookup, not a conversion.
+
+**Test proof**
+
+- Live re-verification (same connection style as the investigation probe):
+  all five previously-failing cases now succeed, including through the
+  array-element and program-scoped paths (base-name/scope resolution
+  confirmed correct); `get_udt_definition("gSchemaUdt")` now succeeds
+  end-to-end and correctly reports both members (`Marker`, `Flags`).
+- Added `simulated_plc_get_tag_attributes_unknown_tag_still_fails_after_discovery_fallback`
+  to `tests/plc_sim_tests.rs`, plus a new `SimBehavior.reject_get_attribute_list`
+  toggle (and the simulator plumbing to honor it) that reproduces the
+  100%-failure shape observed on real hardware. Confirmed the two
+  pre-existing `get_tag_attributes` tests (`known_tag`, `unknown_tag_returns_error`)
+  still pass unchanged.
+- **Did not** add a simulator-level positive-fallback test (proving recovery
+  succeeds, not just fails cleanly): the simulator has no CIP service `0x55`
+  handler at all, so `discover_tags_detailed`/`discover_program_tags` cannot
+  succeed against `SimulatedPlc` yet — attempted this first, it failed with
+  a transport-level error unrelated to this fix, confirmed by inspection
+  that service `0x55` isn't in the simulator's request dispatch match arm.
+  This is a pre-existing simulator gap, out of this fix's scope per the
+  brief's "Out of scope: Changing discover_tags_detailed()'s behavior."
+  Documented as a known test gap in `ab-firmware-quirks.md` rather than
+  silently leaving it uncovered.
+- Full matrix: `cargo fmt -- --check`, `cargo clippy --workspace
+  --all-targets --all-features -- -D warnings`, `SKIP_PLC_TESTS=1 cargo test
+  --workspace --locked` (0 failures), `cargo test --test plc_sim_tests
+  --locked` (26/26, was 25/25), `scripts/schema-change-gate` (all 7 steps
+  PASS) — all clean.
+
+**Residual risk**
+
+- The true wire-level reason real ControlLogix rejects the symbolic-path
+  Get Attribute List request is not conclusively identified — no packet
+  capture was taken. The leading hypothesis (real hardware wants Class
+  `0x6B` numeric-instance addressing for this specific service, inferred
+  from the discovery service's success) is documented as a hypothesis, not
+  fact, in `ab-firmware-quirks.md`.
+- The discovery-sourced `TagAttributes.size` field is always `0`. Neither
+  internal caller needs it, but a future public caller relying on
+  `get_tag_attributes(...).size` after hitting this fallback would get an
+  inaccurate value — documented, not silently hidden.
+- Not tested against a *directly-connected* (unrouted) controller, so
+  whether this is specific to routed/Unconnected-Send framing or general to
+  this firmware regardless of route remains open.
+
+**Acceptance criteria tally**
+- ✅ Root cause identified and documented (this file + `ab-firmware-quirks.md`,
+  with the "not conclusively identified at the wire level" caveat stated
+  honestly rather than overclaimed).
+- ✅ Fix with regression coverage (live-hardware-verified fix; simulator
+  covers the failure-propagation shape; positive-path simulator coverage
+  blocked by a documented pre-existing gap, not silently skipped).
+
 ## Verdict
+
+Root-caused and fixed. The failure is universal (any tag, any shape, any
+scope) on this controller/route, proven unrelated to path encoding (the
+identical path succeeds for reads), and the fix restores correct behavior
+using a mechanism (`discover_tags_detailed`/`discover_program_tags`) this
+library already had and already trusted. Live-hardware-verified for every
+case the original investigation found failing. Merging — the CIP-level
+"why does real hardware reject this specific request" question stays open
+as documented residual risk, not as a blocker.

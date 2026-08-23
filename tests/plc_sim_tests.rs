@@ -550,6 +550,38 @@ async fn simulated_plc_get_tag_attributes_known_tag() {
     assert_eq!(attrs.template_instance_id, Some(16));
 }
 
+// A positive-path fallback test (proving get_tag_attributes/get_udt_definition
+// actually recover a real tag's attributes via discovery, not just fail
+// gracefully) is intentionally not included here: the simulator has no
+// CIP service 0x55 (Get Instance Attribute List) handler, so
+// discover_tags_detailed()/discover_program_tags() cannot succeed against
+// SimulatedPlc at all yet - a pre-existing gap, not something introduced by
+// this fallback. The positive path is proven against real hardware instead
+// (see docs/agents/tasks/CODEX-BJ-get-tag-attributes-path-segment-error.md
+// and the dated validation record). This test only proves the fallback is
+// actually attempted and that a genuinely-missing tag still fails cleanly
+// afterward, which the simulator's existing (non-0x55) plumbing supports.
+#[tokio::test]
+async fn simulated_plc_get_tag_attributes_unknown_tag_still_fails_after_discovery_fallback() {
+    let sim = SimulatedPlc::start_with_behavior(SimBehavior {
+        reject_get_attribute_list: true,
+        ..SimBehavior::default()
+    })
+    .await;
+    let addr = format!("{}", sim.address);
+
+    let mut client = EipClient::connect(&addr).await.expect("connect");
+    let err = client.get_tag_attributes("MISSING_TAG").await.unwrap_err();
+
+    match err {
+        EtherNetIpError::Protocol(message) => assert!(
+            message.contains("discovery fallback also failed"),
+            "unexpected error message: {message}"
+        ),
+        other => panic!("expected Protocol error for unknown tag attributes, got: {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn simulated_plc_get_tag_attributes_unknown_tag_returns_error() {
     let sim = SimulatedPlc::start().await;

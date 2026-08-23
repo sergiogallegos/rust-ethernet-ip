@@ -93,6 +93,12 @@ pub struct SimBehavior {
     pub count_reads_as_dint_tags: Vec<String>,
     /// Tags that should fail WRITE requests with CIP status 0x04.
     pub fail_write_tags: Vec<String>,
+    /// When true, every Get Attribute List (Service 0x03) request fails with
+    /// CIP status 0x04, regardless of tag. Reproduces the real-hardware
+    /// behavior observed on a ControlLogix 1756-L75 through a 1756-EN2T
+    /// route (CODEX-BJ), where the per-tag symbolic request was rejected
+    /// universally while plain reads and bulk discovery both succeeded.
+    pub reject_get_attribute_list: bool,
 }
 
 struct SimRuntimeBehavior {
@@ -472,7 +478,7 @@ fn build_cip_response(
         CIP_WRITE_TAG => handle_write(payload, tags, behavior),
         CIP_READ_TAG_FRAGMENTED => build_read_fragmented_response(payload, tags, behavior),
         CIP_WRITE_TAG_FRAGMENTED => handle_write_fragmented(payload, tags, behavior),
-        CIP_GET_ATTRIBUTE_LIST => build_get_attribute_list_response(payload, tags),
+        CIP_GET_ATTRIBUTE_LIST => build_get_attribute_list_response(payload, tags, behavior),
         CIP_MULTIPLE_SERVICE_PACKET => build_multiple_service_response(payload, tags, behavior),
         _ => vec![CIP_REPLY_READ, 0x00, 0x01, 0x00],
     }
@@ -481,7 +487,12 @@ fn build_cip_response(
 fn build_get_attribute_list_response(
     payload: &[u8],
     tags: &Arc<Mutex<HashMap<String, TagValue>>>,
+    behavior: &Arc<SimRuntimeBehavior>,
 ) -> Vec<u8> {
+    if behavior.config.reject_get_attribute_list {
+        return build_cip_error_reply(CIP_REPLY_GET_ATTRIBUTE_LIST, CIP_STATUS_PATH_SEGMENT_ERROR);
+    }
+
     let cip_request = extract_cip_request(payload);
     if cip_request.len() < 4 {
         return build_cip_error_reply(CIP_REPLY_GET_ATTRIBUTE_LIST, CIP_STATUS_PATH_SEGMENT_ERROR);

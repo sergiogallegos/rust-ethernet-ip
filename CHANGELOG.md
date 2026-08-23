@@ -107,6 +107,14 @@ Target release: `1.2.1`.
 
 ### Fixed
 
+- Fixed `get_tag_attributes`/`get_udt_definition` failing outright (CIP
+  "Path segment error") against every tag shape on a real ControlLogix
+  through a routed 1756-EN2T bridge, even though plain reads and bulk tag
+  discovery succeeded on the same connection. The per-tag Get Attribute
+  List request now falls back to the already-working bulk discovery sweep
+  when the direct request fails, restoring `get_udt_definition` and
+  `write_tag`'s zero-`symbol_id` UDT-write fallback on affected
+  controllers.
 - Fixed macOS CMake examples loading a stale Cargo `deps` dylib install name
   instead of the native library copied beside each executable.
 - Fixed C# `WriteTagsBatch` classifying a program-scoped scalar path such as

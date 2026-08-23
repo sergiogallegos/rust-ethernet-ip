@@ -13,12 +13,11 @@ what was and wasn't exercised per binding/direction.
 
 ## Target
 
-- Processor: ControlLogix `1756-L75`, backplane slot 0, chassis slot 0
-- Processor firmware: major revision 33 (full minor revision not read from
-  Studio 5000/module properties during this session)
-- Chassis: `1756-EN2T` bridge in slot 1
+- Processor: ControlLogix `1756-L75/B`, backplane slot 0, chassis slot 0
+- Processor firmware: `33.011`
+- Chassis: `1756-EN2T/D` bridge in slot 1
 - Route: bridge TCP endpoint to backplane slot 0
-- Bridge firmware: not read from module properties during this session
+- Bridge firmware: `10.007`
 - Host: MacBook Pro (`Mac14,9`), Apple M2 Pro, 16 GB RAM, macOS 26.5.2 (`25F84`), arm64
 - Library: `1.2.1` development line, C ABI v3, commit `958e9f3`
 - PLC address: intentionally omitted
@@ -381,4 +380,3 @@ schema-swap (both directions, both scopes, all four bindings), UDT
 layout-edit/download/session-survival (Rust live, C#/Python/C++ spot
 check), and the post-schema full-coverage/batch regression, all PASS with
 zero anomalies.
-

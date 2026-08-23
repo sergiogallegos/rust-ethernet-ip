@@ -17,8 +17,8 @@ The original record remains unchanged as the
 
 ## Target and Method
 
-- Controller: ControlLogix `1756-L75`, firmware major revision 33
-- Route: `1756-EN2T` in chassis slot 1 to processor in backplane slot 0
+- Controller: ControlLogix `1756-L75/B`, firmware `33.011`
+- Route: `1756-EN2T/D` firmware `10.007` in chassis slot 1 to processor in backplane slot 0
 - Host: MacBook Pro (`Mac14,9`), Apple M2 Pro, 10 CPU cores, 16 GB RAM
 - Host OS: macOS 26.5.2 (`25F84`), arm64
 - Tags: first 100 controller-scoped DINT array elements in

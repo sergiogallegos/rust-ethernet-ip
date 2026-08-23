@@ -25,10 +25,14 @@ page records the maintainer interpretation behind it.
   whole-UDT, and discovery evidence from full-tag inventory coverage. Live
   mode requires explicit write opt-in and restores four dedicated DINT array
   elements after each binding.
-- `confirmed`: On the 1756-L75 fw33 through a 1756-EN2T, three passes per
+- `confirmed`: On the 1756-L75/B fw33.011 through a 1756-EN2T/D fw10.007, three passes per
   direction completed 27,648 reads and 27,420 writes across the four bindings
   with zero failures. Median sequential latency was 5.070–5.579 ms; this is a
   heterogeneous manifest baseline, not a universal per-tag claim.
+- `confirmed`: Repeating that sequential workload after the 1.2.1
+  schema-cache sequence produced zero failures and observed average read
+  latency 49–58% below the prior-day baseline across Rust, C#, Python, and
+  C/C++. This is a cross-day observation, not isolated causal proof.
 - `confirmed`: The same target has native batch distributions at logical sizes
   1, 5, 10, 20, 50, and 100. Native DINT writes reached about 2,830 tags/s at
   size 100 across Rust, C#, and C/C++; Python grouped writes remain sequential

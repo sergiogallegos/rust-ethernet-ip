@@ -7,8 +7,8 @@ benchmark-runner changes described below
 
 ## Target and Host
 
-- Controller: ControlLogix `1756-L75`, firmware major revision 33
-- Route: `1756-EN2T` in chassis slot 1 to processor in backplane slot 0
+- Controller: ControlLogix `1756-L75/B`, firmware `33.011`
+- Route: `1756-EN2T/D` firmware `10.007` in chassis slot 1 to processor in backplane slot 0
 - Test address: private lab address, intentionally omitted
 - Host: MacBook Pro (`Mac14,9`), Apple M2 Pro, 10 CPU cores, 16 GB RAM
 - Host OS: macOS 26.5.2 (`25F84`), arm64
@@ -106,5 +106,3 @@ workload name.
   [cross-binding batch performance record](2026-08-21_1756-L75_fw33_cross-binding-batch-performance.md).
 - A 24-hour soak and controlled reconnect test are still required before making
   endurance or recovery claims.
-- Full firmware minor revision and EN2T firmware should be included in the next
-  run when available from Studio 5000/module properties.

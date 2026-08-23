@@ -53,6 +53,10 @@ page records the maintainer interpretation behind it.
   layout-edit/download with session-survival confirmed, and the
   post-schema full-coverage/batch regression, all PASS with zero
   anomalies.
+- `confirmed`: After CODEX-BF and CODEX-BI merged, the 1756-L75/B fw33.011
+  four-binding full-coverage gate was repeated. Rust, C#, Python, and C/C++
+  each passed 2,304/2,304 reads, 2,285/2,285 writes and read-back verifies,
+  2,285/2,285 settle operations, and 18/18 settle samples with zero anomalies.
 
 ## Evidence
 
@@ -63,6 +67,7 @@ page records the maintainer interpretation behind it.
 - [1756-L75 fw33 batch performance](../../docs/validation/2026-08-21_1756-L75_fw33_cross-binding-batch-performance.md)
 - [1756-L75 fw33 array-cache before/after](../../docs/validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md)
 - [1756-L75 fw33 Python native batch writes](../../docs/validation/2026-08-22_1756-L75_fw33_python-native-batch-writes.md)
+- [1756-L75 fw33 post-BF/BI cross-binding full coverage](../../docs/validation/2026-08-22_1756-L75_fw33_post-BF-BI-cross-binding-full-coverage.md)
 - [Schema-change gate procedure](../../docs/validation/SCHEMA_CHANGE_GATE.md)
 - [1756-L75 fw33 schema-change record (live PASS)](../../docs/validation/2026-08-22_1756-L75_fw33_schema-change-gate.md)
 - [1.2.0 validation synthesis](../releases/1.2.0-validation-synthesis.md)

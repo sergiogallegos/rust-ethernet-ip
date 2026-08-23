@@ -1817,3 +1817,19 @@ Sources used:
 - `examples/full_coverage_results/python_batch_benchmark_20260823T020359Z.json`
 - `docs/validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md`
 - `docs/validation/2026-08-22_1756-L75_fw33_python-native-batch-writes.md`
+
+## [2026-08-22] ingest | Repeat post-BF/BI four-binding full coverage
+
+- Updated `wiki/controllers/hardware-validation-program.md` with the
+  maintainer-requested post-merge regression result.
+- Rust, C#, Python, and C/C++ each passed 2,304 reads, 2,285 writes and
+  read-back verifies, 2,285 settle operations, and 18 settle samples on the
+  1756-L75/B firmware-33.011 target with zero anomalies.
+- Recorded that the terminal PLC state was restored to the established
+  settled-value family.
+
+Sources used:
+
+- `examples/full_coverage_tags.json`
+- `examples/full_coverage_results/2026-08-22_post-bi-bf-rerun/*.json`
+- `docs/validation/2026-08-22_1756-L75_fw33_post-BF-BI-cross-binding-full-coverage.md`

@@ -96,6 +96,13 @@ Target release: `1.2.1`.
 
 ### Changed
 
+- Python `write_tags()` now sends contiguous native-safe atomic writes through
+  the real Multiple Service Packet batch endpoint. STRING/custom STRING, UDT,
+  member/bit, packed-BOOL element, and duplicate-name writes retain ordered
+  typed fallbacks with per-tag results.
+- Updated first-party GitHub Actions to Node.js 24-native majors in CI and
+  release workflows, removing reliance on GitHub's Node.js 20 compatibility
+  shim.
 - Lowered the workspace MSRV from Rust 1.96 to Rust 1.88, the oldest compiler
   supported by the locked dependency set and the complete Rust test suite.
 - Updated active guides, examples, historical banners, and wiki synthesis so

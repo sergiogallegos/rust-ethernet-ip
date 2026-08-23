@@ -68,10 +68,13 @@ footer {
 }
 
 .demo-section {
+  width: min(1600px, calc(100% - 48px));
   padding-bottom: 105px;
 }
 
 .demo-heading {
+  width: min(1180px, 100%);
+  margin-inline: auto;
   margin-bottom: 38px;
 }
 
@@ -315,6 +318,7 @@ footer {
 
 @media (max-width: 600px) {
   .demo-section {
+    width: min(100% - 28px, 1600px);
     padding-bottom: 70px;
   }
 

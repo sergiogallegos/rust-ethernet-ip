@@ -1907,3 +1907,36 @@ Sources used:
 - `examples/CSharpWebHmi/PLC_TAGS.md`
 - `examples/CSharpWebHmi/Services/PlcDashboardService.cs`
 - `docs/validation/2026-08-23_csharp-web-hmi_1756-L75_fw33.md`
+
+## [2026-08-23] ingest | Harden Web HMI cable-disconnect visibility
+
+- Updated the example's connection-state synthesis after a physical
+  disconnect/reconnect check against the validation controller.
+- Recorded that strict live mode now returns structured `Offline` or
+  `Reconnecting` snapshots, retains last-good values as `Stale`, disables
+  writes during outages, and reconnects automatically on later polls.
+- Rate-limited outage logs and stopped issuing the remaining tag reads after
+  the native session is detected unhealthy.
+
+Sources used:
+
+- `examples/CSharpWebHmi/Services/PlcDashboardService.cs`
+- `examples/CSharpWebHmi/frontend/src/App.tsx`
+- `examples/CSharpWebHmi/ARCHITECTURE.md`
+- `examples/CSharpWebHmi/README.md`
+
+## [2026-08-23] ingest | Validate bounded Web HMI cable recovery
+
+- Confirmed a physical cable pull produces the released core's 10-second read
+  timeout and a structured stale snapshot rather than simulated data.
+- Added an 800 ms endpoint probe during established outages so absent links do
+  not accumulate full routed-connection attempts or browser request queues.
+- Confirmed automatic recovery after cable restoration: new routed session,
+  39/39 good, zero stale signals, and a 146.37 ms scan without restarting the
+  ASP.NET host.
+
+Sources used:
+
+- `docs/validation/2026-08-23_csharp-web-hmi_1756-L75_fw33.md`
+- `examples/CSharpWebHmi/Services/PlcDashboardService.cs`
+- `examples/CSharpWebHmi/frontend/src/App.tsx`

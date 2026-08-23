@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using CSharpWebHmi.Models;
 using RustEtherNetIp;
 
@@ -19,7 +20,13 @@ public sealed class PlcDashboardService : IDisposable
     private readonly string _controllerFirmware;
     private readonly bool _allowWrites;
     private readonly bool _fallbackToSimulation;
+    private readonly int _reconnectProbeTimeoutMs;
     private EtherNetIpClient? _client;
+    private DashboardSnapshot? _lastGoodLiveSnapshot;
+    private DashboardSnapshot? _latestSnapshot;
+    private bool _outageActive;
+    private int _reconnectAttempts;
+    private DateTimeOffset _lastOutageLogAt = DateTimeOffset.MinValue;
 
     public PlcDashboardService(IConfiguration configuration, ILogger<PlcDashboardService> logger)
     {
@@ -33,29 +40,38 @@ public sealed class PlcDashboardService : IDisposable
         _allowWrites = bool.TryParse(configuration["HMI_ALLOW_WRITES"], out var allowWrites) && allowWrites;
         _fallbackToSimulation = !bool.TryParse(configuration["HMI_FALLBACK_TO_SIMULATION"], out var fallback)
             || fallback;
+        _reconnectProbeTimeoutMs = int.TryParse(configuration["HMI_RECONNECT_PROBE_TIMEOUT_MS"], out var probeTimeout)
+            ? Math.Clamp(probeTimeout, 100, 5000)
+            : 800;
     }
 
     public async Task<DashboardSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
+        if (!await _gate.WaitAsync(0, cancellationToken))
+            return _latestSnapshot ?? CreateUnavailableSnapshot("Initial PLC scan is still in progress.", 0);
+
         try
         {
             if (_configuredMode == "live")
             {
+                var attempt = Stopwatch.StartNew();
                 try
                 {
-                    EnsureConnected();
-                    return ReadLiveSnapshot();
+                    await EnsureConnectedAsync(cancellationToken);
+                    return _latestSnapshot = ReadLiveSnapshot();
                 }
-                catch (Exception ex) when (_fallbackToSimulation)
+                catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Live PLC snapshot failed; returning simulation data");
                     ResetClient();
-                    return CreateSimulationSnapshot($"Live target unavailable — simulation active: {ex.Message}");
+                    RecordOutage(ex.Message);
+                    if (_fallbackToSimulation)
+                        return _latestSnapshot = CreateSimulationSnapshot($"Live target unavailable — simulation active: {ex.Message}");
+
+                    return _latestSnapshot = CreateUnavailableSnapshot(ex.Message, attempt.Elapsed.TotalMilliseconds);
                 }
             }
 
-            return CreateSimulationSnapshot();
+            return _latestSnapshot = CreateSimulationSnapshot();
         }
         finally
         {
@@ -73,7 +89,7 @@ public sealed class PlcDashboardService : IDisposable
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            EnsureConnected();
+            await EnsureConnectedAsync(cancellationToken);
             bool original = _client!.ReadBool(PulseTag);
             _client.WriteBool(PulseTag, !original);
             await Task.Delay(300, cancellationToken);
@@ -91,12 +107,15 @@ public sealed class PlcDashboardService : IDisposable
         }
     }
 
-    private void EnsureConnected()
+    private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
     {
         if (_client is not null && _client.CheckHealth())
             return;
 
         ResetClient();
+        if (_outageActive)
+            await ProbeEndpointAsync(cancellationToken);
+
         _client = new EtherNetIpClient();
         bool connected = _useRoute
             ? _client.ConnectWithRoute(_address, new RoutePath().AddSlot(checked((byte)_slot)))
@@ -110,56 +129,89 @@ public sealed class PlcDashboardService : IDisposable
         }
     }
 
+    private async Task ProbeEndpointAsync(CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate($"tcp://{_address}", UriKind.Absolute, out var endpoint) || endpoint.Port <= 0)
+            throw new InvalidOperationException($"Unable to parse PLC endpoint '{_address}' for reconnect probing.");
+
+        using var probe = new TcpClient();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_reconnectProbeTimeoutMs);
+        try
+        {
+            await probe.ConnectAsync(endpoint.Host, endpoint.Port, timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException(
+                $"PLC TCP endpoint {_address} did not respond within {_reconnectProbeTimeoutMs} ms; reconnect will retry.");
+        }
+        catch (SocketException ex)
+        {
+            throw new InvalidOperationException(
+                $"PLC TCP endpoint {_address} is not reachable yet; reconnect will retry: {ex.Message}", ex);
+        }
+    }
+
     private DashboardSnapshot ReadLiveSnapshot()
     {
         var stopwatch = Stopwatch.StartNew();
         var signals = new List<DashboardSignal>();
+        var readFailures = new List<(string Tag, string Message)>();
+        Exception? connectionFailure = null;
 
         for (int i = 0; i < 8; i++)
         {
             int index = i;
-            signals.Add(ReadSignal($"dint-{i}", $"Counter {i + 1:00}", $"gTestArray_DINT[{i}]", "Controller Arrays", "DINT", null,
-                () => _client!.ReadDint($"gTestArray_DINT[{index}]")));
-            signals.Add(ReadSignal($"real-{i}", $"Analog {i + 1:00}", $"gTestArray_REAL[{i}]", "Controller Arrays", "REAL", "raw",
-                () => _client!.ReadReal($"gTestArray_REAL[{index}]")));
+            AddSignal($"dint-{i}", $"Counter {i + 1:00}", $"gTestArray_DINT[{i}]", "Controller Arrays", "DINT", null,
+                () => _client!.ReadDint($"gTestArray_DINT[{index}]"));
+            AddSignal($"real-{i}", $"Analog {i + 1:00}", $"gTestArray_REAL[{i}]", "Controller Arrays", "REAL", "raw",
+                () => _client!.ReadReal($"gTestArray_REAL[{index}]"));
         }
 
         for (int i = 0; i < 12; i++)
         {
             int index = i;
-            signals.Add(ReadSignal($"bool-{i}", $"Digital {i + 1:00}", $"gTestArray_BOOL[{i}]", "Controller Arrays", "BOOL", null,
-                () => _client!.ReadBool($"gTestArray_BOOL[{index}]")));
+            AddSignal($"bool-{i}", $"Digital {i + 1:00}", $"gTestArray_BOOL[{i}]", "Controller Arrays", "BOOL", null,
+                () => _client!.ReadBool($"gTestArray_BOOL[{index}]"));
         }
 
-        signals.Add(ReadSignal("int-0", "Integer Channel", "gTestArray_INT[0]", "Controller Arrays", "INT", null,
-            () => _client!.ReadInt("gTestArray_INT[0]")));
-        signals.Add(ReadSignal("string-0", "Controller Message", "gTest_STRING", "Controller Scope", "STRING", null,
-            () => _client!.ReadString("gTest_STRING")));
-        signals.Add(ReadSignal("udt-dint", "UDT Counter", "gTestUDT.Member1_DINT", "UDT Structure", "DINT", null,
-            () => _client!.ReadDint("gTestUDT.Member1_DINT")));
-        signals.Add(ReadSignal("udt-real", "UDT Analog", "gTestUDT.Member2_REAL", "UDT Structure", "REAL", "raw",
-            () => _client!.ReadReal("gTestUDT.Member2_REAL")));
-        signals.Add(ReadSignal("udt-bool", "UDT State", "gTestUDT.Member3_BOOL", "UDT Structure", "BOOL", null,
-            () => _client!.ReadBool("gTestUDT.Member3_BOOL")));
-        signals.Add(ReadSignal("udt-int", "UDT Integer", "gTestUDT.Member4_INT", "UDT Structure", "INT", null,
-            () => _client!.ReadInt("gTestUDT.Member4_INT")));
-        signals.Add(ReadSignal("udt-string", "UDT Message", "gTestUDT.Member5_String", "UDT Structure", "STRING", null,
-            () => _client!.ReadString("gTestUDT.Member5_String")));
-        signals.Add(ReadSignal("program-dint", "Program Counter", "Program:TestProgram.gTestArray_DINT[0]", "Program Scope", "DINT", null,
-            () => _client!.ReadDint("Program:TestProgram.gTestArray_DINT[0]")));
-        signals.Add(ReadSignal("program-real", "Program Analog", "Program:TestProgram.gTestArray_REAL[0]", "Program Scope", "REAL", "raw",
-            () => _client!.ReadReal("Program:TestProgram.gTestArray_REAL[0]")));
-        signals.Add(ReadSignal("program-bool", "Program State", "Program:TestProgram.gTestArray_BOOL[0]", "Program Scope", "BOOL", null,
-            () => _client!.ReadBool("Program:TestProgram.gTestArray_BOOL[0]")));
-        signals.Add(ReadSignal("program-string", "Program Message", "Program:TestProgram.gTest_STRING", "Program Scope", "STRING", null,
-            () => _client!.ReadString("Program:TestProgram.gTest_STRING")));
+        AddSignal("int-0", "Integer Channel", "gTestArray_INT[0]", "Controller Arrays", "INT", null,
+            () => _client!.ReadInt("gTestArray_INT[0]"));
+        AddSignal("string-0", "Controller Message", "gTest_STRING", "Controller Scope", "STRING", null,
+            () => _client!.ReadString("gTest_STRING"));
+        AddSignal("udt-dint", "UDT Counter", "gTestUDT.Member1_DINT", "UDT Structure", "DINT", null,
+            () => _client!.ReadDint("gTestUDT.Member1_DINT"));
+        AddSignal("udt-real", "UDT Analog", "gTestUDT.Member2_REAL", "UDT Structure", "REAL", "raw",
+            () => _client!.ReadReal("gTestUDT.Member2_REAL"));
+        AddSignal("udt-bool", "UDT State", "gTestUDT.Member3_BOOL", "UDT Structure", "BOOL", null,
+            () => _client!.ReadBool("gTestUDT.Member3_BOOL"));
+        AddSignal("udt-int", "UDT Integer", "gTestUDT.Member4_INT", "UDT Structure", "INT", null,
+            () => _client!.ReadInt("gTestUDT.Member4_INT"));
+        AddSignal("udt-string", "UDT Message", "gTestUDT.Member5_String", "UDT Structure", "STRING", null,
+            () => _client!.ReadString("gTestUDT.Member5_String"));
+        AddSignal("program-dint", "Program Counter", "Program:TestProgram.gTestArray_DINT[0]", "Program Scope", "DINT", null,
+            () => _client!.ReadDint("Program:TestProgram.gTestArray_DINT[0]"));
+        AddSignal("program-real", "Program Analog", "Program:TestProgram.gTestArray_REAL[0]", "Program Scope", "REAL", "raw",
+            () => _client!.ReadReal("Program:TestProgram.gTestArray_REAL[0]"));
+        AddSignal("program-bool", "Program State", "Program:TestProgram.gTestArray_BOOL[0]", "Program Scope", "BOOL", null,
+            () => _client!.ReadBool("Program:TestProgram.gTestArray_BOOL[0]"));
+        AddSignal("program-string", "Program Message", "Program:TestProgram.gTest_STRING", "Program Scope", "STRING", null,
+            () => _client!.ReadString("Program:TestProgram.gTest_STRING"));
 
         stopwatch.Stop();
+        if (connectionFailure is not null)
+        {
+            ResetClient();
+            RecordOutage(connectionFailure.Message);
+            return CreateUnavailableSnapshot(connectionFailure.Message, stopwatch.Elapsed.TotalMilliseconds);
+        }
+
         int good = signals.Count(signal => signal.Quality == "Good");
         var scopes = BuildScopes(signals, _useRoute);
         var notices = BuildNotices(signals, live: true);
 
-        return new DashboardSnapshot(
+        var snapshot = new DashboardSnapshot(
             "Live PLC",
             good == signals.Count ? "Connected" : "Degraded",
             _useRoute ? $"Communication module route → processor slot {_slot}" : "Direct controller endpoint",
@@ -170,6 +222,7 @@ public sealed class PlcDashboardService : IDisposable
             NativeRuntime.AbiVersion,
             _allowWrites,
             DateTimeOffset.Now,
+            good == signals.Count ? DateTimeOffset.Now : _lastGoodLiveSnapshot?.LastGoodAt,
             stopwatch.Elapsed.TotalMilliseconds,
             good,
             signals.Count,
@@ -182,26 +235,63 @@ public sealed class PlcDashboardService : IDisposable
             signals.Where(signal => signal.Id.StartsWith("dint-")).Select(ToInt).ToArray(),
             signals.Where(signal => signal.Id.StartsWith("bool-")).Select(ToBool).ToArray(),
             notices);
-    }
 
-    private DashboardSignal ReadSignal(
-        string id,
-        string label,
-        string tag,
-        string scope,
-        string dataType,
-        string? unit,
-        Func<object?> read)
-    {
-        try
+        if (good == signals.Count)
         {
-            object? value = read();
-            return new DashboardSignal(id, label, tag, scope, dataType, value, FormatValue(value), unit, "Good");
+            if (_outageActive)
+                _logger.LogInformation("PLC communication recovered after {Attempts} reconnect attempt(s)", _reconnectAttempts);
+            _outageActive = false;
+            _reconnectAttempts = 0;
+            _lastGoodLiveSnapshot = snapshot;
         }
-        catch (Exception ex)
+        else if (readFailures.Count > 0)
         {
-            _logger.LogWarning(ex, "Read failed for {Tag}", tag);
-            return new DashboardSignal(id, label, tag, scope, dataType, null, "—", unit, "Bad");
+            _logger.LogWarning(
+                "PLC scan completed with {FailureCount} tag-level failure(s): {Tags}",
+                readFailures.Count,
+                string.Join(", ", readFailures.Select(failure => failure.Tag)));
+        }
+
+        return snapshot;
+
+        void AddSignal(
+            string id,
+            string label,
+            string tag,
+            string scope,
+            string dataType,
+            string? unit,
+            Func<object?> read)
+        {
+            if (connectionFailure is not null)
+                return;
+
+            try
+            {
+                object? value = read();
+                signals.Add(new DashboardSignal(id, label, tag, scope, dataType, value, FormatValue(value), unit, "Good"));
+            }
+            catch (Exception ex)
+            {
+                bool connectionHealthy;
+                try
+                {
+                    connectionHealthy = _client is not null && _client.CheckHealth();
+                }
+                catch
+                {
+                    connectionHealthy = false;
+                }
+
+                if (!connectionHealthy || IsTransportFailure(ex))
+                {
+                    connectionFailure = ex;
+                    return;
+                }
+
+                readFailures.Add((tag, ex.Message));
+                signals.Add(new DashboardSignal(id, label, tag, scope, dataType, null, "—", unit, "Bad"));
+            }
         }
     }
 
@@ -250,6 +340,7 @@ public sealed class PlcDashboardService : IDisposable
             3,
             false,
             DateTimeOffset.Now,
+            DateTimeOffset.Now,
             0.8,
             signals.Count,
             signals.Count,
@@ -260,6 +351,63 @@ public sealed class PlcDashboardService : IDisposable
             signals.Where(signal => signal.Id.StartsWith("dint-")).Select(ToInt).ToArray(),
             signals.Where(signal => signal.Id.StartsWith("bool-")).Select(ToBool).ToArray(),
             notices);
+    }
+
+    private DashboardSnapshot CreateUnavailableSnapshot(string detail, double attemptTimeMs)
+    {
+        bool hasLastGood = _lastGoodLiveSnapshot is not null;
+        string state = hasLastGood ? "Reconnecting" : "Offline";
+        var signals = hasLastGood
+            ? _lastGoodLiveSnapshot!.Signals.Select(signal => signal with { Quality = "Stale" }).ToArray()
+            : Array.Empty<DashboardSignal>();
+        var notices = new List<DashboardNotice>
+        {
+            new("Alarm", "C-503", $"PLC communication unavailable — automatic reconnect attempt {_reconnectAttempts} will continue."),
+            new("Warning", "C-504", hasLastGood
+                ? "Displayed values are retained from the last successful scan and marked stale."
+                : "No successful live scan is available yet."),
+            new("Info", "R-121", "The C# wrapper will create a fresh native connection on the next dashboard poll."),
+        };
+
+        return new DashboardSnapshot(
+            "Live PLC",
+            state,
+            _useRoute ? $"Communication module route → processor slot {_slot}" : "Direct controller endpoint",
+            _slot,
+            _controllerName,
+            _controllerFirmware,
+            NativeRuntime.LibraryVersion,
+            NativeRuntime.AbiVersion,
+            false,
+            DateTimeOffset.Now,
+            _lastGoodLiveSnapshot?.LastGoodAt,
+            attemptTimeMs,
+            0,
+            hasLastGood ? signals.Length : 39,
+            hasLastGood
+                ? $"PLC link lost — reconnecting automatically; last good scan was {_lastGoodLiveSnapshot!.LastGoodAt:HH:mm:ss}"
+                : "PLC is offline — waiting for the first successful connection",
+            signals,
+            hasLastGood ? BuildScopes(signals, _useRoute) : Array.Empty<ScopeSummary>(),
+            hasLastGood ? signals.Where(signal => signal.Id.StartsWith("real-")).Select(ToDouble).ToArray() : Array.Empty<double>(),
+            hasLastGood ? signals.Where(signal => signal.Id.StartsWith("dint-")).Select(ToInt).ToArray() : Array.Empty<int>(),
+            hasLastGood ? signals.Where(signal => signal.Id.StartsWith("bool-")).Select(ToBool).ToArray() : Array.Empty<bool>(),
+            notices);
+    }
+
+    private void RecordOutage(string detail)
+    {
+        _reconnectAttempts++;
+        var now = DateTimeOffset.UtcNow;
+        if (!_outageActive || now - _lastOutageLogAt >= TimeSpan.FromSeconds(30))
+        {
+            _logger.LogWarning(
+                "PLC communication unavailable; automatic reconnect is active (attempt {Attempt}): {Detail}",
+                _reconnectAttempts,
+                detail);
+            _lastOutageLogAt = now;
+        }
+        _outageActive = true;
     }
 
     private static DashboardSignal SimSignal(
@@ -324,6 +472,27 @@ public sealed class PlcDashboardService : IDisposable
         double number => number.ToString("0.00"),
         _ => value.ToString() ?? "—",
     };
+
+    private static bool IsTransportFailure(Exception exception)
+    {
+        string detail = exception.ToString().ToLowerInvariant();
+        string[] transportMarkers =
+        [
+            "timed out",
+            "timeout",
+            "poisoned",
+            "reconnect required",
+            "connection reset",
+            "connection refused",
+            "connection closed",
+            "broken pipe",
+            "socket",
+            "transport",
+            "session is not registered",
+            "not connected",
+        ];
+        return transportMarkers.Any(detail.Contains);
+    }
 
     private static double ToDouble(DashboardSignal signal) => signal.Value switch
     {

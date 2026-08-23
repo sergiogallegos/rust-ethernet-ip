@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CommandResult, DashboardSignal, DashboardSnapshot } from './types';
 
 type IconName = 'overview' | 'signals' | 'structure' | 'diagnostics' | 'refresh' | 'pulse' | 'route';
@@ -38,8 +38,11 @@ function App() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [clock, setClock] = useState(new Date());
   const [commandMessage, setCommandMessage] = useState<string | null>(null);
+  const requestInFlight = useRef(false);
 
   const loadSnapshot = useCallback(async () => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
     try {
       const response = await fetch('/api/dashboard', { cache: 'no-store' });
       if (!response.ok) throw new Error(`Dashboard API returned ${response.status}`);
@@ -48,6 +51,7 @@ function App() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Dashboard data is unavailable');
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
     }
   }, []);
@@ -58,8 +62,17 @@ function App() {
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const timer = window.setInterval(() => void loadSnapshot(), POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    let cancelled = false;
+    let timer: number;
+    const poll = async () => {
+      await loadSnapshot();
+      if (!cancelled) timer = window.setTimeout(() => void poll(), POLL_INTERVAL_MS);
+    };
+    timer = window.setTimeout(() => void poll(), POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [autoRefresh, loadSnapshot]);
 
   useEffect(() => {
@@ -85,6 +98,15 @@ function App() {
   const qualityPercent = snapshot ? Math.round((snapshot.goodSignals / snapshot.totalSignals) * 100) : 0;
   const isLive = snapshot?.mode === 'Live PLC';
   const isRouted = snapshot?.target.startsWith('Communication module route') ?? true;
+  const connectionState = error ? 'Offline' : snapshot?.connectionState ?? (loading ? 'Connecting' : 'Offline');
+  const connectionTone = connectionState === 'Connected'
+    ? 'connected'
+    : connectionState === 'Reconnecting'
+      ? 'reconnecting'
+      : connectionState === 'Offline'
+        ? 'offline'
+        : 'sim';
+  const linkUnavailable = connectionState === 'Reconnecting' || connectionState === 'Offline';
 
   return (
     <div className="hmi-shell">
@@ -95,9 +117,9 @@ function App() {
         </div>
         <div className="header-divider" />
         <div className="cell-id"><span>VALIDATION CELL</span><strong>CELL-01</strong></div>
-        <div className={`connection-chip ${isLive ? 'live' : 'sim'}`}>
+        <div className={`connection-chip ${connectionTone}`}>
           <span className="status-dot" />
-          {snapshot?.connectionState ?? (loading ? 'Connecting' : 'Offline')}
+          {connectionState}
         </div>
         <div className="topbar-spacer" />
         <div className="header-metric"><span>CONTROLLER</span><strong>{snapshot?.controller ?? 'Loading target'}</strong></div>
@@ -113,20 +135,23 @@ function App() {
         <div className="rail-version"><span>DEMO</span><strong>v1.2.1</strong></div>
       </aside>
 
-      <div className={`message-strip ${error ? 'alarm' : ''}`}>
-        <span className="message-code">{error ? 'C-500' : 'S-100'}</span>
+      <div className={`message-strip ${error || linkUnavailable ? 'alarm' : ''}`}>
+        <span className="message-code">{error ? 'C-500' : linkUnavailable ? 'C-503' : 'S-100'}</span>
         <strong>{error ?? snapshot?.operatorMessage ?? 'Establishing dashboard data source…'}</strong>
-        <span className="message-action">{error ? '{Check backend connection}' : isLive ? '{Monitoring live tags}' : '{Simulation active}'}</span>
+        <span className="message-action">{error ? '{Check backend connection}' : linkUnavailable ? '{Automatic reconnect active}' : isLive ? '{Monitoring live tags}' : '{Simulation active}'}</span>
       </div>
 
-      <main className="workspace">
+      <main className={`workspace ${linkUnavailable ? 'data-stale' : ''}`}>
         <section className="screen-heading">
           <div><p className="eyebrow">LOGIX / ETHERNET/IP EXPLICIT MESSAGING</p><h1>Validation Cell Overview</h1></div>
-          <div className="heading-meta"><span>Last scan</span><strong>{snapshot ? formatTime(snapshot.refreshedAt) : '—'}</strong></div>
+          <div className="heading-meta">
+            <span>{linkUnavailable ? 'Last good scan' : 'Last scan'}</span>
+            <strong>{snapshot ? formatTime(linkUnavailable ? snapshot.lastGoodAt : snapshot.refreshedAt) : '—'}</strong>
+          </div>
         </section>
 
         <section className="kpi-grid" aria-label="Connection metrics">
-          <MetricCard label="Signal Quality" value={`${qualityPercent}`} unit="%" detail={`${snapshot?.goodSignals ?? 0} / ${snapshot?.totalSignals ?? 0} good`} tone={qualityPercent === 100 ? 'ok' : 'alarm'} />
+          <MetricCard label="Signal Quality" value={`${qualityPercent}`} unit="%" detail={linkUnavailable ? 'Last values retained as stale' : `${snapshot?.goodSignals ?? 0} / ${snapshot?.totalSignals ?? 0} good`} tone={qualityPercent === 100 ? 'ok' : 'alarm'} />
           <MetricCard label="Acquisition Scan" value={snapshot?.scanTimeMs.toFixed(1) ?? '—'} unit="ms" detail="C# wrapper read cycle" />
           <MetricCard label="Connection Path" value={isRouted ? `SLOT ${snapshot?.slot ?? 0}` : 'DIRECT'} detail={snapshot?.firmware ? `Firmware ${snapshot.firmware}` : 'Awaiting target'} icon="route" />
           <MetricCard label="Native Core" value={`v${snapshot?.libraryVersion ?? '1.2.1'}`} detail={`C ABI ${snapshot?.abiVersion ?? 3} · Rust core`} />
@@ -164,7 +189,7 @@ function App() {
 
           <article className="panel digital-panel">
             <PanelHeader overline="PACKED BOOL ACCESS" title="Digital Signal Bank" meta="gTestArray_BOOL[0..11]" />
-            <div className="digital-grid">
+            <div className={`digital-grid ${linkUnavailable ? 'stale' : ''}`}>
               {(snapshot?.digitalProfile ?? Array.from({ length: 12 }, () => false)).map((value, index) => (
                 <div className="digital-channel" key={index}>
                   <span className={`pilot ${value ? 'on' : ''}`} />
@@ -217,11 +242,11 @@ function App() {
           <Icon name="pulse" /><span><b>Test Pulse</b><small>{snapshot?.writesEnabled ? 'Pulse + restore BOOL[0]' : 'Writes disabled'}</small></span>
         </button>
         <div className="dock-spacer" />
-        <div className={`mode-panel ${isLive ? 'live' : 'sim'}`}><span className="status-dot" /><div><small>DATA SOURCE</small><strong>{snapshot?.mode ?? 'Starting'}</strong></div></div>
+        <div className={`mode-panel ${connectionTone}`}><span className="status-dot" /><div><small>DATA SOURCE</small><strong>{linkUnavailable ? connectionState : snapshot?.mode ?? 'Starting'}</strong></div></div>
       </section>
 
       <footer className="statusbar">
-        <span><i className={`footer-dot ${isLive ? 'ok' : 'info'}`} />PLC: {snapshot?.connectionState ?? 'Starting'}</span>
+        <span><i className={`footer-dot ${connectionTone}`} />PLC: {connectionState}</span>
         <span>Route: Slot {snapshot?.slot ?? 0}</span>
         <span>Scan: {snapshot?.scanTimeMs.toFixed(1) ?? '—'} ms</span>
         <span>Protocol: EtherNet/IP · CIP</span>
@@ -245,9 +270,9 @@ function PanelHeader({ overline, title, meta }: { overline: string; title: strin
 }
 
 function SignalReadout({ signal, compact = false }: { signal?: DashboardSignal; compact?: boolean }) {
-  return <div className={`signal-readout ${compact ? 'compact' : ''}`}>
+  return <div className={`signal-readout ${compact ? 'compact' : ''} ${signal?.quality === 'Stale' ? 'stale' : ''}`}>
     <div><span>{signal?.label ?? 'Loading signal'}</span><code>{signal?.dataType ?? '—'}</code></div>
-    <strong>{signal?.displayValue ?? '—'}{signal?.unit && <small>{signal.unit}</small>}</strong>
+    <strong>{signal?.displayValue ?? '—'}{signal?.unit && <small>{signal.unit}</small>}{signal?.quality === 'Stale' && <em>STALE</em>}</strong>
     {compact && <p>{signal?.tag ?? 'Awaiting tag'}</p>}
   </div>;
 }
@@ -289,7 +314,8 @@ function PanelSkeleton() {
   return <div className="skeleton"><span /><span /><span /></div>;
 }
 
-function formatTime(value: string) {
+function formatTime(value: string | null) {
+  if (!value) return 'Never';
   return new Date(value).toLocaleTimeString([], { hour12: false });
 }
 

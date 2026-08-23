@@ -77,8 +77,11 @@ button { -webkit-tap-highlight-color: transparent; }
 .cell-id span, .header-metric span { display: block; color: var(--gray-500); font-size: 10px; font-weight: 700; letter-spacing: .09em; }
 .cell-id strong, .header-metric strong { display: block; margin-top: 3px; font: 600 13px var(--font-mono); }
 .connection-chip { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 13px; border-radius: 18px; font-size: 12px; font-weight: 700; }
-.connection-chip.live { color: var(--green-600); background: var(--green-50); }
+.connection-chip.connected { color: var(--green-600); background: var(--green-50); }
+.connection-chip.reconnecting { color: var(--amber-700); background: var(--amber-50); }
+.connection-chip.offline { color: var(--red-700); background: var(--red-50); }
 .connection-chip.sim { color: var(--blue-600); background: var(--blue-50); }
+.connection-chip.reconnecting .status-dot { animation: reconnect-pulse 1.2s ease-in-out infinite; }
 .status-dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 18%, transparent); }
 .topbar-spacer { flex: 1; }
 .header-metric { padding-right: 18px; text-align: right; border-right: 1px solid var(--gray-150); }
@@ -114,6 +117,8 @@ button { -webkit-tap-highlight-color: transparent; }
   bottom: calc(var(--dock-height) + var(--status-height)); left: var(--rail-width);
   overflow: auto; padding: 18px 22px 22px; background: var(--gray-50);
 }
+.workspace.data-stale .profile-line { stroke: var(--amber-500); stroke-dasharray: 7 6; }
+.workspace.data-stale .panel { border-color: #ead7b0; }
 .screen-heading { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 14px; }
 .eyebrow { margin: 0 0 4px; color: var(--blue-600); font-size: 10px; font-weight: 700; letter-spacing: .11em; }
 h1 { margin: 0; color: var(--gray-900); font-size: 25px; line-height: 1.1; letter-spacing: -.02em; }
@@ -160,6 +165,8 @@ h1 { margin: 0; color: var(--gray-900); font-size: 25px; line-height: 1.1; lette
 .signal-readout code { color: var(--blue-600); font: 9px var(--font-mono); }
 .signal-readout > strong { display: block; margin-top: 4px; overflow: hidden; font: 700 17px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .signal-readout > strong small { margin-left: 4px; color: var(--gray-500); font-size: 9px; }
+.signal-readout > strong em { margin-left: 7px; padding: 2px 4px; color: var(--amber-700); background: var(--amber-50); border-radius: 3px; font: 700 7px var(--font-mono); font-style: normal; vertical-align: middle; }
+.signal-readout.stale > strong { color: var(--gray-600); }
 .signal-readout.compact { padding: 10px 12px; border: 1px solid var(--gray-150); border-radius: 5px; background: var(--gray-25); }
 .signal-readout.compact p { margin: 5px 0 0; overflow: hidden; color: var(--gray-500); font: 8px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 
@@ -182,6 +189,7 @@ h1 { margin: 0; color: var(--gray-900); font-size: 25px; line-height: 1.1; lette
 .digital-channel { min-height: 64px; display: grid; grid-template-columns: 16px 1fr; grid-template-rows: 1fr 1fr; align-items: center; column-gap: 7px; padding: 8px; background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 4px; }
 .pilot { grid-row: span 2; width: 14px; height: 28px; background: var(--gray-300); border: 1px solid var(--gray-400); border-radius: 2px; box-shadow: inset 0 0 0 3px var(--gray-200); }
 .pilot.on { background: var(--green-500); border-color: var(--green-600); box-shadow: inset 0 0 0 3px #67bc8a; }
+.digital-grid.stale .pilot { opacity: .58; filter: grayscale(.65); }
 .digital-channel strong { font: 700 11px var(--font-mono); }
 .digital-channel small { color: var(--gray-500); font: 8px var(--font-mono); }
 
@@ -190,6 +198,7 @@ h1 { margin: 0; color: var(--gray-900); font-size: 25px; line-height: 1.1; lette
 .structure-row:last-child { border-bottom: 0; }
 .quality-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green-500); }
 .quality-dot.bad { background: var(--red-500); }
+.quality-dot.stale { background: var(--amber-500); }
 .structure-row div { min-width: 0; display: flex; align-items: center; gap: 6px; }
 .structure-row strong { font-size: 9px; white-space: nowrap; }
 .structure-row code { overflow: hidden; color: var(--gray-500); font: 8px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
@@ -237,6 +246,8 @@ h1 { margin: 0; color: var(--gray-900); font-size: 25px; line-height: 1.1; lette
 .dock-spacer { flex: 1; }
 .mode-panel { min-width: 175px; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 0 16px; color: var(--green-600); background: var(--green-50); border: 1px solid #c4e5d0; border-radius: 5px; }
 .mode-panel.sim { color: var(--blue-600); background: var(--blue-50); border-color: var(--blue-100); }
+.mode-panel.reconnecting { color: var(--amber-700); background: var(--amber-50); border-color: #f0d39b; }
+.mode-panel.offline { color: var(--red-700); background: var(--red-50); border-color: #f5c9c7; }
 .mode-panel small { display: block; color: var(--gray-500); font-size: 8px; font-weight: 700; letter-spacing: .08em; }
 .mode-panel strong { display: block; margin-top: 3px; color: var(--gray-800); font-size: 12px; }
 
@@ -247,7 +258,9 @@ h1 { margin: 0; color: var(--gray-900); font-size: 25px; line-height: 1.1; lette
 }
 .statusbar > span { display: flex; align-items: center; gap: 6px; }
 .footer-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gray-400); }
-.footer-dot.ok { background: var(--green-500); box-shadow: 0 0 0 3px var(--green-50); }
+.footer-dot.connected { background: var(--green-500); box-shadow: 0 0 0 3px var(--green-50); }
+.footer-dot.reconnecting { background: var(--amber-500); box-shadow: 0 0 0 3px var(--amber-50); }
+.footer-dot.offline { background: var(--red-500); box-shadow: 0 0 0 3px var(--red-50); }
 .footer-dot.info { background: var(--blue-500); box-shadow: 0 0 0 3px var(--blue-50); }
 .statusbar-spacer { flex: 1; }
 .mono { font-family: var(--font-mono); }
@@ -262,4 +275,9 @@ h1 { margin: 0; color: var(--gray-900); font-size: 25px; line-height: 1.1; lette
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+@keyframes reconnect-pulse {
+  0%, 100% { opacity: .45; transform: scale(.85); }
+  50% { opacity: 1; transform: scale(1); }
 }

@@ -14,8 +14,30 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseCors("FrontendDevelopment");
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/")
+    {
+        context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+        context.Response.Headers.Pragma = "no-cache";
+        context.Response.Headers.Expires = "0";
+    }
+    await next(context);
+});
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context =>
+    {
+        if (context.Context.Request.Path == "/"
+            || string.Equals(context.File.Name, "index.html", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+            context.Context.Response.Headers.Pragma = "no-cache";
+            context.Context.Response.Headers.Expires = "0";
+        }
+    },
+});
 
 app.MapGet("/api/dashboard", async (PlcDashboardService dashboard, CancellationToken cancellationToken) =>
     Results.Ok(await dashboard.GetSnapshotAsync(cancellationToken)));

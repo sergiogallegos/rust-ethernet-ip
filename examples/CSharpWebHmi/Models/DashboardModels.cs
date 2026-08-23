@@ -11,6 +11,7 @@ public sealed record DashboardSnapshot(
     uint AbiVersion,
     bool WritesEnabled,
     DateTimeOffset RefreshedAt,
+    DateTimeOffset? LastGoodAt,
     double ScanTimeMs,
     int GoodSignals,
     int TotalSignals,

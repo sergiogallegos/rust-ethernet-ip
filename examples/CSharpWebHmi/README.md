@@ -207,6 +207,37 @@ For strict live-only testing:
 export HMI_FALLBACK_TO_SIMULATION=false
 ```
 
+The optional reconnect-probe timeout defaults to 800 ms and may be adjusted
+between 100 and 5000 ms:
+
+```bash
+export HMI_RECONNECT_PROBE_TIMEOUT_MS=800
+```
+
+### Cable-disconnect test
+
+Strict live mode is also the clearest way to test network-loss behavior:
+
+1. Start with `Connected` and `39 / 39 good`.
+2. Disconnect the controller-side Ethernet cable or otherwise interrupt the
+   test network.
+3. After the active read timeout, the page changes to `Reconnecting`, reports
+   `0 / 39 good`, disables writes, and marks the last successful values
+   `Stale`. The API continues returning HTTP 200 with this structured state;
+   it does not replace live values with simulation data.
+4. Reconnect the cable. The next dashboard poll attempts a fresh native
+   connection after a short TCP reachability probe confirms the endpoint is
+   available, so the page returns to `Connected` automatically after a
+   successful scan. The probe prevents full native connection timeouts from
+   accumulating while the cable is still absent. Polls never overlap while a
+   PLC timeout is pending, and concurrent browser clients receive the latest
+   completed snapshot rather than forming a timeout backlog. The ASP.NET
+   process does not need to be restarted.
+
+If the application has never completed a successful scan, the state is
+`Offline` and no stale values are shown. Reconnect warnings are rate-limited
+to avoid one stack trace per tag or poll during a sustained outage.
+
 ## 7. Optional Safe Write Demonstration
 
 The backend rejects every write unless this flag is explicitly set:

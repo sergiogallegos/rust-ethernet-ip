@@ -13,22 +13,37 @@
 
 ## Snapshot Request Flow
 
-1. React requests `GET /api/dashboard` every 1.8 seconds.
+1. React requests `GET /api/dashboard` 1.8 seconds after each prior request
+   completes. An in-flight guard prevents slow PLC timeouts from accumulating
+   a queue of overlapping browser polls.
 2. ASP.NET resolves the singleton `PlcDashboardService`.
 3. A semaphore ensures that one native client operation sequence runs at a
-   time.
+   time. If another browser requests data while a scan or reconnect is active,
+   it immediately receives the latest immutable snapshot instead of waiting in
+   a queue behind the PLC timeout.
 4. In live mode, `CheckHealth()` reuses a healthy session or reconnects.
 5. Routed mode creates `RoutePath().AddSlot(slot)` and calls
    `ConnectWithRoute`; direct mode calls `Connect`.
 6. Typed wrapper methods read the known Logix types. Each signal is converted
-   to a JSON-safe value plus `Good` or `Bad` quality.
+   to a JSON-safe value plus `Good`, `Bad`, or `Stale` quality.
 7. ASP.NET serializes the complete snapshot using camel-case JSON.
 8. React updates metrics, the REAL-array profile, BOOL lamps, UDT rows,
    program-scope readouts, and communication notices.
 
 One failed tag does not discard the other values. Its signal becomes `Bad`,
 the aggregate connection state becomes `Degraded`, and the dashboard reports
-the number of failures.
+the number of failures. If the native connection becomes unhealthy, the scan
+stops issuing reads against the poisoned session, disposes it, and returns a
+structured `Reconnecting` snapshot. Values from the last fully successful
+scan are retained with `Stale` quality; they are never presented as current.
+
+The next browser poll creates a fresh native connection. A successful scan
+returns the state to `Connected` without restarting ASP.NET. Before the first
+successful scan, connection failure is reported as `Offline` with no retained
+values. During an established outage, an 800 ms TCP probe prevents expensive
+full routed-connection attempts until the configured endpoint is reachable
+again. Sustained outages produce one warning on transition and at most one
+summary every 30 seconds rather than a warning and stack trace for every tag.
 
 ## Native Runtime Boundary
 

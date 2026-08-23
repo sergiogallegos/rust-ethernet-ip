@@ -1,5 +1,5 @@
-export type Quality = 'Good' | 'Bad';
-export type ConnectionState = 'Connected' | 'Degraded' | 'Simulated' | 'Fallback';
+export type Quality = 'Good' | 'Bad' | 'Stale';
+export type ConnectionState = 'Connected' | 'Degraded' | 'Reconnecting' | 'Offline' | 'Simulated' | 'Fallback';
 
 export interface DashboardSignal {
   id: string;
@@ -39,6 +39,7 @@ export interface DashboardSnapshot {
   abiVersion: number;
   writesEnabled: boolean;
   refreshedAt: string;
+  lastGoodAt: string | null;
   scanTimeMs: number;
   goodSignals: number;
   totalSignals: number;

@@ -13,16 +13,17 @@ This project follows [Semantic Versioning](https://semver.org/) (SemVer):
 
 ## Current Version State
 
-- **Current stable published version:** `1.2.0`
-- **Previous stable version:** `1.1.0`
+- **Current stable published version:** `1.2.1`
+- **Previous stable version:** `1.2.0`
 - **Earlier stable versions:** `1.0.0`, `0.7.0`, `0.6.3`
 
 ### Version History
 
 | Version | Release Date | Status | Notes |
 |---------|-------------|--------|-------|
-| 1.2.0   | 2026-07-08  | Current published stable | Handle-aware and fragmented STRING/structure operations, packet-size-aware batches, C/C++ consumer support, diagnostics and lifecycle hardening |
-| 1.1.0   | 2026-06-19  | Previous published stable | Cross-wrapper correctness, packaging, error propagation, and release automation |
+| 1.2.1   | 2026-08-22  | Current published stable | Schema-cache safety and explicit refresh, native Python batch writes, cross-binding diagnostics, and controller-compatible tag-attribute fallback |
+| 1.2.0   | 2026-07-10  | Previous published stable | Handle-aware and fragmented STRING/structure operations, packet-size-aware batches, C/C++ consumer support, diagnostics and lifecycle hardening |
+| 1.1.0   | 2026-06-19  | Earlier stable | Cross-wrapper correctness, packaging, error propagation, and release automation |
 | 1.0.0   | 2026-05-24  | Earlier stable | SemVer-major release-window bundle: actor refactor, sibling crates, FFI ABI handshake, BOOL array fixes, CIP path validation, Python typed writes, fleet pool, service layer, retry primitive |
 | 0.7.0   | 2026-04-07  | Previous published stable | Hardening release with Rust/C# parity improvements and real-PLC validation evidence |
 | 0.6.3   | 2026-03-01  | Previous stable | Reliability and protocol correctness fixes |
@@ -60,7 +61,7 @@ Before a release-prep commit or tag, run the mechanical readiness check:
 scripts/check-release-readiness X.Y.Z
 ```
 
-The script reads `scripts/check-release-readiness.txt`, verifies every known version-string site against `X.Y.Z`, and runs Cargo package dry-runs in the workspace publish order. Use `--strict` for release-day validation after sibling crates have propagated on crates.io. Use `--ignore-examples` only when demo application versions intentionally diverge from the library version.
+The script reads `scripts/check-release-readiness.txt`, verifies every known version-string site against `X.Y.Z`, runs Cargo package dry-runs in workspace publish order, and inspects each generated crate README for stale release or install versions. CI and the release workflow also run `scripts/check-packaged-release-docs` against generated NuGet and Python artifacts before publication. Use `--strict` for release-day validation after sibling crates have propagated on crates.io. Use `--ignore-examples` only when demo application versions intentionally diverge from the library version.
 
 ### Using the Update Script
 

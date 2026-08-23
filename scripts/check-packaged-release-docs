@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Reject stale release-status and install versions inside built packages."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+import tarfile
+import zipfile
+from pathlib import Path
+
+TEXT_MEMBER_NAMES = {"README.md", "METADATA", "PKG-INFO"}
+VERSION = r"\d+\.\d+\.\d+"
+VERSION_PATTERNS = [
+    ("current stable release", rf"(?im)^\s*[-*>]*\s*Current stable release:\s*`?({VERSION})"),
+    ("latest published PyPI package", rf"(?im)^\s*[-*>]*\s*Latest published PyPI package:\s*`?({VERSION})"),
+    ("current published package", rf"(?im)^\s*[-*>]*\s*current published package:\s*`?({VERSION})"),
+    ("repository development line", rf"(?im)^\s*[-*>]*\s*Repository development line:\s*`?({VERSION})"),
+    ("Cargo install", rf'(?m)^rust-ethernet-ip = "({VERSION})"'),
+    ("pip install", rf"rust-ethernet-ip(?:\[[^\]]+\])?==({VERSION})"),
+    ("dotnet install", rf"RustEtherNetIp --version ({VERSION})"),
+    ("PackageReference", rf'PackageReference Include="RustEtherNetIp" Version="({VERSION})"'),
+]
+STALE_LIFECYCLE = re.compile(
+    rf"(?im)^.*\b({VERSION})\b.*\b(?:not published(?: yet)?|unpublished|in preparation)\b.*$"
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("version", help="released version expected in package documentation")
+    parser.add_argument("artifacts", nargs="+", help=".crate, .tar.gz, .nupkg, or .whl artifacts")
+    parser.add_argument(
+        "--require-version-marker",
+        action="store_true",
+        help="fail when an artifact has no recognized release or install version",
+    )
+    return parser.parse_args()
+
+
+def archive_text_members(path: Path) -> list[tuple[str, str]]:
+    members: list[tuple[str, str]] = []
+    if path.suffix.lower() in {".nupkg", ".whl", ".zip"}:
+        with zipfile.ZipFile(path) as archive:
+            for name in archive.namelist():
+                if Path(name).name not in TEXT_MEMBER_NAMES:
+                    continue
+                members.append((name, archive.read(name).decode("utf-8-sig")))
+        return members
+
+    if path.name.endswith((".crate", ".tar.gz", ".tgz")):
+        with tarfile.open(path, "r:gz") as archive:
+            for member in archive.getmembers():
+                if not member.isfile() or Path(member.name).name not in TEXT_MEMBER_NAMES:
+                    continue
+                extracted = archive.extractfile(member)
+                if extracted is None:
+                    continue
+                members.append((member.name, extracted.read().decode("utf-8-sig")))
+        return members
+
+    raise ValueError(f"unsupported artifact type: {path}")
+
+
+def check_text(artifact: Path, member: str, text: str, expected: str) -> tuple[int, int]:
+    checks = 0
+    failures = 0
+    for label, pattern in VERSION_PATTERNS:
+        for match in re.finditer(pattern, text):
+            checks += 1
+            actual = match.group(1)
+            if actual != expected:
+                failures += 1
+                print(
+                    f"{artifact}:{member}: {label} is {actual}, expected {expected}",
+                    file=sys.stderr,
+                )
+
+    for match in STALE_LIFECYCLE.finditer(text):
+        checks += 1
+        failures += 1
+        print(
+            f"{artifact}:{member}: stale release-lifecycle claim: {match.group(0).strip()}",
+            file=sys.stderr,
+        )
+    return checks, failures
+
+
+def main() -> int:
+    args = parse_args()
+    if re.fullmatch(VERSION, args.version) is None:
+        print("version must be MAJOR.MINOR.PATCH", file=sys.stderr)
+        return 2
+
+    failures = 0
+    for raw_path in args.artifacts:
+        path = Path(raw_path)
+        if not path.is_file():
+            failures += 1
+            print(f"{path}: artifact not found", file=sys.stderr)
+            continue
+        try:
+            members = archive_text_members(path)
+        except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile, UnicodeDecodeError) as exc:
+            failures += 1
+            print(f"{path}: cannot inspect package documentation: {exc}", file=sys.stderr)
+            continue
+
+        checks = 0
+        artifact_failures = 0
+        for member, text in members:
+            member_checks, member_failures = check_text(path, member, text, args.version)
+            checks += member_checks
+            artifact_failures += member_failures
+        if not members:
+            artifact_failures += 1
+            print(f"{path}: no README.md, METADATA, or PKG-INFO found", file=sys.stderr)
+        elif checks == 0 and args.require_version_marker:
+            artifact_failures += 1
+            print(f"{path}: package documentation contains no recognized release-version marker", file=sys.stderr)
+
+        failures += artifact_failures
+        print(f"{path}: {'PASS' if artifact_failures == 0 else 'FAIL'} ({checks} checks)")
+
+    if failures:
+        print(f"check-packaged-release-docs: {failures} failure(s)", file=sys.stderr)
+        return 1
+    print("check-packaged-release-docs: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

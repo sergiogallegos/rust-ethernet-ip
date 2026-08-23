@@ -3,15 +3,19 @@
 ## Summary
 
 Current evidence spans five exact processor/firmware combinations. The strongest
-current-release result is the `1.2.0` four-binding gate on CompactLogix
-`5069-L330ERM` firmware `38`; older rows remain useful historical evidence but
-must not be treated as `1.2.0` certification.
+current-release result is the `1.2.1` four-binding gate on ControlLogix
+`1756-L75` firmware `33.011`; older rows remain useful historical evidence but
+must not be treated as `1.2.1` certification.
 
 ## Current Understanding
 
 - `confirmed`: CompactLogix `5069-L330ERM` firmware `38` passed the `1.2.0`
   release gate across Rust, C#, Python, and C/C++ with 2,338 reads, 2,319
   writes/read-back verifications, and zero anomalies.
+- `confirmed`: ControlLogix `1756-L75` firmware `33.011` passed the `1.2.1`
+  post-merge four-binding gate with 2,304 reads, 2,285 writes, and zero
+  unexpected anomalies; the schema-change gate and performance rerun also
+  completed without operation failures.
 - `confirmed`: On that target, standalone and UDT-member built-in/custom
   strings write through handle-aware and fragmented paths; scalar UDT array
   element members also write when the full path is preserved.

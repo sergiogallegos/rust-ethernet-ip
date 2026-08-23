@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check release version parity and cargo package readiness."""
+"""Check release version parity, packaged docs, and cargo package readiness."""
 
 from __future__ import annotations
 
@@ -20,8 +20,21 @@ PACKAGE_ORDER = [
 EXAMPLE_PREFIX = "examples/"
 DEVELOPMENT_EXEMPT_SITES = {
     ("CHANGELOG.md", "latest [X.Y.Z] heading"),
+    ("README.md", "current stable release"),
     ("README.md", "Rust install snippet"),
     ("csharp/RustEtherNetIp/README.md", "current published package"),
+    ("csharp/RustEtherNetIp/README.md", "dotnet install snippet"),
+    ("python/README.md", "latest published PyPI package"),
+    ("python/README.md", "pip install snippet"),
+    ("docs/VERSION_MANAGEMENT.md", "current stable published version"),
+    ("docs/OFFICIAL_SOURCES.md", "current stable line"),
+    ("docs/programmer_manual.md", "current published stable line"),
+    ("docs/SOFTWARE_ARCHITECTURE.md", "current released line"),
+    ("docs/agents/board.md", "current released version"),
+    ("docs/CODEX_PYTHON_PLATFORM_EXPANSION_PROMPT.md", "latest published release"),
+    ("docs/LIBRARY_COMPARISON_AND_IMPROVEMENTS.md", "latest published release"),
+    ("wiki/controllers/firmware-behavior.md", "current release evidence"),
+    ("wiki/wrapper-parity/rust-vs-csharp.md", "current parity evidence"),
 }
 
 
@@ -59,7 +72,7 @@ def read_manifest(root: Path) -> list[tuple[str, str, str, str, str]]:
 
 
 def check_versions(args: argparse.Namespace) -> int:
-    root = Path(args.root)
+    root = Path(args.root).resolve()
     failures = 0
     print(f"{'file':<52} {'site':<34} {'expected':<12} {'actual':<12} ok")
     for kind, rel, label, pattern, template in read_manifest(root):
@@ -120,13 +133,14 @@ def package_checks(args: argparse.Namespace) -> int:
     if args.skip_package:
         return 0
     failures = 0
+    root = Path(args.root).resolve()
     print()
     print(f"{'package check':<52} result")
     for package in PACKAGE_ORDER:
         cmd = ["cargo", "package", "--no-verify", "--allow-dirty", "-p", package]
         env = os.environ.copy()
         env.setdefault("CARGO_NET_RETRY", "0")
-        proc = subprocess.run(cmd, cwd=args.root, text=True, capture_output=True, env=env)
+        proc = subprocess.run(cmd, cwd=root, text=True, capture_output=True, env=env)
         output = f"{proc.stdout}\n{proc.stderr}"
         missing_dep = (
             "no matching package named" in output
@@ -134,7 +148,27 @@ def package_checks(args: argparse.Namespace) -> int:
         ) and "location searched: crates.io index" in output
         index_unavailable = "Could not resolve host" in output or "failed to download from `https://index.crates.io" in output
         if proc.returncode == 0:
-            print(f"{package:<52} ✓")
+            artifact = root / "target" / "package" / f"{package}-{args.version}.crate"
+            docs_cmd = [
+                sys.executable,
+                str(root / "scripts" / "check-packaged-release-docs"),
+                args.version,
+            ]
+            if package == "rust-ethernet-ip":
+                docs_cmd.append("--require-version-marker")
+            docs_cmd.append(str(artifact))
+            docs_proc = subprocess.run(
+                docs_cmd,
+                cwd=root,
+                text=True,
+                capture_output=True,
+            )
+            if docs_proc.returncode == 0:
+                print(f"{package:<52} ✓")
+            else:
+                failures += 1
+                print(f"{package:<52} ✗ packaged README")
+                sys.stderr.write(f"{docs_proc.stdout}{docs_proc.stderr}")
         elif missing_dep and not args.strict:
             print(f"{package:<52} note: dependency not yet visible on crates.io")
         elif index_unavailable and not args.strict:

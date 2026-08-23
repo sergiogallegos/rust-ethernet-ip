@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # WinForms Example Fixes Summary
 
@@ -86,4 +86,3 @@
 
 ## Date
 Last Updated: 2024-12-19
-

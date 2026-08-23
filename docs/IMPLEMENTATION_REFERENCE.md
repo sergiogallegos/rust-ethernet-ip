@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # Implementation Reference - 1756-PM020
 
@@ -355,4 +355,3 @@ fn parse_read_tag_response(response: &[u8]) -> Result<(u8, u16, Vec<u8>), Error>
 ---
 
 **Status:** ✅ Complete reference implementation patterns from 1756-PM020
-

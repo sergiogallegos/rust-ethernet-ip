@@ -3,8 +3,8 @@
 This page tracks the **official technical documentation** used to design, validate, and maintain `rust-ethernet-ip`.
 
 - Verified on: `2026-04-16`
-- Current stable line: `1.2.0`
-- Previous stable line: `1.1.0`
+- Current stable line: `1.2.1`
+- Previous stable line: `1.2.0`
 - Source review date remains `2026-04-16`; re-check vendor revisions before making a new protocol claim.
 
 ## Official Documentation Matrix
@@ -35,7 +35,7 @@ This page tracks the **official technical documentation** used to design, valida
 
 ## Feature Traceability Notes
 
-The official-source set remains the basis for the current `1.2.0` line. The primary implementation authority is Rockwell `1756-PM020I-EN-P` for Logix tag data access, supported by ODVA and Rockwell EtherNet/IP networking references for protocol and routing context.
+The official-source set remains the basis for the current `1.2.1` line. The primary implementation authority is Rockwell `1756-PM020I-EN-P` for Logix tag data access, supported by ODVA and Rockwell EtherNet/IP networking references for protocol and routing context.
 
 | Library Area | Primary Source | Repo Surface | Validation Evidence |
 |---|---|---|---|

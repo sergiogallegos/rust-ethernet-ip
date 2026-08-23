@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # Library Limitations
 
@@ -91,4 +91,3 @@ All wrappers (C#, Go, Python) should:
 2. Provide clear error messages when these limitations are encountered
 3. Suggest appropriate workarounds in error messages
 4. Display limitations notices in example applications
-

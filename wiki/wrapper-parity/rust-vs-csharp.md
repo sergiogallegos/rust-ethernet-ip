@@ -2,11 +2,10 @@
 
 ## Summary
 
-The strongest current parity evidence is the `1.2.0` CompactLogix
-`5069-L330ERM` fw38 release gate: Rust, C#, Python, and C/C++ completed the same
-2,338 reads and 2,319 writes/verifications with zero anomalies. API shape and
-error/lifecycle behavior still differ by language even when wire behavior is
-shared.
+The strongest current parity evidence is the `1.2.1` ControlLogix `1756-L75`
+fw33.011 release gate: Rust, C#, Python, and C/C++ completed the same 2,304
+reads and 2,285 writes with zero anomalies. API shape and error/lifecycle
+behavior still differ by language even when wire behavior is shared.
 
 ## Current Understanding
 
@@ -28,6 +27,11 @@ shared.
   core examples plus analytics/service examples, and C++ has build-checked
   route/diagnostics, discovery, and UDT/scope programs in addition to its
   simulator smoke.
+- `confirmed`: The C# Web HMI example provides a complete browser-to-PLC
+  integration path above the wrapper. On 2026-08-23 it loaded native 1.2.1 / ABI
+  3 and returned 39/39 good routed reads from the 1756-L75/B fw33.011 target;
+  the server-side write guard also rejected the pulse endpoint while writes
+  were disabled.
 - `confirmed`: Each wrapper guide distinguishes single-tag calls, batches,
   whole-UDT reads, member-level writes, and controller/program symbolic paths.
   All describe built-in `STRING` as 82-byte `DATA`, not an unlimited host
@@ -93,6 +97,8 @@ shared.
 - [csharp/RustEtherNetIp/Examples/GettingStarted/README.md](../../csharp/RustEtherNetIp/Examples/GettingStarted/README.md)
 - [python/README.md](../../python/README.md)
 - [examples/cpp/README.md](../../examples/cpp/README.md)
+- [examples/CSharpWebHmi/README.md](../../examples/CSharpWebHmi/README.md)
+- [docs/validation/2026-08-23_csharp-web-hmi_1756-L75_fw33.md](../../docs/validation/2026-08-23_csharp-web-hmi_1756-L75_fw33.md)
 
 ## Open Questions
 

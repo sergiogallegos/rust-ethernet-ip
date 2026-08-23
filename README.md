@@ -363,7 +363,13 @@ dotnet test csharp/RustEtherNetIp.Tests/RustEtherNetIp.Tests.csproj -v minimal
 
 ### .NET
 
+The [C# Web HMI demo](examples/CSharpWebHmi/README.md) is the recommended
+first real-application walkthrough. It includes a React/TypeScript dashboard,
+ASP.NET Core backend, simulation mode, exact Studio 5000 tag definitions, and
+direct or routed live-PLC instructions.
+
 ```bash
+cd examples/CSharpWebHmi && ./run-demo.sh
 cd examples/WpfExample && dotnet run
 cd examples/WinFormsExample && dotnet run
 cd examples/AspNetExample && dotnet run

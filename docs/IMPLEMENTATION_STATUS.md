@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # Implementation Status - Array and UDT Fixes
 
@@ -136,4 +136,3 @@ Based on 1756-PM020 PDF (pages 13-29, 63):
 
 **Last Updated:** Based on PDF pages 13-29, 63 (partial)
 **Status:** Awaiting additional PDF sections for complete array element addressing format
-

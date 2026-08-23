@@ -22,9 +22,23 @@ regex|src/lib.rs|head-doc release-line current|The current released crate line i
 regex|src/lib.rs|head-doc release-line validation|Real-hardware validation for the `([^`]+)` release line|{version}
 regex|CHANGELOG.md|latest [X.Y.Z] heading|(?m)^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - |{version}
 regex|examples/AspNetExample/AspNetExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}
+regex|examples/CSharpWebHmi/CSharpWebHmi.csproj|<Version>|<Version>([^<]+)</Version>|{version}
 regex|examples/WpfExample/WpfExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}
 regex|examples/WinFormsExample/WinFormsExample.csproj|<Version>|<Version>([^<]+)</Version>|{version}
 regex|csharp/RustEtherNetIp.Tests/AbiContractTests.cs|library-version assertion|Assert\.Equal\("([^"]+)", NativeRuntime\.LibraryVersion\)|{version}
 regex|python/tests/test_abi_contract.py|library-version fake|eip_library_version = FakeFunction\(b"([^"]+)"\)|{version}
 regex|README.md|Rust install snippet|(?m)^rust-ethernet-ip = "([^"]+)"|{version}
+regex|README.md|current stable release|Current stable release: `([^`]+)`|{version}
 regex|csharp/RustEtherNetIp/README.md|current published package|current published package: `([^`]+)`|{version}
+regex|csharp/RustEtherNetIp/README.md|dotnet install snippet|dotnet add package RustEtherNetIp --version ([0-9.]+)|{version}
+regex|python/README.md|latest published PyPI package|Latest published PyPI package: `([^`]+)`|{version}
+regex|python/README.md|pip install snippet|python -m pip install rust-ethernet-ip==([0-9.]+)|{version}
+regex|docs/VERSION_MANAGEMENT.md|current stable published version|Current stable published version:\*\* `([^`]+)`|{version}
+regex|docs/OFFICIAL_SOURCES.md|current stable line|Current stable line: `([^`]+)`|{version}
+regex|docs/programmer_manual.md|current published stable line|Current published stable line: `([^`]+)`|{version}
+regex|docs/SOFTWARE_ARCHITECTURE.md|current released line|current `v([^`]+)` released line|{version}
+regex|docs/agents/board.md|current released version|Current released version:\*\* `v([^`]+)`|{version}
+regex|docs/CODEX_PYTHON_PLATFORM_EXPANSION_PROMPT.md|latest published release|latest published release is `([^`]+)`|{version}
+regex|docs/LIBRARY_COMPARISON_AND_IMPROVEMENTS.md|latest published release|latest published release is\s*\n?>?\s*`([^`]+)`|{version}
+regex|wiki/controllers/firmware-behavior.md|current release evidence|current-release result is the `([^`]+)`|{version}
+regex|wiki/wrapper-parity/rust-vs-csharp.md|current parity evidence|strongest current parity evidence is the `([^`]+)`|{version}

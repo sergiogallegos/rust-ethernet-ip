@@ -305,9 +305,9 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 ## Project context
 
-- **Current released version:** `v1.2.0` (tagged 2026-07-10, `fcadd7a`; crates.io ×5 published; NuGet/PyPI via the tag-triggered Release workflow).
-- **Previous released version:** `v1.1.0` (tagged 2026-06-19; published to crates.io ×5, NuGet multi-RID, PyPI incl. the CODEX-AI manylinux wheel).
-- **Active development line:** `1.2.1` **shipped** 2026-08-22 to crates.io (×5), NuGet, and PyPI; tag `v1.2.1` pushed. It carries the CODEX-BA through CODEX-BD schema-safety sequence, CODEX-BF (Python native batch writes), CODEX-BI (CI action bump), and CODEX-BJ (get_tag_attributes/get_udt_definition real-hardware fix), all hardware-validated live on a ControlLogix 1756-L75. CODEX-BE, BG, and BH remain accepted follow-up performance/endurance work with no target version yet.
+- **Current released version:** `v1.2.1` (tagged 2026-08-22, `82d9160`; crates.io ×5, NuGet, and PyPI published by the tag-triggered Release workflow).
+- **Previous released version:** `v1.2.0` (tagged 2026-07-10, `fcadd7a`; crates.io ×5, NuGet, and PyPI published).
+- **Release state:** `1.2.1` carries the CODEX-BA through CODEX-BD schema-safety sequence, CODEX-BF (Python native batch writes), CODEX-BI (CI action bump), and CODEX-BJ (get_tag_attributes/get_udt_definition real-hardware fix), all hardware-validated live on a ControlLogix 1756-L75. CODEX-BE, BG, and BH remain accepted follow-up performance/endurance work with no target version yet.
 - **Current development focus:** the .NET stack — C# wrappers and examples (per `CLAUDE.md` Project Overview).
 - **Hardware validation gate:** integration tests against real CompactLogix / ControlLogix PLCs are the maintainer's responsibility; CI runs `SKIP_PLC_TESTS=1` plus simulator-backed `plc_sim_tests`.
 

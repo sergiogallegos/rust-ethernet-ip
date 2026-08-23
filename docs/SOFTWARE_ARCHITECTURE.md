@@ -11,7 +11,7 @@ It is intended for:
 - release reviewers checking compatibility risk
 - AI agents that need a stable map of module boundaries and design constraints
 
-This document describes the current `v1.2.0` released line. The wiki may
+This document describes the current `v1.2.1` released line. The wiki may
 contain investigation notes and synthesis, but this file is the user-facing
 architecture reference.
 
@@ -287,7 +287,7 @@ Coverage expectations:
 
 ## Release and Compatibility Model
 
-`v1.2.0` is the current released line (tagged 2026-07-08). Future work
+`v1.2.1` is the current released line (tagged 2026-08-22). Future work
 should preserve compatibility within the `v1.x` line per SemVer; new
 SemVer-major work bundles into the next major release window.
 

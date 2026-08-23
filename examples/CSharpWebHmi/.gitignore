@@ -1,0 +1,6 @@
+bin/
+obj/
+wwwroot/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo

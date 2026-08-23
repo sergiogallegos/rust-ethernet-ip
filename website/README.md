@@ -14,6 +14,11 @@ without analytics, cookies, forms, or third-party font requests. It stores one
 local quick-start language preference and does not transmit it. The logo and
 favicon currently load from the public GitHub repository.
 
+The homepage also presents the live-validated C# + React Web HMI example. Its
+screenshot is stored locally at `website/images/csharp-web-hmi-demo.png`, and
+its calls to action link to the runnable example, exact Studio 5000 tag setup,
+and dated hardware-validation record.
+
 Navigation uses a CSS-rendered text wordmark so it stays crisp and compact at
 every viewport size; the footer uses the full mascot logo at
 `images/brand/logo-light.png`.

@@ -1848,3 +1848,62 @@ Sources used:
 - `examples/full_coverage_results/2026-08-22_post-bi-bf-performance/*.json`
 - `examples/full_coverage_results/2026-08-22_post-bi-bf-batch/*.json`
 - `docs/validation/2026-08-22_1756-L75_fw33_post-BF-BI-cross-binding-performance.md`
+
+## [2026-08-23] query | Audit the shipped 1.2.1 release
+
+- Added `wiki/releases/1.2.1-validation-synthesis.md` and registered it in the
+  index.
+- Confirmed the annotated tag, green release and main CI, strict readiness,
+  all five crates.io packages, NuGet multi-RID package, PyPI cross-platform
+  wheels/sdist, and the post-merge four-binding hardware evidence.
+- Flagged a non-runtime release defect: published package descriptions contain
+  stale 1.2.0/current and 1.2.1/not-published wording because the documentation
+  sweep landed after the immutable tag and registry publications.
+- Identified two remaining source-tree status lines for cleanup in the agent
+  board and historical Python-platform prompt banner.
+
+Sources used:
+
+- `docs/release/1.2.1_RELEASE_NOTES.md`
+- `docs/agents/board.md`
+- `docs/CODEX_PYTHON_PLATFORM_EXPANSION_PROMPT.md`
+- GitHub Release workflow run `32616381528`
+- crates.io, NuGet, and PyPI live registry metadata/package contents
+
+## [2026-08-23] ingest | Close release-line drift and gate packaged documentation
+
+- Updated the 1.2.1 release synthesis, controller evidence, wrapper-parity
+  summary, and index after correcting active source release-state lines.
+- Added archive-level inspection for Cargo, NuGet, wheel, and sdist README or
+  metadata content, including rejection of stale install versions and
+  not-published/in-preparation claims.
+- Recorded that CI and registry publication jobs now inspect generated package
+  documentation before upload; version-neutral support crates remain allowed
+  but are still scanned for stale lifecycle wording.
+
+Sources used:
+
+- `scripts/check-release-readiness`
+- `scripts/check-release-readiness.txt`
+- `scripts/check-packaged-release-docs`
+- `tests/release_readiness_tests.sh`
+- `.github/workflows/ci.yml`
+- `.github/workflows/release.yml`
+- generated 1.2.1 Cargo, NuGet, wheel, and sdist artifacts
+
+## [2026-08-23] ingest | Validate the C# Web HMI example on live hardware
+
+- Updated `wiki/wrapper-parity/rust-vs-csharp.md` with the browser-to-C#-to-Rust
+  integration result.
+- Recorded a strict live, read-only 1756-L75/B fw33.011 pass: native 1.2.1 / ABI
+  3, routed slot 0, and 39/39 good reads across arrays, STRING, UDT members, and
+  program scope.
+- Confirmed the disabled-write boundary returned HTTP 400 without attempting a
+  PLC write.
+
+Sources used:
+
+- `examples/CSharpWebHmi/README.md`
+- `examples/CSharpWebHmi/PLC_TAGS.md`
+- `examples/CSharpWebHmi/Services/PlcDashboardService.cs`
+- `docs/validation/2026-08-23_csharp-web-hmi_1756-L75_fw33.md`

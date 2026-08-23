@@ -17,7 +17,8 @@ Status values:
 
 - [releases/0.7.0-validation-synthesis.md](releases/0.7.0-validation-synthesis.md) — Consolidated real-hardware and gate-level view of `0.7.0` validation. `active`
 - [releases/0.8.0-validation-synthesis.md](releases/0.8.0-validation-synthesis.md) — Historical follow-up ControlLogix validation for the unreleased draft later absorbed into `1.0.0`. `historical`
-- [releases/1.2.0-validation-synthesis.md](releases/1.2.0-validation-synthesis.md) — Four-binding 5069-L330ERM fw38 release gate and current hardware-confidence boundary. `confirmed`
+- [releases/1.2.0-validation-synthesis.md](releases/1.2.0-validation-synthesis.md) — Four-binding 5069-L330ERM fw38 release gate and hardware-confidence baseline. `confirmed`
+- [releases/1.2.1-validation-synthesis.md](releases/1.2.1-validation-synthesis.md) — Published package, CI, hardware, and registry-metadata audit for the 1.2.1 release. `confirmed`
 
 ## Controllers
 

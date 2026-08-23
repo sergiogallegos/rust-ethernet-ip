@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>1.2.1</Version>
+    <AssemblyVersion>1.2.1.0</AssemblyVersion>
+    <FileVersion>1.2.1.0</FileVersion>
+    <Product>Rust EtherNet/IP Web HMI Demo</Product>
+    <Description>Neutral ASP.NET Core and React HMI demo using RustEtherNetIp 1.2.1</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../csharp/RustEtherNetIp/RustEtherNetIp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="../../target/release/librust_ethernet_ip.dylib">
+      <Link>librust_ethernet_ip.dylib</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <None Include="../../target/release/librust_ethernet_ip.so">
+      <Link>librust_ethernet_ip.so</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <None Include="../../target/release/rust_ethernet_ip.dll">
+      <Link>rust_ethernet_ip.dll</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

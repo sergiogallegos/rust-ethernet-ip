@@ -87,6 +87,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path target/release | Out-Null
           Copy-Item runtimes/linux-x64/librust_ethernet_ip.so target/release/librust_ethernet_ip.so -Force
           ./scripts/pack-nuget.ps1 -OutputDir ./artifacts/nuget -RuntimesDir ./runtimes
+      - name: Inspect NuGet packaged README
+        shell: bash
+        run: scripts/check-packaged-release-docs "$(cat VERSION)" --require-version-marker artifacts/nuget/*.nupkg
       - name: Upload NuGet artifact
         uses: actions/upload-artifact@v7
         with:
@@ -113,6 +116,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - name: Validate release source documentation
+        run: scripts/check-release-readiness "$(cat VERSION)" --skip-package
       - name: Publish crates in dependency order
         if: env.CARGO_REGISTRY_TOKEN != ''
         run: |
@@ -124,6 +129,15 @@ jobs:
             rust-ethernet-ip-udt \
             rust-ethernet-ip; do
             echo "::group::publish $crate"
+            cargo package --no-verify -p "$crate"
+            marker_args=()
+            if [[ "$crate" == "rust-ethernet-ip" ]]; then
+              marker_args+=(--require-version-marker)
+            fi
+            scripts/check-packaged-release-docs \
+              "$(cat VERSION)" \
+              "${marker_args[@]}" \
+              "target/package/${crate}-$(cat VERSION).crate"
             # Tolerate an already-published version so re-runs are idempotent.
             publish_log="$(mktemp)"
             set +e
@@ -277,6 +291,8 @@ jobs:
           cp python/dist/*.tar.gz dist/ || true
           cp dist-wheels/*.whl dist/ || true
           ls -l dist
+      - name: Inspect packaged Python descriptions
+        run: scripts/check-packaged-release-docs "$(cat VERSION)" --require-version-marker dist/*
       - name: Publish to PyPI
         if: env.PYPI_API_TOKEN != ''
         run: |

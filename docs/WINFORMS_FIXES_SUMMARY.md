@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # WinForms Example Fixes Summary
 
@@ -97,4 +97,3 @@ _plcClient.SetUdtMember("gTestUDT", "Member1_DINT", PlcValue.Dint(500));
 - **GetUdtMember/SetUdtMember** only work for legacy format (when UdtMembers is not null)
 - The code now tries direct access first, which should work in most cases
 - If direct access fails, it falls back to GetUdtMember/SetUdtMember for legacy format support
-

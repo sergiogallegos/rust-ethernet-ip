@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # Library Check Summary
 
@@ -91,4 +91,3 @@
 ---
 
 **Overall Status:** ✅ **Library is production-ready**. Examples and integration tests need updates for API changes, but core library functionality is solid.
-

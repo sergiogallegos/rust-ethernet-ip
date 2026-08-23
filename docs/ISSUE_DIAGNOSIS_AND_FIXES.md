@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # Issue Diagnosis and Fixes
 
@@ -132,4 +132,3 @@ The debug logs will help identify if:
 
 3. `target/release/rust_ethernet_ip.dll`
    - Rebuilt and deployed to wrapper and example directories
-

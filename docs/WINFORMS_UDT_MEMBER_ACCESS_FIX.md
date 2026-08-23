@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # WinForms UDT Member Access Fix
 
@@ -117,4 +117,3 @@ After this fix, you should be able to:
 - ✅ Access nested UDTs: `gTestUDT.Status.Running`
 
 Make sure the tags from `PLC_TEST_TAG_DEFINITIONS.md` are created in your PLC before testing!
-

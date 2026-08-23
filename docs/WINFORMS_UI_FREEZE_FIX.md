@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # WinForms UI Freeze Fix
 
@@ -80,4 +80,3 @@ After these fixes, the application should:
 
 ## Date
 Fixed: 2025-12-19 (Updated documentation: 2026-01-03)
-

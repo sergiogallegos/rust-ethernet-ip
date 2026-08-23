@@ -27,6 +27,7 @@
     <nav id="site-nav" class="site-nav" aria-label="Primary navigation">
       <a href="#languages">Languages</a>
       <a href="#capabilities">Features</a>
+      <a href="#demo">Demo</a>
       <a href="#architecture">How it fits</a>
       <a href="#hardware">Hardware</a>
       <a href="#why">Why this library</a>
@@ -85,6 +86,30 @@
 
     <section class="use-case-bar" aria-label="Common application types">
       <span>HMI</span><span>SCADA integration</span><span>MES / OEE</span><span>Historians</span><span>Data logging</span><span>IIoT gateways</span><span>Edge services</span>
+    </section>
+
+    <section id="demo" class="demo-section section-shell section-block" aria-labelledby="demo-title">
+      <div class="section-heading demo-heading">
+        <p class="eyebrow"><span></span> Runnable C# + React example</p>
+        <h2 id="demo-title">From browser screen<br>to real PLC tags.</h2>
+        <p>Start in simulation, then connect the same application to a CompactLogix or routed ControlLogix. The walkthrough includes the exact Studio 5000 tags, PC prerequisites, build commands, architecture, and safe read-only defaults.</p>
+      </div>
+      <figure class="demo-frame">
+        <img src="images/csharp-web-hmi-demo.png" width="1920" height="1080" loading="lazy" alt="C# and React Web HMI connected to a ControlLogix PLC, showing 39 of 39 healthy array, UDT, and program-scoped tag reads">
+        <figcaption>
+          <div class="demo-proof" aria-label="Demo validation summary">
+            <span><strong>39 / 39</strong> live signals good</span>
+            <span><strong>1.2.1</strong> native Rust core</span>
+            <span><strong>ABI 3</strong> C# wrapper boundary</span>
+            <span><strong>Read-only</strong> by default</span>
+          </div>
+          <div class="demo-actions">
+            <a class="button button-primary" href="https://github.com/sergiogallegos/rust-ethernet-ip/tree/main/examples/CSharpWebHmi">Run the demo <span>→</span></a>
+            <a class="button button-secondary" href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/examples/CSharpWebHmi/PLC_TAGS.md">Create the PLC tags</a>
+            <a class="demo-evidence" href="https://github.com/sergiogallegos/rust-ethernet-ip/blob/main/docs/validation/2026-08-23_csharp-web-hmi_1756-L75_fw33.md">View live validation evidence ↗</a>
+          </div>
+        </figcaption>
+      </figure>
     </section>
 
     <section id="architecture" class="section-shell section-block architecture-section">

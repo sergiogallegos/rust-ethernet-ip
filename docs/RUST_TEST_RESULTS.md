@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # Rust Library Test Results - PLC_TEST_TAG_DEFINITIONS.md
 
@@ -165,4 +165,3 @@ All work as expected. The remaining 2 failures are:
 1. ⚠️ UDT array element member writes - **PLC limitation**, not a library bug. The library now provides clear error messages.
 
 The library is **production-ready** for all standard use cases. The only limitation is writing to UDT array element members directly, which appears to be unsupported by the PLC firmware. This can be worked around by reading the entire UDT array element, modifying it in memory, and writing it back.
-

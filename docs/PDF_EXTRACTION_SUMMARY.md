@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # PDF Extraction Summary - 1756-PM020
 
@@ -131,4 +131,3 @@ This document summarizes the key information extracted from Allen-Bradley Public
 
 **Last Updated:** Based on PDF pages 13-29, 63 (partial)
 **Status:** Awaiting additional pages for complete array element addressing format
-

@@ -2,7 +2,7 @@
 
 > **Historical reference.** This analysis records the `0.5.3` era and is not a
 > current feature or performance comparison. The latest published release is
-> `1.2.0`; use current validation records for measured claims.
+> `1.2.1`; use current validation records for measured claims.
 
 > Historical reference: this analysis reflects the repo state and roadmap assumptions from October 2025. Treat planned-version statements and wrapper references here as historical context, not current release guidance.
 

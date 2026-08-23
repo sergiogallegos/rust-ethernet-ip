@@ -14,6 +14,7 @@ Current release state:
 - [../README.md](../README.md): Project overview and quick start
 - [programmer_manual.md](programmer_manual.md): Programmer manual (Rust + C# integration tracks)
 - [INTEGRATION_AND_DEPLOYMENT.md](INTEGRATION_AND_DEPLOYMENT.md): Step-by-step integration and deployment guide for Rust, C#, and Python users
+- [../examples/CSharpWebHmi/README.md](../examples/CSharpWebHmi/README.md): Beginner-friendly C# + React Web HMI, including simulation, exact Studio 5000 tags, and live PLC startup
 - [HARDWARE_COMPATIBILITY.md](HARDWARE_COMPATIBILITY.md): Exact processor/firmware/binding matrix plus functional, endurance, and performance contribution protocol
 - [audit/1.2.1_wrapper_and_platform_gap_analysis.md](audit/1.2.1_wrapper_and_platform_gap_analysis.md): Wrapper documentation status and prioritized C/C++ adoption gaps
 - [SOFTWARE_ARCHITECTURE.md](SOFTWARE_ARCHITECTURE.md): Current architecture map, design boundaries, and refactor guidance
@@ -45,6 +46,7 @@ Current release state:
 - [validation/REAL_PLC_TESTING.md](validation/REAL_PLC_TESTING.md)
 - [validation/CROSS_BINDING_FEATURE_GATE.md](validation/CROSS_BINDING_FEATURE_GATE.md): Restore-safe batch, whole-UDT, and discovery companion gate for all four bindings
 - [validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md](validation/2026-08-21_1756-L75_fw33_batch-array-cache-before-after.md): Controlled four-binding before/after result for cached array-type detection
+- [validation/2026-08-23_csharp-web-hmi_1756-L75_fw33.md](validation/2026-08-23_csharp-web-hmi_1756-L75_fw33.md): Live read-only validation of the C# + React Web HMI example
 - [validation/REAL_HARDWARE_RESULT_TEMPLATE.md](validation/REAL_HARDWARE_RESULT_TEMPLATE.md)
 - [validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md](validation/2026-07-08_release-1.2.0-gate_cross-binding_5069-L330ERM_fw38.md) (official 1.2.0 release gate, 4 bindings)
 - [validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md](validation/2026-07-08_cross-binding_full-coverage_5069-L330ERM_fw38.md)

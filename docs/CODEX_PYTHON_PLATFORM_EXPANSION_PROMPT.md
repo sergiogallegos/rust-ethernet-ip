@@ -1,7 +1,7 @@
 # Codex Prompt: Python and Data Platform Expansion
 
 > **Historical planning prompt.** This captured the `1.0.0` expansion plan.
-> The latest published release is `1.2.0`, and `1.2.1` is in preparation; use
+> The latest published release is `1.2.1`; use
 > `README.md`, `docs/README.md`, and `docs/ROADMAP.md` for current status.
 
 You are working inside the repository `rust-ethernet-ip`.

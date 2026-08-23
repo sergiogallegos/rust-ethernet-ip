@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # Array Implementation Fixes - Based on 1756-PM020
 
@@ -488,4 +488,3 @@ let value = client.read_tag("LargeArray[300]").await?;
 ---
 
 **Status:** ✅ Implementation details clarified from 1756-PM020 Page 603
-

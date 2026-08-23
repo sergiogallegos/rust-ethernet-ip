@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # ControlLogix Routing Implementation Status
 
@@ -79,4 +79,3 @@ let plc3 = EipClient::with_route_path("192.168.1.12",
 - `docs/EtherNetIP_Connection_Paths_and_Routing.md` - Complete routing guide
 - 1756-PM020 - Logix Controller Access Data
 - CIP Networks Library, Volume 1 (ODVA)
-

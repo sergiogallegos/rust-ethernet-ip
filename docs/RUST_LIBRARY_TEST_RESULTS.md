@@ -1,4 +1,4 @@
-> **Historical reference.** This document records past work and predates the current 1.2.0 release; use README.md and docs/README.md for current behavior.
+> **Historical reference.** This document records past work and predates the current 1.2.1 release; use README.md and docs/README.md for current behavior.
 
 # Rust Library Test Results
 
@@ -153,4 +153,3 @@
 - Error handling needs improvement
 
 The fixes have been applied. Next step is to rebuild and deploy the DLL, then test the C# wrapper again.
-

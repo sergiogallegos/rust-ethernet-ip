@@ -282,7 +282,7 @@ jobs:
     - name: Check release readiness for current version
       run: |
         VERSION=$(awk -F '"' '/^version = / { print $2; exit }' Cargo.toml)
-        scripts/check-release-readiness "$VERSION" --development
+        scripts/check-release-readiness "$VERSION"
     - name: Run release-readiness script tests
       run: tests/release_readiness_tests.sh
 

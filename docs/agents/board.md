@@ -13,10 +13,9 @@
 | Id | Title | Owner | Status | Created |
 |---|---|---|---|---|
 | CODEX-BE | Batch packet-policy characterization and safe tuning | codex | open | 2026-08-22 |
-| CODEX-BF | Python native batch writes with safe typed fallbacks | codex | open | 2026-08-22 |
 | CODEX-BG | Cross-binding one-hour and 24-hour endurance soak | codex | open | 2026-08-22 |
 | CODEX-BH | Tag-shape and scope performance matrix | codex | open | 2026-08-22 |
-| CODEX-BI | Bump CI actions off deprecated Node.js 20 runtime | codex | open | 2026-08-22 |
+| CODEX-BI | Bump CI actions off deprecated Node.js 20 runtime | codex | in-progress | 2026-08-22 |
 
 > 2026-08-22 **1.2.1 cache-safety plan.** CODEX-BA → BB → BC → BD are
 > release-blocking and should run in that order. CODEX-BE (packet policy), BF
@@ -24,6 +23,18 @@
 > accepted follow-ups rather than silent deferrals; they do not block 1.2.1
 > unless the maintainer explicitly promotes them. Recommended follow-up order:
 > BE after BD; BF after BB/BC; BG after BD; BH after BE.
+>
+> 2026-08-22 **CODEX-BF merged → Done.** Python `write_tags()` now routes
+> contiguous native-batch-safe atomic writes through the real Multiple
+> Service Packet FFI endpoint instead of one native call per tag; STRING/
+> UDT/member/bit/packed-BOOL/duplicate-name cases keep the typed sequential
+> fallback (safe-by-default whitelist, not a blocklist). No Rust changes.
+> Live-verified on the 1756-L75/B fw33.011: native size-100 DINT writes
+> reached 2,773.3 tags/s vs. the retained 271.7 tags/s sequential baseline
+> (10.21x), zero failures. Reviewed independently — full workspace/clippy/
+> fmt clean, 51 Python unit + 11 simulator-integration tests green,
+> throughput arithmetic re-derived and the baseline citation cross-checked
+> against the actual prior record (`91a4721`).
 >
 > 2026-08-22 **CODEX-BI opened** (non-blocking): CI run
 > [32595551867](https://github.com/sergiogallegos/rust-ethernet-ip/actions/runs/32595551867)
@@ -223,6 +234,7 @@ These items came from the 2026-05-18 architecture review at [`wiki/investigation
 
 | Id | Title | Owner | Merge commit |
 |---|---|---|---|
+| CODEX-BF | Python native batch writes with safe typed fallbacks — 2,773 tags/s, 10.21x sequential baseline on live 1756-L75 | codex | `91a4721` |
 | CODEX-BJ | Fixed get_tag_attributes/get_udt_definition path-segment error on real hardware (discovery fallback) | claude | `af3ceb0` |
 | CODEX-BD | Schema-change simulator and real-hardware validation gate — live 1756-L75 fw33 full PASS | claude | `7b20dc3` |
 | CODEX-BC | Cross-binding schema refresh API (ABI v3, `CAP_SCHEMA_REFRESH`) and cache diagnostics across C#/Python/C++ | codex | `dc23ad2` |

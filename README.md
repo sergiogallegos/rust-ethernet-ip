@@ -415,6 +415,11 @@ ctest --test-dir target/cpp --output-on-failure
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Changelog](CHANGELOG.md)
 
+## Ecosystem
+
+- [Instro](https://github.com/nominal-io/instro) uses `rust-ethernet-ip`
+  in its EtherNet/IP integration for Allen-Bradley PLCs.
+
 ## Community and Support
 
 - [GitHub Issues](https://github.com/sergiogallegos/rust-ethernet-ip/issues)

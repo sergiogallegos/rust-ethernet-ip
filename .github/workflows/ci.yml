@@ -271,6 +271,20 @@ jobs:
       run: scripts/validate-agent-files
     - name: Run validator smoke tests
       run: tests/validate_agent_files_tests.sh
+    - name: Validate agent workflow eval manifest
+      run: scripts/validate-agent-evals
+    - name: Validate repository-local skills
+      run: scripts/validate-repo-skills
+
+  validate-wiki:
+    name: validate-wiki
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Validate wiki structure and links
+      run: scripts/validate-wiki
+    - name: Run wiki validator smoke tests
+      run: tests/validate_wiki_tests.sh
 
   release-readiness:
     name: Release readiness
@@ -311,6 +325,10 @@ jobs:
       run: cargo build --release --features ffi --locked
     - name: Validate manifest schema and counts
       run: tests/full_coverage_manifest_tests.sh
+    - name: Validate retained hardware result manifests
+      run: scripts/validate-hardware-manifests
+    - name: Run hardware manifest validator tests
+      run: tests/hardware_manifest_tests.sh
     - name: Rust dry run
       run: cargo run --example test_plc_full_coverage --locked -- --dry-run
     - name: Rust companion feature-gate dry run
@@ -370,7 +388,7 @@ jobs:
 
   build:
     name: Build
-    needs: [test, python, msrv, audit, semver-checks, cpp, package, version-check, validate-agent-files, release-readiness, agent-commit-tests, full-coverage-manifest]
+    needs: [test, python, msrv, audit, semver-checks, cpp, package, version-check, validate-agent-files, validate-wiki, release-readiness, agent-commit-tests, full-coverage-manifest]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

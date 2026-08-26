@@ -1,0 +1,3 @@
+interface:
+  display_name: "Wiki Ingest and Lint"
+  short_description: "Maintain source-traceable repository synthesis"

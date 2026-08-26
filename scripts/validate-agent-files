@@ -11,13 +11,17 @@ from pathlib import Path
 STATUSES = {"open", "in-progress", "submitted", "under-review", "merged", "rejected"}
 ACTIVE_STATUSES = {"open", "in-progress", "submitted", "under-review"}
 REQUIRED_KEYS = ["id", "title", "owner", "status", "created", "last-update"]
-SECTION_ORDER = ["## Brief", "## Codex log", "## Claude review", "## Verdict"]
+LEGACY_SECTION_ORDER = ["## Brief", "## Codex log", "## Claude review", "## Verdict"]
+ROLE_SECTION_ORDER = ["## Brief", "## Work log", "## Independent review", "## Verdict"]
+TASK_ID_PATTERN = r"(?:CODEX-[A-Z]+|TASK-\d{3,})"
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 LAST_UPDATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+\S+(?:\s+\[[^\]]+\])?$")
 LAST_UPDATE_RE_WITH_MODEL = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\S+\s+\[[^\]]+\]$")
-LOG_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(\S+)\s+(?:\[[^\]]+\]\s+)?(CODEX-[A-Z]+|--)\s+.+$")
+LOG_RE = re.compile(
+    rf"^(\d{{4}}-\d{{2}}-\d{{2}})\s+(\S+)\s+(?:\[[^\]]+\]\s+)?({TASK_ID_PATTERN}|--)\s+.+$"
+)
 LOG_RE_WITH_MODEL = re.compile(
-    r"^(\d{4}-\d{2}-\d{2})\s+(\S+)\s+\[[^\]]+\]\s+(CODEX-[A-Z]+|--)\s+.+$"
+    rf"^(\d{{4}}-\d{{2}}-\d{{2}})\s+(\S+)\s+\[[^\]]+\]\s+({TASK_ID_PATTERN}|--)\s+.+$"
 )
 
 
@@ -109,8 +113,13 @@ def validate_task(path: Path, errors: list[str]) -> dict[str, str]:
                 line_for_key(path, "last-update"),
             )
 
+    legacy_present = any(section in text for section in LEGACY_SECTION_ORDER[1:-1])
+    role_present = any(section in text for section in ROLE_SECTION_ORDER[1:-1])
+    if legacy_present and role_present:
+        fail(errors, path, "task mixes legacy and role-neutral section names")
+    section_order = LEGACY_SECTION_ORDER if legacy_present else ROLE_SECTION_ORDER
     positions = []
-    for section in SECTION_ORDER:
+    for section in section_order:
         match = re.search(rf"^{re.escape(section)}\s*$", text, flags=re.MULTILINE)
         if not match:
             fail(errors, path, f"missing required section: {section}")
@@ -145,7 +154,7 @@ def parse_board_table(board: Path, heading: str) -> dict[str, list[str]]:
         cols = [col.strip() for col in line.strip().strip("|").split("|")]
         if not cols or cols[0] in {"Id", "---"}:
             continue
-        if re.match(r"^CODEX-[A-Z]+$", cols[0]):
+        if re.fullmatch(TASK_ID_PATTERN, cols[0]):
             rows[cols[0]] = cols
     return rows
 
@@ -229,7 +238,8 @@ def main() -> int:
     warnings: list[str] = []
 
     tasks: dict[str, tuple[Path, dict[str, str]]] = {}
-    for path in sorted(tasks_dir.glob("CODEX-*.md")):
+    task_paths = sorted(tasks_dir.glob("CODEX-*.md")) + sorted(tasks_dir.glob("TASK-*.md"))
+    for path in task_paths:
         data = validate_task(path, errors)
         task_id = data.get("id") or path.stem.split("-", 2)[:2]
         if isinstance(task_id, list):

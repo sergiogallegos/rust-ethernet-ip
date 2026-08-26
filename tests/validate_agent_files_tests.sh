@@ -58,4 +58,19 @@ run_case wrong_filename 1 "does not match filename"
 run_case out_of_order_sections 1 "required sections are out of order"
 run_case bad_log_line 1 "must include \\[model\\] tag"
 
+tmp="$(mktemp -d)"
+mkdir -p "$tmp/tasks"
+cp "$FIXTURES/valid_role_task.md" "$tmp/tasks/TASK-001-valid-role-task.md"
+printf '%s\n' \
+  '# Board' '' '## Open' '' \
+  '| Id | Title | Owner | Status | Last update | File |' \
+  '|---|---|---|---|---|---|' \
+  '| TASK-001 | Fixture | primary | open | 2026-08-25 codex [gpt-5.6] | task |' \
+  '' '## Done' '' \
+  '| Id | Title | Owner | Merge commit |' \
+  '|---|---|---|---|' >"$tmp/board.md"
+printf '%s\n' '2026-08-25 codex [gpt-5.6] TASK-001 opened' >"$tmp/log.md"
+"$SCRIPT" --root "$tmp" --tasks-dir tasks --board board.md --log log.md
+rm -rf "$tmp"
+
 echo "validate_agent_files_tests: ok"

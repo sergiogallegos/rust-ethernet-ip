@@ -4,3 +4,11 @@ set -euo pipefail
 if git diff --cached --name-only --diff-filter=ACMR | grep -q '^docs/agents/'; then
   scripts/validate-agent-files
 fi
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -q '^wiki/'; then
+  scripts/validate-wiki
+fi
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -q '^\.agents/skills/'; then
+  scripts/validate-repo-skills
+fi

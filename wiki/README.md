@@ -21,7 +21,8 @@ Start with:
 - [index.md](index.md)
 - [log.md](log.md)
 
-Maintenance rules are defined in `../AGENTS.md`.
+Repository-wide guidance is defined in `../AGENTS.md`; wiki-specific maintenance
+rules are defined in [`AGENTS.md`](AGENTS.md).
 
 ## Prompt Recipes
 

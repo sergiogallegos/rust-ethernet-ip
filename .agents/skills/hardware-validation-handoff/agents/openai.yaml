@@ -1,0 +1,3 @@
+interface:
+  display_name: "Hardware Validation Handoff"
+  short_description: "Plan and record authorized real-PLC validation"

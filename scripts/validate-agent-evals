@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Validate the repository-specific agent workflow evaluation manifest."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import tomllib
+from pathlib import Path
+
+RISKS = {"low", "medium", "high"}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", default=".", help="repository root")
+    parser.add_argument(
+        "--manifest",
+        default="docs/agents/evals/cases.toml",
+        help="evaluation manifest relative to the repository root",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    root = Path(args.root).resolve()
+    manifest = root / args.manifest
+    errors: list[str] = []
+    try:
+        data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        print(f"{manifest}: cannot read manifest: {exc}", file=sys.stderr)
+        return 1
+
+    if data.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    cases = data.get("case")
+    if not isinstance(cases, list) or len(cases) < 5:
+        errors.append("manifest must contain at least five [[case]] entries")
+        cases = cases if isinstance(cases, list) else []
+
+    seen: set[str] = set()
+    for index, case in enumerate(cases, start=1):
+        prefix = f"case {index}"
+        if not isinstance(case, dict):
+            errors.append(f"{prefix}: must be a table")
+            continue
+        case_id = case.get("id")
+        if not isinstance(case_id, str) or not case_id:
+            errors.append(f"{prefix}: id must be a non-empty string")
+        elif case_id in seen:
+            errors.append(f"{prefix}: duplicate id {case_id}")
+        else:
+            seen.add(case_id)
+        source_task = case.get("source_task")
+        if not isinstance(source_task, str) or not (root / source_task).is_file():
+            errors.append(f"{prefix}: source_task does not exist: {source_task}")
+        if case.get("risk") not in RISKS:
+            errors.append(f"{prefix}: risk must be one of {sorted(RISKS)}")
+        if not isinstance(case.get("hardware_required"), bool):
+            errors.append(f"{prefix}: hardware_required must be boolean")
+        commands = case.get("commands")
+        if not isinstance(commands, list) or not commands or not all(
+            isinstance(command, str) and command for command in commands
+        ):
+            errors.append(f"{prefix}: commands must be a non-empty string array")
+        artifacts = case.get("artifacts")
+        if not isinstance(artifacts, list) or not artifacts:
+            errors.append(f"{prefix}: artifacts must be a non-empty array")
+        else:
+            for artifact in artifacts:
+                if not isinstance(artifact, str) or not (root / artifact).exists():
+                    errors.append(f"{prefix}: artifact does not exist: {artifact}")
+
+    for error in errors:
+        print(f"{manifest}: {error}", file=sys.stderr)
+    if errors:
+        return 1
+    print(f"validate-agent-evals: ok ({len(cases)} cases)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Validate wiki index coverage, Markdown links, page structure, and log headings."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+from urllib.parse import unquote
+
+LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
+LOG_HEADING_RE = re.compile(
+    r"^## \[(\d{4}-\d{2}-\d{2})\] (ingest|query|lint|reframe) \| \S.*$"
+)
+EXCLUDED_FROM_INDEX = {"AGENTS.md", "README.md", "index.md", "log.md"}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", default=".", help="repository root")
+    parser.add_argument("--wiki-dir", default="wiki", help="wiki directory")
+    return parser.parse_args()
+
+
+def fail(errors: list[str], path: Path, message: str, line: int | None = None) -> None:
+    location = f"{path}:{line}" if line is not None else str(path)
+    errors.append(f"{location}: {message}")
+
+
+def markdown_links(path: Path) -> list[tuple[int, str]]:
+    links: list[tuple[int, str]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        for match in LINK_RE.finditer(line):
+            target = match.group(1).strip()
+            if target.startswith("<") and target.endswith(">"):
+                target = target[1:-1]
+            links.append((line_number, target))
+    return links
+
+
+def local_target(path: Path, raw_target: str) -> Path | None:
+    target = raw_target.split("#", 1)[0].strip()
+    if not target or re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", target):
+        return None
+    target = unquote(target)
+    if " " in target and not raw_target.startswith("<"):
+        target = target.split(" ", 1)[0]
+    return (path.parent / target).resolve()
+
+
+def validate_page(path: Path, errors: list[str], titles: dict[str, Path]) -> None:
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    first = next((line for line in lines if line.strip()), "")
+    if not first.startswith("# "):
+        fail(errors, path, "first non-empty line must be a level-one title")
+    else:
+        title = first[2:].strip()
+        if title in titles:
+            fail(errors, path, f'duplicate title "{title}" also used by {titles[title]}')
+        else:
+            titles[title] = path
+
+    for line_number, raw_target in markdown_links(path):
+        target = local_target(path, raw_target)
+        if target is not None and not target.exists():
+            fail(errors, path, f"broken local link: {raw_target}", line_number)
+
+
+def validate_index(wiki_dir: Path, pages: list[Path], errors: list[str]) -> None:
+    index_path = wiki_dir / "index.md"
+    if not index_path.exists():
+        fail(errors, index_path, "index file does not exist")
+        return
+    indexed: set[Path] = set()
+    for _, raw_target in markdown_links(index_path):
+        target = local_target(index_path, raw_target)
+        if target is not None and target.suffix == ".md":
+            indexed.add(target)
+    for page in pages:
+        if page.name not in EXCLUDED_FROM_INDEX and page.resolve() not in indexed:
+            fail(errors, index_path, f"orphan page is not linked from index: {page.relative_to(wiki_dir)}")
+
+
+def validate_log(wiki_dir: Path, errors: list[str]) -> None:
+    log_path = wiki_dir / "log.md"
+    if not log_path.exists():
+        fail(errors, log_path, "log file does not exist")
+        return
+    for line_number, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.startswith("## ["):
+            continue
+        match = LOG_HEADING_RE.fullmatch(line)
+        if not match:
+            fail(errors, log_path, "invalid wiki log heading", line_number)
+            continue
+
+
+def main() -> int:
+    args = parse_args()
+    root = Path(args.root).resolve()
+    wiki_dir = root / args.wiki_dir
+    if not wiki_dir.is_dir():
+        print(f"{wiki_dir}: wiki directory does not exist", file=sys.stderr)
+        return 1
+
+    pages = sorted(wiki_dir.rglob("*.md"))
+    errors: list[str] = []
+    titles: dict[str, Path] = {}
+    for page in pages:
+        validate_page(page, errors, titles)
+    validate_index(wiki_dir, pages, errors)
+    validate_log(wiki_dir, errors)
+
+    for message in errors:
+        print(message, file=sys.stderr)
+    if errors:
+        return 1
+    print(f"validate-wiki: ok ({len(pages)} Markdown files)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

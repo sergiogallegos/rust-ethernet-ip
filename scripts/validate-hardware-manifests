@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Validate machine-readable real-hardware result manifests."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from datetime import date
+from pathlib import Path
+
+RESULTS = {"pass", "fail", "blocked"}
+BINDING_RESULTS = RESULTS | {"not-run"}
+RESTORE_RESULTS = {"verified", "settled", "not-required", "failed", "unknown"}
+REQUIRED = {
+    "schema_version",
+    "source",
+    "date",
+    "repository_commit",
+    "library_version",
+    "target",
+    "scope",
+    "bindings",
+    "restore",
+    "result",
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", default=".", help="repository root")
+    parser.add_argument(
+        "--manifests-dir",
+        default="docs/validation/manifests",
+        help="manifest directory relative to repository root",
+    )
+    return parser.parse_args()
+
+
+def validate_counts(prefix: str, value: object, errors: list[str]) -> None:
+    if not isinstance(value, dict):
+        errors.append(f"{prefix} must be an object")
+        return
+    passed, total = value.get("passed"), value.get("total")
+    if not isinstance(passed, int) or not isinstance(total, int) or not 0 <= passed <= total:
+        errors.append(f"{prefix} must contain integer counts with 0 <= passed <= total")
+
+
+def validate(path: Path, root: Path) -> list[str]:
+    errors: list[str] = []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"cannot read JSON: {exc}"]
+    if not isinstance(data, dict):
+        return ["top level must be an object"]
+    for key in sorted(REQUIRED - data.keys()):
+        errors.append(f"missing required field: {key}")
+    if data.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    source = data.get("source")
+    if not isinstance(source, str) or not (root / source).is_file():
+        errors.append(f"source does not exist: {source}")
+    try:
+        date.fromisoformat(data.get("date", ""))
+    except (TypeError, ValueError):
+        errors.append("date must use YYYY-MM-DD")
+    commit = data.get("repository_commit")
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-fA-F]{7,40}", commit):
+        errors.append("repository_commit must be a 7-40 character hex ref")
+    if data.get("result") not in RESULTS:
+        errors.append(f"result must be one of {sorted(RESULTS)}")
+    if data.get("restore") not in RESTORE_RESULTS:
+        errors.append(f"restore must be one of {sorted(RESTORE_RESULTS)}")
+
+    target = data.get("target")
+    if not isinstance(target, dict) or any(
+        not isinstance(target.get(key), str) or not target.get(key)
+        for key in ("family", "catalog", "firmware", "topology")
+    ):
+        errors.append("target must identify family, catalog, firmware, and topology")
+
+    scope = data.get("scope")
+    if not isinstance(scope, dict):
+        errors.append("scope must be an object")
+    else:
+        values = [scope.get(key) for key in ("total_paths", "writeable_paths", "read_only_paths")]
+        if not all(isinstance(value, int) and value >= 0 for value in values):
+            errors.append("scope path counts must be non-negative integers")
+        elif values[1] + values[2] != values[0]:
+            errors.append("writeable_paths + read_only_paths must equal total_paths")
+        manifest = scope.get("manifest")
+        if not isinstance(manifest, str) or not (root / manifest).is_file():
+            errors.append(f"scope manifest does not exist: {manifest}")
+
+    bindings = data.get("bindings")
+    seen: set[str] = set()
+    if not isinstance(bindings, list) or not bindings:
+        errors.append("bindings must be a non-empty array")
+    else:
+        for index, binding in enumerate(bindings, start=1):
+            prefix = f"binding {index}"
+            if not isinstance(binding, dict):
+                errors.append(f"{prefix} must be an object")
+                continue
+            name = binding.get("name")
+            if not isinstance(name, str) or not name:
+                errors.append(f"{prefix} name must be a non-empty string")
+            elif name in seen:
+                errors.append(f"{prefix} duplicates binding name {name}")
+            else:
+                seen.add(name)
+            if binding.get("result") not in BINDING_RESULTS:
+                errors.append(f"{prefix} result must be one of {sorted(BINDING_RESULTS)}")
+            for metric in ("reads", "writes", "verify"):
+                if metric in binding:
+                    validate_counts(f"{prefix} {metric}", binding[metric], errors)
+            anomalies = binding.get("anomalies")
+            if anomalies is not None and (not isinstance(anomalies, int) or anomalies < 0):
+                errors.append(f"{prefix} anomalies must be a non-negative integer")
+    return errors
+
+
+def main() -> int:
+    args = parse_args()
+    root = Path(args.root).resolve()
+    manifests_dir = root / args.manifests_dir
+    paths = sorted(
+        path for path in manifests_dir.glob("*.json") if path.name != "hardware-result.schema.json"
+    )
+    if not paths:
+        print(f"{manifests_dir}: no result manifests found", file=sys.stderr)
+        return 1
+    all_errors: list[str] = []
+    for path in paths:
+        for error in validate(path, root):
+            all_errors.append(f"{path}: {error}")
+    for error in all_errors:
+        print(error, file=sys.stderr)
+    if all_errors:
+        return 1
+    print(f"validate-hardware-manifests: ok ({len(paths)} manifests)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

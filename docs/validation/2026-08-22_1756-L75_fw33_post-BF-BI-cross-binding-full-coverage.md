@@ -5,6 +5,9 @@ Result: **PASS**
 Repository state: CODEX-BF/BI merged through `4a5f1ca`; current `3711d37`
 adds documentation-only README/website changes
 
+Machine-readable companion:
+[`manifests/2026-08-22_1756-L75_fw33_post-BF-BI-cross-binding-full-coverage.json`](manifests/2026-08-22_1756-L75_fw33_post-BF-BI-cross-binding-full-coverage.json)
+
 ## Scope
 
 Maintainer-requested post-merge regression run against the shared 2,304-tag

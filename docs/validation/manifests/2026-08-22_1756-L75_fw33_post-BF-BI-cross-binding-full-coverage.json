@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "source": "docs/validation/2026-08-22_1756-L75_fw33_post-BF-BI-cross-binding-full-coverage.md",
+  "date": "2026-08-22",
+  "repository_commit": "4a5f1ca",
+  "library_version": "1.2.1-development",
+  "target": {
+    "family": "ControlLogix",
+    "catalog": "1756-L75/B",
+    "firmware": "33.011",
+    "topology": "1756-EN2T/D fw10.007 in slot 1 to processor in backplane slot 0"
+  },
+  "scope": {
+    "manifest": "examples/full_coverage_tags.json",
+    "total_paths": 2304,
+    "writeable_paths": 2285,
+    "read_only_paths": 19
+  },
+  "bindings": [
+    {
+      "name": "rust",
+      "result": "pass",
+      "reads": { "passed": 2304, "total": 2304 },
+      "writes": { "passed": 2285, "total": 2285 },
+      "verify": { "passed": 2285, "total": 2285 },
+      "anomalies": 0
+    },
+    {
+      "name": "csharp",
+      "result": "pass",
+      "reads": { "passed": 2304, "total": 2304 },
+      "writes": { "passed": 2285, "total": 2285 },
+      "verify": { "passed": 2285, "total": 2285 },
+      "anomalies": 0
+    },
+    {
+      "name": "python",
+      "result": "pass",
+      "reads": { "passed": 2304, "total": 2304 },
+      "writes": { "passed": 2285, "total": 2285 },
+      "verify": { "passed": 2285, "total": 2285 },
+      "anomalies": 0
+    },
+    {
+      "name": "cpp",
+      "result": "pass",
+      "reads": { "passed": 2304, "total": 2304 },
+      "writes": { "passed": 2285, "total": 2285 },
+      "verify": { "passed": 2285, "total": 2285 },
+      "anomalies": 0
+    }
+  ],
+  "restore": "settled",
+  "result": "pass"
+}

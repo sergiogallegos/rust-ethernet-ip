@@ -61,6 +61,7 @@ Status values:
 - [investigations/rust-toolchain-baseline-2026-04-19.md](investigations/rust-toolchain-baseline-2026-04-19.md) — Rust 2024 history and the exact Rust 1.88 workspace MSRV boundary verified on 2026-07-14. `confirmed`
 - [investigations/software-architecture-map.md](investigations/software-architecture-map.md) — Current architecture ownership map and links to the maintainer-facing architecture document. `active`
 - [investigations/architecture-review-2026-05-18.md](investigations/architecture-review-2026-05-18.md) — Post-books architecture synthesis and reconciled roadmap from Claude and Codex review passes. `active`
+- [investigations/books-lessons-2026-05-18.md](investigations/books-lessons-2026-05-18.md) — Historical reading notes that fed the 2026 architecture review; retained as source context for that synthesis. `historical`
 - [investigations/client-actor-service-retry-2026-05-24.md](investigations/client-actor-service-retry-2026-05-24.md) — Current actor-backed client, connection-event, restricted-write helper, and retry-policy synthesis. `active`
 - [investigations/fleet-api-2026-05-24.md](investigations/fleet-api-2026-05-24.md) — Current multi-PLC Fleet API synthesis and its relationship to the actor client and older PlcManager. `active`
 - [investigations/subscription-lifecycle-2026-07-07.md](investigations/subscription-lifecycle-2026-07-07.md) — Current live subscription lifecycle, backpressure, and error-event behavior after CODEX-AR. `active`
@@ -70,6 +71,7 @@ Status values:
 - [investigations/test-coverage-strength-2026-05-18.md](investigations/test-coverage-strength-2026-05-18.md) — Current assessment of Rust, C#, and Python test strength, local command results, and prioritized coverage gaps. `active`
 - [investigations/dotnet-testhost-shutdown-2026-05-26.md](investigations/dotnet-testhost-shutdown-2026-05-26.md) — Dump-confirmed Ubuntu .NET testhost crash caused by replacing and reloading the staged shared library. `confirmed`
 - [investigations/array-type-cache-lifecycle.md](investigations/array-type-cache-lifecycle.md) — Cache behavior across route changes, reconnects, and PLC project downloads, plus required self-healing hardening. `active`
+- [investigations/agent-ready-repository-practices-2026-08-25.md](investigations/agent-ready-repository-practices-2026-08-25.md) — 2026 cross-source practices for compact agent maps, repo-local workflows, outcome verification, evals, and safe autonomy, with a repo-specific improvement order. `active`
 
 ## Planned High-Value Pages
 

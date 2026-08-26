@@ -4,6 +4,8 @@ Library version:
 Library commit:
 Tester:
 
+Machine-readable manifest: `docs/validation/manifests/YYYY-MM-DD_<target>_<scope>.json`
+
 ## Target
 
 - Family:

@@ -1940,3 +1940,54 @@ Sources used:
 - `docs/validation/2026-08-23_csharp-web-hmi_1756-L75_fw33.md`
 - `examples/CSharpWebHmi/Services/PlcDashboardService.cs`
 - `examples/CSharpWebHmi/frontend/src/App.tsx`
+
+## [2026-08-25] query | Synthesize 2026 agent-ready repository practices
+
+- Added `wiki/investigations/agent-ready-repository-practices-2026-08-25.md`.
+- Updated `wiki/index.md` with the new investigation.
+- Compared current guidance from Simon Willison, Hamel Husain, Anthropic
+  Engineering, OpenAI Codex and Developers, two 2026 `AGENTS.md` studies, and
+  this repository's existing agent files, scripts, CI, wiki, and validation
+  program.
+- Recommended progressive disclosure, narrow repo-local skills, wiki integrity
+  checks, a historical-task regression set, machine-readable hardware evidence,
+  and measured adoption of multi-agent orchestration.
+
+Sources used:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/agents/README.md`
+- `scripts/validate-agent-files`
+- `.github/workflows/ci.yml`
+- `wiki/index.md`
+- `wiki/investigations/llm-knowledge-base-pattern.md`
+- Simon Willison's 2026 Agentic Engineering Patterns and `simonw/llm`
+- Hamel Husain's 2026 eval-skills article and repository
+- Anthropic Engineering posts dated 2026-01-09, 2026-02-05, and 2026-03-24
+- OpenAI Codex and Developers guidance dated 2026-02-11 and 2026-03-09
+- arXiv:2602.11988 and arXiv:2601.20404
+
+## [2026-08-25] reframe | Make agent workflow role-neutral and executable
+
+- Replaced product-fixed Codex/Claude responsibilities with primary/reviewer
+  roles and a single-agent default while preserving all historical task files.
+- Split the compact root map from scoped wiki rules and reduced `CLAUDE.md` to
+  a tool adapter over shared guidance.
+- Added three repo-local skills, wiki and skill validators, CI and pre-commit
+  integration, a five-case agent-eval manifest, and one structured hardware
+  evidence pilot.
+- Deferred scheduled autonomous cleanup until the new checks prove low-noise.
+
+Sources used:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `wiki/AGENTS.md`
+- `docs/agents/README.md`
+- `.agents/skills/`
+- `scripts/validate-agent-files`
+- `scripts/validate-wiki`
+- `docs/agents/evals/cases.toml`
+- `docs/validation/manifests/`
+- `.github/workflows/ci.yml`

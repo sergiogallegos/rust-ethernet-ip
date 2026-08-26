@@ -1,0 +1,60 @@
+schema_version = 1
+
+[[case]]
+id = "protocol-cip-path-validation"
+source_task = "docs/agents/tasks/CODEX-N-cip-path-encoding-validation.md"
+category = "rust-protocol"
+risk = "high"
+hardware_required = false
+commands = [
+  "cargo test -p rust-ethernet-ip-protocol cip_request --locked",
+  "cargo test --test plc_sim_tests --locked",
+]
+artifacts = ["src", "tests"]
+
+[[case]]
+id = "ffi-abi-handshake"
+source_task = "docs/agents/tasks/CODEX-L-ffi-abi-version-handshake.md"
+category = "ffi-compatibility"
+risk = "high"
+hardware_required = false
+commands = [
+  "cargo test --features ffi --test ffi_abi --locked",
+  "python3 scripts/check-ffi-header-parity.py --library <native-library>",
+]
+artifacts = ["src/ffi.rs", "csharp", "python"]
+
+[[case]]
+id = "python-typed-writes"
+source_task = "docs/agents/tasks/CODEX-W-python-wrapper-typed-writes.md"
+category = "python-wrapper"
+risk = "medium"
+hardware_required = false
+commands = [
+  "PYTHONPATH=python python3 -m unittest python.tests.test_client_value_mapping python.tests.test_client_contract python.tests.test_bindings",
+]
+artifacts = ["python/rust_ethernet_ip", "python/tests"]
+
+[[case]]
+id = "cpp-consumer-support"
+source_task = "docs/agents/tasks/CODEX-AU-cpp-consumer-support.md"
+category = "cpp-wrapper"
+risk = "medium"
+hardware_required = false
+commands = [
+  "python3 scripts/check-ffi-header-parity.py --library <native-library>",
+  "ctest --test-dir target/cpp --output-on-failure -C Release",
+]
+artifacts = ["include", "examples/cpp"]
+
+[[case]]
+id = "agent-file-validator"
+source_task = "docs/agents/tasks/CODEX-Z-validate-task-files.md"
+category = "agent-infrastructure"
+risk = "low"
+hardware_required = false
+commands = [
+  "scripts/validate-agent-files",
+  "tests/validate_agent_files_tests.sh",
+]
+artifacts = ["scripts/validate-agent-files", "tests/agent_files_fixtures"]

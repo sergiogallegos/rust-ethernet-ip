@@ -1,200 +1,186 @@
-# Cross-Agent Collaboration Protocol
+# Agent Task and Handoff Protocol
 
-This directory is the **durable communication channel** between two LLM agents working on rust-ethernet-ip:
+This directory is the optional durable coordination layer for one or two coding
+agents working on `rust-ethernet-ip`. It records task contracts, progress,
+review, and project decisions across sessions without assigning permanent jobs
+to a particular product or model.
 
-- **Claude** — design, architecture, code review.
-- **Codex** — development, debugging, refactoring.
+The normal case is one primary agent. Add an independent reviewer when the
+change is high risk or when a second perspective is likely to provide useful
+evidence.
 
-The repository maintainer routes messages between them. Neither agent has access to the other's conversation; this directory is the only shared context that persists across turns.
+## Roles
 
-> If you are an LLM reading this for the first time in a session, identify yourself (`claude` or `codex`) before making any changes. Read this whole file before writing to any other file in this directory.
+- **Primary** — may research, design, implement, test, and perform a fresh
+  self-review.
+- **Reviewer** — independently checks the brief, diff, tests, compatibility,
+  and residual risk. The reviewer must not rely only on the primary's summary.
+- **Maintainer** — selects roles, resolves strategic decisions, authorizes
+  remote publication and PLC access, and performs or supervises hardware work.
 
-## Why this exists
+Codex, Claude, or another capable agent may fill either agent role. Record the
+actual agent and model in entries for auditability; never infer the role from
+the product name.
 
-A single conversation context belongs to one agent. When two agents collaborate on the same codebase, they need a shared, append-mostly artifact to:
+Two agents must not edit the same working tree concurrently. Use a sequential
+handoff or separate worktrees with explicit ownership of files and integration.
 
-- Hand off task briefs without re-explaining context every turn.
-- Ask each other clarifying questions that survive across sessions.
-- Record decisions and review verdicts that bind both agents.
-- Let either agent reconstruct project state by reading the directory cold.
+## Layout
 
-## File layout
-
-```
+```text
 docs/agents/
-├── README.md                       # this file — the protocol
-├── board.md                        # status of every task at a glance
-├── log.md                          # append-only chronological transcript
-├── notes/                          # per-surface maintainer decisions (load on demand)
-│   ├── README.md
-│   ├── ab-firmware-quirks.md
-│   ├── cip-framing.md
-│   ├── ffi-safety.md
-│   └── unconnected-send.md
+├── README.md
+├── board.md
+├── log.md
+├── review-template.md
+├── evals/
+├── notes/
 └── tasks/
-    ├── CODEX-A-<slug>.md
-    ├── CODEX-B-<slug>.md
-    └── CODEX-C-<slug>.md           # one file per task, full lifecycle
 ```
 
-- **`board.md`** — single table summarizing every task: id, title, owner, status, last update. Kanban-style snapshot.
-- **`log.md`** — append-only one-liners. Format: `YYYY-MM-DD HH:MM <author> [<model>] <task-id> <event>`. Newest at bottom. Never edit prior entries. The `[<model>]` tag identifies which underlying model produced the entry (e.g. `[Opus 4.7]`, `[gpt-5.5]`); use `--` for `<task-id>` on project-wide events.
-- **`notes/<surface>.md`** — durable per-surface decisions (e.g. AB firmware quirks, FFI safety invariants, CIP framing boundary, Unconnected Send wrapping). Read before reviewing or modifying the matching surface. See [`notes/README.md`](notes/README.md) for format. These pages are the single source of truth — `CLAUDE.md` and task files should point at them rather than duplicate their content.
-- **`tasks/<id>.md`** — full lifecycle for one task: the brief, Codex's working notes, Claude's review, the verdict. Each task gets one file. Don't split a task across files.
+- `board.md` is the current status map. Task-file frontmatter wins if they
+  disagree.
+- `log.md` is an append-only chronological event stream.
+- `notes/` holds load-bearing decisions by technical surface.
+- `tasks/` holds one full lifecycle per durable task.
+- `evals/` holds the small historical-task regression set used to assess agent
+  workflow changes.
 
-## Task lifecycle
+## Task Identity and Compatibility
 
-Status flow:
+New tasks use neutral identifiers such as `TASK-001` and filenames such as
+`TASK-001-short-name.md`. Historical `CODEX-*` identifiers remain valid and
+must not be renamed merely for consistency.
 
+New task files use:
+
+```yaml
+---
+id: TASK-001
+title: Short title
+owner: primary
+status: open
+created: YYYY-MM-DD
+last-update: YYYY-MM-DD <agent> [<model>]
+---
 ```
-open ──▶ in-progress ──▶ submitted ──▶ under-review ──┬──▶ merged
-                ▲                                     │
-                └─────────── rejected ◀───────────────┘
-```
 
-| Status | Meaning | Set by |
-|---|---|---|
-| `open` | Brief written, no work started | claude (when authoring brief) |
-| `in-progress` | Codex acknowledged and started | codex (when starting work) |
-| `submitted` | Codex finished, awaiting review | codex (with commit ref or diff) |
-| `under-review` | Claude has begun reviewing | claude (when starting review) |
-| `merged` | Approved and integrated | claude (with merge commit ref) |
-| `rejected` | Changes requested; back to `in-progress` after Codex addresses | claude (with punch list) |
+`owner` names the current role or explicitly assigned agent. Model attribution
+belongs in `last-update` and signed entries, not in public commit messages.
 
-Status changes are reflected in **three** places:
-1. The task file's frontmatter `status:` field.
-2. The corresponding row in `board.md`.
-3. A new line in `log.md`.
+## Task Sections
 
-All three are part of the same edit.
+New task files contain these sections in order:
 
-## Authoring conventions
+1. `## Brief` — problem, evidence to read, constraints, acceptance criteria,
+   and verification expectations.
+2. `## Work log` — append-only progress, assumptions, questions, commands, and
+   results from the primary.
+3. `## Independent review` — reviewer findings, or a clearly labeled fresh
+   self-review when one agent owns the task end to end.
+4. `## Verdict` — final disposition and residual risk.
 
-### Sections in a task file
+Historical `## Codex log` and `## Claude review` sections are a supported legacy
+schema. Do not bulk-rewrite them. The validator accepts both schemas but does
+not allow mixing their section names within one task.
 
-Every task file has these sections, in this order:
-
-1. **Frontmatter** (yaml). Fields: `id`, `title`, `owner`, `status`, `created`, `last-update`. The `last-update` field has the form `YYYY-MM-DD <author> [<model>]` (e.g. `2026-05-17 claude [Opus 4.7]`).
-2. **Brief** — written once by claude. Codex must not edit this. If the brief is wrong, codex appends a question in `## Codex log` rather than editing.
-3. **Codex log** — append-only by codex. Each entry is timestamped and signed.
-4. **Claude review** — append-only by claude after submission.
-5. **Verdict** — final disposition by claude.
-
-### Entry format
-
-Within `## Codex log` and `## Claude review`, each entry starts with a header line that includes the agent's underlying model in square brackets:
+Entries are signed:
 
 ```markdown
-### 2026-05-01 14:30  codex [gpt-5.5]
-<content>
+### 2026-08-25 14:30  codex [gpt-5.6] — primary
 
-### 2026-05-01 15:10  claude [Opus 4.7] — review pass 1
-<content>
+### 2026-08-25 16:10  claude [Opus 4.7] — independent review
 ```
 
-The model tag lets the maintainer trace which model produced which decision over time. Use the model name as it surfaces in your runtime context (Claude reports its model in the harness banner; Codex reports the gpt-N variant it's running). If the model isn't known, write `[unknown]` rather than omitting the tag — never leave it blank.
+If the model is unknown, write `[unknown]`.
 
-Entries are appended, never edited. If something written earlier was wrong, write a new entry that supersedes it; don't edit the old one.
+## Lifecycle
 
-### Asking questions
+```text
+open → in-progress → submitted → under-review → merged
+                    ▲               │
+                    └── rejected ───┘
+```
 
-Either agent can ask the other a question by appending an entry that begins with `### YYYY-MM-DD HH:MM  <author> — question`. The other agent responds in their own log section (codex in `## Codex log`, claude in `## Claude review`) with a header starting `— answer to <date>`.
+- `open`: contract exists; no work started.
+- `in-progress`: primary is working.
+- `submitted`: implementation and primary verification are ready.
+- `under-review`: an independent or fresh self-review is in progress.
+- `rejected`: findings require another primary pass.
+- `merged`: approved and integrated.
 
-Open questions block the task — while a question is open and unanswered, the task does not advance.
+Every status change updates task frontmatter, the board row, and the append-only
+log in the same change.
 
-**Ambiguity threshold — when to stop vs proceed:**
+Independent review is expected for protocol wire behavior, `unsafe` or FFI,
+public API compatibility, security boundaries, releases, and claims based on
+live hardware. Low-risk documentation, focused tests, and mechanical
+maintenance may use a single agent and a fresh self-review.
 
-- **Stop and ask** when the ambiguity affects acceptance criteria, contradicts a brief assumption, or requires source-of-truth context the brief doesn't provide. Examples: brief pins a crate version that doesn't exist on crates.io; brief contradicts an architectural decision in CLAUDE.md; acceptance test description is internally inconsistent; brief specifies an API that conflicts with upstream's actual surface.
-- **Document and proceed** when the ambiguity is a normal implementation choice with no contract impact. Examples: variable naming, internal helper structure, log message wording, choice between two equivalent stdlib calls. Add a one-line entry to `## Codex log` recording the assumption ("Assumed X because Y; revisit if review disagrees.") so review can cheaply override.
+## Brief and Review Quality
 
-The cost of stalling on small details is higher than the cost of a v1.1 polish item.
+A brief specifies observable outcomes without dictating an implementation that
+has not yet been justified. Everything a deterministic grader checks must be
+discoverable from the brief.
 
-### Decisions
+The primary stops for ambiguity that changes acceptance criteria, conflicts
+with an authoritative source, expands permissions, or requires unavailable
+hardware evidence. It records and proceeds through ordinary internal choices
+that do not change the contract.
 
-If a task surfaces a decision that affects more than just this task, claude records it in `docs/` (an architecture page or `CLAUDE.md` update) and links to it from the task file. Don't bury cross-cutting decisions in a task file alone.
+Use [`review-template.md`](review-template.md) for new reviews. Verify the final
+repository state and user-visible behavior, not merely the path the primary
+took. A passing test suite is evidence, not proof that every quality claim is
+true.
 
-### Review template
+## Log and Voice
 
-New `## Claude review` entries use [`review-template.md`](review-template.md). The contract is fixed: Independent verification, What's being fixed, Root cause confirmation, Fix appropriateness, Test proof, Residual risk, Strong points, Findings, and Acceptance criteria tally. Historical reviews stay in their original shape unless a task explicitly asks to rewrite one.
+Log lines use:
 
-### Out of scope for this protocol
+```text
+YYYY-MM-DD <agent> [<model>] <task-id-or--> <event>
+```
 
-- Code style nits → use review entries with explicit `file:line` references.
-- Long-running side discussions → spawn a new task file or keep them in PR comments after merge.
-- Routine status updates → one line in `log.md` is enough.
+Keep this directory neutral and suitable for a public repository:
 
-### Voice
+- Attribute decisions to roles or recorded agents without first-person prose.
+- Do not profile or quote the maintainer.
+- Keep agent/model tags inside `docs/agents/`, not commit messages or product
+  documentation.
+- Correct prior append-only entries with a later superseding entry.
 
-Use neutral framing in everything written into this directory and into project docs (`CLAUDE.md`, `README.md`, `docs/`, commit messages, PR descriptions):
+## Commits, Pushes, and Hardware
 
-- **No first-person.** Write "Codex implemented X" / "Claude-authored brief" / "the original brief" / "brief error owned by Claude". Not "I added X" / "my brief".
-- **No maintainer profiling.** Write "the maintainer requested" / "per maintainer direction". Not "the user wants X" / direct quotes of maintainer chat.
-- **No agent attribution in commit messages or PR descriptions.** Public artifacts read as the project's own voice.
-- **Agent + model tags belong only in `docs/agents/`.** Log entries, task file section headers, verdicts, and frontmatter `last-update` carry the agent's underlying model (e.g. `claude [Opus 4.7]`, `codex [gpt-5.5]`). This gives the maintainer a model-vs-quality audit trail without leaking it into public git history.
-- **End-user references are fine when domain-relevant.** "the user's PLC tag", "the integrator's calling code" are correct when they refer to actual library users.
-- **Paraphrase, don't quote.** If a maintainer message defines a project convention, restate it neutrally.
+Use `scripts/agent-commit` when a task requires a local commit; it stages only
+explicit paths and rejects broad or suspicious targets. Push only on explicit
+maintainer direction or an unambiguous task contract. Never treat a local
+commit as a successful push.
 
-This repo is published as a public Rust crate and NuGet package. Personal phrasing leaks behavioral signals (work patterns, incidents, preferences) that belong in private agent memory, not in project history. Both agents should self-edit before committing; reviewers flag voice drift in the same pass as technical findings.
+Live PLC execution requires explicit maintainer authorization. Use
+`$hardware-validation-handoff`; do not infer access or write permission from a
+stored address, environment variable, or historical command.
 
-## Who edits what
+## Validation
 
-| File | Claude edits | Codex edits |
-|---|:-:|:-:|
-| `README.md` (this file) | rarely (protocol changes) | only if asked by claude |
-| `board.md` | yes, on status changes | yes, on status changes |
-| `log.md` | append on events | append on events |
-| `tasks/<id>.md` Brief | yes, when authoring | never |
-| `tasks/<id>.md` Codex log | never | append-only |
-| `tasks/<id>.md` Claude review | append-only | never |
-| `tasks/<id>.md` Verdict | yes (sole author) | never |
-| `tasks/<id>.md` frontmatter | yes (when status flips that claude owns) | yes (when status flips that codex owns) |
-
-## Commit and push expectations
-
-Both agents may stage and commit edits to task files, `board.md`, and `log.md` as part of normal task work. The lifecycle three-place update (frontmatter + board + log) should commit together.
-
-`scripts/agent-commit "<message>" <file> [file...]` is the recommended safety wrapper for agent commits. It unstages the index first and stages only the named files, rejects `.` / `-A` / wildcard paths, blocks obvious secret filenames unless `--unsafe` is passed, and rejects amend commits unless `--amend-anyway` is explicit. Manual `git commit` remains valid when specific files are staged deliberately.
-
-**Pushing to the remote is not automatic:**
-
-- Push only when the maintainer explicitly asks ("commit and push", "ship it"), or when an unambiguous task convention requires it (e.g. backfilling a merge ref in a follow-up commit).
-- Push only when the local environment permits it. If push is blocked (network, auth, safe-directory), surface the blocker — don't retry silently or work around it.
-- A successful local commit is not a successful push. Always confirm the push step ran before claiming a task moved to `merged` or `submitted`.
-
-This prevents the case where one agent's session pushes to the remote while the other agent's session has unpushed local commits, leaving the two views diverged.
-
-## Local validation
-
-Run `scripts/install-hooks` once to opt into the local pre-commit hook:
+Run:
 
 ```bash
-scripts/install-hooks
+scripts/validate-agent-files
+tests/validate_agent_files_tests.sh
 ```
 
-The hook runs `scripts/validate-agent-files` only when staged paths under `docs/agents/` change. It validates task frontmatter, required task sections, board/table consistency, and parseable log lines. CI also runs the validator and its smoke fixtures, so contributors who do not install hooks still get the same gate on push or pull request.
+Install the optional pre-commit hooks with `scripts/install-hooks`. CI runs the
+same deterministic checks.
 
-## How to add a new task
+## Resume and Handoff
 
-1. Pick the next id (`CODEX-A`, `CODEX-B`, …).
-2. Create `tasks/<id>-<short-name>.md` with frontmatter, Brief, empty Codex log, empty Claude review, empty Verdict.
-3. Add a row to `board.md`.
-4. Append an `open` event to `log.md`.
+To resume durable work:
 
-## How to consume this protocol if you are…
+1. Read `board.md`.
+2. Read the specific active task, including all prior work and review entries.
+3. Read the last relevant lines of `log.md`.
+4. Load only matching pages from `notes/`, the wiki, and authoritative docs.
 
-**…the maintainer routing messages.** Tell each agent which file to read. Examples:
-- "Codex, read `docs/agents/tasks/CODEX-A-<slug>.md` and start the task."
-- "Claude, codex submitted CODEX-B; review it."
-
-**…claude, reading at the start of a turn.** Read `board.md` first to see overall state. Then read the specific task file the maintainer pointed you at. Update status + log + board in the same turn as your work.
-
-**…codex, reading at the start of a turn.** Same — board first, then task. Append your work to the Codex log section. Don't touch Brief or Claude review. Don't edit prior entries.
-
-## Source-of-truth precedence inside this directory
-
-If `board.md` and a task file's frontmatter disagree, the **task file frontmatter wins** and `board.md` should be corrected. `log.md` is historical; it does not override current state.
-
-## Relationship to other docs
-
-- **`CLAUDE.md`** at repo root — short version of this protocol plus rust-ethernet-ip-specific project context (build commands, architecture, tag-path syntax, PLC firmware limits). Both apply simultaneously: read CLAUDE.md for project knowledge, this directory for cross-agent state.
-- **`README.md`** at repo root — for human consumers of the library. Humans don't need this protocol; it's purely an LLM-to-LLM channel.
+At handoff, record files changed, commands actually run, results, unverified
+claims, hardware gaps, and residual risk. Do not re-derive the entire repository
+when the board and task record already provide the necessary state.

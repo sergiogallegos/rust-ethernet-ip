@@ -6,9 +6,8 @@ this directory in sync with what's live. Restore the original source image
 from repository history before generating a new variant.
 
 ## Files
-- `logo-light.png`: Primary logo for light backgrounds (README, website footer)
+- `logo-light.png`: Primary logo for light backgrounds (README, website footer, link previews)
 - `logo-dark.png`: Primary logo for dark backgrounds (README dark-mode source)
-- `package-preview.png`: Full package overview crop (website `og:image`)
 - `favicon/icon-32.png`: Site favicon (website `<link rel="icon">`)
 
 ## Suggested Tokens

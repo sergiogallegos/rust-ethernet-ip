@@ -20,10 +20,7 @@
 
 [advisories]
 ignore = [
-    "RUSTSEC-2024-0388",  # derivative unmaintained — via desktop_app → eframe → accesskit_unix → atspi → zbus
-    "RUSTSEC-2024-0384",  # instant unmaintained — via desktop_app → eframe → accesskit_unix → fastrand/futures-lite
     "RUSTSEC-2024-0436",  # paste unmaintained — via desktop_app → eframe → wgpu/accesskit_windows
-    "RUSTSEC-2026-0097",  # rand unsoundness with custom logger — via desktop_app → eframe → accesskit_unix → zbus
     "RUSTSEC-2026-0194",  # quick-xml NsReader DoS — build-time-only via desktop_app → eframe → winit → sctk → wayland-scanner
     "RUSTSEC-2026-0195",  # quick-xml NsReader DoS (same crate, second advisory) — same build-time-only path
     # 2026-07-06 additions — all off the shipped-library path (RUSTSEC-2026-0204
